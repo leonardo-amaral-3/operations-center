@@ -58,6 +58,9 @@ test.beforeAll(async () => {
       OC_ISOLATED: '1',
       OC_MODEL: SMOKE_MODEL,
       OC_CWD: workdir,
+      // A porta de ambiente que mantém esta fatia alcançável agora que o app abre no kanban. É ela
+      // também que impede o smoke de tocar o GitHub: o main só registra o IPC de board no kanban.
+      OC_SCREEN: 'chat',
     },
   })
 
