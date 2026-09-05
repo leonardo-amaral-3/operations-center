@@ -1,0 +1,49 @@
+name: CI
+
+# O portão de qualidade do repo, nas duas branches que importam: `dev` (integração) e `main`
+# (produção). Toda branch de feature entra por um PR para `dev`, então é aqui que o vermelho
+# aparece antes de virar problema de alguém.
+on:
+  pull_request:
+    branches: [dev, main]
+
+# Push novo no mesmo PR cancela a execução anterior: o veredito que interessa é o do último commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: lint + typecheck + test
+    runs-on: ubuntu-latest
+
+    env:
+      # O runner nunca abre o Electron: quem abriria é o smoke, e o smoke não roda aqui. Baixar os
+      # ~120 MB do binário a cada execução compraria só lentidão e uma fonte de intermitência que
+      # não diz nada sobre o código. Os tipos do Electron vêm do pacote npm, não do binário.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # A versão mínima que o repo declara suportar (`engines.node`). Testar acima dela deixaria
+          # passar código que quebra na máquina de quem seguiu o README.
+          node-version: '20'
+          cache: yarn
+
+      - run: yarn install --frozen-lockfile
+
+      # Os três em passos separados de propósito: o gate é o mesmo de
+      # `yarn lint && yarn typecheck && yarn test` — o job para no primeiro vermelho — mas a falha
+      # aparece nomeada na UI, em vez de enterrada dentro de um passo genérico.
+      - run: yarn lint
+      - run: yarn typecheck
+      - run: yarn test
+
+# O smoke (`yarn smoke`) fica de fora, e não por esquecimento: ele sobe uma sessão real do Claude
+# Code e depende do login local da máquina, que um runner não tem. É teste de bancada, não de CI.
