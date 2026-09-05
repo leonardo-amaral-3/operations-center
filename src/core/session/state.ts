@@ -1,18 +1,10 @@
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { PermissionRequest } from './types'
 
-/**
- * O estado exibido da sessão. `awaiting_input` e `awaiting_decision` são os dois que o kanban
- * futuro vai pintar como "esperando você" — nomeá-los agora é o que faz esse sinal ser depois um
- * problema de CSS e não de arquitetura.
- */
-export type SessionState =
-  | { kind: 'starting' }
-  | { kind: 'working' }
-  | { kind: 'awaiting_input' }
-  | { kind: 'awaiting_decision'; request: PermissionRequest }
-  | { kind: 'closed' }
-  | { kind: 'failed'; reason: string }
+import type { PermissionRequest, SessionState } from './types'
+
+// O formato do estado é contrato de ponte e mora em `src/shared/session.ts`; o que este módulo
+// possui são as transições. Republicado aqui porque a máquina é o assunto de quem vem ler o tipo.
+export type { SessionState } from './types'
 
 /**
  * Só o que um `result` do SDK decide de estado. O resto do `SDKResultMessage` (custo, uso,

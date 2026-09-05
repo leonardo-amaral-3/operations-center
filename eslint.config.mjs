@@ -39,6 +39,41 @@ const coreBoundary = {
   },
 }
 
+/**
+ * A outra fronteira: `src/shared/` é folha.
+ *
+ * É o único código que o renderer e o main compilam juntos. Um import de `electron`, do SDK, de um
+ * builtin do Node ou de qualquer camada faria o programa do renderer resolver aquilo junto — que é
+ * o oposto do que `contextIsolation` e `sandbox` compram. Manter a folha folha é o que permite o
+ * contrato ser um só, e não dois que divergem.
+ */
+const sharedBoundary = {
+  files: ['src/shared/**/*.ts'],
+  rules: {
+    '@typescript-eslint/no-restricted-imports': [
+      'error',
+      {
+        patterns: [
+          {
+            group: [
+              'electron',
+              'electron/*',
+              '@anthropic-ai/*',
+              'node:*',
+              '**/core/**',
+              '**/main/**',
+              '**/renderer/**',
+              '**/preload/**',
+            ],
+            message:
+              'src/shared/ é folha: o renderer compila este código. Nada de electron, do SDK, de builtins do Node nem de outra camada aqui.',
+          },
+        ],
+      },
+    ],
+  },
+}
+
 export default tseslint.config(
   {
     ignores: ['dist/**', 'out/**', 'node_modules/**', 'test-results/**', 'playwright-report/**'],
@@ -58,5 +93,6 @@ export default tseslint.config(
     extends: [tseslint.configs.disableTypeChecked],
   },
   coreBoundary,
+  sharedBoundary,
   prettier,
 )
