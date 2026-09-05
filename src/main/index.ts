@@ -1,10 +1,16 @@
 import { join } from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, powerMonitor } from 'electron'
 
-import { SessionHost } from '../core'
+import { BoardReader, SessionHost } from '../core'
+import type { GraphQLFn } from '../core'
 import type { Screen } from '../shared/ipc'
+import { registerBoardIpc } from './board'
+import type { BoardIpcOptions } from './board'
+import { createFixtureGraphQL } from './github/fixture'
+import { createGitHubGraphQL } from './github/graphql'
+import { createGhTokenSource } from './github/token'
 import { registerSessionIpc } from './ipc'
 
 /**
@@ -41,9 +47,33 @@ function resolveScreen(): Screen {
   return process.env.OC_SCREEN === 'chat' ? 'chat' : 'kanban'
 }
 
+/** Qual board ler. O default é o Operations Center; o mesmo binário serve outro board pelo ambiente. */
+function resolveBoard(): BoardIpcOptions {
+  const raw = process.env.OC_PROJECT_NUMBER
+  const number = raw === undefined || raw === '' ? 2 : Number(raw)
+
+  // Valor inválido **lança**, em vez de cair no default: abrir o board 2 com toda a confiança do
+  // mundo quando pediram outro é o pior modo de falha que existe aqui.
+  if (!Number.isInteger(number) || number < 1) {
+    throw new Error(`OC_PROJECT_NUMBER inválido: ${String(raw)}`)
+  }
+
+  return { owner: process.env.OC_PROJECT_OWNER || 'leonardo-amaral-3', number }
+}
+
+/**
+ * Qual cliente o `core` recebe. `OC_BOARD_FIXTURE` é a porta do smoke: com ela o app lê um arquivo e
+ * não toca a rede; sem ela, é o GitHub de verdade, com o token do `gh`.
+ */
+function createGraphQL(): GraphQLFn {
+  const fixture = process.env.OC_BOARD_FIXTURE
+
+  return fixture ? createFixtureGraphQL(fixture) : createGitHubGraphQL(createGhTokenSource())
+}
+
 const screen = resolveScreen()
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1100,
     height: 760,
@@ -72,6 +102,10 @@ function createWindow(): void {
   } else {
     void window.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  // Devolvida porque é nela que o gatilho de foco se pendura — o observador do board precisa de uma
+  // referência à janela, e sem isto não haveria onde.
+  return window
 }
 
 // O main é dono do `core`: é ele que tem o `query` do SDK, o ambiente e o processo Node. O host é
@@ -84,8 +118,32 @@ const host = new SessionHost({
 
 const sessionIpc = registerSessionIpc(host, { cwd: resolveCwd() })
 
+// **O IPC de board só é registrado no kanban.** Assim o smoke da fatia vertical (`OC_SCREEN=chat`)
+// não tem como tocar o GitHub nem por acidente: o determinismo dele fica garantido por construção,
+// e não por disciplina de quem escreve o teste.
+const boardIpc =
+  screen === 'kanban'
+    ? registerBoardIpc(new BoardReader({ graphql: createGraphQL() }), resolveBoard())
+    : null
+
 void app.whenReady().then(() => {
-  createWindow()
+  const window = createWindow()
+  if (!boardIpc) return
+
+  // Em paralelo à criação da janela: a leitura começa antes de o renderer pedir.
+  boardIpc.refresh()
+
+  // Os dois gatilhos moram aqui dentro porque o `powerMonitor` do Electron só pode ser usado depois
+  // do evento `ready` — registrá-lo no topo do módulo lança.
+  window.on('focus', () => {
+    boardIpc.refresh()
+  })
+
+  // Necessário além do `focus`: quando a máquina acorda, a janela costuma já estar em foco e nenhum
+  // evento de foco dispara. Sem ele, quem nunca fecha o app começaria a manhã com o board de ontem.
+  powerMonitor.on('resume', () => {
+    boardIpc.refresh()
+  })
 })
 
 // Fechar a janela encerra o app — inclusive no macOS. Nada de histórico se perde: as sessões do
