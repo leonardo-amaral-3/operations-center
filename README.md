@@ -28,8 +28,12 @@ Build com `electron-vite` (Vite 7). Testes: Vitest nas unidades, Playwright + El
 
 ## Pré-requisitos
 
-- **Node ≥ 20** e **yarn 1.22**
+- **Node ≥ 22.13** (ou 24.x) e **yarn 1.22**
 - **Claude Code instalado e logado** na máquina
+
+O piso do Node não é redondo porque é uma interseção, não uma escolha: `electron@44` exige
+`>= 22.12` e `eslint@10` exige `>= 22.13`. E a janela **pula os majors ímpares** — `vitest@5`
+declara `^22.12 || ^24 || >=26`, então **Node 23 e 25 não servem**, mesmo sendo "maiores que 22.13".
 
 O segundo item não é conveniência: o app **não** usa `ANTHROPIC_API_KEY`. As sessões sobem com as
 credenciais locais do CLI, e sem login a janela abre mas a sessão não anda.

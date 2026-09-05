@@ -32,8 +32,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           # A versão mínima que o repo declara suportar (`engines.node`). Testar acima dela deixaria
-          # passar código que quebra na máquina de quem seguiu o README.
-          node-version: '20'
+          # passar código que quebra na máquina de quem seguiu o README — foi exatamente esse o
+          # furo que este job pegou no PR #3: o repo dizia Node 20, mas `electron@44` exige
+          # >= 22.12 e `eslint@10` exige >= 22.13 na linha do 22, e a máquina de desenvolvimento
+          # rodava 24. O install nunca falhava lá; falhava só para quem seguisse o README.
+          node-version: '22'
           cache: yarn
 
       - run: yarn install --frozen-lockfile
