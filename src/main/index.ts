@@ -4,6 +4,7 @@ import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
 import { app, BrowserWindow } from 'electron'
 
 import { SessionHost } from '../core'
+import type { Screen } from '../shared/ipc'
 import { registerSessionIpc } from './ipc'
 
 /**
@@ -31,6 +32,17 @@ function resolveSettingSources(): SettingSource[] | undefined {
   return process.env.OC_ISOLATED === '1' ? [] : undefined
 }
 
+/**
+ * Qual tela o app abre. `OC_SCREEN=chat` é porta de ambiente sem representação na UI: existe para o
+ * smoke da fatia vertical continuar provando renderer ↔ main ↔ core ↔ SDK. Qualquer outro valor
+ * abre o kanban, que é o app.
+ */
+function resolveScreen(): Screen {
+  return process.env.OC_SCREEN === 'chat' ? 'chat' : 'kanban'
+}
+
+const screen = resolveScreen()
+
 function createWindow(): void {
   const window = new BrowserWindow({
     width: 1100,
@@ -40,6 +52,9 @@ function createWindow(): void {
     title: 'Operations Center',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
+      // Como o preload sabe qual tela desenhar. É o mecanismo documentado do Electron para passar
+      // dados ao preload e funciona com `sandbox: true` — ler `process.env` lá dentro não.
+      additionalArguments: [`--oc-screen=${screen}`],
       // O renderer nunca vê Node. Toda capacidade dele passa pelo contrato do preload.
       nodeIntegration: false,
       contextIsolation: true,

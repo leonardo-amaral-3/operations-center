@@ -7,6 +7,7 @@
  * só os tipos de dado que o `core` publica.
  */
 
+import type { BoardSnapshot } from './board'
 import type {
   ChatMessage,
   PermissionDecision,
@@ -15,12 +16,19 @@ import type {
   SessionState,
 } from './session'
 
+/**
+ * Qual tela o app desenha. Decidido no main por `OC_SCREEN` e entregue ao preload por argv — o
+ * renderer não escolhe, só obedece.
+ */
+export type Screen = 'kanban' | 'chat'
+
 /** Renderer → main. Toda pergunta tem resposta, então são `invoke`. */
 export const IPC_INVOKE = {
   start: 'session:start',
   send: 'session:send',
   respondPermission: 'session:respond-permission',
   close: 'session:close',
+  readBoard: 'board:read',
 } as const
 
 /** Main → renderer. Avisos de mão única, disparados pelo `core` quando a sessão se mexe. */
@@ -29,6 +37,7 @@ export const IPC_EVENT = {
   message: 'session:message',
   state: 'session:state',
   permissionRequest: 'session:permission-request',
+  board: 'board:changed',
 } as const
 
 /**
@@ -93,6 +102,12 @@ export interface SessionPermissionEvent {
  */
 export interface OcApi {
   /**
+   * Qual tela desenhar. É um valor, não uma promessa: o preload o resolve de `process.argv` antes
+   * de expor a ponte, então o primeiro render já sabe o que desenhar e não há tela piscando.
+   */
+  readonly screen: Screen
+
+  /**
    * Começa a sessão. Sem parâmetro de propósito: a pasta de trabalho e o modelo vêm do ambiente
    * lido no main (`OC_CWD`, `OC_MODEL`). Deixar o renderer escolher a `cwd` seria dar a uma tela
    * sandboxada o poder de apontar uma sessão do Claude Code para qualquer lugar do disco.
@@ -105,6 +120,11 @@ export interface OcApi {
   onMessage(listener: (event: SessionMessageEvent) => void): () => void
   onState(listener: (event: SessionStateEvent) => void): () => void
   onPermissionRequest(listener: (event: SessionPermissionEvent) => void): () => void
+
+  /** O retrato atual do board. Pode voltar com `board: null` se a primeira leitura não terminou. */
+  readBoard(): Promise<BoardSnapshot>
+  /** Todo fim de leitura — com sucesso ou com falha — empurra um retrato novo. */
+  onBoard(listener: (snapshot: BoardSnapshot) => void): () => void
 }
 
 declare global {
