@@ -1,0 +1,272 @@
+import type {
+  CanUseTool,
+  PermissionResult,
+  Query,
+  SDKMessage,
+  SDKUserMessage,
+} from '@anthropic-ai/claude-agent-sdk'
+
+import { InputQueue } from './InputQueue'
+import { initialState, nextState } from './state'
+import type { SessionEvent, SessionState } from './state'
+import type { ChatMessage, PermissionDecision, PermissionRequest, SessionInit } from './types'
+
+/** Os três canais que uma sessão publica. */
+interface SessionEvents {
+  state: SessionState
+  message: ChatMessage
+  init: SessionInit
+}
+
+/**
+ * Emissor tipado dos três canais acima. Trinta linhas em vez de uma dependência: uma biblioteca de
+ * eventos traria wildcards, `once`, prioridade e tipagem por string solta — nada disso é usado
+ * aqui, e a tipagem por canal é justamente o que a biblioteca genérica não dá.
+ */
+class Emitter {
+  // Guardar o ouvinte como `(payload: never) => void` é o que permite um único mapa para canais de
+  // payloads diferentes: `never` é aceito por qualquer parâmetro, então guardar é seguro; só a
+  // chamada precisa recuperar o tipo do canal.
+  readonly #listeners = new Map<keyof SessionEvents, Set<(payload: never) => void>>()
+
+  on<K extends keyof SessionEvents>(
+    event: K,
+    listener: (payload: SessionEvents[K]) => void,
+  ): () => void {
+    let listeners = this.#listeners.get(event)
+    if (!listeners) {
+      listeners = new Set()
+      this.#listeners.set(event, listeners)
+    }
+    listeners.add(listener)
+
+    return () => {
+      listeners.delete(listener)
+    }
+  }
+
+  emit<K extends keyof SessionEvents>(event: K, payload: SessionEvents[K]): void {
+    const listeners = this.#listeners.get(event)
+    if (!listeners) return
+
+    // Cópia antes de percorrer: um ouvinte que se cancela ao ser chamado mexeria no Set em uso.
+    for (const listener of [...listeners]) {
+      const typed = listener as (payload: SessionEvents[K]) => void
+      typed(payload)
+    }
+  }
+}
+
+/**
+ * O que o host entrega para a sessão nascer: uma função que recebe a entrada do usuário e o
+ * `canUseTool`, e devolve o `query()` já configurado.
+ *
+ * É esta indireção que desata o nó: o `canUseTool` precisa do handle (para pôr o pedido na tela e
+ * esperar a decisão) e o handle precisa do `query()` — que precisa do `canUseTool`. Com a fábrica,
+ * o handle constrói o seu lado e o host decide só as opções.
+ */
+export type StartQuery = (params: {
+  prompt: AsyncIterable<SDKUserMessage>
+  canUseTool: CanUseTool
+}) => Query
+
+/** Motivo devolvido ao SDK quando a decisão não pode mais ser tomada por uma pessoa. */
+const SESSION_CLOSED_DENIAL = 'Sessão encerrada antes da decisão.'
+
+/**
+ * Uma sessão viva: a fila de entrada, o `query()` que a consome, a máquina de estados e as
+ * mensagens já vistas — mais os três canais por onde a casca observa tudo isso.
+ *
+ * Não conhece Electron, React nem IPC. O que sai daqui são valores simples, prontos para atravessar
+ * a ponte até a tela.
+ */
+export class SessionHandle {
+  readonly id: string
+
+  readonly #queue = new InputQueue()
+  readonly #emitter = new Emitter()
+  readonly #messages: ChatMessage[] = []
+  /** Decisões de permissão em aberto, por id do pedido: resolvê-las é o que destrava o turno. */
+  readonly #pending = new Map<string, (result: PermissionResult) => void>()
+  readonly #query: Query
+  /** A leitura do `query()`, viva enquanto a sessão existir. `close()` espera por ela. */
+  readonly #pump: Promise<void>
+
+  #state: SessionState = initialState
+  #init: SessionInit | undefined
+  #sentCount = 0
+  #closing = false
+
+  constructor(id: string, startQuery: StartQuery) {
+    this.id = id
+    this.#query = startQuery({
+      prompt: this.#queue,
+      canUseTool: (toolName, _input, options) => this.#requestPermission(toolName, options),
+    })
+    this.#pump = this.#consume()
+  }
+
+  /** Preenchido quando o `init` do SDK chega; antes disso a sessão ainda não se apresentou. */
+  get init(): SessionInit | undefined {
+    return this.#init
+  }
+
+  get state(): SessionState {
+    return this.#state
+  }
+
+  get messages(): readonly ChatMessage[] {
+    return this.#messages
+  }
+
+  /** Assina um canal. Devolve a função de cancelamento. */
+  on<K extends keyof SessionEvents>(
+    event: K,
+    listener: (payload: SessionEvents[K]) => void,
+  ): () => void {
+    return this.#emitter.on(event, listener)
+  }
+
+  /**
+   * Enfileira o texto do usuário e o registra na conversa na hora — o eco do SDK chegaria depois e
+   * duplicaria a mensagem na tela.
+   */
+  send(text: string): void {
+    if (this.#closing) return
+
+    this.#sentCount += 1
+    this.#queue.push(text)
+    this.#record({ id: `${this.id}-u${this.#sentCount}`, role: 'user', text })
+  }
+
+  /** A decisão humana sobre um pedido. Pedido desconhecido (ou já resolvido): no-op. */
+  respondPermission(requestId: string, decision: PermissionDecision): void {
+    const resolve = this.#pending.get(requestId)
+    if (!resolve) return
+
+    this.#pending.delete(requestId)
+    resolve(
+      decision === 'allow'
+        ? { behavior: 'allow' }
+        : { behavior: 'deny', message: 'Negado pelo usuário.' },
+    )
+    this.#apply({ kind: 'permission_resolved' })
+  }
+
+  /**
+   * Encerra a sessão e espera o `query()` terminar de verdade.
+   *
+   * A ordem importa: negar o que estava pendente destrava o turno corrente (uma permissão sem
+   * resposta trava o SDK indefinidamente — não há prazo), e só então fechar a fila termina a
+   * iteração.
+   */
+  async close(): Promise<void> {
+    this.#closing = true
+    this.#denyPending()
+    this.#queue.close()
+    await this.#pump
+  }
+
+  async #consume(): Promise<void> {
+    try {
+      for await (const message of this.#query) this.#ingest(message)
+    } catch (error) {
+      this.#apply({ kind: 'failed', reason: describe(error) })
+    } finally {
+      this.#denyPending()
+      this.#apply({ kind: 'closed' })
+    }
+  }
+
+  #ingest(message: SDKMessage): void {
+    if (message.type === 'system' && message.subtype === 'init') {
+      this.#init = {
+        sessionId: message.session_id,
+        model: message.model,
+        cwd: message.cwd,
+        apiKeySource: message.apiKeySource,
+      }
+      this.#emitter.emit('init', this.#init)
+      this.#apply({ kind: 'init' })
+      return
+    }
+
+    if (message.type === 'assistant') {
+      const text = assistantText(message.message)
+      if (text) this.#record({ id: message.uuid, role: 'assistant', text })
+      return
+    }
+
+    if (message.type === 'result') this.#apply({ kind: 'result', outcome: message })
+  }
+
+  #requestPermission(
+    toolName: string,
+    options: Parameters<CanUseTool>[2],
+  ): Promise<PermissionResult> {
+    const request: PermissionRequest = {
+      id: options.toolUseID,
+      toolName,
+      title: options.title,
+      displayName: options.displayName,
+      description: options.description,
+    }
+
+    return new Promise<PermissionResult>((resolve) => {
+      this.#pending.set(request.id, resolve)
+      this.#apply({ kind: 'permission_requested', request })
+    })
+  }
+
+  #denyPending(): void {
+    const waiting = [...this.#pending.values()]
+    this.#pending.clear()
+    for (const resolve of waiting) resolve({ behavior: 'deny', message: SESSION_CLOSED_DENIAL })
+  }
+
+  #record(message: ChatMessage): void {
+    this.#messages.push(message)
+    this.#emitter.emit('message', message)
+  }
+
+  #apply(event: SessionEvent): void {
+    const next = nextState(this.#state, event)
+    // A máquina devolve o próprio estado quando o evento não muda nada — não há o que anunciar.
+    if (next === this.#state) return
+
+    this.#state = next
+    this.#emitter.emit('state', next)
+  }
+}
+
+/**
+ * O texto de uma mensagem de assistente, achatado.
+ *
+ * A carga é lida como `unknown` de propósito: o tipo do SDK para ela vem de um pacote que é só peer
+ * dependency (`@anthropic-ai/sdk`) e por isso não se resolve aqui — sem a leitura defensiva, o que
+ * atravessaria o core seria um `any`.
+ */
+function assistantText(payload: unknown): string {
+  if (!isRecord(payload)) return ''
+
+  const content: unknown = payload['content']
+  if (!Array.isArray(content)) return ''
+
+  const blocks: unknown[] = content
+  const texts: string[] = []
+  for (const block of blocks) {
+    if (isRecord(block) && block['type'] === 'text' && typeof block['text'] === 'string') {
+      texts.push(block['text'])
+    }
+  }
+
+  return texts.join('\n')
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : 'erro desconhecido no processo da sessão'
+}

@@ -3,7 +3,10 @@
  * acabar cruzando a ponte IPC até o renderer, e o renderer não conhece o `@anthropic-ai/claude-agent-sdk`.
  */
 
-/** Uma mensagem já pronta para a tela. O `id` vem do `uuid` da mensagem do SDK. */
+/**
+ * Uma mensagem já pronta para a tela. O `id` da mensagem de assistente vem do `uuid` do SDK; o da
+ * mensagem do usuário é gerado pela sessão, porque ela a registra no envio e não no eco do SDK.
+ */
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'

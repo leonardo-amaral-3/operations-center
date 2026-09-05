@@ -26,6 +26,7 @@ export type SessionEvent =
   | { kind: 'result'; outcome: ResultOutcome }
   | { kind: 'permission_requested'; request: PermissionRequest }
   | { kind: 'permission_resolved' }
+  | { kind: 'failed'; reason: string }
   | { kind: 'closed' }
 
 /** A sessão nasce processando: o primeiro turno já está a caminho antes do `init` chegar. */
@@ -48,6 +49,12 @@ export function nextState(current: SessionState, event: SessionEvent): SessionSt
       return { kind: 'awaiting_decision', request: event.request }
     case 'permission_resolved':
       return { kind: 'working' }
+    // A iteração do `query()` também pode terminar por exceção — processo que não sobe, credencial
+    // ausente — e nesse caminho não vem `result` nenhum. Sem este evento a sessão morreria como
+    // `closed` e o motivo sumiria da tela, que é o mesmo silêncio que a regra do `result` de falha
+    // existe para evitar.
+    case 'failed':
+      return { kind: 'failed', reason: event.reason }
     case 'result':
       return afterResult(event.outcome)
     case 'closed':
