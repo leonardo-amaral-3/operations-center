@@ -25,6 +25,7 @@
   "include": [
     "electron.vite.config.ts",
     "vitest.config.ts",
+    "playwright.config.ts",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/core/**/*.ts",
