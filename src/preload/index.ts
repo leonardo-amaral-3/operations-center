@@ -1,11 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 
+import type { BoardSnapshot } from '../shared/board'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type {
   CloseRequest,
   OcApi,
   RespondPermissionRequest,
+  Screen,
   SendRequest,
   SessionInitEvent,
   SessionMessageEvent,
@@ -13,6 +15,20 @@ import type {
   SessionSnapshot,
   SessionStateEvent,
 } from '../shared/ipc'
+
+const SCREEN_FLAG = '--oc-screen='
+
+/**
+ * Lido de `process.argv`, preenchido por `additionalArguments` no main — e não de `process.env`,
+ * que num preload sandboxado depende de um polyfill que não é contrato.
+ *
+ * Default `kanban`: uma flag ausente ou desconhecida abre o app, não a porta de teste.
+ */
+function resolveScreen(): Screen {
+  const arg = process.argv.find((value) => value.startsWith(SCREEN_FLAG))
+
+  return arg?.slice(SCREEN_FLAG.length) === 'chat' ? 'chat' : 'kanban'
+}
 
 /**
  * Assina um canal do main e devolve o cancelamento. O `IpcRendererEvent` fica aqui: o renderer
@@ -36,6 +52,9 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
  * no futuro, que é o buraco que `contextIsolation` existe para fechar.
  */
 const api: OcApi = {
+  // Resolvido aqui, antes do `exposeInMainWorld`: o primeiro render já sabe o que desenhar, e não
+  // há uma tela piscando enquanto uma promessa de configuração volta.
+  screen: resolveScreen(),
   start: () => ipcRenderer.invoke(IPC_INVOKE.start) as Promise<SessionSnapshot>,
   send: (request: SendRequest) => ipcRenderer.invoke(IPC_INVOKE.send, request) as Promise<void>,
   respondPermission: (request: RespondPermissionRequest) =>
@@ -46,6 +65,8 @@ const api: OcApi = {
   onState: (listener) => subscribe<SessionStateEvent>(IPC_EVENT.state, listener),
   onPermissionRequest: (listener) =>
     subscribe<SessionPermissionEvent>(IPC_EVENT.permissionRequest, listener),
+  readBoard: () => ipcRenderer.invoke(IPC_INVOKE.readBoard) as Promise<BoardSnapshot>,
+  onBoard: (listener) => subscribe<BoardSnapshot>(IPC_EVENT.board, listener),
 }
 
 contextBridge.exposeInMainWorld('oc', api)

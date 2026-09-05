@@ -7,8 +7,9 @@ import { describe, expect, it } from 'vitest'
  *
  * Um README que descreve o repo errado é pior que nenhum: ele mente com autoridade, e ninguém
  * revisa documentação com o mesmo rigor com que revisa código. Cada caso abaixo é uma cláusula do
- * critério — as duas frases do esqueleto que precisavam morrer, e as cinco coisas que o documento
- * passou a ser obrigado a dizer.
+ * critério — as duas frases do esqueleto que precisavam morrer, e as seis coisas que o documento
+ * passou a ser obrigado a dizer. A lista cresce quando o produto ganha uma credencial ou uma porta
+ * de ambiente novas: foi assim que o `gh` e as variáveis de board entraram, no card #4.
  *
  * As âncoras são títulos de seção, nomes de script e nomes de variável: coisas que só mudam quando
  * o produto muda. A prosa em volta pode ser reescrita à vontade sem quebrar nada aqui.
@@ -32,6 +33,14 @@ describe('README', () => {
     expect(readme).toMatch(/Claude Code instalado e logado/)
   })
 
+  it('avisa que o gh precisa estar instalado e logado', () => {
+    // O segundo pré-requisito de credencial, e o menos óbvio: sem `gh` o app abre e o kanban não
+    // carrega, porque é dele que sai o token que lê o board. Quem clona precisa saber disso antes
+    // de abrir o app, não depois de ver a tela de erro.
+    expect(readme).toMatch(/^## Pré-requisitos$/m)
+    expect(readme).toMatch(/GitHub CLI \(`gh`\) instalado e logado/)
+  })
+
   it('lista os comandos que o repo oferece', () => {
     expect(readme).toMatch(/^## Comandos$/m)
 
@@ -43,7 +52,18 @@ describe('README', () => {
   it('documenta as variáveis de configuração', () => {
     expect(readme).toMatch(/^## Configuração$/m)
 
-    for (const variavel of ['OC_CWD', 'OC_MODEL', 'OC_ISOLATED']) {
+    // A lista é **todas** as variáveis que o main lê, e não uma amostra: uma porta de ambiente que
+    // ninguém documentou é uma porta que ninguém encontra — nem para usar, nem para desconfiar
+    // dela quando o app se comportar de um jeito que a UI não explica.
+    for (const variavel of [
+      'OC_CWD',
+      'OC_MODEL',
+      'OC_ISOLATED',
+      'OC_SCREEN',
+      'OC_PROJECT_OWNER',
+      'OC_PROJECT_NUMBER',
+      'OC_BOARD_FIXTURE',
+    ]) {
       expect(readme).toContain(variavel)
     }
   })
