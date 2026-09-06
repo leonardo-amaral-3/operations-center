@@ -1,21 +1,27 @@
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
-import { app, BrowserWindow, powerMonitor } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, powerMonitor } from 'electron'
 
-import { BoardReader, SessionHost } from '../core'
+import { BoardReader, RepoIndex, SessionHost } from '../core'
 import type { GraphQLFn } from '../core'
-import type { Screen } from '../shared/ipc'
+import { IPC_INVOKE } from '../shared/ipc'
+import type { ChooseFolderRequest, ChooseFolderResult, Screen } from '../shared/ipc'
 import { registerBoardIpc } from './board'
 import type { BoardIpcOptions } from './board'
 import { createFixtureGraphQL } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
 import { registerSessionIpc } from './ipc'
+import { gitOrigin, scanSessionFolders } from './repos'
 
 /**
- * A pasta de trabalho da sessão. Sem `OC_CWD`, é a raiz do repo — o app aberto sobre si mesmo, que
- * é o que faz `yarn dev` ser útil no primeiro segundo. O smoke aponta para um diretório temporário.
+ * A pasta de trabalho da sessão **sem cartão** — a da fatia vertical. Sem `OC_CWD`, é a raiz do repo:
+ * o app aberto sobre si mesmo, que é o que faz `yarn dev` ser útil no primeiro segundo. O smoke
+ * aponta para um diretório temporário.
+ *
+ * A sessão de um cartão não passa por aqui: a pasta dela sai do repo do card, pelo `RepoIndex`.
  */
 function resolveCwd(): string {
   return process.env.OC_CWD ?? app.getAppPath()
@@ -116,8 +122,6 @@ const host = new SessionHost({
   settingSources: resolveSettingSources(),
 })
 
-const sessionIpc = registerSessionIpc(host, { cwd: resolveCwd() })
-
 // **O IPC de board só é registrado no kanban.** Assim o smoke da fatia vertical (`OC_SCREEN=chat`)
 // não tem como tocar o GitHub nem por acidente: o determinismo dele fica garantido por construção,
 // e não por disciplina de quem escreve o teste.
@@ -125,6 +129,69 @@ const boardIpc =
   screen === 'kanban'
     ? registerBoardIpc(new BoardReader({ graphql: createGraphQL() }), resolveBoard())
     : null
+
+// O mapa `repo → pasta local` do RF-10. As duas pontas de IO são do main: o core não lê disco nem
+// spawna processo.
+const repos = new RepoIndex({ scan: scanSessionFolders(), origin: gitOrigin })
+
+// Em paralelo à janela, como a primeira leitura do board: o índice fica pronto antes do primeiro
+// clique num cartão. Só no kanban — a tela de chat roda em `OC_CWD` e não consulta o índice, e a
+// varredura ali seria um `git` por pasta de sessão da máquina para ninguém.
+if (screen === 'kanban') void repos.refresh()
+
+const sessionIpc = registerSessionIpc(host, {
+  resolveCwd: async (itemId) => {
+    if (itemId === undefined) return resolveCwd()
+
+    const card = boardIpc?.cardById(itemId)
+    if (!card) return null
+
+    let path = repos.pathFor(card.repository)
+
+    if (path === null) {
+      // Segunda chance antes de desistir: um repo clonado com o app aberto, ou uma sessão criada
+      // depois da varredura inicial, é achado sem incomodar ninguém. O `refresh()` tem guarda de
+      // concorrência, então um segundo clique durante a varredura pega carona nela.
+      await repos.refresh()
+      path = repos.pathFor(card.repository)
+    }
+
+    // A pasta pode ter sido movida ou apagada entre a varredura e o clique. Melhor cair no CA-5 e
+    // pedir a pasta do que mandar o Claude Code para um caminho que não existe mais.
+    return path !== null && existsSync(path) ? path : null
+  },
+})
+
+/**
+ * O seletor de diretório do CA-5.
+ *
+ * Mora no main — e não no `registerSessionIpc` — porque a peça que ele opera é o índice de repos, e
+ * porque `dialog` é Electron puro. O caminho escolhido **não volta ao renderer**: fica no índice, e
+ * o `start({ itemId })` seguinte já o encontra.
+ */
+ipcMain.handle(
+  IPC_INVOKE.chooseFolder,
+  async (event, request: ChooseFolderRequest): Promise<ChooseFolderResult> => {
+    const card = boardIpc?.cardById(request.itemId)
+    if (!card) return { chosen: false }
+
+    // Preso à janela que perguntou: o seletor é modal dela, e não uma caixa solta que se perde atrás
+    // do app enquanto o cartão espera uma resposta que ninguém vê como dar.
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const result = await (window
+      ? dialog.showOpenDialog(window, { properties: ['openDirectory'] })
+      : dialog.showOpenDialog({ properties: ['openDirectory'] }))
+    const [path] = result.filePaths
+
+    if (result.canceled || path === undefined) return { chosen: false }
+
+    // Só em memória, nunca em disco: assim que a sessão subir ali, o Claude Code escreve o
+    // transcript e a varredura da próxima abertura acha a pasta sozinha.
+    repos.declare(card.repository, path)
+
+    return { chosen: true }
+  },
+)
 
 void app.whenReady().then(() => {
   const window = createWindow()

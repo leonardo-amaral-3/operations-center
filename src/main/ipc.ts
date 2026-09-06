@@ -4,15 +4,23 @@ import type { WebContents } from 'electron'
 import type { SessionHandle, SessionHost } from '../core'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type {
+  AnswerQuestionRequest,
   CloseRequest,
   RespondPermissionRequest,
   SendRequest,
   SessionSnapshot,
+  StartRequest,
+  StartResult,
 } from '../shared/ipc'
 
 export interface SessionIpcOptions {
-  /** Pasta de trabalho de toda sessão criada por este registro. Vem de `OC_CWD`, lida no main. */
-  cwd: string
+  /**
+   * Onde a sessão de um cartão roda. Devolve `null` quando o repo do card não tem pasta conhecida —
+   * e aí não sobe sessão nenhuma (CA-5). O `itemId` ausente é a tela de chat da fatia vertical.
+   *
+   * Assíncrono porque a resolução tem uma segunda chance: ver `src/main/index.ts`.
+   */
+  resolveCwd(itemId: string | undefined): Promise<string | null>
 }
 
 export interface SessionIpc {
@@ -30,14 +38,62 @@ export interface SessionIpc {
 export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions): SessionIpc {
   const sessions = new Map<string, SessionHandle>()
 
-  ipcMain.handle(IPC_INVOKE.start, (event): SessionSnapshot => {
-    const session = host.start({ cwd: options.cwd })
-    sessions.set(session.id, session)
-    // Os eventos vão para a janela que pediu a sessão, não para todas: é ela quem a está mostrando.
-    forwardEvents(session, event.sender)
+  /**
+   * Qual sessão é de qual cartão. É o que faz o cartão ter *a* sua sessão, e não uma por clique:
+   * sem ele, colapsar e reabrir subiria um segundo Claude Code para o mesmo card, com o histórico
+   * da conversa preso no primeiro.
+   */
+  const byCard = new Map<string, string>()
 
-    return snapshot(session)
-  })
+  /**
+   * A sessão viva daquele cartão, se houver.
+   *
+   * **Sessão morta não é reatada.** Ela sai do índice e o clique seguinte sobe uma nova. Sem esta
+   * regra, um card cuja sessão morreu sozinha — processo que não subiu, credencial que expirou —
+   * ficaria preso ao cadáver até alguém reiniciar o app. `closed` por ação humana (CA-6) cai na
+   * mesma regra, e é o comportamento certo: encerrei porque terminei, clico de novo porque
+   * recomecei.
+   */
+  function livingSessionFor(itemId: string): SessionHandle | null {
+    const sessionId = byCard.get(itemId)
+    if (sessionId === undefined) return null
+
+    const session = sessions.get(sessionId)
+    if (session && session.state.kind !== 'closed' && session.state.kind !== 'failed') {
+      return session
+    }
+
+    byCard.delete(itemId)
+
+    return null
+  }
+
+  ipcMain.handle(
+    IPC_INVOKE.start,
+    async (event, request: StartRequest | undefined): Promise<StartResult> => {
+      const itemId = request?.itemId
+
+      if (itemId !== undefined) {
+        const living = livingSessionFor(itemId)
+        // Sem criar outra e **sem registrar os ouvintes de novo**: a tela que reabre o cartão parte
+        // do retrato, e uma segunda assinatura duplicaria cada mensagem daí em diante.
+        if (living) return { started: true, session: snapshot(living, itemId) }
+      }
+
+      const cwd = await options.resolveCwd(itemId)
+      // **Não existe default.** Subir sessão na pasta errada é o pior modo de falha desta feature —
+      // pior que não subir —, então "não sei onde é" vira resposta, e o cartão pede a pasta (CA-5).
+      if (cwd === null) return { started: false, reason: 'unknown-folder' }
+
+      const session = host.start({ cwd })
+      sessions.set(session.id, session)
+      if (itemId !== undefined) byCard.set(itemId, session.id)
+      // Os eventos vão para a janela que pediu a sessão, não para todas: é ela quem a está mostrando.
+      forwardEvents(session, event.sender)
+
+      return { started: true, session: snapshot(session, itemId) }
+    },
+  )
 
   // As cargas abaixo são tipadas, não validadas. Do outro lado do canal está o nosso próprio bundle
   // num renderer com `contextIsolation` e `sandbox` — não há página de terceiro para forjar carga.
@@ -53,11 +109,21 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     },
   )
 
+  ipcMain.handle(IPC_INVOKE.answerQuestion, (_event, request: AnswerQuestionRequest): void => {
+    sessions.get(request.sessionId)?.answerQuestion(request.requestId, request.answers)
+  })
+
   ipcMain.handle(IPC_INVOKE.close, async (_event, request: CloseRequest): Promise<void> => {
     const session = sessions.get(request.sessionId)
     if (!session) return
 
     sessions.delete(request.sessionId)
+    // Dos **dois** mapas: deixar o cartão apontando para uma sessão que já não existe faria o clique
+    // seguinte cair no `livingSessionFor` de um fantasma.
+    for (const [itemId, sessionId] of byCard) {
+      if (sessionId === request.sessionId) byCard.delete(itemId)
+    }
+
     await session.close()
   })
 
@@ -65,6 +131,7 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     async closeAll(): Promise<void> {
       const living = [...sessions.values()]
       sessions.clear()
+      byCard.clear()
       // `allSettled`: uma sessão que falhe ao fechar não pode impedir as outras de fechar nem
       // derrubar o desligamento com uma rejeição sem dono.
       await Promise.allSettled(living.map((session) => session.close()))
@@ -72,9 +139,10 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
   }
 }
 
-function snapshot(session: SessionHandle): SessionSnapshot {
+function snapshot(session: SessionHandle, itemId: string | undefined): SessionSnapshot {
   return {
     id: session.id,
+    itemId,
     init: session.init,
     state: session.state,
     messages: [...session.messages],
@@ -104,6 +172,12 @@ function forwardEvents(session: SessionHandle, sender: WebContents): void {
     // o `kind` do estado — e os dois eventos descrevem o mesmo fato, na mesma ordem.
     if (state.kind === 'awaiting_decision') {
       emit(IPC_EVENT.permissionRequest, { sessionId: session.id, request: state.request })
+    }
+
+    // A pergunta tem o par próprio pela mesma razão, e canal próprio porque não é a mesma coisa: uma
+    // permissão tem duas saídas fixas, uma pergunta tem N opções e texto livre.
+    if (state.kind === 'awaiting_answer') {
+      emit(IPC_EVENT.questionRequest, { sessionId: session.id, request: state.request })
     }
   })
 }

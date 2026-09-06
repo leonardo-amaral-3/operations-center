@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import type { WebContents } from 'electron'
 
 import type { BoardReader } from '../core'
-import type { BoardSnapshot } from '../shared/board'
+import type { BoardCard, BoardSnapshot } from '../shared/board'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 
 export interface BoardIpcOptions {
@@ -17,6 +17,14 @@ export interface BoardIpc {
    * `BOARD_REREAD_THROTTLE_MS`.
    */
   refresh(): void
+  /**
+   * O cartão daquele item no retrato corrente, ou `null` se o retrato não o tem.
+   *
+   * É a peça que fecha `itemId → repo`: o renderer manda o cartão e o main descobre em que pasta a
+   * sessão dele roda, sem que nenhum caminho de disco atravesse a ponte. Lê o retrato que este
+   * registro já mantém — não relê o board, porque um clique não pode depender da rede.
+   */
+  cardById(itemId: string): BoardCard | null
 }
 
 /**
@@ -93,7 +101,12 @@ export function registerBoardIpc(reader: BoardReader, options: BoardIpcOptions):
     return snapshot
   })
 
-  return { refresh }
+  return {
+    refresh,
+    cardById(itemId: string): BoardCard | null {
+      return snapshot.board?.cards.find((card) => card.itemId === itemId) ?? null
+    },
+  }
 }
 
 function motivo(error: unknown): string {

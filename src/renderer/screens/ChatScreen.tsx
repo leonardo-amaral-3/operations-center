@@ -1,7 +1,7 @@
 import { useEffect, useReducer } from 'react'
 import type { JSX } from 'react'
 
-import type { SessionSnapshot } from '../../shared/ipc'
+import type { SessionSnapshot, StartResult } from '../../shared/ipc'
 import type {
   ChatMessage,
   PermissionDecision,
@@ -72,6 +72,9 @@ function reduce(view: SessionView, action: SessionAction): SessionView {
   }
 }
 
+/** O `started: false` que esta tela nunca deveria ver. Ver o tratamento no efeito abaixo. */
+const RAZAO_SEM_PASTA = 'a sessão não subiu: o main não resolveu a pasta de trabalho'
+
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : 'não foi possível iniciar a sessão'
 }
@@ -125,7 +128,20 @@ export function ChatScreen(): JSX.Element {
 
     window.oc
       .start()
-      .then((snapshot: SessionSnapshot) => {
+      .then((result: StartResult) => {
+        if (!result.started) {
+          // Aqui a `cwd` vem de `OC_CWD` e sempre resolve, então este ramo é impossível por
+          // construção — e é exatamente por isso que ele não pode passar em silêncio: se um dia
+          // acontecer, é o main resolvendo pasta de um jeito que esta tela não conhece.
+          if (!cancelled) {
+            dispatch({ type: 'state', state: { kind: 'failed', reason: RAZAO_SEM_PASTA } })
+          }
+
+          return
+        }
+
+        const snapshot: SessionSnapshot = result.session
+
         if (cancelled) {
           // A tela que pediu esta sessão já se desmontou (o duplo-monte do StrictMode, em dev).
           // Sem isto sobraria um subprocesso do Claude Code vivo sem ninguém olhando para ele.
