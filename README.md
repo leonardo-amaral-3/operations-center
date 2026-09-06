@@ -68,20 +68,21 @@ baixa o binário do Electron, e o da fatia vertical ainda depende do login local
 
 ## Configuração
 
-Sem banco e sem arquivo de config. Sete variáveis de ambiente, lidas no main:
+Sem banco e sem arquivo de config. Oito variáveis de ambiente, lidas no main:
 
-| Variável            | Default                                           | Para quê                                                                                                                                                                              |
-| ------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OC_CWD`            | a pasta do app — em `yarn dev`, a raiz deste repo | pasta de trabalho da sessão                                                                                                                                                           |
-| `OC_MODEL`          | ausente: herda o default do Claude Code           | modelo da sessão                                                                                                                                                                      |
-| `OC_ISOLATED`       | ausente                                           | `1` passa `settingSources: []` ao SDK, e a sessão deixa de carregar `CLAUDE.md`, settings e skills. Existe **para o smoke** — fora dele, uma sessão isolada é um Claude Code amputado |
-| `OC_SCREEN`         | ausente: o kanban                                 | `chat` abre a tela da fatia vertical. Porta de ambiente sem botão na UI, que existe **para o smoke** daquela fatia                                                                    |
-| `OC_PROJECT_OWNER`  | `leonardo-amaral-3`                               | dono do board a ler                                                                                                                                                                   |
-| `OC_PROJECT_NUMBER` | `2` — o board Operations Center                   | número do Project. Valor inválido **lança**, em vez de cair no default: abrir o board 2 com toda a confiança do mundo quando pediram outro é o pior modo de falha que existe aqui     |
-| `OC_BOARD_FIXTURE`  | ausente: lê o GitHub de verdade                   | caminho de um JSON com a resposta da API, que substitui o GitHub inteiro. Existe **para o smoke do kanban**, que por causa dela não pede token nem toca a rede                        |
+| Variável             | Default                                                            | Para quê                                                                                                                                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `OC_CWD`             | a pasta do app — em `yarn dev`, a raiz deste repo                  | pasta de trabalho da sessão                                                                                                                                                                                                                            |
+| `OC_MODEL`           | ausente: herda o default do Claude Code                            | modelo da sessão                                                                                                                                                                                                                                       |
+| `OC_ISOLATED`        | ausente                                                            | `1` passa `settingSources: []` ao SDK, e a sessão deixa de carregar `CLAUDE.md`, settings e skills. Existe **para o smoke** — fora dele, uma sessão isolada é um Claude Code amputado                                                                  |
+| `OC_SCREEN`          | ausente: o kanban                                                  | `chat` abre a tela da fatia vertical. Porta de ambiente sem botão na UI, que existe **para o smoke** daquela fatia                                                                                                                                     |
+| `OC_PROJECT_OWNER`   | `leonardo-amaral-3`                                                | dono do board a ler                                                                                                                                                                                                                                    |
+| `OC_PROJECT_NUMBER`  | `2` — o board Operations Center                                    | número do Project. Valor inválido **lança**, em vez de cair no default: abrir o board 2 com toda a confiança do mundo quando pediram outro é o pior modo de falha que existe aqui                                                                      |
+| `OC_BOARD_FIXTURE`   | ausente: lê o GitHub de verdade                                    | caminho de um JSON com a resposta da API, que substitui o GitHub inteiro. Existe **para o smoke do kanban**, que por causa dela não pede token nem toca a rede                                                                                         |
+| `OC_CLAUDE_PROJECTS` | ausente: `CLAUDE_CONFIG_DIR` se houver, senão `~/.claude/projects` | raiz dos transcripts do Claude Code, de onde sai o mapa `repo → pasta local` em que a sessão de um cartão roda. Existe **para o smoke do cartão-chat**, que aponta para uma raiz temporária e faz a descoberta rodar inteira sobre um repo descartável |
 
-`OC_SCREEN` e `OC_BOARD_FIXTURE` são portas de teste, como `OC_ISOLATED`: fora do smoke não há razão
-para tocá-las.
+`OC_SCREEN`, `OC_BOARD_FIXTURE` e `OC_CLAUDE_PROJECTS` são portas de teste, como `OC_ISOLATED`:
+fora do smoke não há razão para tocá-las.
 
 ## Custo
 

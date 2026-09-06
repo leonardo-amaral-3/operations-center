@@ -63,6 +63,7 @@ describe('README', () => {
       'OC_PROJECT_OWNER',
       'OC_PROJECT_NUMBER',
       'OC_BOARD_FIXTURE',
+      'OC_CLAUDE_PROJECTS',
     ]) {
       expect(readme).toContain(variavel)
     }

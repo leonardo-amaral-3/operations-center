@@ -17,6 +17,9 @@ export type { BoardReaderDeps, ReadBoardInput } from './board/BoardReader'
 export type { GraphQLFn, GraphQLResponse } from './board/types'
 export type { Board, BoardCard, BoardCardField, BoardColumn } from './board/types'
 
+export { RepoIndex } from './repos/RepoIndex'
+export type { RepoIndexDeps, SessionFolder } from './repos/RepoIndex'
+
 export { DEFAULT_SETTING_SOURCES, SessionHost } from './session/SessionHost'
 export type { QueryFn, SessionHostDeps, StartSessionInput } from './session/SessionHost'
 export type { SessionHandle } from './session/SessionHandle'
