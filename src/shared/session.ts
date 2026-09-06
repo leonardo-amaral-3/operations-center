@@ -19,7 +19,15 @@
  */
 export interface ChatMessage {
   id: string
-  role: 'user' | 'assistant'
+  /**
+   * `notice` é o **app falando sobre a sessão**, e não alguém falando na conversa: a nota de turno
+   * interrompido é a primeira dessas, e ela não foi ao modelo.
+   *
+   * Papel próprio, e não uma mensagem de usuário com texto marcador (que é o que o Claude Code
+   * grava no transcript dele): uma bolha "você" que o usuário não digitou faz a tela mentir sobre
+   * quem disse o quê, e o histórico da conversa é a coisa que este app existe para preservar.
+   */
+  role: 'user' | 'assistant' | 'notice'
   text: string
 }
 

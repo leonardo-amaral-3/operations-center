@@ -15,7 +15,11 @@ export type ResultOutcome = Pick<SDKResultMessage, 'subtype' | 'queued_turn_coun
 /** O que acontece com a sessão. O `SessionHandle` traduz o fluxo do SDK nestes eventos. */
 export type SessionEvent =
   | { kind: 'init' }
-  | { kind: 'result'; outcome: ResultOutcome }
+  // O usuário falou. Opcional e ausente valendo `false` no `result`: os casos que falam de turnos
+  // que ninguém parou não ganham nada em declarar `interrupted: false`, e o ruído esconderia os que
+  // de fato tratam de parada.
+  | { kind: 'sent' }
+  | { kind: 'result'; outcome: ResultOutcome; interrupted?: boolean }
   | { kind: 'permission_requested'; request: PermissionRequest }
   | { kind: 'permission_resolved' }
   | { kind: 'question_requested'; request: QuestionRequest }
@@ -55,14 +59,21 @@ export function nextState(current: SessionState, event: SessionEvent): SessionSt
     // existe para evitar.
     case 'failed':
       return { kind: 'failed', reason: event.reason }
+    // Enviar é o que devolve a sessão ao trabalho — e **só** de `awaiting_input`. De
+    // `awaiting_decision` ou `awaiting_answer` o que foi digitado entra na fila atrás de um pedido
+    // que ninguém respondeu, e o turno continua parado numa pessoa; de `starting`, quem anuncia o
+    // trabalho é o `init`. Devolver `current` nesses casos também é o que impede o `#apply` de
+    // emitir estado repetido.
+    case 'sent':
+      return current.kind === 'awaiting_input' ? { kind: 'working' } : current
     case 'result':
-      return afterResult(event.outcome)
+      return afterResult(event.outcome, event.interrupted ?? false)
     case 'closed':
       return { kind: 'closed' }
   }
 }
 
-function afterResult(outcome: ResultOutcome): SessionState {
+function afterResult(outcome: ResultOutcome, interrupted: boolean): SessionState {
   // `queued_turn_count > 0` significa que ao menos mais um turno do usuário já está na fila e vai
   // rodar sem nova digitação — este `result` não é o fim da vez dele.
   //
@@ -72,6 +83,13 @@ function afterResult(outcome: ResultOutcome): SessionState {
   // exatamente o sinal que o produto existe para dar certo.
   const queued = outcome.queued_turn_count ?? 0
   if (queued > 0) return { kind: 'working' }
+
+  // Um turno cortado por `stop()` volta como result de erro — é assim que o SDK relata um turno
+  // abortado. Chamar isso de `failed` mataria a sessão, que é o oposto do que parar significa: ela
+  // não falhou, ela obedeceu. A regra da fila fica **antes** de propósito: interromper sem
+  // `cancel_queued` (a única forma que o tipo público oferece) deixa os turnos já enfileirados
+  // rodarem, e a sessão segue trabalhando neles.
+  if (interrupted) return { kind: 'awaiting_input' }
 
   // Fila vazia: o turno acabou. Sucesso devolve a vez ao usuário; qualquer outro subtype é falha,
   // e o próprio subtype é o motivo exibível.

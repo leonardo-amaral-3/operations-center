@@ -60,6 +60,16 @@ const POLL_INTERVAL = 250
 const FIRST_PROMPT = 'Responda apenas: OK'
 
 /**
+ * O turno que o #12 manda parar: longo o bastante para dar tempo do clique, e **de texto puro**.
+ *
+ * O "sem usar ferramenta nenhuma" não é enfeite: o smoke roda com `OC_ISOLATED=1`, e ali *toda*
+ * ferramenta passa pelo `canUseTool` — um pedido de permissão levaria o cartão a
+ * `awaiting_decision`, o botão sumiria (CA-3) e o clique falharia por um motivo que não tem nada a
+ * ver com parar turno.
+ */
+const LONG_PROMPT = 'Conte de 1 a 200, um número por linha, sem usar ferramenta nenhuma'
+
+/**
  * O envelope cru, do jeito que o `BoardReader` o recebe — reduzido ao que este smoke precisa.
  *
  * O `as` é o mesmo trato que `createFixtureGraphQL` faz com o mesmo arquivo: o que valida a forma de
@@ -343,6 +353,56 @@ test('CA-1 e CA-6: abrir o segundo cartão colapsa o primeiro, e a sessão dele 
   await expect(mine.first()).toContainText(FIRST_PROMPT)
 })
 
+test('#12: parar o turno corta a vez, deixa a nota e devolve a sessão viva', async () => {
+  const stopButton = cardLocator(CHAT_CARD).getByTestId('card-stop-turn')
+  const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
+
+  // Nada rodando, nada a parar: o botão do CA-3 é situacional, e em `awaiting_input` ele nem existe
+  // no DOM.
+  await expect(stopButton).toHaveCount(0)
+
+  await input.fill(LONG_PROMPT)
+  await input.press('Enter')
+
+  // `working` já no Enter — é o CA-4, e é ele que faz o botão existir num turno que não pede
+  // permissão nenhuma. O prazo é o do IPC, não o do modelo: a transição é síncrona no core.
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'working', {
+    timeout: DECISION_TIMEOUT,
+  })
+  await expect(stopButton).toBeVisible()
+
+  await stopButton.click()
+
+  // O CA-1 na sessão real: a vez volta, e volta como `awaiting_input` — e não como `failed`, que é
+  // o que um result de turno abortado viraria sem a bandeira do core.
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
+    timeout: TURN_TIMEOUT,
+  })
+
+  // A parada é visível (a nota) e a ação some com o turno que ela cortou.
+  await expect(noticeMessages(CHAT_CARD)).toHaveCount(1)
+  await expect(stopButton).toHaveCount(0)
+
+  // O CA-2 pela metade da memória: a conversa inteira continua na tela, na ordem, com a primeira
+  // mensagem ainda sendo a primeira.
+  const mine = userMessages(CHAT_CARD)
+  await expect(mine).toHaveCount(3)
+  await expect(mine.first()).toContainText(FIRST_PROMPT)
+
+  // E a outra metade: a **mesma** sessão responde o turno seguinte. A contagem é lida agora e
+  // comparada com `+1` porque quantas bolhas o turno cortado deixou é escolha do modelo — fixar um
+  // número aqui seria escrever à mão um valor esperado que o teste pode ler.
+  const answers = await assistantMessages(CHAT_CARD).count()
+
+  await input.fill('Responda apenas: SEGUE')
+  await input.press('Enter')
+
+  await expect(assistantMessages(CHAT_CARD)).toHaveCount(answers + 1, { timeout: TURN_TIMEOUT })
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
+    timeout: TURN_TIMEOUT,
+  })
+})
+
 test('CA-6: encerrar é ação minha — e o botão mata a sessão', async () => {
   await cardLocator(CHAT_CARD).getByTestId('card-end-session').click()
 
@@ -438,6 +498,10 @@ function assistantMessages(card: FixtureCard): Locator {
 
 function userMessages(card: FixtureCard): Locator {
   return cardLocator(card).locator('[data-testid="message"][data-role="user"]')
+}
+
+function noticeMessages(card: FixtureCard): Locator {
+  return cardLocator(card).locator('[data-testid="message"][data-role="notice"]')
 }
 
 /**

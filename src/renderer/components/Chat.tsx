@@ -58,25 +58,40 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
           </p>
         ) : null}
 
-        {messages.map((message) => (
-          <article
-            key={message.id}
-            data-testid="message"
-            data-role={message.role}
-            className={
-              message.role === 'user'
-                ? 'ml-auto max-w-[85%] rounded-lg bg-neutral-800 px-3 py-2'
-                : 'max-w-[85%] rounded-lg bg-neutral-900 px-3 py-2'
-            }
-          >
-            <p className="mb-1 text-[11px] tracking-wide text-neutral-500 uppercase">
-              {message.role === 'user' ? 'você' : 'claude'}
-            </p>
-            <p className="text-sm break-words whitespace-pre-wrap text-neutral-100">
+        {/* Nenhuma nota nasce nesta tela hoje — ela não tem botão de parar (o parar é do cartão do
+            kanban). Mas sem o desvio o ternário abaixo rotularia uma `notice` como fala do Claude, e
+            deixar um render sabidamente errado esperando o dia em que a nota chegar é plantar o bug
+            com data marcada. */}
+        {messages.map((message) =>
+          message.role === 'notice' ? (
+            <p
+              key={message.id}
+              data-testid="message"
+              data-role="notice"
+              className="py-1 text-center text-[11px] tracking-wide text-neutral-500 uppercase"
+            >
               {message.text}
             </p>
-          </article>
-        ))}
+          ) : (
+            <article
+              key={message.id}
+              data-testid="message"
+              data-role={message.role}
+              className={
+                message.role === 'user'
+                  ? 'ml-auto max-w-[85%] rounded-lg bg-neutral-800 px-3 py-2'
+                  : 'max-w-[85%] rounded-lg bg-neutral-900 px-3 py-2'
+              }
+            >
+              <p className="mb-1 text-[11px] tracking-wide text-neutral-500 uppercase">
+                {message.role === 'user' ? 'você' : 'claude'}
+              </p>
+              <p className="text-sm break-words whitespace-pre-wrap text-neutral-100">
+                {message.text}
+              </p>
+            </article>
+          ),
+        )}
 
         <div ref={bottom} />
       </div>

@@ -2,10 +2,11 @@ import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_SETTING_SOURCES, SessionHost } from '../../src/core/session/SessionHost'
+import { INTERRUPTED_NOTICE } from '../../src/core/session/SessionHandle'
 import type { SessionHandle } from '../../src/core/session/SessionHandle'
 import type { SessionState } from '../../src/core/session/state'
-import { assistantMessage, createFakeQuery, successResult } from '../fakes/fakeQuery'
-import type { FakeQuery } from '../fakes/fakeQuery'
+import { abortedResult, assistantMessage, createFakeQuery, successResult } from '../fakes/fakeQuery'
+import type { FakeQuery, FakeTurn } from '../fakes/fakeQuery'
 
 const CWD = '/tmp/sessao'
 
@@ -35,6 +36,15 @@ const isKind =
 
 function start(fake: FakeQuery, model?: string): SessionHandle {
   return new SessionHost({ query: fake.query, model }).start({ cwd: CWD })
+}
+
+/**
+ * O turno que não termina sozinho: fica estacionado até a parada chegar, e então volta pelo
+ * iterador como o `result` de erro com que o SDK relata um turno abortado.
+ */
+const turnoParado: FakeTurn = async (_text, tools) => {
+  await tools.untilInterrupt()
+  return [abortedResult()]
 }
 
 describe('SessionHost', () => {
@@ -548,5 +558,193 @@ describe('SessionHost', () => {
     await untilState(handle, isKind('failed'))
 
     expect(handle.state).toEqual({ kind: 'failed', reason: 'claude não encontrado' })
+  })
+  it('parar corta o turno e devolve a vez, sem trocar a sessão de lugar', async () => {
+    const fake = createFakeQuery({ turn: turnoParado })
+    const handle = start(fake)
+    await untilState(handle, isKind('working'))
+
+    const id = handle.id
+    const sessionId = handle.init?.sessionId
+
+    handle.send('conte até 200')
+    handle.stop()
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(fake.interrupts).toBe(1)
+    expect(handle.state).toEqual({ kind: 'awaiting_input' })
+    // O que separa parar de fechar: o `query()` continua vivo e a sessão é a mesma dos dois lados
+    // da ponte — nada de sessão nova nascendo no lugar da que foi interrompida.
+    expect(fake.finished).toBe(false)
+    expect(handle.id).toBe(id)
+    expect(handle.init?.sessionId).toBe(sessionId)
+  })
+
+  it('stop() fora de working é no-op: não há vez a cortar', async () => {
+    const fake = createFakeQuery({ turn: turnoParado })
+    const handle = start(fake)
+
+    // `starting`: o init ainda não chegou, e o primeiro turno não começou.
+    expect(handle.state).toEqual({ kind: 'starting' })
+    handle.stop()
+    expect(fake.interrupts).toBe(0)
+
+    await untilState(handle, isKind('working'))
+    await handle.close()
+
+    handle.stop()
+    expect(fake.interrupts).toBe(0)
+    expect(handle.state).toEqual({ kind: 'closed' })
+  })
+
+  it('dois cliques no mesmo turno pedem uma interrupção só', async () => {
+    const fake = createFakeQuery({ turn: turnoParado })
+    const handle = start(fake)
+    await untilState(handle, isKind('working'))
+
+    handle.send('conte até 200')
+    handle.stop()
+    handle.stop()
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(fake.interrupts).toBe(1)
+  })
+
+  it('o controle que rejeita deixa a sessão trabalhando, e o stop() seguinte volta a pedir', async () => {
+    const fake = createFakeQuery({
+      turn: turnoParado,
+      interruptWith: new Error('controle fora do ar'),
+    })
+    const handle = start(fake)
+    await untilState(handle, isKind('working'))
+
+    handle.send('conte até 200')
+    handle.stop()
+
+    // Uma microtarefa basta: o `catch` do controle já rejeitado foi enfileirado antes deste
+    // `await`, e por isso roda antes dele. Sem timer, e sem depender de sorte.
+    await Promise.resolve()
+
+    // Não parou. A bandeira baixou, a sessão segue na vez dela — e o botão volta para a tela, em
+    // vez de a sessão ficar presa num pedido que não pegou.
+    expect(handle.state).toEqual({ kind: 'working' })
+
+    handle.stop()
+    expect(fake.interrupts).toBe(2)
+
+    // Sem `close()`: o turno estacionou num `interrupt()` que nunca pega, e esperar o `#pump`
+    // daqui seria esperar para sempre. Não há timer nem handle aberto para vazar.
+  })
+
+  it('depois da parada a conversa continua na mesma sessão, com o histórico em pé', async () => {
+    let primeiro = true
+    const fake = createFakeQuery({
+      turn: async (text, tools) => {
+        if (!primeiro) return [assistantMessage(`li: ${text}`), successResult()]
+
+        primeiro = false
+        await tools.untilInterrupt()
+        return [abortedResult()]
+      },
+    })
+    const handle = start(fake)
+    await untilState(handle, isKind('working'))
+
+    handle.send('conte até 200')
+    handle.stop()
+    await untilState(handle, isKind('awaiting_input'))
+
+    handle.send('responda apenas: SEGUE')
+    await untilState(
+      handle,
+      (state) => state.kind === 'awaiting_input' && handle.messages.length === 4,
+    )
+
+    // Mesma entrada, mesmo `query`: os dois textos chegaram lá, na ordem em que foram ditos.
+    expect(fake.received).toEqual(['conte até 200', 'responda apenas: SEGUE'])
+    expect(handle.messages.map((message) => ({ role: message.role, text: message.text }))).toEqual([
+      { role: 'user', text: 'conte até 200' },
+      { role: 'notice', text: INTERRUPTED_NOTICE },
+      { role: 'user', text: 'responda apenas: SEGUE' },
+      { role: 'assistant', text: 'li: responda apenas: SEGUE' },
+    ])
+  })
+
+  it('a nota da parada entra no ponto em que o turno parou, e antes do estado', async () => {
+    const fake = createFakeQuery({
+      turn: async (text, tools) => {
+        await tools.untilInterrupt()
+        // O que o modelo alcançou dizer antes do corte: a nota entra depois disso.
+        return [assistantMessage(`comecei: ${text}`), abortedResult()]
+      },
+    })
+    const handle = start(fake)
+    await untilState(handle, isKind('working'))
+
+    const ordem: string[] = []
+    handle.on('message', (message) => ordem.push(`mensagem:${message.role}`))
+    handle.on('state', (state) => ordem.push(`estado:${state.kind}`))
+
+    handle.send('conte até 200')
+    handle.stop()
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(handle.messages.map((message) => ({ role: message.role, text: message.text }))).toEqual([
+      { role: 'user', text: 'conte até 200' },
+      { role: 'assistant', text: 'comecei: conte até 200' },
+      { role: 'notice', text: INTERRUPTED_NOTICE },
+    ])
+    // A nota sai pelo canal de mensagem **antes** de o estado mudar — a mesma ordem em que o texto
+    // do assistente chega antes do `result` que fecha o turno.
+    expect(ordem).toEqual([
+      'mensagem:user',
+      'mensagem:assistant',
+      'mensagem:notice',
+      'estado:awaiting_input',
+    ])
+  })
+
+  it('turno que termina sozinho no instante do stop() devolve a vez sem inventar nota', async () => {
+    const fake = createFakeQuery({
+      turn: async (text, tools) => {
+        await tools.untilInterrupt()
+        // O pedido saiu, mas a vez já tinha acabado por conta própria: o SDK relata sucesso, e
+        // anunciar interrupção aqui seria contar na conversa uma coisa que não aconteceu.
+        return [assistantMessage(`li: ${text}`), successResult()]
+      },
+    })
+    const handle = start(fake)
+    await untilState(handle, isKind('working'))
+
+    handle.send('oi')
+    handle.stop()
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(fake.interrupts).toBe(1)
+    expect(handle.messages.map((message) => message.role)).toEqual(['user', 'assistant'])
+    expect(handle.state).toEqual({ kind: 'awaiting_input' })
+  })
+
+  it('enviar devolve a sessão a working na hora, antes de qualquer mensagem do fake', async () => {
+    const fake = createFakeQuery()
+    const handle = start(fake)
+
+    handle.send('primeira')
+    await untilState(handle, isKind('awaiting_input'))
+
+    const ordem: string[] = []
+    handle.on('message', (message) => ordem.push(`mensagem:${message.role}`))
+    handle.on('state', (state) => ordem.push(`estado:${state.kind}`))
+
+    handle.send('segunda')
+
+    // Síncrono, dentro do próprio `send()`: nada do fake rodou ainda. Sem isto, um turno que não
+    // pede permissão nenhuma correria inteiro com a tela dizendo "Sua vez" — e o botão de parar,
+    // que só existe em `working`, nunca apareceria do segundo turno em diante.
+    expect(handle.state).toEqual({ kind: 'working' })
+    expect(fake.received).toEqual(['primeira'])
+    expect(ordem).toEqual(['mensagem:user', 'estado:working'])
+
+    await untilState(handle, isKind('awaiting_input'))
   })
 })

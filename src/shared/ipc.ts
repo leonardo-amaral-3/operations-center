@@ -30,6 +30,7 @@ export const IPC_INVOKE = {
   send: 'session:send',
   respondPermission: 'session:respond-permission',
   answerQuestion: 'session:answer-question',
+  stop: 'session:stop',
   close: 'session:close',
   chooseFolder: 'repo:choose-folder',
   readBoard: 'board:read',
@@ -97,6 +98,14 @@ export interface AnswerQuestionRequest {
   sessionId: string
   requestId: string
   answers: QuestionAnswers
+}
+
+/**
+ * Parar o turno em curso. **Não** é `close`: a sessão continua viva, com id, contexto e histórico —
+ * o que morre é a vez que estava rodando.
+ */
+export interface StopRequest {
+  sessionId: string
 }
 
 export interface CloseRequest {
@@ -174,6 +183,7 @@ export interface OcApi {
    */
   start(request?: StartRequest): Promise<StartResult>
   send(request: SendRequest): Promise<void>
+  stop(request: StopRequest): Promise<void>
   respondPermission(request: RespondPermissionRequest): Promise<void>
   answerQuestion(request: AnswerQuestionRequest): Promise<void>
   close(request: CloseRequest): Promise<void>

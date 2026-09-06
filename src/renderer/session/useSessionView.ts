@@ -118,6 +118,8 @@ export interface SessionViewHandle {
   send: (text: string) => void
   decide: (decision: PermissionDecision) => void
   answer: (answers: QuestionAnswers) => void
+  /** Para o turno em curso; a sessão continua viva. Quem a encerra é o `end`. */
+  stop: () => void
   /** O encerramento do CA-6: ação minha, e só minha. */
   end: () => void
   /** Pede a sessão de novo — o caminho de volta depois de o humano apontar a pasta (CA-5). */
@@ -261,6 +263,15 @@ export function useSessionView({ itemId, closeOnUnmount }: SessionViewOptions): 
       // vezes, e a confirmação vem pelo `state`.
       dispatch({ type: 'question', request: null })
       void window.oc.answerQuestion({ sessionId: id, requestId: question.id, answers })
+    },
+
+    stop(): void {
+      if (!view.id || view.state.kind !== 'working') return
+
+      // Sem `dispatch` otimista, ao contrário de `decide` e `answer`: ali o prompt precisava sumir da
+      // tela para não ser respondido duas vezes; aqui não há nada a esconder, e o `#stopping` do core
+      // já engole um segundo clique dado antes de o estado voltar.
+      void window.oc.stop({ sessionId: view.id })
     },
 
     end(): void {

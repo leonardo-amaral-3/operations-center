@@ -19,6 +19,7 @@ import type {
   SessionStateEvent,
   StartRequest,
   StartResult,
+  StopRequest,
 } from '../shared/ipc'
 
 const SCREEN_FLAG = '--oc-screen='
@@ -63,6 +64,7 @@ const api: OcApi = {
   start: (request?: StartRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.start, request) as Promise<StartResult>,
   send: (request: SendRequest) => ipcRenderer.invoke(IPC_INVOKE.send, request) as Promise<void>,
+  stop: (request: StopRequest) => ipcRenderer.invoke(IPC_INVOKE.stop, request) as Promise<void>,
   respondPermission: (request: RespondPermissionRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.respondPermission, request) as Promise<void>,
   answerQuestion: (request: AnswerQuestionRequest) =>
