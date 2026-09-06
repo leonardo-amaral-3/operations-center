@@ -57,11 +57,16 @@ describe('a superfície de board é somente-leitura', () => {
     // acrescentou: `answerQuestion` responde um `AskUserQuestion` para a sessão; `chooseFolder`
     // abre o seletor de diretório e guarda a escolha em memória no main; `questionRequest` é o
     // aviso da pergunta chegando à tela. **Nenhum dos três toca o board** — nem para ler.
+    //
+    // E a do canal do #12: `stop` interrompe o turno em curso da sessão e **não toca o board** —
+    // nem para ler. Ele fica colado no `close` de propósito: uma para a vez que está rodando, a
+    // outra encerra a sessão inteira, e a vizinhança é o que lembra disso a quem lê.
     expect(IPC_INVOKE).toEqual({
       start: 'session:start',
       send: 'session:send',
       respondPermission: 'session:respond-permission',
       answerQuestion: 'session:answer-question',
+      stop: 'session:stop',
       close: 'session:close',
       chooseFolder: 'repo:choose-folder',
       readBoard: 'board:read',

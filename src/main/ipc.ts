@@ -11,6 +11,7 @@ import type {
   SessionSnapshot,
   StartRequest,
   StartResult,
+  StopRequest,
 } from '../shared/ipc'
 
 export interface SessionIpcOptions {
@@ -100,6 +101,10 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
   // Id de sessão desconhecido é o único caso realista, e ele já é um no-op por construção.
   ipcMain.handle(IPC_INVOKE.send, (_event, request: SendRequest): void => {
     sessions.get(request.sessionId)?.send(request.text)
+  })
+
+  ipcMain.handle(IPC_INVOKE.stop, (_event, request: StopRequest): void => {
+    sessions.get(request.sessionId)?.stop()
   })
 
   ipcMain.handle(
