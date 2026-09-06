@@ -94,6 +94,63 @@ describe('máquina de estados da sessão', () => {
     expect(state).toEqual({ kind: 'failed', reason: 'error_max_turns' })
   })
 
+  it('um turno parado por mim devolve a vez, em vez de matar a sessão', () => {
+    // É assim que o SDK relata um turno abortado: result de erro. Sem a bandeira, este mesmo evento
+    // cai na regra de cima e a sessão morre — o oposto exato do que parar significa.
+    const state = apply(
+      { kind: 'init' },
+      {
+        kind: 'result',
+        outcome: { subtype: 'error_during_execution', queued_turn_count: 0 },
+        interrupted: true,
+      },
+    )
+
+    expect(state).toEqual({ kind: 'awaiting_input' })
+  })
+
+  it('parar sem cancelar a fila deixa os turnos enfileirados rodarem', () => {
+    const state = apply(
+      { kind: 'init' },
+      {
+        kind: 'result',
+        outcome: { subtype: 'error_during_execution', queued_turn_count: 1 },
+        interrupted: true,
+      },
+    )
+
+    expect(state).toEqual({ kind: 'working' })
+  })
+
+  it('enviar põe a sessão a trabalhar quando a vez era do usuário', () => {
+    const minhaVez = apply(
+      { kind: 'init' },
+      { kind: 'result', outcome: { subtype: 'success', queued_turn_count: 0 } },
+    )
+    expect(minhaVez).toEqual({ kind: 'awaiting_input' })
+
+    expect(nextState(minhaVez, { kind: 'sent' })).toEqual({ kind: 'working' })
+  })
+
+  it('enviar não mexe em estado que espera uma pessoa, nem nos terminais', () => {
+    // Digitar durante um pedido só enfileira o texto: o turno continua parado em quem tem de
+    // decidir ou responder. E em `starting` quem anuncia o trabalho é o `init`.
+    const casos: SessionState[] = [
+      { kind: 'starting' },
+      apply({ kind: 'init' }, { kind: 'permission_requested', request: pedido }),
+      apply({ kind: 'init' }, { kind: 'question_requested', request: pergunta }),
+      apply({ kind: 'init' }, { kind: 'closed' }),
+      apply({ kind: 'init' }, { kind: 'failed', reason: 'claude não encontrado' }),
+    ]
+
+    // `toBe`, e não `toEqual`: o `#apply` do `SessionHandle` decide se anuncia comparando por
+    // identidade (`next === this.#state`). Devolver uma cópia igual passaria por um `toEqual` e
+    // faria a sessão emitir estado repetido a cada envio.
+    for (const estado of casos) {
+      expect(nextState(estado, { kind: 'sent' })).toBe(estado)
+    }
+  })
+
   it('a iteração terminada fecha a sessão', () => {
     expect(apply({ kind: 'init' }, { kind: 'closed' })).toEqual({ kind: 'closed' })
   })
