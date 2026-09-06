@@ -14,6 +14,12 @@
 export interface BoardColumn {
   id: string
   name: string
+  /**
+   * Se a estação tem skill `gm-*` dedicada e portanto conversa (CA-4). Chega decidido do core: a
+   * tela não pode reimplementar a regra, senão o critério passa a existir em dois lugares e um
+   * deles envelhece.
+   */
+  conversable: boolean
 }
 
 /** Um campo single-select do card exibido como etiqueta no cartão. */

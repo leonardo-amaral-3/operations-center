@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { BoardReader, MAX_PAGES } from '../../src/core/board/BoardReader'
-import { BOARD_QUERY, CARD_FIELDS } from '../../src/core/board/query'
+import { BOARD_QUERY, CARD_FIELDS, CONVERSABLE_STATIONS } from '../../src/core/board/query'
 import type { Board, GraphQLResponse } from '../../src/core/board/types'
 import {
   STATUS_OPTIONS,
@@ -79,6 +79,53 @@ describe('BoardReader — regra 3: as colunas são as do board', () => {
     await expect(readPages(envelope({ options: null }))).rejects.toThrow(
       /campo single-select "Status"/,
     )
+  })
+})
+
+describe('BoardReader — conversabilidade: a coluna sabe se conversa (CA-4)', () => {
+  it('as duas estações sem skill dedicada são as únicas que não conversam', async () => {
+    const board = await readPages(envelope())
+
+    expect(
+      board.columns.filter((column) => !column.conversable).map((column) => column.name),
+    ).toEqual(['🧪 Validação em Dev', '✅ Produção'])
+    expect(board.columns.filter((column) => column.conversable)).toHaveLength(
+      CONVERSABLE_STATIONS.length,
+    )
+  })
+
+  it('casa com e sem emoji, com e sem acento — quem decora o rótulo é o board, não a norma', async () => {
+    const board = await readPages(
+      envelope({
+        options: [
+          { id: 'a', name: '🎯 Especificação' },
+          { id: 'b', name: 'Especificação' },
+          { id: 'c', name: 'especificacao' },
+          { id: 'd', name: 'IMPLEMENTAÇÃO' },
+          { id: 'e', name: '👀 Revisao' },
+          { id: 'f', name: '📥 triagem' },
+        ],
+      }),
+    )
+
+    expect(board.columns.every((column) => column.conversable)).toBe(true)
+  })
+
+  it('nome parecido não conversa: a comparação é do nome inteiro, em qualquer variação', async () => {
+    const board = await readPages(
+      envelope({
+        options: [
+          { id: 'a', name: '🧪 Validação em Dev' },
+          { id: 'b', name: 'validacao em dev' },
+          { id: 'c', name: '✅ Produção' },
+          { id: 'd', name: 'PRODUCAO' },
+          { id: 'e', name: 'Release candidate' },
+          { id: 'f', name: 'Pré-triagem' },
+        ],
+      }),
+    )
+
+    expect(board.columns.some((column) => column.conversable)).toBe(false)
   })
 })
 

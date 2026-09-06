@@ -36,16 +36,23 @@ export function createFakeGraphQL(...pages: readonly GraphQLResponse[]): FakeGra
   return { graphql, calls }
 }
 
-/** As oito estações deste board, na ordem em que ele as declara. */
+/**
+ * As oito estações deste board, na ordem em que ele as declara — e o `conversable` que cada uma
+ * deve sair valendo.
+ *
+ * O `conversable` **não** existe na resposta da API: `envelope()` o descarta ao montar as opções do
+ * campo `Status`. Ele vive aqui porque é a resposta esperada da regra, ao lado do insumo que a
+ * produz; separar os dois em duas listas paralelas seria convidar uma a envelhecer sem a outra.
+ */
 export const STATUS_OPTIONS = [
-  { id: 'opt-triagem', name: '📥 Triagem' },
-  { id: 'opt-backlog', name: '📋 Backlog' },
-  { id: 'opt-spec', name: '🎯 Especificação' },
-  { id: 'opt-impl', name: '🔨 Implementação' },
-  { id: 'opt-revisao', name: '👀 Revisão' },
-  { id: 'opt-validacao', name: '🧪 Validação em Dev' },
-  { id: 'opt-release', name: '🚂 Release' },
-  { id: 'opt-producao', name: '✅ Produção' },
+  { id: 'opt-triagem', name: '📥 Triagem', conversable: true },
+  { id: 'opt-backlog', name: '📋 Backlog', conversable: true },
+  { id: 'opt-spec', name: '🎯 Especificação', conversable: true },
+  { id: 'opt-impl', name: '🔨 Implementação', conversable: true },
+  { id: 'opt-revisao', name: '👀 Revisão', conversable: true },
+  { id: 'opt-validacao', name: '🧪 Validação em Dev', conversable: false },
+  { id: 'opt-release', name: '🚂 Release', conversable: true },
+  { id: 'opt-producao', name: '✅ Produção', conversable: false },
 ] as const
 
 export interface EnvelopeInput {
@@ -79,7 +86,9 @@ export function envelope(input: EnvelopeInput = {}): GraphQLResponse {
   const outro = alias === 'user' ? 'organization' : 'user'
   const project = {
     title,
-    field: options === null ? null : { options },
+    // Só `id` e `name`: o board de verdade não sabe o que é `conversable`, e o fake que o
+    // devolvesse deixaria de provar que a conclusão é do leitor.
+    field: options === null ? null : { options: options.map(({ id, name }) => ({ id, name })) },
     items: { pageInfo: { hasNextPage, endCursor }, nodes: items },
   }
 
