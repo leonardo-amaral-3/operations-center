@@ -38,7 +38,7 @@ interface CardChatProps {
  * teto, uma conversa longa empurraria a coluna para sempre e o kanban deixaria de ser um kanban.
  */
 export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.Element {
-  const { view, send, decide, answer, end, restart } = useSessionView({
+  const { view, send, decide, answer, stop, end, restart } = useSessionView({
     itemId,
     closeOnUnmount: false,
   })
@@ -130,25 +130,39 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
           </p>
         ) : null}
 
-        {view.messages.map((message) => (
-          <article
-            key={message.id}
-            data-testid="message"
-            data-role={message.role}
-            className={
-              message.role === 'user'
-                ? 'ml-auto max-w-[85%] rounded-lg bg-neutral-800 px-2.5 py-1.5'
-                : 'max-w-[85%] rounded-lg bg-neutral-900 px-2.5 py-1.5'
-            }
-          >
-            <p className="mb-0.5 text-[10px] tracking-wide text-neutral-500 uppercase">
-              {message.role === 'user' ? 'você' : 'claude'}
-            </p>
-            <p className="text-xs break-words whitespace-pre-wrap text-neutral-100">
+        {/* A nota (`notice`) é o app falando sobre a sessão, e por isso não é bolha de ninguém: sem
+            o desvio, o ternário abaixo a rotularia como fala do Claude. O `data-testid="message"`
+            continua para ela ser contável pela mesma via dos seletores do smoke. */}
+        {view.messages.map((message) =>
+          message.role === 'notice' ? (
+            <p
+              key={message.id}
+              data-testid="message"
+              data-role="notice"
+              className="py-0.5 text-center text-[10px] tracking-wide text-neutral-500 uppercase"
+            >
               {message.text}
             </p>
-          </article>
-        ))}
+          ) : (
+            <article
+              key={message.id}
+              data-testid="message"
+              data-role={message.role}
+              className={
+                message.role === 'user'
+                  ? 'ml-auto max-w-[85%] rounded-lg bg-neutral-800 px-2.5 py-1.5'
+                  : 'max-w-[85%] rounded-lg bg-neutral-900 px-2.5 py-1.5'
+              }
+            >
+              <p className="mb-0.5 text-[10px] tracking-wide text-neutral-500 uppercase">
+                {message.role === 'user' ? 'você' : 'claude'}
+              </p>
+              <p className="text-xs break-words whitespace-pre-wrap text-neutral-100">
+                {message.text}
+              </p>
+            </article>
+          ),
+        )}
       </div>
 
       {view.permission ? (
@@ -203,6 +217,19 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
         {/* Duas ações distintas, e é o CA-6 inteiro: colapsar devolve o cartão fechado com a sessão
             viva; encerrar mata a sessão. O app nunca faz o segundo por conta própria. */}
         <div className="flex shrink-0 gap-2">
+          {/* Renderização condicional, e não `disabled`: o botão ausente é a afirmação que um teste
+              faz sem ambiguidade, e o olho não precisa distinguir dois cinzas. A ação do turno vem
+              antes das ações da sessão. */}
+          {view.state.kind === 'working' ? (
+            <button
+              type="button"
+              data-testid="card-stop-turn"
+              onClick={stop}
+              className="cursor-pointer rounded-md border border-amber-400/50 px-2.5 py-1 text-xs text-amber-200 hover:bg-amber-400/10"
+            >
+              Parar
+            </button>
+          ) : null}
           <button
             type="button"
             data-testid="card-collapse"
