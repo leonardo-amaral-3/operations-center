@@ -1,6 +1,6 @@
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk'
 
-import type { PermissionRequest, SessionState } from './types'
+import type { PermissionRequest, QuestionRequest, SessionState } from './types'
 
 // O formato do estado é contrato de ponte e mora em `src/shared/session.ts`; o que este módulo
 // possui são as transições. Republicado aqui porque a máquina é o assunto de quem vem ler o tipo.
@@ -18,6 +18,8 @@ export type SessionEvent =
   | { kind: 'result'; outcome: ResultOutcome }
   | { kind: 'permission_requested'; request: PermissionRequest }
   | { kind: 'permission_resolved' }
+  | { kind: 'question_requested'; request: QuestionRequest }
+  | { kind: 'question_answered' }
   | { kind: 'failed'; reason: string }
   | { kind: 'closed' }
 
@@ -40,6 +42,12 @@ export function nextState(current: SessionState, event: SessionEvent): SessionSt
     case 'permission_requested':
       return { kind: 'awaiting_decision', request: event.request }
     case 'permission_resolved':
+      return { kind: 'working' }
+    // O par da pergunta é simétrico ao da permissão, e por isso mesmo tem estado próprio: as duas
+    // param a sessão esperando uma pessoa, mas o que a tela desenha é outra coisa.
+    case 'question_requested':
+      return { kind: 'awaiting_answer', request: event.request }
+    case 'question_answered':
       return { kind: 'working' }
     // A iteração do `query()` também pode terminar por exceção — processo que não sobe, credencial
     // ausente — e nesse caminho não vem `result` nenhum. Sem este evento a sessão morreria como

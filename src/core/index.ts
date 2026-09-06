@@ -28,5 +28,9 @@ export type {
   ChatMessage,
   PermissionDecision,
   PermissionRequest,
+  Question,
+  QuestionAnswers,
+  QuestionOption,
+  QuestionRequest,
   SessionInit,
 } from './session/types'
