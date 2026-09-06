@@ -4,12 +4,13 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
 import { app, BrowserWindow, dialog, ipcMain, powerMonitor } from 'electron'
 
-import { BoardReader, RepoIndex, SessionHost } from '../core'
+import { BoardReader, CardReader, RepoIndex, SessionHost } from '../core'
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen } from '../shared/ipc'
 import { registerBoardIpc } from './board'
 import type { BoardIpcOptions } from './board'
+import { registerCardIpc } from './card'
 import { createFixtureGraphQL } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
@@ -129,6 +130,21 @@ const boardIpc =
   screen === 'kanban'
     ? registerBoardIpc(new BoardReader({ graphql: createGraphQL() }), resolveBoard())
     : null
+
+// O conteúdo de um card corre pelo mesmo portão, e pela mesma razão: é leitura do GitHub. Sem
+// retrato de board não há como traduzir `itemId` em coordenada, então fora do kanban o canal
+// simplesmente não existe.
+if (boardIpc) {
+  // `createGraphQL()` de novo, devolvendo um segundo cliente: ela não guarda estado, e o
+  // `TokenSource` do `gh` tem cache próprio. Um cliente por leitor mantém a injeção explícita e não
+  // introduz um singleton.
+  registerCardIpc(new CardReader({ graphql: createGraphQL() }), {
+    // Arrow, e **não** `cardById: boardIpc.cardById`: o `unbound-method` do ESLint reprova a
+    // referência solta a um método — mesmo aqui, onde ela funcionaria, porque `cardById` fecha
+    // sobre o retrato e não sobre `this`.
+    cardById: (itemId) => boardIpc.cardById(itemId),
+  })
+}
 
 // O mapa `repo → pasta local` do RF-10. As duas pontas de IO são do main: o core não lê disco nem
 // spawna processo.

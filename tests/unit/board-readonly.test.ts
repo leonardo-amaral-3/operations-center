@@ -65,6 +65,7 @@ describe('a superfície de board é somente-leitura', () => {
       close: 'session:close',
       chooseFolder: 'repo:choose-folder',
       readBoard: 'board:read',
+      readCard: 'card:read',
     })
   })
 
@@ -79,15 +80,20 @@ describe('a superfície de board é somente-leitura', () => {
     })
   })
 
-  it('o único canal de board alcançável a partir da tela é de leitura', () => {
+  it('todo canal que toca o GitHub é de leitura', () => {
     // Redundante com a igualdade exata acima, e de propósito: aquela quebra em qualquer mudança de
     // canal e diz "veio canal novo"; esta diz *o que* o CA-2 proíbe, para quem chegar depois com o
     // teste vermelho na mão.
-    const canaisDeBoard = [...Object.values(IPC_INVOKE), ...Object.values(IPC_EVENT)].filter(
-      (canal) => canal.startsWith('board:'),
+    //
+    // O alcance é o do CA-6 do #13: `card:read` lê a issue e não o Project, e mantê-lo fora do
+    // prefixo `board:` foi decisão consciente — em troca, a asserção deixa de falar de um prefixo e
+    // passa a afirmar a invariante inteira.
+    const canaisDoGitHub = [...Object.values(IPC_INVOKE), ...Object.values(IPC_EVENT)].filter(
+      (canal) => canal.startsWith('board:') || canal.startsWith('card:'),
     )
 
-    expect(canaisDeBoard).toEqual(['board:read', 'board:changed'])
+    // A ordem é a de declaração dos mapas: os `invoke` primeiro, o evento depois.
+    expect(canaisDoGitHub).toEqual(['board:read', 'card:read', 'board:changed'])
   })
 
   it('nenhum arquivo que escreve ou envia GraphQL contém um documento de escrita', () => {
