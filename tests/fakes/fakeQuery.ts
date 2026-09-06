@@ -33,6 +33,17 @@ export interface FakeTools {
    * e por isso o roteiro não ganha porta própria: o despacho é justamente o que está sob teste.
    */
   askQuestion(ask: FakeQuestionAsk): Promise<PermissionResult>
+  /**
+   * Estaciona o turno até a parada chegar — o "turno que não termina sozinho" de que o card trata,
+   * e a única forma de o teste ser determinístico sem timer.
+   *
+   * A interrupção é **contada**, não sinalizada: o `stop()` do teste pode chegar antes de esta
+   * função registrar a espera, porque `send()` só enfileira e quem roda o turno é a iteração do
+   * gerador, noutro tick. Um `interrupt()` que apenas acordasse a lista de esperas encontraria a
+   * lista vazia, e o turno ficaria estacionado para sempre: o teste penduraria em vez de falhar.
+   * Com o contador, a ordem de chegada deixa de importar.
+   */
+  untilInterrupt(): Promise<void>
 }
 
 /** Uma pergunta do roteiro. `questions` é `unknown` para o teste poder mandar payload torto. */
@@ -51,6 +62,8 @@ export interface FakeScript {
   turn?: FakeTurn
   /** Quando presente, a iteração explode em vez de emitir o `init` — o processo que não sobe. */
   failWith?: Error
+  /** Quando presente, `interrupt()` rejeita: é o caminho do controle que não pega. */
+  interruptWith?: Error
 }
 
 export interface FakeQuery {
@@ -62,6 +75,8 @@ export interface FakeQuery {
   readonly options: QueryOptions | undefined
   /** `true` quando a iteração terminou: é o que prova que `close()` encerrou o `query()`. */
   readonly finished: boolean
+  /** Quantas vezes o core pediu a interrupção — é por aqui que se prova que `stop()` chegou. */
+  readonly interrupts: number
 }
 
 const SESSION_ID = 'fake-session'
@@ -87,15 +102,27 @@ function nextUuid(): UUID {
 export function createFakeQuery(script: FakeScript = {}): FakeQuery {
   const received: string[] = []
   const turn = script.turn ?? defaultTurn
-  const state: { options: QueryOptions | undefined; finished: boolean } = {
+  const state: { options: QueryOptions | undefined; finished: boolean; interrupts: number } = {
     options: undefined,
     finished: false,
+    interrupts: 0,
   }
 
   const query: QueryFn = ({ prompt, options }) => {
     state.options = options
     const canUseTool = options?.canUseTool
     const aborter = new AbortController()
+
+    let pendentes = 0
+    const esperando: (() => void)[] = []
+
+    /** Casa cada interrupção pendente com uma espera, em qualquer ordem de chegada. */
+    function drenar(): void {
+      while (pendentes > 0 && esperando.length > 0) {
+        pendentes -= 1
+        esperando.shift()!()
+      }
+    }
 
     const ask = async (request: FakePermissionAsk): Promise<PermissionResult> => {
       if (!canUseTool) throw new Error('o host não passou `canUseTool` ao query()')
@@ -123,6 +150,11 @@ export function createFakeQuery(script: FakeScript = {}): FakeQuery {
           // Sem guarda: o payload torto é metade do que este canal existe para exercitar.
           input: { questions: question.questions },
         }),
+      untilInterrupt: () =>
+        new Promise<void>((resolve) => {
+          esperando.push(resolve)
+          drenar()
+        }),
     }
 
     async function* run(): AsyncGenerator<SDKMessage, void> {
@@ -144,10 +176,23 @@ export function createFakeQuery(script: FakeScript = {}): FakeQuery {
       }
     }
 
+    const interrupt = (): Promise<undefined> => {
+      state.interrupts += 1
+      // O controle que não pega: conta que foi pedido, e não interrompe nada. O turno segue
+      // estacionado e a sessão segue trabalhando — que é exatamente o que se quer provar.
+      if (script.interruptWith) return Promise.reject(script.interruptWith)
+
+      pendentes += 1
+      drenar()
+
+      return Promise.resolve(undefined)
+    }
+
     // O `Query` do SDK é um AsyncGenerator mais um punhado de controles (interrupt, setModel,
-    // setPermissionMode...). O core só itera, então o fake implementa a iteração de verdade e não
-    // finge os controles: usar um deles aqui estoura, em vez de passar em silêncio.
-    return run() as unknown as Query
+    // setPermissionMode...). O core itera e usa **um** deles, então o fake implementa a iteração e
+    // o `interrupt()` de verdade, e continua não fingindo os outros: usar um deles aqui estoura,
+    // em vez de passar em silêncio.
+    return Object.assign(run(), { interrupt }) as unknown as Query
   }
 
   return {
@@ -158,6 +203,9 @@ export function createFakeQuery(script: FakeScript = {}): FakeQuery {
     },
     get finished() {
       return state.finished
+    },
+    get interrupts() {
+      return state.interrupts
     },
   }
 }
@@ -221,6 +269,31 @@ export function successResult(queued = 0): SDKResultMessage {
     modelUsage: {},
     permission_denials: [],
     queued_turn_count: queued,
+    uuid: nextUuid(),
+    session_id: SESSION_ID,
+  }
+}
+
+/**
+ * O `result` de um turno cortado, do jeito que o SDK o descreve. Fixar aqui a forma real é o que
+ * impede o teste de provar a nossa invenção em vez do contrato do SDK.
+ */
+export function abortedResult(queued = 0): SDKResultMessage {
+  return {
+    type: 'result',
+    subtype: 'error_during_execution',
+    duration_ms: 1,
+    duration_api_ms: 1,
+    is_error: true,
+    num_turns: 1,
+    stop_reason: 'aborted',
+    terminal_reason: 'aborted_streaming',
+    total_cost_usd: 0,
+    usage: {},
+    modelUsage: {},
+    permission_denials: [],
+    queued_turn_count: queued,
+    errors: [],
     uuid: nextUuid(),
     session_id: SESSION_ID,
   }

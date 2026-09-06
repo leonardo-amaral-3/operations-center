@@ -82,6 +82,9 @@ export type StartQuery = (params: {
 /** Motivo devolvido ao SDK quando a decisão não pode mais ser tomada por uma pessoa. */
 const SESSION_CLOSED_DENIAL = 'Sessão encerrada antes da decisão.'
 
+/** A nota que a parada deixa na conversa. Exportada porque o teste a lê daqui, e não a redigita. */
+export const INTERRUPTED_NOTICE = 'Turno interrompido.'
+
 /**
  * A ferramenta com que o Claude faz uma pergunta. Ela chega pelo mesmo `canUseTool` de qualquer
  * outra — não há canal separado no SDK —, e é este nome que separa os dois tratamentos.
@@ -123,6 +126,10 @@ export class SessionHandle {
   #state: SessionState = initialState
   #init: SessionInit | undefined
   #sentCount = 0
+  /** Levantada entre o pedido de parada e o `result` que ele corta; é ela que vira `interrupted`. */
+  #stopping = false
+  /** Numera o id da nota de parada, como `#sentCount` numera o do envio. */
+  #stopCount = 0
   #closing = false
 
   constructor(id: string, startQuery: StartQuery) {
@@ -165,6 +172,7 @@ export class SessionHandle {
     this.#sentCount += 1
     this.#queue.push(text)
     this.#record({ id: `${this.id}-u${this.#sentCount}`, role: 'user', text })
+    this.#apply({ kind: 'sent' })
   }
 
   /** A decisão humana sobre um pedido. Pedido desconhecido (ou já resolvido): no-op. */
@@ -200,6 +208,29 @@ export class SessionHandle {
       updatedInput: { questions: pending.questions, answers },
     })
     this.#apply({ kind: 'question_answered' })
+  }
+
+  /**
+   * Para o turno em curso. **Não** é `close()`: a sessão continua viva, com o mesmo id, o mesmo
+   * contexto e o mesmo histórico — o que morre é a vez que estava rodando.
+   *
+   * Só de `working`, e só uma vez por turno. Em `awaiting_decision`/`awaiting_answer` o turno já
+   * está parado esperando uma pessoa, e a saída de lá é negar ou responder — interromper dali
+   * deixaria a promessa do `canUseTool` órfã no mapa de pendentes.
+   *
+   * Sem `await` e sem `Promise`, como `send()`: a confirmação da parada é o `result` que volta pelo
+   * canal de estado, como toda transição desta classe. Uma rejeição do controle significa que o
+   * turno **não** parou; baixar a bandeira devolve o botão à tela em vez de deixar a sessão presa
+   * num pedido que não pegou.
+   */
+  stop(): void {
+    if (this.#closing || this.#stopping) return
+    if (this.#state.kind !== 'working') return
+
+    this.#stopping = true
+    void this.#query.interrupt().catch(() => {
+      this.#stopping = false
+    })
   }
 
   /**
@@ -246,7 +277,26 @@ export class SessionHandle {
       return
     }
 
-    if (message.type === 'result') this.#apply({ kind: 'result', outcome: message })
+    if (message.type === 'result') {
+      const interrupted = this.#stopping
+      this.#stopping = false
+
+      // A nota só existe quando a parada de fato cortou o turno. Um `result` de sucesso chegando
+      // junto do pedido é um turno que terminou sozinho no mesmo instante — anunciar interrupção
+      // ali seria contar na conversa uma coisa que não aconteceu.
+      if (interrupted && message.subtype !== 'success') {
+        this.#stopCount += 1
+        this.#record({
+          id: `${this.id}-i${this.#stopCount}`,
+          role: 'notice',
+          text: INTERRUPTED_NOTICE,
+        })
+      }
+
+      // A nota é gravada **antes** do `#apply`: a tela recebe a mensagem e só depois o estado, na
+      // mesma ordem em que o texto do assistente chega antes do `result` que fecha o turno.
+      this.#apply({ kind: 'result', outcome: message, interrupted })
+    }
   }
 
   /**
