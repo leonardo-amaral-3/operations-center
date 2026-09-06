@@ -56,6 +56,7 @@ interface FixtureNode {
     __typename: string
     number?: number
     closed?: boolean
+    repository?: { nameWithOwner: string }
     assignees?: { nodes: readonly { login: string }[] }
   }
   fieldValues: { nodes: readonly FixtureFieldValue[] }
@@ -71,6 +72,8 @@ interface ExpectedCard {
   number: number
   columnId: string
   closed: boolean
+  /** `owner/name`. O kanban não o desenha; a guarda da fixture o usa para vigiar a quinta borda. */
+  repository: string
   assignees: readonly string[]
 }
 
@@ -129,11 +132,11 @@ test.afterAll(async () => {
 /**
  * A guarda da própria fixture.
  *
- * Os quatro itens sintéticos existem porque o board real não tem nenhum deles, e é fácil perdê-los
+ * Os cinco itens sintéticos existem porque o board real não tem nenhum deles, e é fácil perdê-los
  * numa recaptura distraída. Sem esta verificação, perdê-los deixaria o smoke **verde** — só que
- * provando menos: quatro regras de filtro voltariam a existir só no teste unitário.
+ * provando menos: cinco regras de filtro e de comportamento voltariam a existir só nos unitários.
  */
-test('a fixture ainda cobre as quatro bordas que o board real não tem', () => {
+test('a fixture ainda cobre as cinco bordas que o board real não tem', () => {
   const typenames = NODES.map((node) => node.content.__typename)
 
   expect(typenames).toContain('DraftIssue')
@@ -143,6 +146,11 @@ test('a fixture ainda cobre as quatro bordas que o board real não tem', () => {
   expect(EXPECTED_CARDS.some((card) => card.assignees.length === 0)).toBe(true)
   // Sem coluna vazia, a asserção de `data-column-count="0"` lá embaixo não provaria nada.
   expect(COLUMNS.some((column) => cardsIn(column.id).length === 0)).toBe(true)
+  // A quinta borda, e a única que não é deste smoke: mais de um repo entre os cartões. É o que
+  // permite ao `card-chat.smoke.spec.ts` ter um cartão cujo repo **não** existe na máquina, e com
+  // ele exercitar o "não sei onde este repo vive" de ponta a ponta. Aqui só se vigia a existência
+  // da borda; quem afirma o que ela precisa ser — coluna conversável — é o smoke que a usa.
+  expect(new Set(EXPECTED_CARDS.map((card) => card.repository)).size).toBeGreaterThan(1)
 })
 
 test('CA-1: as colunas são as do board, na ordem, e a vazia continua desenhada', async () => {
@@ -226,7 +234,7 @@ function statusOptionId(node: FixtureNode): string | undefined {
  */
 function toExpectedCard(node: FixtureNode): ExpectedCard | null {
   const columnId = statusOptionId(node)
-  const { __typename, number, closed, assignees } = node.content
+  const { __typename, number, closed, repository, assignees } = node.content
 
   if (__typename !== 'Issue' || number === undefined || columnId === undefined) return null
 
@@ -234,6 +242,7 @@ function toExpectedCard(node: FixtureNode): ExpectedCard | null {
     number,
     columnId,
     closed: closed === true,
+    repository: repository?.nameWithOwner ?? '',
     assignees: (assignees?.nodes ?? []).map((assignee) => assignee.login),
   }
 }

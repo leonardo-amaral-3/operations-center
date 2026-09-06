@@ -5,11 +5,19 @@ Centro operacional de gestão de desenvolvimento de **tarefas simultâneas do Cl
 Projeto pessoal de [@leonardo-amaral-3](https://github.com/leonardo-amaral-3), usado dentro da
 Notoria. Repositório privado.
 
-Hoje o app abre um **kanban somente-leitura do board do GitHub**: uma coluna por estação da esteira,
-um cartão por card, relido em silêncio quando a janela volta ao foco ou a máquina acorda — sem botão
-de atualizar e sem polling. A tela de chat com o Claude Code existe inteira, mas atrás de
-`OC_SCREEN=chat`: ela é a fatia vertical que provou o caminho `renderer ↔ main ↔ core ↔ SDK`, e é o
-que o smoke daquela fatia percorre.
+Hoje o app abre um **kanban do board do GitHub**: uma coluna por estação da esteira, um cartão por
+card, relido em silêncio quando a janela volta ao foco ou a máquina acorda — sem botão de atualizar
+e sem polling. O board continua somente-leitura: o app não move card, não edita campo e não escreve
+nada lá.
+
+O que ele faz além de mostrar é **conversar**. Clicar num cartão de uma das seis colunas que têm
+skill `gm-*` dedicada abre o chat do Claude Code **dentro do próprio cartão** — um por vez —, e a
+sessão sobe na pasta local do repo daquele card, descoberta pelo próprio app a partir dos
+transcripts que o Claude Code já deixou na máquina. Repo sem pasta conhecida faz o cartão pedir a
+pasta; ele nunca chuta. Colapsar o cartão não encerra nada: quem encerra é o botão de encerrar.
+
+A tela de chat avulsa continua existindo atrás de `OC_SCREEN=chat`: ela é a fatia vertical que
+provou o caminho `renderer ↔ main ↔ core ↔ SDK`, e é o que o smoke daquela fatia percorre.
 
 ## Stack
 
@@ -52,19 +60,20 @@ lugar dos cartões.
 
 ## Comandos
 
-| Comando          | O que faz                                                                                                                                                                                                               |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `yarn dev`       | sobe o app com hot reload do renderer                                                                                                                                                                                   |
-| `yarn build`     | compila os três bundles (main, preload, renderer) em `out/`                                                                                                                                                             |
-| `yarn test`      | Vitest — as unidades do core. Sem rede, sem credencial, determinístico                                                                                                                                                  |
-| `yarn smoke`     | compila e roda os dois smokes de ponta a ponta (Playwright + Electron): o **da fatia vertical**, que sobe uma sessão real, precisa do login e **consome cota**, e o **do kanban**, que lê uma fixture e não toca a rede |
-| `yarn lint`      | ESLint                                                                                                                                                                                                                  |
-| `yarn typecheck` | `tsc --build`                                                                                                                                                                                                           |
-| `yarn format`    | Prettier                                                                                                                                                                                                                |
+| Comando          | O que faz                                                                                                                                                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yarn dev`       | sobe o app com hot reload do renderer                                                                                                                                                                                                                    |
+| `yarn build`     | compila os três bundles (main, preload, renderer) em `out/`                                                                                                                                                                                              |
+| `yarn test`      | Vitest — as unidades do core. Sem rede, sem credencial, determinístico                                                                                                                                                                                   |
+| `yarn smoke`     | compila e roda os três smokes de ponta a ponta (Playwright + Electron): o **do kanban**, que lê uma fixture e não toca a rede, e os **dois que sobem sessão real** — o da fatia vertical e o do cartão-chat —, que precisam do login e **consomem cota** |
+| `yarn lint`      | ESLint                                                                                                                                                                                                                                                   |
+| `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                            |
+| `yarn format`    | Prettier                                                                                                                                                                                                                                                 |
 
 `yarn lint`, `yarn typecheck` e `yarn test` formam o portão de qualidade, e são exatamente o que o
 CI roda a cada PR para `dev` e `main`. Os smokes ficam de fora do CI de propósito: o runner nem
-baixa o binário do Electron, e o da fatia vertical ainda depende do login local, que ele não tem.
+baixa o binário do Electron, e os dois que sobem sessão ainda dependem do login local, que ele não
+tem.
 
 ## Configuração
 
@@ -94,12 +103,17 @@ default do CLI e carrega o contexto inteiro do projeto — um probe de uma palav
 `total_cost_usd ≈ 0,20` nessas condições. Não é cobrado; é descontado da mesma cota. Com vários
 cards em voo isso é material, e é por isso que `OC_MODEL` existe desde a fundação.
 
-Abrir o app, porém, não custa nada desde que o kanban virou a tela padrão: nenhuma sessão sobe até
-alguém pedir uma. Quem consome cota é o chat.
+Abrir o app, porém, não custa nada: nenhuma sessão sobe até alguém pedir uma. Quem consome cota é o
+chat — e agora **um clique num cartão já é um pedido**, porque a sessão daquele card sobe ali. Um
+cartão aberto e esquecido não gasta nada enquanto ninguém fala com ele, mas dez cartões conversando
+são dez sessões disputando a mesma cota.
 
-O smoke da fatia vertical escapa do custo somando duas coisas: `OC_MODEL` num modelo barato e
-`OC_ISOLATED=1` — este último é o que mais pesa, porque a maior parte daqueles 20 centavos era
-carregamento de contexto. O do kanban não custa nada: lê uma fixture e nunca sobe sessão.
+**Dois dos três smokes sobem sessão real e consomem cota**: o da fatia vertical e o do cartão-chat,
+que é o mais caro dos dois — ele levanta uma sessão para conversar e outra ao provar que abrir um
+segundo cartão colapsa o primeiro. Os dois escapam do pior somando as mesmas duas coisas: `OC_MODEL`
+num modelo barato e `OC_ISOLATED=1` — este último é o que mais pesa, porque a maior parte daqueles
+20 centavos era carregamento de contexto. O do kanban não custa nada: lê uma fixture e nunca sobe
+sessão.
 
 ## Como este projeto é desenvolvido
 
