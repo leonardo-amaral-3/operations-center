@@ -1,3 +1,4 @@
+import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_SETTING_SOURCES, SessionHost } from '../../src/core/session/SessionHost'
@@ -215,6 +216,327 @@ describe('SessionHost', () => {
     await handle.close()
 
     expect(decisoes).toEqual(['deny'])
+    expect(fake.finished).toBe(true)
+    expect(handle.state).toEqual({ kind: 'closed' })
+  })
+
+  it('um AskUserQuestion vira pergunta na tela, e a resposta volta ao SDK do jeito exato', async () => {
+    const resultados: PermissionResult[] = []
+    const fake = createFakeQuery({
+      turn: async (text, tools) => {
+        resultados.push(
+          await tools.askQuestion({
+            toolUseID: 'toolu_04',
+            questions: [
+              {
+                question: 'Qual cor?',
+                header: 'Cor',
+                multiSelect: false,
+                options: [
+                  { label: 'Azul', description: 'o céu' },
+                  { label: 'Verde', description: 'o mato' },
+                ],
+              },
+            ],
+          }),
+        )
+        return [assistantMessage(`escolhido: ${text}`), successResult()]
+      },
+    })
+    const handle = start(fake)
+
+    handle.send('escolha uma cor')
+    const esperando = await untilState(handle, isKind('awaiting_answer'))
+
+    expect(esperando).toEqual({
+      kind: 'awaiting_answer',
+      request: {
+        id: 'toolu_04',
+        questions: [
+          {
+            question: 'Qual cor?',
+            header: 'Cor',
+            multiSelect: false,
+            options: [
+              { label: 'Azul', description: 'o céu' },
+              { label: 'Verde', description: 'o mato' },
+            ],
+          },
+        ],
+      },
+    })
+    // O turno está parado esperando a pessoa, como na permissão.
+    expect(resultados).toEqual([])
+
+    handle.answerQuestion('toolu_04', { 'Qual cor?': 'Azul' })
+    await untilState(handle, isKind('awaiting_input'))
+
+    // A forma exata importa: `allow` puro executa a ferramenta sem quem a desenhe e o modelo ouve
+    // "the user did not answer"; `deny` com a resposta na mensagem marca o tool_result como erro.
+    expect(resultados).toEqual([
+      {
+        behavior: 'allow',
+        updatedInput: {
+          questions: [
+            {
+              question: 'Qual cor?',
+              header: 'Cor',
+              multiSelect: false,
+              options: [
+                { label: 'Azul', description: 'o céu' },
+                { label: 'Verde', description: 'o mato' },
+              ],
+            },
+          ],
+          answers: { 'Qual cor?': 'Azul' },
+        },
+      },
+    ])
+    expect(handle.messages.at(-1)?.text).toBe('escolhido: escolha uma cor')
+  })
+
+  it('o questions volta cru, e não a versão que a tela desenhou', async () => {
+    const resultados: PermissionResult[] = []
+    // Campos que o `Question` da ponte não carrega: se o handle devolvesse a tradução, sumiriam.
+    const cru = [
+      {
+        question: 'Qual cor?',
+        header: 'Cor',
+        multiSelect: false,
+        options: [{ label: 'Azul', description: 'o céu', extra: 'campo do futuro' }],
+        futuro: 42,
+      },
+    ]
+    const fake = createFakeQuery({
+      turn: async (text, tools) => {
+        resultados.push(await tools.askQuestion({ toolUseID: 'toolu_05', questions: cru }))
+        return [assistantMessage(text), successResult()]
+      },
+    })
+    const handle = start(fake)
+
+    handle.send('pergunte')
+    await untilState(handle, isKind('awaiting_answer'))
+    handle.answerQuestion('toolu_05', { 'Qual cor?': 'Azul' })
+    await untilState(handle, isKind('awaiting_input'))
+
+    const primeiro = resultados[0]
+    expect(primeiro?.behavior === 'allow' && primeiro.updatedInput?.['questions']).toEqual(cru)
+  })
+
+  it('multi-seleção junta os rótulos escolhidos por vírgula', async () => {
+    const resultados: PermissionResult[] = []
+    const fake = createFakeQuery({
+      turn: async (text, tools) => {
+        resultados.push(
+          await tools.askQuestion({
+            toolUseID: 'toolu_06',
+            questions: [
+              {
+                question: 'Quais linguagens?',
+                header: 'Stack',
+                multiSelect: true,
+                options: [
+                  { label: 'TypeScript', description: 'a daqui' },
+                  { label: 'Rust', description: 'a outra' },
+                  { label: 'Go', description: 'a terceira' },
+                ],
+              },
+            ],
+          }),
+        )
+        return [assistantMessage(text), successResult()]
+      },
+    })
+    const handle = start(fake)
+
+    handle.send('pergunte')
+    const esperando = await untilState(handle, isKind('awaiting_answer'))
+
+    expect(
+      esperando.kind === 'awaiting_answer' && esperando.request.questions[0]?.multiSelect,
+    ).toBe(true)
+
+    // O formato que o próprio SDK documenta para o `answers` da ferramenta: uma string por
+    // pergunta, com os rótulos separados por vírgula. O core devolve o que recebeu, sem re-chavear.
+    handle.answerQuestion('toolu_06', { 'Quais linguagens?': 'TypeScript, Rust' })
+    await untilState(handle, isKind('awaiting_input'))
+
+    const primeiro = resultados[0]
+    expect(primeiro?.behavior === 'allow' && primeiro.updatedInput?.['answers']).toEqual({
+      'Quais linguagens?': 'TypeScript, Rust',
+    })
+  })
+
+  it('o texto livre entra no lugar do rótulo, sem precisar casar com opção nenhuma', async () => {
+    const resultados: PermissionResult[] = []
+    const fake = createFakeQuery({
+      turn: async (text, tools) => {
+        resultados.push(
+          await tools.askQuestion({
+            toolUseID: 'toolu_07',
+            questions: [
+              {
+                question: 'Qual cor?',
+                header: 'Cor',
+                multiSelect: false,
+                options: [{ label: 'Azul', description: 'o céu' }],
+              },
+            ],
+          }),
+        )
+        return [assistantMessage(text), successResult()]
+      },
+    })
+    const handle = start(fake)
+
+    handle.send('pergunte')
+    await untilState(handle, isKind('awaiting_answer'))
+    handle.answerQuestion('toolu_07', { 'Qual cor?': 'Roxo, que não estava na lista' })
+    await untilState(handle, isKind('awaiting_input'))
+
+    const primeiro = resultados[0]
+    expect(primeiro?.behavior === 'allow' && primeiro.updatedInput?.['answers']).toEqual({
+      'Qual cor?': 'Roxo, que não estava na lista',
+    })
+  })
+
+  it('o que só decora a tela pode faltar: header, description e multiSelect têm default', async () => {
+    const fake = createFakeQuery({
+      // Sem `await`: a pergunta fica pendente de propósito, e o turno só volta no `close()`.
+      turn: (text, tools) => {
+        void tools.askQuestion({
+          toolUseID: 'toolu_08',
+          questions: [{ question: 'Qual cor?', options: [{ label: 'Azul' }] }],
+        })
+        return Promise.resolve([assistantMessage(text), successResult()])
+      },
+    })
+    const handle = start(fake)
+
+    handle.send('pergunte')
+    const esperando = await untilState(handle, isKind('awaiting_answer'))
+
+    expect(esperando).toEqual({
+      kind: 'awaiting_answer',
+      request: {
+        id: 'toolu_08',
+        questions: [
+          {
+            question: 'Qual cor?',
+            header: '',
+            multiSelect: false,
+            options: [{ label: 'Azul', description: '' }],
+          },
+        ],
+      },
+    })
+
+    await handle.close()
+  })
+
+  it('payload irreconhecível cai no caminho da permissão, em vez de quebrar a sessão', async () => {
+    const tortos: unknown[] = [
+      'nem array nem objeto',
+      [],
+      [{ header: 'Cor', options: [{ label: 'Azul' }] }],
+      [{ question: 'Qual cor?' }],
+      [{ question: 'Qual cor?', options: [] }],
+      [{ question: 'Qual cor?', options: [{ description: 'sem rótulo' }] }],
+    ]
+
+    for (const [indice, questions] of tortos.entries()) {
+      const decisoes: string[] = []
+      const id = `toolu_torto_${String(indice)}`
+      const fake = createFakeQuery({
+        turn: async (text, tools) => {
+          decisoes.push((await tools.askQuestion({ toolUseID: id, questions })).behavior)
+          return [assistantMessage(text), successResult()]
+        },
+      })
+      const handle = start(fake)
+
+      handle.send('pergunte')
+      const esperando = await untilState(handle, isKind('awaiting_decision'))
+
+      // Vira permissão comum, com o nome cru da ferramenta — e negar continua possível.
+      expect(esperando).toEqual({
+        kind: 'awaiting_decision',
+        request: {
+          id,
+          toolName: 'AskUserQuestion',
+          title: undefined,
+          displayName: undefined,
+          description: undefined,
+        },
+      })
+
+      handle.respondPermission(id, 'deny')
+      await untilState(handle, isKind('awaiting_input'))
+      expect(decisoes).toEqual(['deny'])
+    }
+  })
+
+  it('answerQuestion e respondPermission não se confundem: cada um só conhece o seu', async () => {
+    const fake = createFakeQuery({
+      // Sem `await`: a pergunta fica pendente de propósito, e o turno só volta no `close()`.
+      turn: (text, tools) => {
+        void tools.askQuestion({
+          toolUseID: 'toolu_10',
+          questions: [
+            {
+              question: 'Qual cor?',
+              header: 'Cor',
+              multiSelect: false,
+              options: [{ label: 'Azul', description: 'o céu' }],
+            },
+          ],
+        })
+        return Promise.resolve([assistantMessage(text), successResult()])
+      },
+    })
+    const handle = start(fake)
+
+    handle.send('pergunte')
+    await untilState(handle, isKind('awaiting_answer'))
+
+    // O id existe, mas no outro mapa: responder pelo canal errado é no-op, e o estado não anda.
+    handle.respondPermission('toolu_10', 'allow')
+    handle.answerQuestion('nem existe', { 'Qual cor?': 'Azul' })
+
+    expect(handle.state.kind).toBe('awaiting_answer')
+
+    await handle.close()
+  })
+
+  it('fechar com uma pergunta pendente nega a ferramenta em vez de travar o turno', async () => {
+    const resultados: PermissionResult[] = []
+    const fake = createFakeQuery({
+      turn: async (text, tools) => {
+        resultados.push(
+          await tools.askQuestion({
+            toolUseID: 'toolu_11',
+            questions: [
+              {
+                question: 'Qual cor?',
+                header: 'Cor',
+                multiSelect: false,
+                options: [{ label: 'Azul', description: 'o céu' }],
+              },
+            ],
+          }),
+        )
+        return [assistantMessage(text), successResult()]
+      },
+    })
+    const handle = start(fake)
+
+    handle.send('pergunte')
+    await untilState(handle, isKind('awaiting_answer'))
+
+    await handle.close()
+
+    expect(resultados.map((resultado) => resultado.behavior)).toEqual(['deny'])
     expect(fake.finished).toBe(true)
     expect(handle.state).toEqual({ kind: 'closed' })
   })

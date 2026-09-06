@@ -28,6 +28,17 @@ export interface FakePermissionAsk {
 export interface FakeTools {
   /** Dispara o `canUseTool` do host e devolve o que a pessoa decidiu. */
   askPermission(ask: FakePermissionAsk): Promise<PermissionResult>
+  /**
+   * O mesmo canal, com o nome e o payload de uma pergunta — é assim que ela chega no SDK real,
+   * e por isso o roteiro não ganha porta própria: o despacho é justamente o que está sob teste.
+   */
+  askQuestion(ask: FakeQuestionAsk): Promise<PermissionResult>
+}
+
+/** Uma pergunta do roteiro. `questions` é `unknown` para o teste poder mandar payload torto. */
+export interface FakeQuestionAsk {
+  toolUseID: string
+  questions: unknown
 }
 
 /** O que a sessão faz a cada mensagem do usuário. */
@@ -54,6 +65,9 @@ export interface FakeQuery {
 }
 
 const SESSION_ID = 'fake-session'
+
+/** O nome que o SDK real usa — o mesmo que o `SessionHandle` procura para despachar a pergunta. */
+const ASK_USER_QUESTION = 'AskUserQuestion'
 
 let counter = 0
 
@@ -83,23 +97,32 @@ export function createFakeQuery(script: FakeScript = {}): FakeQuery {
     const canUseTool = options?.canUseTool
     const aborter = new AbortController()
 
+    const ask = async (request: FakePermissionAsk): Promise<PermissionResult> => {
+      if (!canUseTool) throw new Error('o host não passou `canUseTool` ao query()')
+
+      const result = await canUseTool(request.toolName, request.input ?? {}, {
+        signal: aborter.signal,
+        toolUseID: request.toolUseID,
+        requestId: `req-${request.toolUseID}`,
+        title: request.title,
+        displayName: request.displayName,
+        description: request.description,
+      })
+      // `null` só é válido quando o consumidor respondeu fora de banda, o que o host não faz.
+      if (!result) throw new Error('`canUseTool` devolveu null')
+
+      return result
+    }
+
     const tools: FakeTools = {
-      askPermission: async (ask) => {
-        if (!canUseTool) throw new Error('o host não passou `canUseTool` ao query()')
-
-        const result = await canUseTool(ask.toolName, ask.input ?? {}, {
-          signal: aborter.signal,
-          toolUseID: ask.toolUseID,
-          requestId: `req-${ask.toolUseID}`,
-          title: ask.title,
-          displayName: ask.displayName,
-          description: ask.description,
-        })
-        // `null` só é válido quando o consumidor respondeu fora de banda, o que o host não faz.
-        if (!result) throw new Error('`canUseTool` devolveu null')
-
-        return result
-      },
+      askPermission: ask,
+      askQuestion: (question) =>
+        ask({
+          toolName: ASK_USER_QUESTION,
+          toolUseID: question.toolUseID,
+          // Sem guarda: o payload torto é metade do que este canal existe para exercitar.
+          input: { questions: question.questions },
+        }),
     }
 
     async function* run(): AsyncGenerator<SDKMessage, void> {

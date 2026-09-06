@@ -2,13 +2,28 @@ import { describe, expect, it } from 'vitest'
 
 import { initialState, nextState } from '../../src/core/session/state'
 import type { SessionState } from '../../src/core/session/state'
-import type { PermissionRequest } from '../../src/core/session/types'
+import type { PermissionRequest, QuestionRequest } from '../../src/core/session/types'
 
 const pedido: PermissionRequest = {
   id: 'toolu_01',
   toolName: 'Write',
   title: 'Claude wants to write smoke.txt',
   displayName: 'Write file',
+}
+
+const pergunta: QuestionRequest = {
+  id: 'toolu_09',
+  questions: [
+    {
+      question: 'Qual cor?',
+      header: 'Cor',
+      multiSelect: false,
+      options: [
+        { label: 'Azul', description: 'o céu' },
+        { label: 'Verde', description: 'o mato' },
+      ],
+    },
+  ],
 }
 
 /** Atalho: aplica os eventos em sequência a partir do estado inicial. */
@@ -56,6 +71,20 @@ describe('máquina de estados da sessão', () => {
     expect(nextState(esperando, { kind: 'permission_resolved' })).toEqual({ kind: 'working' })
   })
 
+  it('uma pergunta espera resposta, e respondê-la volta a trabalhar', () => {
+    const esperando = apply({ kind: 'init' }, { kind: 'question_requested', request: pergunta })
+    expect(esperando).toEqual({ kind: 'awaiting_answer', request: pergunta })
+
+    expect(nextState(esperando, { kind: 'question_answered' })).toEqual({ kind: 'working' })
+  })
+
+  it('pergunta e permissão são estados distintos, e um sobrescreve o outro', () => {
+    const decidindo = apply({ kind: 'init' }, { kind: 'permission_requested', request: pedido })
+    const perguntando = nextState(decidindo, { kind: 'question_requested', request: pergunta })
+
+    expect(perguntando).toEqual({ kind: 'awaiting_answer', request: pergunta })
+  })
+
   it('result que não é de sucesso falha a sessão, carregando o subtype como motivo', () => {
     const state = apply(
       { kind: 'init' },
@@ -89,6 +118,18 @@ describe('máquina de estados da sessão', () => {
     expect(nextState(fechada, { kind: 'init' })).toEqual({ kind: 'closed' })
     expect(nextState(fechada, { kind: 'permission_requested', request: pedido })).toEqual({
       kind: 'closed',
+    })
+    expect(nextState(fechada, { kind: 'question_requested', request: pergunta })).toEqual({
+      kind: 'closed',
+    })
+  })
+
+  it('depois de falhar, uma pergunta atrasada não apaga o motivo da falha', () => {
+    const falhou = apply({ kind: 'init' }, { kind: 'failed', reason: 'claude não encontrado' })
+
+    expect(nextState(falhou, { kind: 'question_requested', request: pergunta })).toEqual({
+      kind: 'failed',
+      reason: 'claude não encontrado',
     })
   })
 })

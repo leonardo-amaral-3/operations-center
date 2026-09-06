@@ -12,6 +12,8 @@ import type {
   ChatMessage,
   PermissionDecision,
   PermissionRequest,
+  QuestionAnswers,
+  QuestionRequest,
   SessionInit,
   SessionState,
 } from './session'
@@ -27,7 +29,9 @@ export const IPC_INVOKE = {
   start: 'session:start',
   send: 'session:send',
   respondPermission: 'session:respond-permission',
+  answerQuestion: 'session:answer-question',
   close: 'session:close',
+  chooseFolder: 'repo:choose-folder',
   readBoard: 'board:read',
 } as const
 
@@ -37,6 +41,7 @@ export const IPC_EVENT = {
   message: 'session:message',
   state: 'session:state',
   permissionRequest: 'session:permission-request',
+  questionRequest: 'session:question-request',
   board: 'board:changed',
 } as const
 
@@ -49,10 +54,33 @@ export const IPC_EVENT = {
  */
 export interface SessionSnapshot {
   id: string
+  /**
+   * De qual cartão é esta sessão, ou `undefined` na tela de chat da fatia vertical. Volta no retrato
+   * porque o kanban mantém várias sessões vivas ao mesmo tempo: sem ele, uma resposta que chega
+   * fora de ordem não teria como ser casada com o cartão que a pediu.
+   */
+  itemId: string | undefined
   init: SessionInit | undefined
   state: SessionState
   messages: readonly ChatMessage[]
 }
+
+/**
+ * De qual cartão é a sessão. Ausente = a tela de chat da fatia vertical, que roda em `OC_CWD`.
+ *
+ * Continua sendo o main quem traduz `itemId` em pasta: o renderer manda o cartão, nunca o caminho.
+ */
+export interface StartRequest {
+  itemId?: string
+}
+
+/**
+ * "Não sei onde fica o repo" **não é exceção**: é uma resposta prevista, e o cartão sabe o que fazer
+ * com ela (CA-5). Rejeitar obrigaria o renderer a farejar a mensagem do erro para distinguir isso de
+ * uma falha de verdade — e mensagem de erro não é contrato. Falha real continua rejeitando.
+ */
+export type StartResult =
+  { started: true; session: SessionSnapshot } | { started: false; reason: 'unknown-folder' }
 
 export interface SendRequest {
   sessionId: string
@@ -65,8 +93,29 @@ export interface RespondPermissionRequest {
   decision: PermissionDecision
 }
 
+export interface AnswerQuestionRequest {
+  sessionId: string
+  requestId: string
+  answers: QuestionAnswers
+}
+
 export interface CloseRequest {
   sessionId: string
+}
+
+/** Abre o seletor de diretório para o repo daquele cartão (CA-5). */
+export interface ChooseFolderRequest {
+  itemId: string
+}
+
+/**
+ * **Sem caminho.** O renderer só precisa saber se houve escolha para chamar `start` de novo; quem
+ * guarda e usa a pasta é o main. Devolver a string seria fazer um caminho de disco atravessar a
+ * ponte sem nenhum uso do outro lado — e a canária do `ipc-no-path` existe para impedir justamente
+ * isso. O caminho aparece na tela por outra via: o `cwd` que o próprio SDK reporta no `init`.
+ */
+export interface ChooseFolderResult {
+  chosen: boolean
 }
 
 /**
@@ -93,6 +142,11 @@ export interface SessionPermissionEvent {
   request: PermissionRequest
 }
 
+export interface SessionQuestionEvent {
+  sessionId: string
+  request: QuestionRequest
+}
+
 /**
  * A superfície inteira que o renderer enxerga, exposta como `window.oc` pelo preload. O que não
  * está aqui não existe do lado de lá — não há `ipcRenderer`, não há `require`, não há Node.
@@ -108,18 +162,28 @@ export interface OcApi {
   readonly screen: Screen
 
   /**
-   * Começa a sessão. Sem parâmetro de propósito: a pasta de trabalho e o modelo vêm do ambiente
-   * lido no main (`OC_CWD`, `OC_MODEL`). Deixar o renderer escolher a `cwd` seria dar a uma tela
-   * sandboxada o poder de apontar uma sessão do Claude Code para qualquer lugar do disco.
+   * Começa a sessão do cartão — ou a da fatia vertical, quando `start()` vem sem cartão nenhum.
+   *
+   * O único parâmetro é o `itemId`: a pasta de trabalho e o modelo continuam sendo resolvidos no
+   * main (`OC_CWD`, `OC_MODEL`, e o índice de repos do RF-10). Deixar o renderer escolher a `cwd`
+   * seria dar a uma tela sandboxada o poder de apontar uma sessão do Claude Code para qualquer lugar
+   * do disco.
+   *
+   * Idempotente por cartão: com sessão viva para aquele `itemId`, devolve o retrato dela em vez de
+   * subir uma segunda — é o que faz colapsar e reabrir manter a conversa.
    */
-  start(): Promise<SessionSnapshot>
+  start(request?: StartRequest): Promise<StartResult>
   send(request: SendRequest): Promise<void>
   respondPermission(request: RespondPermissionRequest): Promise<void>
+  answerQuestion(request: AnswerQuestionRequest): Promise<void>
   close(request: CloseRequest): Promise<void>
+  /** Pergunta ao humano onde o repo daquele cartão está. A escolha fica no main (CA-5). */
+  chooseFolder(request: ChooseFolderRequest): Promise<ChooseFolderResult>
   onInit(listener: (event: SessionInitEvent) => void): () => void
   onMessage(listener: (event: SessionMessageEvent) => void): () => void
   onState(listener: (event: SessionStateEvent) => void): () => void
   onPermissionRequest(listener: (event: SessionPermissionEvent) => void): () => void
+  onQuestionRequest(listener: (event: SessionQuestionEvent) => void): () => void
 
   /** O retrato atual do board. Pode voltar com `board: null` se a primeira leitura não terminou. */
   readBoard(): Promise<BoardSnapshot>

@@ -1,7 +1,9 @@
-import { useEffect, useReducer } from 'react'
+import { useCallback, useEffect, useReducer, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardSnapshot } from '../../shared/board'
+import type { SessionState } from '../../shared/session'
+import type { CardSession, CardSessions } from '../components/CardChat'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
 
@@ -17,15 +19,54 @@ function reduce(_snapshot: BoardSnapshot, action: BoardAction): BoardSnapshot {
   return action.snapshot
 }
 
+type SessionsAction =
+  | { type: 'card'; itemId: string; session: CardSession }
+  | { type: 'state'; sessionId: string; state: SessionState }
+
 /**
- * O kanban: o board do GitHub desenhado em colunas, somente leitura.
+ * O registro de sessões por cartão.
  *
- * Quatro estados possíveis, e o par `board`/`error` é o que os separa: erro só toma a tela quando
- * não há primeira leitura a preservar. Nos demais casos os cartões ficam e quem acusa a idade é o
- * carimbo.
+ * Ele existe para o cartão **fechado**: enquanto o chat está na tela, quem sabe da sessão é o
+ * próprio `CardChat`. Fechado o cartão, a sessão continua viva (CA-6) e este registro é a única
+ * coisa que ainda a enxerga.
+ */
+function reduceSessions(sessions: CardSessions, action: SessionsAction): CardSessions {
+  if (action.type === 'card') {
+    const known = sessions[action.itemId]
+    // Devolver o **mesmo** registro quando nada mudou não é micro-otimização: o `CardChat` relata a
+    // sessão de dentro de um efeito, e um registro novo a cada relato redesenharia o board em laço
+    // sem a sessão ter mexido um dedo.
+    if (known && known.id === action.session.id && known.state === action.session.state) {
+      return sessions
+    }
+
+    return { ...sessions, [action.itemId]: action.session }
+  }
+
+  // O evento vem por `sessionId` e o registro é por cartão; quem casa os dois é o relato do
+  // `CardChat`, feito assim que o retrato da sessão voltou. Evento de sessão que este kanban não
+  // conhece simplesmente não tem onde entrar.
+  const owner = Object.entries(sessions).find(([, session]) => session.id === action.sessionId)
+  if (!owner) return sessions
+
+  return { ...sessions, [owner[0]]: { id: action.sessionId, state: action.state } }
+}
+
+/**
+ * O kanban: o board do GitHub desenhado em colunas, e o chat de cada cartão dentro do próprio
+ * cartão.
+ *
+ * Quatro estados possíveis para o board, e o par `board`/`error` é o que os separa: erro só toma a
+ * tela quando não há primeira leitura a preservar. Nos demais casos os cartões ficam e quem acusa a
+ * idade é o carimbo.
+ *
+ * **Nenhum `close()` na saída de cena**, ao contrário do `ChatScreen`: aqui a sessão sobrevive à
+ * vista, e o único encerramento é o do CA-6 — o botão do cartão, ou o desligamento do app.
  */
 export function KanbanScreen(): JSX.Element {
   const [snapshot, dispatch] = useReducer(reduce, INITIAL_SNAPSHOT)
+  const [sessions, dispatchSession] = useReducer(reduceSessions, {})
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
 
   useEffect(() => {
     // Assinar vem **antes** de pedir, como no `ChatScreen`: uma leitura que termine entre o pedido
@@ -45,6 +86,25 @@ export function KanbanScreen(): JSX.Element {
     })
 
     return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    // O kanban acompanha o estado das sessões por conta própria, e não só através do cartão aberto:
+    // sem isto o sinal de um cartão fechado congelaria no instante em que ele fechou, e ele mostraria
+    // "Trabalhando" para sempre depois de a sessão já ter pedido a vez de volta.
+    return window.oc.onState((event) => {
+      dispatchSession({ type: 'state', sessionId: event.sessionId, state: event.state })
+    })
+  }, [])
+
+  const toggle = useCallback((itemId: string) => {
+    // Um cartão aberto por vez (RF-6): abrir o segundo fecha o primeiro — e **não** encerra a sessão
+    // dele, que continua viva atrás do cartão fechado.
+    setExpandedItemId((current) => (current === itemId ? null : itemId))
+  }, [])
+
+  const registerSession = useCallback((itemId: string, session: CardSession) => {
+    dispatchSession({ type: 'card', itemId, session })
   }, [])
 
   const { board, readAt, error } = snapshot
@@ -69,6 +129,10 @@ export function KanbanScreen(): JSX.Element {
               // Filtra por `columnId`, nunca pelo nome — renomear a estação no board não pode
               // reposicionar cartão nenhum —, e `filter` preserva a ordem que o board devolveu.
               cards={board.cards.filter((card) => card.columnId === column.id)}
+              expandedItemId={expandedItemId}
+              sessions={sessions}
+              onToggle={toggle}
+              onSession={registerSession}
             />
           ))}
         </main>

@@ -41,6 +41,40 @@ export interface PermissionRequest {
 
 export type PermissionDecision = 'allow' | 'deny'
 
+/** Uma alternativa que o Claude ofereceu numa pergunta. */
+export interface QuestionOption {
+  label: string
+  description: string
+}
+
+/**
+ * Uma pergunta do `AskUserQuestion`, reduzida ao que a tela precisa desenhar.
+ *
+ * `multiSelect` muda o formato da resposta, e não só a interação: com ele ligado, os rótulos
+ * escolhidos vão numa string separada por vírgula, que é o formato que o próprio SDK documenta
+ * para o `answers` da ferramenta.
+ */
+export interface Question {
+  question: string
+  header: string
+  multiSelect: boolean
+  options: readonly QuestionOption[]
+}
+
+/** Um `AskUserQuestion` esperando resposta humana. `id` é o `toolUseID`, como no PermissionRequest. */
+export interface QuestionRequest {
+  id: string
+  questions: readonly Question[]
+}
+
+/**
+ * Resposta por pergunta: o texto da pergunta → o rótulo escolhido (ou o texto livre).
+ *
+ * A chave é o texto da pergunta porque é assim que a ferramenta casa resposta com pergunta, e o
+ * valor é sempre uma string já pronta — em multi-seleção, os rótulos vêm juntos por vírgula.
+ */
+export type QuestionAnswers = Record<string, string>
+
 /**
  * O que a sessão informa de si quando nasce, lido do `system`/`init` do SDK.
  *
@@ -56,9 +90,14 @@ export interface SessionInit {
 }
 
 /**
- * O estado exibido da sessão. `awaiting_input` e `awaiting_decision` são os dois que o kanban
- * futuro vai pintar como "esperando você" — nomeá-los agora é o que faz esse sinal ser depois um
- * problema de CSS e não de arquitetura.
+ * O estado exibido da sessão. `awaiting_input`, `awaiting_decision` e `awaiting_answer` são os três
+ * que o kanban futuro vai pintar como "esperando você" — nomeá-los agora é o que faz esse sinal
+ * ser depois um problema de CSS e não de arquitetura.
+ *
+ * `awaiting_answer` é estado próprio, e não um `awaiting_decision` com um campo a mais: uma
+ * permissão tem duas saídas fixas, uma pergunta tem N opções, texto livre e possivelmente
+ * multi-seleção. Colapsá-los obrigaria toda tela a inspecionar o conteúdo do pedido para saber o
+ * que desenhar.
  *
  * O *formato* do estado é contrato e mora aqui; as *transições* são regra do `core` e moram em
  * `src/core/session/state.ts`.
@@ -68,5 +107,6 @@ export type SessionState =
   | { kind: 'working' }
   | { kind: 'awaiting_input' }
   | { kind: 'awaiting_decision'; request: PermissionRequest }
+  | { kind: 'awaiting_answer'; request: QuestionRequest }
   | { kind: 'closed' }
   | { kind: 'failed'; reason: string }

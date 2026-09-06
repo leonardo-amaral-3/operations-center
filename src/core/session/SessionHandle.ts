@@ -9,7 +9,16 @@ import type {
 import { InputQueue } from './InputQueue'
 import { initialState, nextState } from './state'
 import type { SessionEvent, SessionState } from './state'
-import type { ChatMessage, PermissionDecision, PermissionRequest, SessionInit } from './types'
+import type {
+  ChatMessage,
+  PermissionDecision,
+  PermissionRequest,
+  Question,
+  QuestionAnswers,
+  QuestionOption,
+  QuestionRequest,
+  SessionInit,
+} from './types'
 
 /** Os três canais que uma sessão publica. */
 interface SessionEvents {
@@ -74,6 +83,23 @@ export type StartQuery = (params: {
 const SESSION_CLOSED_DENIAL = 'Sessão encerrada antes da decisão.'
 
 /**
+ * A ferramenta com que o Claude faz uma pergunta. Ela chega pelo mesmo `canUseTool` de qualquer
+ * outra — não há canal separado no SDK —, e é este nome que separa os dois tratamentos.
+ */
+const ASK_USER_QUESTION = 'AskUserQuestion'
+
+/** Uma pergunta em aberto: como devolvê-la ao SDK, e o `questions` cru que ela precisa espelhar. */
+interface PendingQuestion {
+  resolve: (result: PermissionResult) => void
+  /**
+   * O valor de `input.questions` **exatamente como veio**. O executor da ferramenta espelha este
+   * campo, então devolver a versão traduzida (a que a tela desenhou) mudaria o payload por baixo
+   * dele — o que se perde na tradução é justamente o que ele espera de volta.
+   */
+  questions: unknown
+}
+
+/**
  * Uma sessão viva: a fila de entrada, o `query()` que a consome, a máquina de estados e as
  * mensagens já vistas — mais os três canais por onde a casca observa tudo isso.
  *
@@ -88,6 +114,8 @@ export class SessionHandle {
   readonly #messages: ChatMessage[] = []
   /** Decisões de permissão em aberto, por id do pedido: resolvê-las é o que destrava o turno. */
   readonly #pending = new Map<string, (result: PermissionResult) => void>()
+  /** Perguntas em aberto, no mesmo papel — mapa próprio porque a resposta delas não é sim/não. */
+  readonly #pendingQuestions = new Map<string, PendingQuestion>()
   readonly #query: Query
   /** A leitura do `query()`, viva enquanto a sessão existir. `close()` espera por ela. */
   readonly #pump: Promise<void>
@@ -101,7 +129,7 @@ export class SessionHandle {
     this.id = id
     this.#query = startQuery({
       prompt: this.#queue,
-      canUseTool: (toolName, _input, options) => this.#requestPermission(toolName, options),
+      canUseTool: (toolName, input, options) => this.#requestDecision(toolName, input, options),
     })
     this.#pump = this.#consume()
   }
@@ -154,6 +182,27 @@ export class SessionHandle {
   }
 
   /**
+   * A escolha humana sobre uma pergunta. Pergunta desconhecida (ou já resolvida): no-op, como o
+   * `respondPermission`.
+   *
+   * `allow` com o `answers` no `updatedInput` é o único caminho que produz um `tool_result` limpo:
+   * `allow` puro executa a ferramenta sem quem a desenhe e devolve "The user did not answer the
+   * questions", e `deny` com a resposta na mensagem marca o resultado como erro — mentir para o
+   * modelo sobre o que aconteceu. O `questions` volta cru; ver `PendingQuestion`.
+   */
+  answerQuestion(requestId: string, answers: QuestionAnswers): void {
+    const pending = this.#pendingQuestions.get(requestId)
+    if (!pending) return
+
+    this.#pendingQuestions.delete(requestId)
+    pending.resolve({
+      behavior: 'allow',
+      updatedInput: { questions: pending.questions, answers },
+    })
+    this.#apply({ kind: 'question_answered' })
+  }
+
+  /**
    * Encerra a sessão e espera o `query()` terminar de verdade.
    *
    * A ordem importa: negar o que estava pendente destrava o turno corrente (uma permissão sem
@@ -200,6 +249,40 @@ export class SessionHandle {
     if (message.type === 'result') this.#apply({ kind: 'result', outcome: message })
   }
 
+  /**
+   * O único canal, dois tratamentos. O SDK entrega permissão e pergunta pelo mesmo `canUseTool`,
+   * e é aqui que eles se separam — uma permissão tem duas saídas fixas, uma pergunta tem N.
+   *
+   * Payload que não dá para desenhar cai de volta na permissão em vez de quebrar a sessão: um
+   * `AskUserQuestion` ilegível ainda pode ser negado, e negar é muito melhor do que travar o turno.
+   */
+  #requestDecision(
+    toolName: string,
+    input: unknown,
+    options: Parameters<CanUseTool>[2],
+  ): Promise<PermissionResult> {
+    if (toolName === ASK_USER_QUESTION) {
+      const raw: unknown = asRecord(input)?.['questions']
+      const questions = readQuestions(raw)
+      if (questions) return this.#requestAnswer(questions, raw, options)
+    }
+
+    return this.#requestPermission(toolName, options)
+  }
+
+  #requestAnswer(
+    questions: readonly Question[],
+    raw: unknown,
+    options: Parameters<CanUseTool>[2],
+  ): Promise<PermissionResult> {
+    const request: QuestionRequest = { id: options.toolUseID, questions }
+
+    return new Promise<PermissionResult>((resolve) => {
+      this.#pendingQuestions.set(request.id, { resolve, questions: raw })
+      this.#apply({ kind: 'question_requested', request })
+    })
+  }
+
   #requestPermission(
     toolName: string,
     options: Parameters<CanUseTool>[2],
@@ -218,9 +301,17 @@ export class SessionHandle {
     })
   }
 
+  /**
+   * Nega tudo que estava esperando uma pessoa — os dois mapas. Pergunta em aberto trava o turno
+   * exatamente como permissão em aberto, e um `close()` que esquecesse dela esperaria para sempre.
+   */
   #denyPending(): void {
-    const waiting = [...this.#pending.values()]
+    const waiting = [
+      ...this.#pending.values(),
+      ...[...this.#pendingQuestions.values()].map((pending) => pending.resolve),
+    ]
     this.#pending.clear()
+    this.#pendingQuestions.clear()
     for (const resolve of waiting) resolve({ behavior: 'deny', message: SESSION_CLOSED_DENIAL })
   }
 
@@ -247,24 +338,80 @@ export class SessionHandle {
  * atravessaria o core seria um `any`.
  */
 function assistantText(payload: unknown): string {
-  if (!isRecord(payload)) return ''
+  const message = asRecord(payload)
+  if (!message) return ''
 
-  const content: unknown = payload['content']
-  if (!Array.isArray(content)) return ''
-
-  const blocks: unknown[] = content
   const texts: string[] = []
-  for (const block of blocks) {
-    if (isRecord(block) && block['type'] === 'text' && typeof block['text'] === 'string') {
-      texts.push(block['text'])
-    }
+  for (const raw of asArray(message['content'])) {
+    const block = asRecord(raw)
+    if (block?.['type'] !== 'text') continue
+
+    const text = asString(block['text'])
+    if (text !== null) texts.push(text)
   }
 
   return texts.join('\n')
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+/**
+ * As perguntas de um `AskUserQuestion`, ou `null` quando o payload não dá para desenhar.
+ *
+ * O `input` do `canUseTool` é dado de fora — vem do modelo, não do nosso código —, então passa
+ * pelas mesmas guardas que a resposta do GraphQL. A linha entre exigir e tolerar é o uso do campo:
+ * o que **compõe a resposta** que volta ao modelo (a chave `question` e o `label` escolhido) tem de
+ * estar lá, porque adivinhá-lo seria responder outra coisa; o que só **decora a tela** (`header`,
+ * `description`) falta em silêncio, e `multiSelect` ausente vale pelo caso conservador.
+ */
+function readQuestions(raw: unknown): readonly Question[] | null {
+  const nodes = asArray(raw)
+  if (nodes.length === 0) return null
+
+  const questions: Question[] = []
+  for (const node of nodes) {
+    const record = asRecord(node)
+    const question = asString(record?.['question'])
+    const options = readOptions(record?.['options'])
+    if (question === null || options === null) return null
+
+    questions.push({
+      question,
+      header: asString(record?.['header']) ?? '',
+      multiSelect: record?.['multiSelect'] === true,
+      options,
+    })
+  }
+
+  return questions
+}
+
+function readOptions(raw: unknown): readonly QuestionOption[] | null {
+  const nodes = asArray(raw)
+  if (nodes.length === 0) return null
+
+  const options: QuestionOption[] = []
+  for (const node of nodes) {
+    const record = asRecord(node)
+    const label = asString(record?.['label'])
+    if (label === null) return null
+
+    options.push({ label, description: asString(record?.['description']) ?? '' })
+  }
+
+  return options
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function asArray(value: unknown): readonly unknown[] {
+  return Array.isArray(value) ? (value as readonly unknown[]) : []
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
 }
 
 function describe(error: unknown): string {

@@ -9,8 +9,8 @@ interface StateBadgeProps {
 /**
  * O rótulo e a cor de cada estado.
  *
- * `awaiting_input` e `awaiting_decision` são os dois únicos coloridos, de propósito: são os estados
- * em que a sessão parou para esperar uma pessoa. É o embrião do RF-8 — quando houver muitas sessões
+ * `awaiting_input`, `awaiting_decision` e `awaiting_answer` são os únicos coloridos, de propósito:
+ * são os estados em que a sessão parou para esperar uma pessoa. É o embrião do RF-8 — quando houver muitas sessões
  * num kanban, "quem está me esperando" precisa ser respondido pela cor, sem leitura.
  */
 const LOOKS: Record<SessionState['kind'], { label: string; className: string }> = {
@@ -29,6 +29,10 @@ const LOOKS: Record<SessionState['kind'], { label: string; className: string }> 
   awaiting_decision: {
     label: 'Decisão pendente',
     className: 'border-amber-400 bg-amber-400/15 text-amber-200',
+  },
+  awaiting_answer: {
+    label: 'Pergunta pendente',
+    className: 'border-sky-400 bg-sky-400/15 text-sky-200',
   },
   closed: {
     label: 'Encerrada',

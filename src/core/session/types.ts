@@ -13,6 +13,10 @@ export type {
   ChatMessage,
   PermissionDecision,
   PermissionRequest,
+  Question,
+  QuestionAnswers,
+  QuestionOption,
+  QuestionRequest,
   SessionInit,
   SessionState,
 } from '../../shared/session'

@@ -53,11 +53,17 @@ function lerArquivos(diretorioRelativo: string): Arquivo[] {
 
 describe('a superfície de board é somente-leitura', () => {
   it('IPC_INVOKE é exatamente os canais de sessão mais a leitura do board', () => {
+    // **A declaração dos três canais do cartão-chat**, que é o que esta canária cobra de quem os
+    // acrescentou: `answerQuestion` responde um `AskUserQuestion` para a sessão; `chooseFolder`
+    // abre o seletor de diretório e guarda a escolha em memória no main; `questionRequest` é o
+    // aviso da pergunta chegando à tela. **Nenhum dos três toca o board** — nem para ler.
     expect(IPC_INVOKE).toEqual({
       start: 'session:start',
       send: 'session:send',
       respondPermission: 'session:respond-permission',
+      answerQuestion: 'session:answer-question',
       close: 'session:close',
+      chooseFolder: 'repo:choose-folder',
       readBoard: 'board:read',
     })
   })
@@ -68,6 +74,7 @@ describe('a superfície de board é somente-leitura', () => {
       message: 'session:message',
       state: 'session:state',
       permissionRequest: 'session:permission-request',
+      questionRequest: 'session:question-request',
       board: 'board:changed',
     })
   })

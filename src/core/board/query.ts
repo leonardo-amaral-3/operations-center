@@ -67,3 +67,25 @@ fragment BoardFields on ProjectV2 {
  * simplesmente não mostra a etiqueta.
  */
 export const CARD_FIELDS = ['Tipo', 'Severidade', 'Classe', 'Rota'] as const
+
+/**
+ * As estações que a norma da esteira opera com skill `gm-*` dedicada — e que por isso conversam.
+ *
+ * Casadas por **nome**, invertendo de propósito o princípio que posiciona o cartão pelo `optionId`.
+ * O nome pertence à norma da esteira e é idêntico nos dois boards reais; o `optionId` pertence ao
+ * board e é diferente em cada um. Fixar `optionId` aqui faria todo cartão virar não-conversável
+ * **em silêncio** ao apontar o app para outro board — o pior modo de falha possível para uma
+ * decisão de UI.
+ *
+ * Ficam de fora 🧪 Validação em Dev, que é checklist humano e não tem skill, e ✅ Produção, onde o
+ * trabalho já aconteceu — o `gm-release` aparece naquela linha da norma dividindo espaço com a
+ * automação de tag, mas a estação dedicada dele é 🚂 Release.
+ */
+export const CONVERSABLE_STATIONS = [
+  'Triagem',
+  'Backlog',
+  'Especificação',
+  'Implementação',
+  'Revisão',
+  'Release',
+] as const
