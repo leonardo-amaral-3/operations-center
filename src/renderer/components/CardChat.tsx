@@ -7,6 +7,8 @@ import { isFala, MessageBubble } from './MessageBubble'
 import { PermissionPrompt } from './PermissionPrompt'
 import { QuestionPrompt } from './QuestionPrompt'
 import { StateBadge } from './StateBadge'
+import { ToolEntry } from './ToolEntry'
+import { TurnPulse } from './TurnPulse'
 
 /**
  * O que o kanban guarda da sessão de um cartão para continuar desenhando-a depois que o chat sai da
@@ -100,6 +102,11 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
   }
 
   const dead = view.state.kind === 'closed' || view.state.kind === 'failed'
+  // A outra metade do CA-4, e ela mora aqui porque é aqui que a lista está: silêncio com ferramenta
+  // rodando é o normal de uma ferramenta demorada, e acusá-lo ensinaria a ignorar a marca.
+  const somethingRunning = view.messages.some(
+    (message) => message.role === 'tool' && message.status === 'running',
+  )
   // A caixa trava enquanto há pergunta aberta, e **não** trava durante uma permissão: com a pergunta
   // o turno está parado esperando o `tool_result`, e o que fosse digitado aqui entraria na fila
   // atrás de uma resposta que ninguém deu. A saída para "nenhuma dessas" é o campo livre da própria
@@ -134,8 +141,12 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
         {/* A nota (`notice`) é o app falando sobre a sessão, e por isso não é bolha de ninguém: sem
             o desvio, o ternário abaixo a rotularia como fala do Claude. O `data-testid="message"`
             continua para ela ser contável pela mesma via dos seletores do smoke. */}
-        {view.messages.map((message) =>
-          isFala(message) ? (
+        {view.messages.map((message) => {
+          // A ação entra na conversa pela mesma porta que a fala, e na posição em que aconteceu:
+          // é isso que faz a trilha ser histórico, e não um painel ao lado dele.
+          if (message.role === 'tool') return <ToolEntry key={message.id} entry={message} />
+
+          return isFala(message) ? (
             <MessageBubble key={message.id} message={message} scale="xs" />
           ) : (
             <p
@@ -146,8 +157,8 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
             >
               {message.text}
             </p>
-          ),
-        )}
+          )
+        })}
       </div>
 
       {view.permission ? (
@@ -161,6 +172,10 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
           <QuestionPrompt request={view.question} onAnswer={answer} />
         </div>
       ) : null}
+
+      {/* Entre o histórico e a caixa: é onde o spinner do Claude Code vive, e o único lugar em que
+          o scroll da conversa não o leva embora justamente quando ele importa. */}
+      <TurnPulse activity={view.activity} somethingRunning={somethingRunning} />
 
       <textarea
         data-testid="card-chat-input"

@@ -7,6 +7,8 @@ import type {
   SDKMessage,
   SDKResultMessage,
   SDKSystemMessage,
+  SDKTaskStartedMessage,
+  SDKThinkingTokensMessage,
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk'
 
@@ -247,6 +249,120 @@ export function assistantMessage(text: string): SDKAssistantMessage {
       stop_sequence: null,
       usage: { input_tokens: 1, output_tokens: 1 },
     },
+    parent_tool_use_id: null,
+    uuid: nextUuid(),
+    session_id: SESSION_ID,
+  }
+}
+
+/** Uma chamada de ferramenta do roteiro: o que o bloco `tool_use` carrega. */
+export interface FakeToolUse {
+  id: string
+  name: string
+  input?: Record<string, unknown>
+}
+
+/**
+ * A mensagem de assistente que chama ferramentas.
+ *
+ * `parentId` preenchido é o quadro de **subagente**: com `forwardSubagentText: false` o texto do
+ * subagente não é encaminhado, mas os `tool_use` dele são, com o `parent_tool_use_id` do `Agent`
+ * que os gerou. É essa a forma que o CA-5 exercita.
+ */
+export function assistantToolUse(
+  uses: readonly FakeToolUse[],
+  parentId: string | null = null,
+): SDKAssistantMessage {
+  return {
+    type: 'assistant',
+    message: {
+      id: `msg_${String(counter)}`,
+      type: 'message',
+      role: 'assistant',
+      model: 'fake-model',
+      content: uses.map((use) => ({
+        type: 'tool_use' as const,
+        id: use.id,
+        name: use.name,
+        input: use.input ?? {},
+      })),
+      stop_reason: 'tool_use',
+      stop_sequence: null,
+      usage: { input_tokens: 1, output_tokens: 1 },
+    },
+    parent_tool_use_id: parentId,
+    uuid: nextUuid(),
+    session_id: SESSION_ID,
+  }
+}
+
+/**
+ * O resultado de uma ferramenta, que o SDK devolve como mensagem de **usuário**.
+ *
+ * `is_error` só é escrito quando é `true`: no sucesso o SDK **omite** o campo em vez de mandá-lo
+ * `false`, e um fake que mandasse `false` esconderia justamente o caso que a guarda `=== true`
+ * existe para tratar.
+ */
+export function toolResult(toolUseId: string, isError = false): SDKUserMessage {
+  return {
+    type: 'user',
+    message: {
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: toolUseId,
+          content: isError ? 'falhou' : 'ok',
+          ...(isError ? { is_error: true } : {}),
+        },
+      ],
+    },
+    parent_tool_use_id: null,
+    uuid: nextUuid(),
+    session_id: SESSION_ID,
+  }
+}
+
+/**
+ * Um quadro de raciocínio — o único heartbeat que o SDK dá, a cada ~1,3s enquanto o modelo pensa.
+ *
+ * Os dois números são pedidos separadamente porque no SDK eles são coisas diferentes:
+ * `estimated_tokens` é o **acumulado** do bloco corrente e `estimated_tokens_delta` é o incremento
+ * deste quadro. Um default que derivasse um do outro esconderia justamente o caso que o core trata
+ * — o quadro perdido, em que a soma dos deltas deixa de bater com o acumulado.
+ */
+export function thinkingTokens(estimated: number, delta: number): SDKThinkingTokensMessage {
+  return {
+    type: 'system',
+    subtype: 'thinking_tokens',
+    estimated_tokens: estimated,
+    estimated_tokens_delta: delta,
+    uuid: nextUuid(),
+    session_id: SESSION_ID,
+  }
+}
+
+/** O `task_started`, que traz a frase que o próprio Claude Code escreveu para a chamada. */
+export function taskStarted(toolUseId: string, description: string): SDKTaskStartedMessage {
+  return {
+    type: 'system',
+    subtype: 'task_started',
+    task_id: `task-${toolUseId}`,
+    tool_use_id: toolUseId,
+    description,
+    uuid: nextUuid(),
+    session_id: SESSION_ID,
+  }
+}
+
+/**
+ * O eco do texto de um subagente, que chega como mensagem de **usuário** com bloco `text`. Existe
+ * no roteiro para provar que ele **não** vira balão: é o que a regra "só `tool_result`" protege.
+ */
+export function userEcho(text: string): SDKUserMessage {
+  return {
+    type: 'user',
+    message: { role: 'user', content: [{ type: 'text', text }] },
     parent_tool_use_id: null,
     uuid: nextUuid(),
     session_id: SESSION_ID,

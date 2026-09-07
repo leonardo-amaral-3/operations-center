@@ -3,9 +3,20 @@ import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_SETTING_SOURCES, SessionHost } from '../../src/core/session/SessionHost'
 import { INTERRUPTED_NOTICE } from '../../src/core/session/SessionHandle'
-import type { SessionHandle } from '../../src/core/session/SessionHandle'
+import type { SessionHandle, TurnPulseCore } from '../../src/core/session/SessionHandle'
 import type { SessionState } from '../../src/core/session/state'
-import { abortedResult, assistantMessage, createFakeQuery, successResult } from '../fakes/fakeQuery'
+import type { ChatMessage, ChatToolUse } from '../../src/shared/session'
+import {
+  abortedResult,
+  assistantMessage,
+  assistantToolUse,
+  createFakeQuery,
+  successResult,
+  taskStarted,
+  thinkingTokens,
+  toolResult,
+  userEcho,
+} from '../fakes/fakeQuery'
 import type { FakeQuery, FakeTurn } from '../fakes/fakeQuery'
 
 const CWD = '/tmp/sessao'
@@ -33,6 +44,19 @@ const isKind =
   (kind: SessionState['kind']) =>
   (state: SessionState): boolean =>
     state.kind === kind
+
+/**
+ * O texto que uma mensagem mostra. A união tem dois lados e só um deles tem `text`; a entrada de
+ * ferramenta responde com o nome, que é o que ela leva para a tela.
+ */
+function textOf(message: ChatMessage): string {
+  return message.role === 'tool' ? message.name : message.text
+}
+
+/** Só a trilha de ferramentas, já estreitada — o resto da conversa não interessa a estes casos. */
+function trilha(handle: SessionHandle): ChatToolUse[] {
+  return handle.messages.filter((message): message is ChatToolUse => message.role === 'tool')
+}
 
 function start(fake: FakeQuery, model?: string): SessionHandle {
   return new SessionHost({ query: fake.query, model }).start({ cwd: CWD })
@@ -114,12 +138,14 @@ describe('SessionHost', () => {
     const handle = start(fake)
 
     const anunciadas: string[] = []
-    handle.on('message', (message) => anunciadas.push(message.text))
+    handle.on('message', (message) => anunciadas.push(textOf(message)))
 
     handle.send('oi')
     await untilState(handle, isKind('awaiting_input'))
 
-    expect(handle.messages.map((message) => ({ role: message.role, text: message.text }))).toEqual([
+    expect(
+      handle.messages.map((message) => ({ role: message.role, text: textOf(message) })),
+    ).toEqual([
       { role: 'user', text: 'oi' },
       { role: 'assistant', text: 'li: oi' },
     ])
@@ -185,7 +211,7 @@ describe('SessionHost', () => {
     await untilState(handle, isKind('awaiting_input'))
 
     expect(decisoes).toEqual(['allow'])
-    expect(handle.messages.at(-1)?.text).toBe('escrito: crie o arquivo')
+    expect(handle.messages.map(textOf).at(-1)).toBe('escrito: crie o arquivo')
   })
 
   it('negar devolve a recusa ao SDK e a sessão volta a trabalhar', async () => {
@@ -302,7 +328,7 @@ describe('SessionHost', () => {
         },
       },
     ])
-    expect(handle.messages.at(-1)?.text).toBe('escolhido: escolha uma cor')
+    expect(handle.messages.map(textOf).at(-1)).toBe('escolhido: escolha uma cor')
   })
 
   it('o questions volta cru, e não a versão que a tela desenhou', async () => {
@@ -662,7 +688,9 @@ describe('SessionHost', () => {
 
     // Mesma entrada, mesmo `query`: os dois textos chegaram lá, na ordem em que foram ditos.
     expect(fake.received).toEqual(['conte até 200', 'responda apenas: SEGUE'])
-    expect(handle.messages.map((message) => ({ role: message.role, text: message.text }))).toEqual([
+    expect(
+      handle.messages.map((message) => ({ role: message.role, text: textOf(message) })),
+    ).toEqual([
       { role: 'user', text: 'conte até 200' },
       { role: 'notice', text: INTERRUPTED_NOTICE },
       { role: 'user', text: 'responda apenas: SEGUE' },
@@ -689,7 +717,9 @@ describe('SessionHost', () => {
     handle.stop()
     await untilState(handle, isKind('awaiting_input'))
 
-    expect(handle.messages.map((message) => ({ role: message.role, text: message.text }))).toEqual([
+    expect(
+      handle.messages.map((message) => ({ role: message.role, text: textOf(message) })),
+    ).toEqual([
       { role: 'user', text: 'conte até 200' },
       { role: 'assistant', text: 'comecei: conte até 200' },
       { role: 'notice', text: INTERRUPTED_NOTICE },
@@ -746,5 +776,283 @@ describe('SessionHost', () => {
     expect(ordem).toEqual(['mensagem:user', 'estado:working'])
 
     await untilState(handle, isKind('awaiting_input'))
+  })
+
+  it('a ferramenta vira uma entrada só, que sai de running para done sem virar duas', async () => {
+    const fake = createFakeQuery({
+      turn: () =>
+        Promise.resolve([
+          assistantMessage('vou ler o package.json'),
+          assistantToolUse([
+            { id: 'toolu_r1', name: 'Read', input: { file_path: '/repo/package.json' } },
+          ]),
+          toolResult('toolu_r1'),
+          successResult(),
+        ]),
+    })
+    const handle = start(fake)
+
+    const degraus: string[] = []
+    handle.on('message', (message) => {
+      if (message.role === 'tool') degraus.push(message.status)
+    })
+
+    handle.send('leia o package.json')
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(trilha(handle)).toEqual([
+      {
+        id: 'toolu_r1',
+        role: 'tool',
+        name: 'Read',
+        detail: '/repo/package.json',
+        headline: '',
+        parentId: null,
+        status: 'done',
+      },
+    ])
+    // Um fato só que muda de status: os dois degraus saíram pelo mesmo canal, com o mesmo id, e a
+    // conversa não ganhou uma segunda linha para dizer que a mesma leitura terminou.
+    expect(degraus).toEqual(['running', 'done'])
+  })
+
+  it('is_error marca erro, e a ausência do campo é sucesso', async () => {
+    const fake = createFakeQuery({
+      turn: () =>
+        Promise.resolve([
+          assistantToolUse([
+            { id: 'toolu_ok', name: 'Read', input: { file_path: '/repo/package.json' } },
+            { id: 'toolu_ko', name: 'Read', input: { file_path: '/repo/nao-existe.ts' } },
+          ]),
+          toolResult('toolu_ok'),
+          toolResult('toolu_ko', true),
+          successResult(),
+        ]),
+    })
+    const handle = start(fake)
+
+    handle.send('leia os dois')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // A ordem é a do `content`, e é ela que faz a trilha se ler como a sequência que aconteceu.
+    expect(trilha(handle).map((entrada) => [entrada.detail, entrada.status])).toEqual([
+      ['/repo/package.json', 'done'],
+      ['/repo/nao-existe.ts', 'error'],
+    ])
+  })
+
+  it('o que não relatou até o result termina aborted, e nada sobrevive running', async () => {
+    const fake = createFakeQuery({
+      turn: () =>
+        Promise.resolve([
+          assistantToolUse([{ id: 'toolu_b1', name: 'Bash', input: { command: 'sleep 60' } }]),
+          successResult(),
+        ]),
+    })
+    const handle = start(fake)
+
+    handle.send('rode o comando')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // `aborted` e não `error`: ela não falhou, ela não chegou a relatar. E o estado terminal é o
+    // que impede uma entrada presa em `running` de desligar para sempre o "nada está rodando".
+    expect(trilha(handle).map((entrada) => entrada.status)).toEqual(['aborted'])
+    expect(trilha(handle).some((entrada) => entrada.status === 'running')).toBe(false)
+  })
+
+  it('o detalhe é uma linha só, cortada — e vazia quando nenhum campo identifica a chamada', async () => {
+    const comando = ['echo um', 'echo   dois', 'z'.repeat(400)].join('\n')
+    const fake = createFakeQuery({
+      turn: () =>
+        Promise.resolve([
+          assistantToolUse([
+            { id: 'toolu_b2', name: 'Bash', input: { command: comando } },
+            {
+              id: 'toolu_q1',
+              name: 'AskUserQuestion',
+              // Nenhum campo da lista casa com o input dela: o que a pergunta diz já está no
+              // prompt que a tela desenha logo abaixo, e repeti-lo no detalhe seria ruído.
+              input: { questions: [{ question: 'qual cor?', options: [{ label: 'azul' }] }] },
+            },
+          ]),
+          successResult(),
+        ]),
+    })
+    const handle = start(fake)
+
+    handle.send('rode e pergunte')
+    await untilState(handle, isKind('awaiting_input'))
+
+    const [bash, pergunta] = trilha(handle)
+    // Truncar no core, e não na tela: sem isto o comando inteiro atravessaria a ponte para caber
+    // numa linha de 120 caracteres.
+    expect(bash?.detail).toHaveLength(121)
+    expect(bash?.detail.endsWith('…')).toBe(true)
+    expect(bash?.detail.startsWith('echo um echo dois z')).toBe(true)
+    expect(bash?.detail).not.toMatch(/\s{2}|\n/)
+
+    expect(pergunta?.name).toBe('AskUserQuestion')
+    expect(pergunta?.detail).toBe('')
+  })
+
+  it('a trilha fica na conversa depois do turno, na posição em que nasceu', async () => {
+    const fake = createFakeQuery({
+      turn: () =>
+        Promise.resolve([
+          assistantMessage('vou ler'),
+          assistantToolUse([
+            { id: 'toolu_r2', name: 'Read', input: { file_path: '/repo/package.json' } },
+          ]),
+          toolResult('toolu_r2'),
+          assistantMessage('li: é um app Electron'),
+          successResult(),
+        ]),
+    })
+    const handle = start(fake)
+
+    handle.send('leia o package.json')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // A entrada é parte do histórico, intercalada em ordem com os balões — e o `tool_result` a
+    // atualizou **no lugar**, em vez de empurrá-la para o fim da conversa.
+    expect(handle.messages.map((message) => `${message.role}:${textOf(message)}`)).toEqual([
+      'user:leia o package.json',
+      'assistant:vou ler',
+      'tool:Read',
+      'assistant:li: é um app Electron',
+    ])
+  })
+
+  it('a ferramenta do subagente aponta para o Agent que a gerou', async () => {
+    const fake = createFakeQuery({
+      turn: () =>
+        Promise.resolve([
+          assistantToolUse([
+            { id: 'toolu_a1', name: 'Agent', input: { description: 'procurar o redutor' } },
+          ]),
+          // O quadro do subagente: mesmo com o texto dele não encaminhado, os `tool_use` chegam,
+          // com o `parent_tool_use_id` do `Agent` preenchido.
+          assistantToolUse(
+            [
+              { id: 'toolu_s1', name: 'Bash', input: { command: 'ls src' } },
+              { id: 'toolu_s2', name: 'Glob', input: { pattern: 'src/**/*.ts' } },
+            ],
+            'toolu_a1',
+          ),
+          successResult(),
+        ]),
+    })
+    const handle = start(fake)
+
+    handle.send('procure o redutor')
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(trilha(handle).map((entrada) => [entrada.name, entrada.parentId])).toEqual([
+      ['Agent', null],
+      ['Bash', 'toolu_a1'],
+      ['Glob', 'toolu_a1'],
+    ])
+  })
+
+  it('a frase do Claude Code vira headline, e não inventa entrada para id desconhecido', async () => {
+    const fake = createFakeQuery({
+      turn: () =>
+        Promise.resolve([
+          assistantToolUse([{ id: 'toolu_b3', name: 'Bash', input: { command: 'node timer.js' } }]),
+          taskStarted('toolu_b3', 'Run node timer for 20 seconds'),
+          // Id que nunca teve `tool_use`: sem nome e sem detalhe, uma entrada aqui não informaria
+          // nada — por isso é no-op, e não uma linha órfã.
+          taskStarted('toolu_fantasma', 'Uma tarefa que ninguém chamou'),
+          successResult(),
+        ]),
+    })
+    const handle = start(fake)
+
+    handle.send('rode o timer')
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(trilha(handle).map((entrada) => [entrada.id, entrada.headline])).toEqual([
+      ['toolu_b3', 'Run node timer for 20 seconds'],
+    ])
+  })
+
+  it('o contador de raciocínio é o acumulado do SDK, e zera na fronteira do turno', async () => {
+    const fake = createFakeQuery({
+      turn: () =>
+        Promise.resolve([
+          thinkingTokens(50, 50),
+          // O segundo quadro chega com um delta que **não** completa a soma — é o quadro perdido.
+          // Somar deltas daria 170 aqui; ler o acumulado dá os 450 que o SDK está afirmando.
+          thinkingTokens(450, 120),
+          assistantMessage('pensei e respondo'),
+          successResult(),
+        ]),
+    })
+    const handle = start(fake)
+
+    const pulsos: TurnPulseCore[] = []
+    handle.on('turn', (pulso) => pulsos.push(pulso))
+
+    handle.send('pense antes de responder')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // O `result` fecha o turno: o ordinal vira 2 e o contador volta a zero, que é o que apaga a
+    // linha viva do turno que acabou em vez de deixá-la contando o raciocínio do turno anterior.
+    expect(pulsos).toEqual([
+      { index: 1, thinkingTokens: 50 },
+      { index: 1, thinkingTokens: 450 },
+      { index: 2, thinkingTokens: 0 },
+    ])
+  })
+
+  it('o ordinal marca a fronteira mesmo quando a fila mantém a sessão trabalhando', async () => {
+    const fake = createFakeQuery({
+      turn: (text) => Promise.resolve([assistantMessage(`li: ${text}`), successResult(1)]),
+    })
+    const handle = start(fake)
+
+    const pulsos: TurnPulseCore[] = []
+    const ordem: string[] = []
+    handle.on('turn', (pulso) => {
+      pulsos.push(pulso)
+      ordem.push('turn')
+    })
+    handle.on('state', () => ordem.push('state'))
+
+    handle.send('oi')
+    await untilState(handle, (state) => state.kind === 'working' && handle.messages.length === 2)
+
+    // A sessão **não** saiu de `working`, então "entrou em working" não serviria de fronteira: sem
+    // o ordinal os dois turnos enfileirados apareceriam como um só, com o relógio somando os dois.
+    expect(handle.state).toEqual({ kind: 'working' })
+    expect(pulsos).toEqual([{ index: 2, thinkingTokens: 0 }])
+
+    // O primeiro `state` é o do `init`; o segundo e o `turn` são os do `result`, **nessa** ordem. É
+    // contrato, e não coincidência: o main decide o carimbo do relógio olhando o estado já
+    // atualizado, e é só assim que ele distingue "o turno acabou" de "o próximo da fila começou".
+    expect(ordem).toEqual(['state', 'state', 'turn'])
+  })
+
+  it('o texto que chega como mensagem de usuário não vira balão na conversa', async () => {
+    const fake = createFakeQuery({
+      turn: () =>
+        Promise.resolve([
+          assistantToolUse([
+            { id: 'toolu_a2', name: 'Agent', input: { description: 'ler o mapa' } },
+          ]),
+          // O eco do prompt do subagente chega assim. Ler o que não é `tool_result` o poria na
+          // conversa como fala de alguém — e ninguém o disse.
+          userEcho('Você é um agente de exploração. Leia o mapa e volte com…'),
+          toolResult('toolu_a2'),
+          successResult(),
+        ]),
+    })
+    const handle = start(fake)
+
+    handle.send('leia o mapa')
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(handle.messages.map((message) => message.role)).toEqual(['user', 'tool'])
+    expect(trilha(handle).map((entrada) => entrada.status)).toEqual(['done'])
   })
 })
