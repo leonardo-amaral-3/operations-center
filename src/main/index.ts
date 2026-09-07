@@ -9,6 +9,7 @@ import { BoardReader, CardReader, ConversationIndex, RepoIndex, SessionHost } fr
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen } from '../shared/ipc'
+import { THEME_FLAG } from '../shared/theme'
 import { registerBoardIpc } from './board'
 import type { BoardIpcOptions } from './board'
 import { registerCardIpc } from './card'
@@ -116,9 +117,10 @@ function createWindow(): BrowserWindow {
     title: 'Operations Center',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      // Como o preload sabe qual tela desenhar. É o mecanismo documentado do Electron para passar
-      // dados ao preload e funciona com `sandbox: true` — ler `process.env` lá dentro não.
-      additionalArguments: [`--oc-screen=${screen}`],
+      // Como o preload sabe qual tela desenhar e qual combinação de cores vale. É o mecanismo
+      // documentado do Electron para passar dados ao preload e funciona com `sandbox: true` — ler
+      // `process.env` lá dentro não.
+      additionalArguments: [`--oc-screen=${screen}`, `${THEME_FLAG}${theme}`],
       // O renderer nunca vê Node. Toda capacidade dele passa pelo contrato do preload.
       nodeIntegration: false,
       contextIsolation: true,
