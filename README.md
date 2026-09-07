@@ -35,13 +35,13 @@ process do Electron _é_ Node — então o host de sessões roda nele direto, se
 terceira linguagem no stack. A crítica de sempre ao Electron (carregar um runtime Node junto) é
 exatamente o que o torna a escolha certa aqui.
 
-| Camada          | O que vive lá                                                                                                                                                                                                                                                                                                                                     |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Camada          | O que vive lá                                                                                                                                                                                                                                                                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/core/`     | a lógica de produto agnóstica de casca: o host de sessões (fila de entrada, máquina de estados, `SessionHost`) e a leitura do GitHub — o board inteiro (`BoardReader`) e o conteúdo de um card sob demanda (`CardReader`), ambos com o cliente GraphQL injetado. Não conhece Electron, React nem HTTP, e uma regra de lint garante que continue assim |
-| `src/main/`     | o processo Node: cria as sessões com o `query` real do SDK, pega o token com o `gh`, fala com a API do GitHub, lê o ambiente e registra os canais IPC                                                                                                                                                                                             |
-| `src/preload/`  | o `contextBridge` — a única superfície que o renderer enxerga                                                                                                                                                                                                                                                                                     |
-| `src/renderer/` | React + Tailwind: o kanban (colunas, cartões e carimbo de frescor), a tela de chat da fatia vertical e a bolha de mensagem que as duas compartilham — ela desenha o markdown com [`react-markdown`](https://www.npmjs.com/package/react-markdown) + `remark-gfm`, e `rehype-raw` + `rehype-sanitize` (nessa ordem) no HTML embutido nas respostas |
-| `src/shared/`   | o contrato IPC e o vocabulário do board, compilados pelos dois lados                                                                                                                                                                                                                                                                              |
+| `src/main/`     | o processo Node: cria as sessões com o `query` real do SDK, pega o token com o `gh`, fala com a API do GitHub, lê o ambiente e registra os canais IPC                                                                                                                                                                                                 |
+| `src/preload/`  | o `contextBridge` — a única superfície que o renderer enxerga                                                                                                                                                                                                                                                                                         |
+| `src/renderer/` | React + Tailwind: o kanban (colunas, cartões e carimbo de frescor), a tela de chat da fatia vertical e a bolha de mensagem que as duas compartilham — ela desenha o markdown com [`react-markdown`](https://www.npmjs.com/package/react-markdown) + `remark-gfm`, e `rehype-raw` + `rehype-sanitize` (nessa ordem) no HTML embutido nas respostas     |
+| `src/shared/`   | o contrato IPC e o vocabulário do board, compilados pelos dois lados                                                                                                                                                                                                                                                                                  |
 
 A tela veste o [neobrutalism.dev](https://www.neobrutalism.dev/) sobre shadcn/ui: as primitivas ficam vendorizadas em `src/renderer/ui/`, o tema em modo claro fixo mora em `src/renderer/index.css`, e `tests/unit/design-system.test.ts` reprova a cor de paleta ou a casca escrita à mão fora dali.
 
@@ -67,15 +67,15 @@ lugar dos cartões.
 
 ## Comandos
 
-| Comando          | O que faz                                                                                                                                                                                                                                                |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `yarn dev`       | sobe o app com hot reload do renderer                                                                                                                                                                                                                    |
-| `yarn build`     | compila os três bundles (main, preload, renderer) em `out/`                                                                                                                                                                                              |
-| `yarn test`      | Vitest — as unidades do core. Sem rede, sem credencial, determinístico                                                                                                                                                                                   |
-| `yarn smoke`     | compila e roda os três smokes de ponta a ponta (Playwright + Electron): o **do kanban**, que lê uma fixture e não toca a rede, e os **dois que sobem sessão real** — o da fatia vertical e o do cartão-chat —, que precisam do login e **consomem cota** |
-| `yarn lint`      | ESLint                                                                                                                                                                                                                                                   |
-| `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                            |
-| `yarn format`    | Prettier                                                                                                                                                                                                                                                 |
+| Comando          | O que faz                                                                                                                                                                                                                                                                                      |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yarn dev`       | sobe o app com hot reload do renderer                                                                                                                                                                                                                                                          |
+| `yarn build`     | compila os três bundles (main, preload, renderer) em `out/`                                                                                                                                                                                                                                    |
+| `yarn test`      | Vitest — as unidades do core. Sem rede, sem credencial, determinístico                                                                                                                                                                                                                         |
+| `yarn smoke`     | compila e roda os quatro smokes de ponta a ponta (Playwright + Electron): os **dois que leem fixture** e não tocam a rede — o do kanban e o do conteúdo do cartão —, e os **dois que sobem sessão real** — o da fatia vertical e o do cartão-chat —, que precisam do login e **consomem cota** |
+| `yarn lint`      | ESLint                                                                                                                                                                                                                                                                                         |
+| `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                                                                  |
+| `yarn format`    | Prettier                                                                                                                                                                                                                                                                                       |
 
 `yarn lint`, `yarn typecheck` e `yarn test` formam o portão de qualidade, e são exatamente o que o
 CI roda a cada PR para `dev` e `main`. Os smokes ficam de fora do CI de propósito: o runner nem
@@ -116,12 +116,12 @@ chat — e agora **um clique num cartão já é um pedido**, porque a sessão da
 cartão aberto e esquecido não gasta nada enquanto ninguém fala com ele, mas dez cartões conversando
 são dez sessões disputando a mesma cota.
 
-**Dois dos três smokes sobem sessão real e consomem cota**: o da fatia vertical e o do cartão-chat,
-que é o mais caro dos dois — ele levanta uma sessão para conversar e outra ao provar que abrir um
-segundo cartão colapsa o primeiro. Os dois escapam do pior somando as mesmas duas coisas: `OC_MODEL`
-num modelo barato e `OC_ISOLATED=1` — este último é o que mais pesa, porque a maior parte daqueles
-20 centavos era carregamento de contexto. O do kanban não custa nada: lê uma fixture e nunca sobe
-sessão.
+**Dois dos quatro smokes sobem sessão real e consomem cota**: o da fatia vertical e o do
+cartão-chat, que é o mais caro dos dois — ele levanta uma sessão para conversar e outra ao provar
+que abrir um segundo cartão colapsa o primeiro. Os dois escapam do pior somando as mesmas duas
+coisas: `OC_MODEL` num modelo barato e `OC_ISOLATED=1` — este último é o que mais pesa, porque a
+maior parte daqueles 20 centavos era carregamento de contexto. Os outros dois não custam nada: o do
+kanban e o do conteúdo do cartão leem fixture e nunca sobem sessão.
 
 ## Como este projeto é desenvolvido
 
