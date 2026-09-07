@@ -50,7 +50,7 @@ const SMOKE_MODEL = 'haiku'
 /** Um turno do modelo, inclusive quando ele decide usar ferramenta. */
 const TURN_TIMEOUT = 180_000
 
-/** Depois do clique, voltar a `working` é síncrono no core: o que se espera aqui é só o IPC. */
+/** Depois do clique, o próximo estado é síncrono no core: o que se espera aqui é só o IPC. */
 const DECISION_TIMEOUT = 15_000
 
 /** Intervalo entre duas leituras do estado enquanto a sessão trabalha. */
@@ -358,10 +358,11 @@ test('CA-2: a permissão de escrita aparece no cartão e a decisão destrava o t
   })
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_decision')
 
+  // A decisão humana destrava o turno. O que vem **depois** dela não se afirma aqui: com a fila do
+  // #11, o estado seguinte tanto pode ser `working` quanto o próximo pedido, ao sabor de quantas
+  // ferramentas o modelo resolveu disparar no lote. Quem cobra o resto é o laço, que atravessa a
+  // fila inteira até a vez voltar.
   await cardLocator(CHAT_CARD).getByTestId('permission-allow').click()
-  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'working', {
-    timeout: DECISION_TIMEOUT,
-  })
 
   await allowUntilAwaitingInput(CHAT_CARD)
 
@@ -525,12 +526,31 @@ async function allowUntilAwaitingInput(card: FixtureCard): Promise<void> {
     }
 
     if (kind === 'awaiting_decision') {
-      await cardLocator(card).getByTestId('permission-allow').click()
-      // O prompt some da tela no clique, mas o estado só muda quando a resposta volta pela ponte.
-      // Sem esperar por isso, a volta do laço tentaria clicar num botão que já não existe.
-      await expect(state).not.toHaveAttribute('data-state', 'awaiting_decision', {
-        timeout: DECISION_TIMEOUT,
-      })
+      const prompt = cardLocator(card).getByTestId('permission-prompt')
+
+      // O crachá pode dizer `awaiting_decision` com o painel já fora da tela: o clique o esconde na
+      // hora e quem o repõe é o `state` seguinte, que vem pela ponte. Nessa janela não há o que
+      // decidir — e ler o `data-request` aqui esperaria por um painel que, se o próximo estado for
+      // `working`, não volta mais.
+      if ((await prompt.count()) === 0) {
+        await window.waitForTimeout(POLL_INTERVAL)
+        continue
+      }
+
+      const anterior = await prompt.getAttribute('data-request')
+      await prompt.getByTestId('permission-allow').click()
+
+      // O prompt sai da tela no clique, mas o **estado** pode não mudar: com a fila do #11, o
+      // próximo pedido mantém o `data-state` em `awaiting_decision`, e esperar por ele esgotaria o
+      // prazo com o app funcionando como a spec manda. O que muda sempre é *qual* pedido está em
+      // cartaz — ou não há mais nenhum.
+      await expect
+        .poll(
+          async () =>
+            (await prompt.count()) === 0 ? null : await prompt.getAttribute('data-request'),
+          { timeout: DECISION_TIMEOUT },
+        )
+        .not.toBe(anterior)
       continue
     }
 
