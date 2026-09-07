@@ -85,6 +85,9 @@ function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1100,
     height: 760,
+    // A cor do tema (`--background`, oklch(93.88% 0.033 300.19)) em sRGB. Sem isto o Chromium pinta a
+    // janela com o branco default antes do primeiro paint do renderer, e a abertura pisca.
+    backgroundColor: '#eee6fe',
     show: false,
     autoHideMenuBar: true,
     title: 'Operations Center',
