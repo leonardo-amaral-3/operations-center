@@ -12,7 +12,19 @@ export type { SessionState } from './types'
  */
 export type ResultOutcome = Pick<SDKResultMessage, 'subtype' | 'queued_turn_count'>
 
-/** O que acontece com a sessão. O `SessionHandle` traduz o fluxo do SDK nestes eventos. */
+/** O pedido que está na frente da fila — o que a máquina precisa saber para escolher o estado. */
+export type PendingRequest =
+  | { kind: 'permission'; request: PermissionRequest }
+  | { kind: 'question'; request: QuestionRequest }
+
+/**
+ * O que acontece com a sessão. O `SessionHandle` traduz o fluxo do SDK nestes eventos.
+ *
+ * Os pedidos entram por **dois** eventos, e não por um par pedido/resolvido de cada tipo: com a
+ * fila, "resolvi uma permissão" não implica mais "voltei a trabalhar" — implica "a frente da fila
+ * mudou, e talvez ela tenha esvaziado". Um `permission_resolved → working` seria manter no código a
+ * própria premissa que produziu o travamento do #11.
+ */
 export type SessionEvent =
   | { kind: 'init' }
   // O usuário falou. Opcional e ausente valendo `false` no `result`: os casos que falam de turnos
@@ -20,10 +32,10 @@ export type SessionEvent =
   // de fato tratam de parada.
   | { kind: 'sent' }
   | { kind: 'result'; outcome: ResultOutcome; interrupted?: boolean }
-  | { kind: 'permission_requested'; request: PermissionRequest }
-  | { kind: 'permission_resolved' }
-  | { kind: 'question_requested'; request: QuestionRequest }
-  | { kind: 'question_answered' }
+  /** A frente da fila mudou (chegou pedido novo, ou o que estava na frente saiu). */
+  | { kind: 'awaiting'; pending: PendingRequest; queued: number }
+  /** A fila esvaziou: não há mais ninguém esperando uma pessoa. */
+  | { kind: 'settled' }
   | { kind: 'failed'; reason: string }
   | { kind: 'closed' }
 
@@ -43,15 +55,13 @@ export function nextState(current: SessionState, event: SessionEvent): SessionSt
   switch (event.kind) {
     case 'init':
       return { kind: 'working' }
-    case 'permission_requested':
-      return { kind: 'awaiting_decision', request: event.request }
-    case 'permission_resolved':
-      return { kind: 'working' }
-    // O par da pergunta é simétrico ao da permissão, e por isso mesmo tem estado próprio: as duas
+    // Os dois estados de espera são simétricos, e por isso mesmo são estados distintos: as duas
     // param a sessão esperando uma pessoa, mas o que a tela desenha é outra coisa.
-    case 'question_requested':
-      return { kind: 'awaiting_answer', request: event.request }
-    case 'question_answered':
+    case 'awaiting':
+      return event.pending.kind === 'permission'
+        ? { kind: 'awaiting_decision', request: event.pending.request, queued: event.queued }
+        : { kind: 'awaiting_answer', request: event.pending.request, queued: event.queued }
+    case 'settled':
       return { kind: 'working' }
     // A iteração do `query()` também pode terminar por exceção — processo que não sobe, credencial
     // ausente — e nesse caminho não vem `result` nenhum. Sem este evento a sessão morreria como

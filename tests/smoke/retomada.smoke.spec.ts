@@ -44,6 +44,17 @@ const REPO_ROOT = join(__dirname, '..', '..')
 /** **Absoluto**, e é o ponto: o processo do Electron não roda com a `cwd` do runner. */
 const FIXTURE_PATH = join(REPO_ROOT, 'tests', 'fixtures', 'board.json')
 
+/**
+ * A outra metade da fixture: o conteúdo de cada card, como no `card-chat.smoke.spec.ts`.
+ *
+ * Ela entrou aqui no merge com o card #13, que fez **todo cartão aberto** ler o conteúdo dele. Sem
+ * esta porta o cliente de fixture lança, o `readCard` devolve `ok: false` e o cartão expandido deste
+ * smoke desenharia um painel de erro a cada abertura — sem derrubar nenhum passo, porque o que se
+ * afirma aqui é a conversa, e por isso mesmo: um erro permanente na tela que nenhum teste vê é
+ * exatamente o que esconde o próximo de verdade.
+ */
+const CARD_FIXTURE_PATH = join(REPO_ROOT, 'tests', 'fixtures', 'cards.json')
+
 /** Modelo barato: cota é recurso compartilhado com as sessões de terminal de quem roda isto. */
 const SMOKE_MODEL = 'haiku'
 
@@ -370,6 +381,8 @@ async function launch(): Promise<void> {
       ...inheritedEnv(),
       // A porta que troca o GitHub por um arquivo: o board deste smoke não toca a rede.
       OC_BOARD_FIXTURE: FIXTURE_PATH,
+      // E a do conteúdo do card, pelo mesmo motivo — ver o comentário da constante.
+      OC_CARD_FIXTURE: CARD_FIXTURE_PATH,
       // A porta que troca `~/.claude/projects` pela raiz do cenário — só para a **varredura de
       // repos**. O transcript da sessão continua nascendo na raiz de verdade, e é lá que a retomada
       // o procura.

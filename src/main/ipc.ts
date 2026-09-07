@@ -373,19 +373,6 @@ function forwardEvents(
 
     emit(IPC_EVENT.state, { sessionId: session.id, state })
 
-    // O `core` não publica um canal de permissão: o pedido chega dentro do estado, porque é ele que
-    // trava a sessão. O contrato o publica à parte para a tela poder abrir o prompt sem inspecionar
-    // o `kind` do estado — e os dois eventos descrevem o mesmo fato, na mesma ordem.
-    if (state.kind === 'awaiting_decision') {
-      emit(IPC_EVENT.permissionRequest, { sessionId: session.id, request: state.request })
-    }
-
-    // A pergunta tem o par próprio pela mesma razão, e canal próprio porque não é a mesma coisa: uma
-    // permissão tem duas saídas fixas, uma pergunta tem N opções e texto livre.
-    if (state.kind === 'awaiting_answer') {
-      emit(IPC_EVENT.questionRequest, { sessionId: session.id, request: state.request })
-    }
-
     publish()
   })
 

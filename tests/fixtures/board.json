@@ -26,7 +26,11 @@
     "MUDOU O BOARD_QUERY? RECAPTURE. Uma fixture capturada com uma versão anterior da consulta fica",
     "verde contra dados que a API não devolve mais — é o único ponto deste card onde algo pode",
     "apodrecer sem teste vermelho. Recapture com o documento que estiver em src/core/board/query.ts e",
-    "recoloque os cinco sintéticos no fim."
+    "recoloque os cinco sintéticos no fim.",
+    "",
+    "ESTA FIXTURE TEM PAR: tests/fixtures/cards.json guarda o conteúdo de cada issue daqui que vira",
+    "cartão. Mudou o CARD_QUERY, ou entrou/saiu cartão desta lista? Recapture cards.json também — uma",
+    "entrada faltando lá LANÇA na abertura do cartão, de propósito."
   ],
   "data": {
     "user": {

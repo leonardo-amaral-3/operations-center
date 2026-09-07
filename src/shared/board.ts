@@ -59,6 +59,32 @@ export interface Board {
   cards: readonly BoardCard[]
 }
 
+/** Um comentário da issue, já traduzido. */
+export interface CardComment {
+  id: string
+  /** Login de quem escreveu, ou `null`: a API devolve `author: null` para conta removida. */
+  author: string | null
+  /** ISO 8601, como a API devolve. Quem formata para a tela é a tela. */
+  createdAt: string
+  body: string
+  /**
+   * O `X` do marcador `<!-- gm:X -->` na primeira linha, ou `null`. É `string` solta e não uma
+   * união: a esteira ganha marcador novo sem pedir licença ao app, e um `'spec' | 'tasks'`
+   * transformaria um `gm:prd` futuro em comentário sem etiqueta **em silêncio**.
+   */
+  kind: string | null
+}
+
+/** O conteúdo de um card: o que está escrito nele, e não os metadados que o cartão já mostra. */
+export interface CardContent {
+  number: number
+  /** O corpo da issue. String vazia quando o card não tem corpo escrito. */
+  body: string
+  comments: readonly CardComment[]
+  /** `true` quando a issue tem mais comentários que `MAX_COMMENTS` — a tela precisa dizer isso. */
+  truncated: boolean
+}
+
 /**
  * O que a tela sabe do board. `board` e `error` coexistem de propósito: uma releitura que falha
  * não pode apagar cartões que estavam corretos.

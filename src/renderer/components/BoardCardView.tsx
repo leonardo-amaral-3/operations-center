@@ -3,15 +3,22 @@ import type { JSX } from 'react'
 
 import type { BoardCard } from '../../shared/board'
 import { Badge } from '../ui/badge'
+import { Button } from '../ui/button'
 import { Card } from '../ui/card'
 import { CardChat } from './CardChat'
 import type { CardSession } from './CardChat'
+import { CardContent } from './CardContent'
 import { ConversationBadge } from './ConversationBadge'
 import { StateBadge } from './StateBadge'
 
 interface BoardCardViewProps {
   card: BoardCard
-  /** A estação tem skill `gm-*` dedicada, logo o cartão conversa (CA-4). Vem decidido do core. */
+  /**
+   * A estação tem skill `gm-*` dedicada, logo o cartão **conversa**. Vem decidido do core.
+   *
+   * Desde o card #13 ele não decide mais se o cartão abre — só se o chat entra. Ver a emenda ao
+   * CA-4 do #6, mais abaixo.
+   */
   conversable: boolean
   expanded: boolean
   /** A sessão deste cartão, se o kanban já souber de alguma. */
@@ -23,14 +30,15 @@ interface BoardCardViewProps {
 }
 
 /**
- * O cartão: o número e as etiquetas, o título, o responsável — e, quando aberto, a conversa.
+ * O cartão: o número e as etiquetas, o título, o responsável — e, quando aberto, o que está escrito
+ * no card e a conversa sobre ele.
  *
  * Card fechado recebe tratamento apagado — menos contraste — para não competir com o que ainda está
  * em voo. É o caso da coluna ✅ Produção, que tende a crescer para sempre.
  *
- * Aberto, ele **continua sendo aquele card**: o cabeçalho segue desenhado em cima do `CardChat`, e
- * não é substituído por ele. É o que dá sentido à conversa acontecer aqui, e não num modal — a
- * posição na esteira é parte do assunto.
+ * Aberto, ele **continua sendo aquele card**: o cabeçalho segue desenhado em cima do conteúdo e do
+ * `CardChat`, e não é substituído por eles. É o que dá sentido a ler e conversar aqui, e não num
+ * modal — a posição na esteira é parte do assunto.
  */
 export function BoardCardView({
   card,
@@ -66,6 +74,9 @@ export function BoardCardView({
     'data-card-number': String(card.number),
     'data-card-column': card.columnId,
     'data-card-closed': card.closed ? 'true' : 'false',
+    // Conversabilidade virou atributo porque deixou de decidir se o cartão abre (ver abaixo): é
+    // como o smoke afirma o CA-3 do #13 sem reimplementar a regra que o core já decidiu.
+    'data-card-conversable': conversable ? 'true' : 'false',
     // Vazio quando sem dono, e não ausente: é o que deixa o teste afirmar "não tem responsável"
     // em vez de só não achar o atributo.
     'data-card-assignees': card.assignees.join(','),
@@ -77,17 +88,6 @@ export function BoardCardView({
     session && session.state.kind !== 'closed' && session.state.kind !== 'failed' ? session : null
 
   /**
-   * Um cartão com conversa — viva **ou** a retomar — abre **mesmo fora de coluna conversável**.
-   *
-   * O CA-4 do card #6 fala de *começar* conversa onde não há skill; o CA-6 exige que uma conversa já
-   * existente continue alcançável quando o card anda no board — inclusive para 🧪 Validação em Dev
-   * ou ✅ Produção. `dormant` entra pelo mesmo motivo e com a mesma força: um card que andou de
-   * coluna não pode trancar a conversa que o levou até lá só porque o app foi reiniciado no
-   * caminho. Cartão sem conversa nenhuma nessas colunas segue inerte, que é o caso do CA-4.
-   */
-  const clickable = conversable || live !== null || dormant
-
-  /**
    * A face do cartão, e **só** a face: a casca — canto, borda de 2px, sombra dura — vem da `Card`.
    *
    * Um mecanismo só para o cartão fechado: o `opacity-60` apaga o cartão inteiro. Antes havia dois
@@ -95,8 +95,8 @@ export function BoardCardView({
    */
   const skin = `bg-secondary-background px-3 py-2.5 ${card.closed ? 'opacity-60' : ''}`
 
-  // `div` e não `p`: no cartão clicável tudo isto vive dentro de um `button`, cujo conteúdo só
-  // admite frase — e o mesmo corpo serve os três casos.
+  // `div` e não `p`: no cartão fechado tudo isto vive dentro de um `button`, cujo conteúdo só
+  // admite frase — e o mesmo corpo serve os dois casos.
   const body = (
     <>
       <div className="flex flex-wrap items-center gap-1.5">
@@ -155,28 +155,61 @@ export function BoardCardView({
     </>
   )
 
+  /**
+   * **Todo cartão abre** — emenda datada (2026-09-06) ao CA-4 do card #6, feita pelo card #13.
+   *
+   * Aquele critério exigia `article` inerte em coluna sem skill dedicada. O que sobrevive dele é a
+   * metade que importa, e ela continua sendo obedecida logo abaixo: ali **nenhuma sessão sobe**. O
+   * que cai é "não abre" — um card em ✅ Produção é justamente onde se quer ler o que subiu, e ler
+   * não precisa de skill nenhuma.
+   *
+   * Logo: a conversabilidade decide **o chat**, e não a abertura.
+   *
+   * E o `dormant` decide junto com ela, pelo mesmo motivo que o `live`: o CA-6 do #6 exige que uma
+   * conversa já existente continue alcançável quando o card anda no board — inclusive para 🧪
+   * Validação em Dev ou ✅ Produção, que não têm skill. Um card que andou de coluna não pode
+   * trancar a conversa que o levou até lá só porque o app foi reiniciado no caminho (CA-1 do #22).
+   */
   if (expanded) {
     return (
       <Card asChild className={skin}>
         <article ref={open} {...anchors}>
           {body}
-          <CardChat
-            itemId={card.itemId}
-            onCollapse={() => {
-              onToggle(card.itemId)
-            }}
-            onSession={onSession}
-          />
-        </article>
-      </Card>
-    )
-  }
 
-  // Coluna sem skill dedicada e sem sessão: `article` inerte, sem handler nenhum (CA-4).
-  if (!clickable) {
-    return (
-      <Card asChild className={skin}>
-        <article {...anchors}>{body}</article>
+          {/* Acima da conversa, e dentro do próprio cartão: o conteúdo é o assunto, e a conversa
+              acontece sobre ele. `hasSession` só escolhe se a seção nasce aberta ou recolhida — e o
+              dormente conta como sessão pela regra que o próprio `CardContent` enuncia: quem clica
+              num cartão com conversa guardada abriu para falar, não para ler. */}
+          <CardContent itemId={card.itemId} hasSession={live !== null || dormant} />
+
+          {conversable || live || dormant ? (
+            <CardChat
+              itemId={card.itemId}
+              onCollapse={() => {
+                onToggle(card.itemId)
+              }}
+              onSession={onSession}
+            />
+          ) : (
+            // Sem skill, sem sessão e sem conversa guardada: o cartão abriu para ser lido, e a
+            // única ação que ele oferece é fechar. A âncora `card-collapse` é a mesma do `CardChat`
+            // de propósito — fechar um cartão é fechar um cartão, e o smoke não deve precisar saber
+            // qual ramo desenhou o botão.
+            <div className="mt-3 flex justify-end border-t-2 border-border pt-3">
+              <Button
+                type="button"
+                data-testid="card-collapse"
+                variant="neutral"
+                size="xs"
+                onClick={() => {
+                  onToggle(card.itemId)
+                }}
+              >
+                Fechar
+              </Button>
+            </div>
+          )}
+        </article>
       </Card>
     )
   }

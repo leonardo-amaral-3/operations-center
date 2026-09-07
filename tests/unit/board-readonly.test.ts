@@ -53,10 +53,10 @@ function lerArquivos(diretorioRelativo: string): Arquivo[] {
 
 describe('a superfície de board é somente-leitura', () => {
   it('IPC_INVOKE é exatamente os canais de sessão mais a leitura do board', () => {
-    // **A declaração dos três canais do cartão-chat**, que é o que esta canária cobra de quem os
-    // acrescentou: `answerQuestion` responde um `AskUserQuestion` para a sessão; `chooseFolder`
-    // abre o seletor de diretório e guarda a escolha em memória no main; `questionRequest` é o
-    // aviso da pergunta chegando à tela. **Nenhum dos três toca o board** — nem para ler.
+    // **A declaração dos dois canais do cartão-chat**, que é o que esta canária cobra de quem os
+    // acrescentou: `answerQuestion` responde um `AskUserQuestion` para a sessão, e `chooseFolder`
+    // abre o seletor de diretório e guarda a escolha em memória no main. **Nenhum dos dois toca o
+    // board** — nem para ler.
     //
     // E a do canal do #12: `stop` interrompe o turno em curso da sessão e **não toca o board** —
     // nem para ler. Ele fica colado no `close` de propósito: uma para a vez que está rodando, a
@@ -74,6 +74,7 @@ describe('a superfície de board é somente-leitura', () => {
       close: 'session:close',
       chooseFolder: 'repo:choose-folder',
       readBoard: 'board:read',
+      readCard: 'card:read',
       readConversations: 'conversations:read',
     })
   })
@@ -88,27 +89,37 @@ describe('a superfície de board é somente-leitura', () => {
     // recuperável. Canal próprio, e não carona no do board, porque o board tem throttle de 10s e
     // fala do GitHub — isto é estado do app. **Não toca o board**, nem para ler: o conjunto sai do
     // índice de conversas, que só conhece o registro em disco e os transcripts.
+    //
+    // **A declaração da remoção do #11**: `permissionRequest` e `questionRequest` saíram. Eles
+    // diziam o mesmo fato que o `state` já carrega — o pedido que trava a sessão — e ter dois
+    // caminhos para o mesmo fato *era* o bug: um segundo pedido concorrente chegava pelo canal e
+    // apagava o primeiro da tela. O pedido em cartaz agora se deriva do `state`, que publica a
+    // frente da fila. Apagar canal é tão relatável quanto acrescentar, e é esta igualdade exata
+    // que obriga quem apagou a vir aqui declarar.
     expect(IPC_EVENT).toEqual({
       init: 'session:init',
       message: 'session:message',
       state: 'session:state',
-      permissionRequest: 'session:permission-request',
-      questionRequest: 'session:question-request',
       activity: 'session:activity',
       board: 'board:changed',
       conversations: 'conversations:changed',
     })
   })
 
-  it('o único canal de board alcançável a partir da tela é de leitura', () => {
+  it('todo canal que toca o GitHub é de leitura', () => {
     // Redundante com a igualdade exata acima, e de propósito: aquela quebra em qualquer mudança de
     // canal e diz "veio canal novo"; esta diz *o que* o CA-2 proíbe, para quem chegar depois com o
     // teste vermelho na mão.
-    const canaisDeBoard = [...Object.values(IPC_INVOKE), ...Object.values(IPC_EVENT)].filter(
-      (canal) => canal.startsWith('board:'),
+    //
+    // O alcance é o do CA-6 do #13: `card:read` lê a issue e não o Project, e mantê-lo fora do
+    // prefixo `board:` foi decisão consciente — em troca, a asserção deixa de falar de um prefixo e
+    // passa a afirmar a invariante inteira.
+    const canaisDoGitHub = [...Object.values(IPC_INVOKE), ...Object.values(IPC_EVENT)].filter(
+      (canal) => canal.startsWith('board:') || canal.startsWith('card:'),
     )
 
-    expect(canaisDeBoard).toEqual(['board:read', 'board:changed'])
+    // A ordem é a de declaração dos mapas: os `invoke` primeiro, o evento depois.
+    expect(canaisDoGitHub).toEqual(['board:read', 'card:read', 'board:changed'])
   })
 
   it('nenhum arquivo que escreve ou envia GraphQL contém um documento de escrita', () => {

@@ -1,8 +1,8 @@
 /**
- * O documento que o app manda ao GitHub — e o único.
+ * Os dois documentos que o app manda ao GitHub — e os dois são de leitura.
  *
- * Está exportado, e não escondido dentro do `BoardReader`, porque o CA-2 precisa poder afirmar
- * coisas sobre ele: a canária de somente-leitura varre este diretório inteiro atrás de qualquer
+ * Estão exportados, e não escondidos dentro dos leitores, porque o CA-2 do #4 precisa poder afirmar
+ * coisas sobre eles: a canária de somente-leitura varre este diretório inteiro atrás de qualquer
  * documento de escrita. Por isso a palavra que ela procura não aparece nem em comentário aqui —
  * um falso positivo numa canária a transforma em ruído, e canária ruidosa é canária desligada.
  */
@@ -52,6 +52,33 @@ fragment BoardFields on ProjectV2 {
             field { ... on ProjectV2SingleSelectField { name } }
           }
         }
+      }
+    }
+  }
+}
+`
+
+/**
+ * O conteúdo de **uma** issue, pedido sob demanda quando um cartão abre.
+ *
+ * Documento separado, e não campos a mais no `BOARD_QUERY`, porque o board relê a cada foco de
+ * janela: arrastar o corpo e os comentários de todos os cartões a cada alt-tab seria pagar o pior
+ * preço para mostrar o conteúdo de um só.
+ *
+ * **Sem alias duplo**, ao contrário do `BOARD_QUERY`: `repository(owner:, name:)` resolve igual para
+ * usuário e organização — a ambiguidade que obriga os dois aliases lá é do `projectV2`, não do repo.
+ * Logo este documento não tem erro esperado, e **qualquer** `errors` nele é fatal (regra 1 do
+ * `CardReader`).
+ */
+export const CARD_QUERY = `
+query Card($owner: String!, $name: String!, $number: Int!, $comments: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      number
+      body
+      comments(first: $comments) {
+        totalCount
+        nodes { id author { login } createdAt body }
       }
     }
   }

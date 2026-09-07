@@ -5,12 +5,13 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
 import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron'
 
-import { BoardReader, ConversationIndex, RepoIndex, SessionHost } from '../core'
+import { BoardReader, CardReader, ConversationIndex, RepoIndex, SessionHost } from '../core'
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen } from '../shared/ipc'
 import { registerBoardIpc } from './board'
 import type { BoardIpcOptions } from './board'
+import { registerCardIpc } from './card'
 import {
   inspectSession,
   loadConversations,
@@ -77,13 +78,19 @@ function resolveBoard(): BoardIpcOptions {
 }
 
 /**
- * Qual cliente o `core` recebe. `OC_BOARD_FIXTURE` é a porta do smoke: com ela o app lê um arquivo e
+ * Qual cliente o `core` recebe. `OC_BOARD_FIXTURE` é a porta do smoke: com ela o app lê arquivo e
  * não toca a rede; sem ela, é o GitHub de verdade, com o token do `gh`.
+ *
+ * `OC_CARD_FIXTURE` é a metade do conteúdo, e **só é consultada quando a do board existe**: fora do
+ * smoke não há fixture nenhuma, e uma fixture de card sozinha só poderia servir cartões que o board
+ * de verdade nunca prometeu.
  */
 function createGraphQL(): GraphQLFn {
-  const fixture = process.env.OC_BOARD_FIXTURE
+  const board = process.env.OC_BOARD_FIXTURE
 
-  return fixture ? createFixtureGraphQL(fixture) : createGitHubGraphQL(createGhTokenSource())
+  return board
+    ? createFixtureGraphQL({ board, cards: process.env.OC_CARD_FIXTURE })
+    : createGitHubGraphQL(createGhTokenSource())
 }
 
 const screen = resolveScreen()
@@ -170,6 +177,21 @@ const boardIpc =
   screen === 'kanban'
     ? registerBoardIpc(new BoardReader({ graphql: createGraphQL() }), resolveBoard())
     : null
+
+// O conteúdo de um card corre pelo mesmo portão, e pela mesma razão: é leitura do GitHub. Sem
+// retrato de board não há como traduzir `itemId` em coordenada, então fora do kanban o canal
+// simplesmente não existe.
+if (boardIpc) {
+  // `createGraphQL()` de novo, devolvendo um segundo cliente: ela não guarda estado, e o
+  // `TokenSource` do `gh` tem cache próprio. Um cliente por leitor mantém a injeção explícita e não
+  // introduz um singleton.
+  registerCardIpc(new CardReader({ graphql: createGraphQL() }), {
+    // Arrow, e **não** `cardById: boardIpc.cardById`: o `unbound-method` do ESLint reprova a
+    // referência solta a um método — mesmo aqui, onde ela funcionaria, porque `cardById` fecha
+    // sobre o retrato e não sobre `this`.
+    cardById: (itemId) => boardIpc.cardById(itemId),
+  })
+}
 
 // O mapa `repo → pasta local` do RF-10. As duas pontas de IO são do main: o core não lê disco nem
 // spawna processo.

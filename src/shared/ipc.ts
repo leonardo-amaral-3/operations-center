@@ -7,13 +7,11 @@
  * só os tipos de dado que o `core` publica.
  */
 
-import type { BoardSnapshot } from './board'
+import type { BoardSnapshot, CardContent } from './board'
 import type {
   ChatMessage,
   PermissionDecision,
-  PermissionRequest,
   QuestionAnswers,
-  QuestionRequest,
   SessionInit,
   SessionState,
   TurnActivity,
@@ -35,6 +33,7 @@ export const IPC_INVOKE = {
   close: 'session:close',
   chooseFolder: 'repo:choose-folder',
   readBoard: 'board:read',
+  readCard: 'card:read',
   readConversations: 'conversations:read',
 } as const
 
@@ -43,8 +42,6 @@ export const IPC_EVENT = {
   init: 'session:init',
   message: 'session:message',
   state: 'session:state',
-  permissionRequest: 'session:permission-request',
-  questionRequest: 'session:question-request',
   /**
    * O pulso do turno. Canal próprio, e não um campo do `state`: ele bate a cada ~1,3s enquanto o
    * modelo pensa, e o kanban assina o `state` para manter o crachá dos cartões fechados vivo. Quem
@@ -146,6 +143,18 @@ export interface ChooseFolderResult {
   chosen: boolean
 }
 
+/** De qual cartão. `itemId`, nunca `owner/name/number`: quem traduz cartão em coordenada é o main. */
+export interface ReadCardRequest {
+  itemId: string
+}
+
+/**
+ * Falha **não rejeita**, pelo mesmo motivo de `StartResult`: a tela precisa desenhar o erro dentro
+ * do cartão, e o motivo é texto de tela — o precedente é `BoardSnapshot.error`, que já é a string
+ * que o kanban mostra.
+ */
+export type ReadCardResult = { ok: true; content: CardContent } | { ok: false; reason: string }
+
 /**
  * Todo evento diz de qual sessão veio. Hoje há uma só na tela; o `sessionId` é o que faz o kanban
  * do PRD ser depois um problema de roteamento no renderer, e não uma troca de contrato.
@@ -163,16 +172,6 @@ export interface SessionMessageEvent {
 export interface SessionStateEvent {
   sessionId: string
   state: SessionState
-}
-
-export interface SessionPermissionEvent {
-  sessionId: string
-  request: PermissionRequest
-}
-
-export interface SessionQuestionEvent {
-  sessionId: string
-  request: QuestionRequest
 }
 
 /**
@@ -234,8 +233,6 @@ export interface OcApi {
   onInit(listener: (event: SessionInitEvent) => void): () => void
   onMessage(listener: (event: SessionMessageEvent) => void): () => void
   onState(listener: (event: SessionStateEvent) => void): () => void
-  onPermissionRequest(listener: (event: SessionPermissionEvent) => void): () => void
-  onQuestionRequest(listener: (event: SessionQuestionEvent) => void): () => void
   /** O pulso do turno. Só quem mostra a conversa aberta assina — ver `IPC_EVENT.activity`. */
   onActivity(listener: (event: SessionActivityEvent) => void): () => void
 
@@ -243,6 +240,9 @@ export interface OcApi {
   readBoard(): Promise<BoardSnapshot>
   /** Todo fim de leitura — com sucesso ou com falha — empurra um retrato novo. */
   onBoard(listener: (snapshot: BoardSnapshot) => void): () => void
+
+  /** Lê o que está escrito naquele card: o corpo e os comentários. Não toca sessão nenhuma. */
+  readCard(request: ReadCardRequest): Promise<ReadCardResult>
 
   /** Os cartões com conversa recuperável. Pode voltar vazio se a verificação do boot não terminou. */
   readConversations(): Promise<ConversationsSnapshot>

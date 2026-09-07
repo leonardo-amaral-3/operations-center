@@ -1,3 +1,4 @@
+import { asArray, asNumber, asRecord, asString } from './narrow'
 import { BOARD_QUERY, CARD_FIELDS, CONVERSABLE_STATIONS, STATUS_FIELD } from './query'
 import type {
   Board,
@@ -272,27 +273,4 @@ function readAssignees(content: Record<string, unknown>): readonly string[] {
   }
 
   return logins
-}
-
-/**
- * Regra 7: a resposta é dado externo e chega como `unknown`; cada acesso passa por uma destas
- * guardas. Sem biblioteca de validação, de propósito — `zod` é um dos peers ausentes do card #2, e
- * trazê-lo aqui misturaria os dois assuntos.
- */
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
-}
-
-function asArray(value: unknown): readonly unknown[] {
-  return Array.isArray(value) ? (value as readonly unknown[]) : []
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
-}
-
-function asNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
