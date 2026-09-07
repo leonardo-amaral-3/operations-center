@@ -124,6 +124,14 @@ interface FixtureCard {
   repository: string
 }
 
+/** O retângulo que o Playwright devolve, em pixels da viewport. */
+interface Caixa {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 const PROJECT = (JSON.parse(readFileSync(FIXTURE_PATH, 'utf8')) as FixtureEnvelope).data.user
   .projectV2
 
@@ -298,6 +306,27 @@ test('CA-1 e CA-2: o cartão vira chat no próprio lugar, e a sessão responde',
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
     timeout: TURN_TIMEOUT,
   })
+
+  // O CA-3 do card #8, de carona nesta sessão viva: a borda de 2px e a sombra de 4px do design
+  // system comem largura útil dentro da coluna de 288px, e o sinal de estado é o que mais cresce
+  // aqui dentro. **Nos quatro lados**, e não só pela direita: na barra de ações ele divide a linha
+  // com três botões, e um estouro por cima ou por baixo seria clipado pelo scroll do mesmo jeito.
+  //
+  // Medido aqui e não em teste próprio porque um teste novo custaria um turno novo — e a asserção
+  // não precisa de um: o que ela lê é geometria, e a geometria já está na tela.
+  const sinal = await caixaDe(badge(CHAT_CARD), 'o sinal de estado do cartão-chat')
+  const cartao = await caixaDe(cardLocator(CHAT_CARD), 'o cartão-chat')
+
+  expect(sinal.width, 'o sinal de estado não ocupa largura').toBeGreaterThan(0)
+  expect(sinal.x, 'o sinal de estado vaza pela esquerda do cartão').toBeGreaterThanOrEqual(cartao.x)
+  expect(sinal.y, 'o sinal de estado vaza por cima do cartão').toBeGreaterThanOrEqual(cartao.y)
+  expect(
+    sinal.x + sinal.width,
+    'o sinal de estado vaza pela direita do cartão',
+  ).toBeLessThanOrEqual(cartao.x + cartao.width)
+  expect(sinal.y + sinal.height, 'o sinal de estado vaza por baixo do cartão').toBeLessThanOrEqual(
+    cartao.y + cartao.height,
+  )
 })
 
 test('CA-3: a sessão do cartão roda na pasta do repo dele, e o cartão mostra qual é', async () => {
@@ -552,6 +581,19 @@ function columnLocator(columnId: string): Locator {
 
 function badge(card: FixtureCard): Locator {
   return cardLocator(card).getByTestId('state-badge')
+}
+
+/**
+ * A caixa do elemento, com o `null` virando vermelho **aqui** e nomeando quem sumiu.
+ *
+ * `boundingBox()` devolve `null` para elemento fora do layout, e deixar o `null` seguir daria um
+ * `TypeError` sobre `x` três linhas adiante — que não diz nada sobre o critério que falhou.
+ */
+async function caixaDe(locator: Locator, oQue: string): Promise<Caixa> {
+  const caixa = await locator.boundingBox()
+  if (caixa === null) throw new Error(`${oQue}: sem caixa — fora do layout`)
+
+  return caixa
 }
 
 function assistantMessages(card: FixtureCard): Locator {

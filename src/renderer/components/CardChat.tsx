@@ -3,6 +3,8 @@ import type { JSX, KeyboardEvent } from 'react'
 
 import type { SessionState } from '../../shared/session'
 import { useSessionView } from '../session/useSessionView'
+import { Button } from '../ui/button'
+import { Textarea } from '../ui/textarea'
 import { isFala, MessageBubble } from './MessageBubble'
 import { PermissionPrompt } from './PermissionPrompt'
 import { QuestionPrompt } from './QuestionPrompt'
@@ -70,32 +72,35 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
 
   if (view.unknownFolder) {
     return (
-      <div className="mt-3 border-t border-neutral-800 pt-3">
+      <div className="mt-3 border-t-2 border-border pt-3">
         {/* Sem `card-chat` aqui, de propósito: não há sessão e não há conversa. O cartão está aberto
             para pedir a pasta, e é só isso que ele oferece (CA-5). */}
-        <p className="text-xs break-words text-neutral-400">
+        <p className="text-xs break-words text-foreground/60">
           Não sei em que pasta deste computador o repo deste card vive. Aponte-a e a sessão sobe lá.
         </p>
 
         <div className="mt-2 flex items-center justify-end gap-2">
-          <button
+          <Button
             type="button"
             data-testid="card-collapse"
+            variant="neutral"
+            size="xs"
             onClick={onCollapse}
-            className="cursor-pointer rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
           >
             Fechar
-          </button>
-          <button
+          </Button>
+          {/* A ação primária desta vista, e a única que leva a algum lugar: sem pasta não há
+              conversa, e o violet é o que separa "faça isto" de "saia daqui". */}
+          <Button
             type="button"
             data-testid="choose-folder"
+            size="xs"
             onClick={() => {
               void pickFolder()
             }}
-            className="cursor-pointer rounded-md bg-neutral-200 px-2.5 py-1 text-xs font-semibold text-neutral-900 hover:bg-white"
           >
             Escolher a pasta…
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -130,10 +135,10 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
   }
 
   return (
-    <div data-testid="card-chat" className="mt-3 border-t border-neutral-800 pt-3">
+    <div data-testid="card-chat" className="mt-3 border-t-2 border-border pt-3">
       <div ref={history} className="max-h-80 space-y-2 overflow-y-auto">
         {view.messages.length === 0 ? (
-          <p className="text-xs text-neutral-600">
+          <p className="text-xs text-foreground/60">
             A sessão está de pé. Escreva a primeira mensagem.
           </p>
         ) : null}
@@ -153,7 +158,7 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
               key={message.id}
               data-testid="message"
               data-role="notice"
-              className="py-0.5 text-center text-[10px] tracking-wide text-neutral-500 uppercase"
+              className="py-0.5 text-center text-[10px] tracking-wide text-foreground/60 uppercase"
             >
               {message.text}
             </p>
@@ -177,7 +182,10 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
           o scroll da conversa não o leva embora justamente quando ele importa. */}
       <TurnPulse activity={view.activity} somethingRunning={somethingRunning} />
 
-      <textarea
+      {/* O `min-h-0` derruba o `min-h-[80px]` da primitiva pelo `twMerge`, e não é enfeite:
+          aquela altura mínima estouraria a coluna de 288px que o CA-3 defende. Quem manda na
+          altura aqui continua sendo o `rows`. */}
+      <Textarea
         data-testid="card-chat-input"
         value={draft}
         disabled={mute}
@@ -191,7 +199,7 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
             ? 'Responda à pergunta acima para voltar a escrever.'
             : 'Escreva para a sessão…  Enter envia, Shift+Enter quebra linha.'
         }
-        className="mt-2 w-full resize-none rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none disabled:opacity-50"
+        className="mt-2 min-h-0 resize-none text-xs"
       />
 
       {/* A pasta na tela é o CA-3, e não enfeite: é a única forma de flagrar a olho uma sessão que
@@ -201,12 +209,12 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
         <p
           data-testid="card-chat-cwd"
           title={view.init.cwd}
-          className="mt-2 truncate font-mono text-[10px] text-neutral-500"
+          className="mt-2 truncate font-mono text-[10px] text-foreground/60"
         >
           {view.init.cwd}
         </p>
       ) : (
-        <p className="mt-2 text-[10px] text-neutral-600">Conectando à sessão do Claude Code…</p>
+        <p className="mt-2 text-[10px] text-foreground/60">Conectando à sessão do Claude Code…</p>
       )}
 
       <div className="mt-1.5 flex items-center justify-between gap-2">
@@ -221,32 +229,40 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
               faz sem ambiguidade, e o olho não precisa distinguir dois cinzas. A ação do turno vem
               antes das ações da sessão. */}
           {view.state.kind === 'working' ? (
-            <button
+            <Button
               type="button"
               data-testid="card-stop-turn"
+              variant="neutral"
+              size="xs"
+              className="bg-warning"
               onClick={stop}
-              className="cursor-pointer rounded-md border border-amber-400/50 px-2.5 py-1 text-xs text-amber-200 hover:bg-amber-400/10"
             >
               Parar
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
             type="button"
             data-testid="card-collapse"
+            variant="neutral"
+            size="xs"
             onClick={onCollapse}
-            className="cursor-pointer rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
           >
             Colapsar
-          </button>
-          <button
+          </Button>
+          {/* Âmbar em "Parar" e vermelho em "Encerrar", pelos mesmos tokens do `StateBadge`: parar
+              o turno é interrupção, encerrar a sessão é destruição, e a cor separa as duas antes de
+              o olho chegar ao rótulo. */}
+          <Button
             type="button"
             data-testid="card-end-session"
+            variant="neutral"
+            size="xs"
+            className="bg-danger"
             disabled={dead || view.id === null}
             onClick={end}
-            className="cursor-pointer rounded-md border border-red-500/50 px-2.5 py-1 text-xs text-red-300 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Encerrar sessão
-          </button>
+          </Button>
         </div>
       </div>
     </div>

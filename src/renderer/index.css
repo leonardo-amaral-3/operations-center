@@ -1,6 +1,86 @@
 @import 'tailwindcss';
 
 /*
+ * O design system: neobrutalism.dev sobre shadcn/ui, em modo claro fixo.
+ *
+ * **Não há bloco `.dark` e não há `@custom-variant dark`**, de propósito: o card #8 põe a
+ * alternância de tema fora de escopo, e um bloco que ninguém liga é código morto que envelhece
+ * sem ninguém perceber. Quando houver card de tema, ele nasce aqui.
+ *
+ * Os valores vêm do arquivo canônico do projeto upstream, e **não** do preset
+ * `/r/styling/violet.json`: os presets publicados trocam `secondary-background` entre claro e
+ * escuro, o que renderiza `Input` e `Textarea` (que são `bg-secondary-background text-foreground`)
+ * preto-no-preto. Decisão #161 do brain.
+ */
+:root {
+  /* A geometria do sistema: borda de 2px, sombra dura de 4px sem blur, canto de 5px. */
+  --border-radius: 5px;
+  --box-shadow-x: 4px;
+  --box-shadow-y: 4px;
+  --reverse-box-shadow-x: -4px;
+  --reverse-box-shadow-y: -4px;
+
+  --heading-font-weight: 700;
+  --base-font-weight: 500;
+
+  /* Três níveis de superfície: o canvas do app, a face de cartão, e o preto que separa os dois. */
+  --background: oklch(93.88% 0.033 300.19);
+  --secondary-background: oklch(100% 0 0);
+  --foreground: oklch(0% 0 0);
+  --main-foreground: oklch(0% 0 0);
+
+  --main: oklch(70.28% 0.1753 295.36);
+  --border: oklch(0% 0 0);
+  --ring: oklch(0% 0 0);
+
+  --shadow: var(--box-shadow-x) var(--box-shadow-y) 0px 0px var(--border);
+
+  /*
+   * As quatro cores de estado, que o neobrutalism não tem — ele dá **um** acento, e este app
+   * precisa de cinco cores semânticas.
+   *
+   * A divisão é dura e é o NFR "Fidelidade da sinalização" do PRD (`:253`) escrito em CSS:
+   * `--main` (violet) marca **a esteira e a casca do app**; estes quatro marcam **o que a sessão
+   * quer de você**. Se o acento caísse em qualquer uma destas famílias, "colorido = a sessão te
+   * espera" deixaria de ser verdade e o `StateBadge` perderia a função que a spec do #6 lhe deu.
+   *
+   * Todos têm contraste ≥ 7.2:1 com texto preto (AAA), medido: attention 11.14, warning 12.74,
+   * question 10.76, danger 7.24. Por isso não existe `--*-foreground`: em todos, o texto é
+   * `--foreground`.
+   */
+  --attention: oklch(78% 0.17 145); /* verde — a sessão devolveu a vez a você */
+  --warning: oklch(84% 0.16 85); /* âmbar — pare e olhe: permissão pendente, ou dado envelhecido */
+  --question: oklch(78% 0.13 230); /* azul — há uma pergunta aberta esperando resposta */
+  --danger: oklch(70% 0.19 25); /* vermelho — quebrou, ou vai destruir algo */
+}
+
+@theme inline {
+  --color-main: var(--main);
+  --color-background: var(--background);
+  --color-secondary-background: var(--secondary-background);
+  --color-foreground: var(--foreground);
+  --color-main-foreground: var(--main-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+
+  --color-attention: var(--attention);
+  --color-warning: var(--warning);
+  --color-question: var(--question);
+  --color-danger: var(--danger);
+
+  --spacing-boxShadowX: var(--box-shadow-x);
+  --spacing-boxShadowY: var(--box-shadow-y);
+  --spacing-reverseBoxShadowX: var(--reverse-box-shadow-x);
+  --spacing-reverseBoxShadowY: var(--reverse-box-shadow-y);
+
+  --radius-base: var(--border-radius);
+  --shadow-shadow: var(--shadow);
+
+  --font-weight-base: var(--base-font-weight);
+  --font-weight-heading: var(--heading-font-weight);
+}
+
+/*
  * A janela inteira é a tela: quem rola é a lista de mensagens, com scroll próprio. Sem estas
  * alturas o `h-full` do App não teria contra o que medir e o layout desabaria para o conteúdo.
  */
@@ -8,4 +88,12 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+/*
+ * O fundo no `body`, e não só na raiz do React: o overscroll do Chromium pinta a área além do
+ * conteúdo com o fundo do `body`, e sem isto ela apareceria branca contra a lavanda da tela.
+ */
+body {
+  background-color: var(--background);
 }
