@@ -53,10 +53,10 @@ function lerArquivos(diretorioRelativo: string): Arquivo[] {
 
 describe('a superfície de board é somente-leitura', () => {
   it('IPC_INVOKE é exatamente os canais de sessão mais a leitura do board', () => {
-    // **A declaração dos três canais do cartão-chat**, que é o que esta canária cobra de quem os
-    // acrescentou: `answerQuestion` responde um `AskUserQuestion` para a sessão; `chooseFolder`
-    // abre o seletor de diretório e guarda a escolha em memória no main; `questionRequest` é o
-    // aviso da pergunta chegando à tela. **Nenhum dos três toca o board** — nem para ler.
+    // **A declaração dos dois canais do cartão-chat**, que é o que esta canária cobra de quem os
+    // acrescentou: `answerQuestion` responde um `AskUserQuestion` para a sessão, e `chooseFolder`
+    // abre o seletor de diretório e guarda a escolha em memória no main. **Nenhum dos dois toca o
+    // board** — nem para ler.
     //
     // E a do canal do #12: `stop` interrompe o turno em curso da sessão e **não toca o board** —
     // nem para ler. Ele fica colado no `close` de propósito: uma para a vez que está rodando, a
@@ -78,12 +78,17 @@ describe('a superfície de board é somente-leitura', () => {
     // tokens de raciocínio e há quanto tempo não chega sinal — para a conversa aberta. É de mão
     // única e **não toca o board**, nem para ler: o que ele carrega o main compõe a partir dos
     // canais da própria sessão mais o relógio dele.
+    //
+    // **A declaração da remoção do #11**: `permissionRequest` e `questionRequest` saíram. Eles
+    // diziam o mesmo fato que o `state` já carrega — o pedido que trava a sessão — e ter dois
+    // caminhos para o mesmo fato *era* o bug: um segundo pedido concorrente chegava pelo canal e
+    // apagava o primeiro da tela. O pedido em cartaz agora se deriva do `state`, que publica a
+    // frente da fila. Apagar canal é tão relatável quanto acrescentar, e é esta igualdade exata
+    // que obriga quem apagou a vir aqui declarar.
     expect(IPC_EVENT).toEqual({
       init: 'session:init',
       message: 'session:message',
       state: 'session:state',
-      permissionRequest: 'session:permission-request',
-      questionRequest: 'session:question-request',
       activity: 'session:activity',
       board: 'board:changed',
     })

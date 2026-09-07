@@ -21,7 +21,13 @@ import type {
 } from '../../shared/session'
 import { IDLE_ACTIVITY } from '../../shared/session'
 
-/** Tudo que a tela sabe da sessão. Nada aqui é derivado: é o que chegou pela ponte, e só. */
+/**
+ * Tudo que a tela sabe da sessão.
+ *
+ * `permission`, `question` e `queued` saem do `SessionState` e de mais nada: são a frente da fila
+ * de pedidos que o core publica, e ter **uma** fonte para eles é o conserto do #11 — enquanto
+ * havia duas (o estado e um canal IPC à parte), um segundo pedido concorrente apagava o primeiro.
+ */
 export interface SessionView {
   id: string | null
   init: SessionInit | null
@@ -29,6 +35,8 @@ export interface SessionView {
   messages: readonly ChatMessage[]
   permission: PermissionRequest | null
   question: QuestionRequest | null
+  /** Quantos pedidos esperam **atrás** do que está em cartaz; `0` quando ele é o único. */
+  queued: number
   /** O pulso do turno corrente; `IDLE_ACTIVITY` enquanto não há turno nenhum. */
   activity: TurnActivity
   /**
@@ -47,8 +55,13 @@ export type SessionAction =
   | { type: 'init'; init: SessionInit }
   | { type: 'message'; message: ChatMessage }
   | { type: 'state'; state: SessionState }
-  | { type: 'permission'; request: PermissionRequest | null }
-  | { type: 'question'; request: QuestionRequest | null }
+  /**
+   * O prompt sai da tela no clique, antes de a confirmação voltar.
+   *
+   * Sem isto o botão continuaria clicável para um pedido já respondido. O que vier depois é o
+   * `state` do core — que pode trazer o **próximo** da fila, e é ele quem manda.
+   */
+  | { type: 'hide-prompt' }
   | { type: 'activity'; activity: TurnActivity }
   | { type: 'unknown-folder' }
 
@@ -60,8 +73,25 @@ export const INITIAL_VIEW: SessionView = {
   messages: [],
   permission: null,
   question: null,
+  queued: 0,
   activity: IDLE_ACTIVITY,
   unknownFolder: false,
+}
+
+/**
+ * As três derivações do estado. Ficam aqui, ao lado do redutor, porque são a regra de que só o
+ * `SessionState` diz quem está em cartaz — e é essa unicidade que impede o bug do #11 de voltar.
+ */
+function permissionOf(state: SessionState): PermissionRequest | null {
+  return state.kind === 'awaiting_decision' ? state.request : null
+}
+
+function questionOf(state: SessionState): QuestionRequest | null {
+  return state.kind === 'awaiting_answer' ? state.request : null
+}
+
+function queuedOf(state: SessionState): number {
+  return state.kind === 'awaiting_decision' || state.kind === 'awaiting_answer' ? state.queued : 0
 }
 
 export function reduce(view: SessionView, action: SessionAction): SessionView {
@@ -81,10 +111,9 @@ export function reduce(view: SessionView, action: SessionAction): SessionView {
         init: action.snapshot.init ?? null,
         state: action.snapshot.state,
         messages: [...action.snapshot.messages],
-        permission:
-          action.snapshot.state.kind === 'awaiting_decision' ? action.snapshot.state.request : null,
-        question:
-          action.snapshot.state.kind === 'awaiting_answer' ? action.snapshot.state.request : null,
+        permission: permissionOf(action.snapshot.state),
+        question: questionOf(action.snapshot.state),
+        queued: queuedOf(action.snapshot.state),
         // O pulso vem no retrato pela mesma razão do pedido pendente: um cartão reaberto no meio do
         // turno nasce com o relógio certo, em vez de contar do zero e mentir sobre a idade dele.
         activity: action.snapshot.activity,
@@ -119,19 +148,21 @@ export function reduce(view: SessionView, action: SessionAction): SessionView {
       return { ...view, messages }
     }
     case 'state':
+      // **É aqui que o bug da tela morre.** Antes, o pedido em cartaz era só *preservado* enquanto o
+      // `kind` não mudasse, porque quem o punha na tela era um canal IPC à parte — e um segundo
+      // pedido concorrente chegava por esse canal e apagava o primeiro. Agora o estado é a única
+      // fonte, e ele carrega a frente da fila: adotar é o que faz o próximo aparecer.
       return {
         ...view,
         state: action.state,
-        // Sair de `awaiting_decision` é o que aposenta o pedido: sessão que voltou a trabalhar (ou
-        // que morreu) não tem mais decisão a receber, e o prompt não pode sobreviver a ela.
-        permission: action.state.kind === 'awaiting_decision' ? view.permission : null,
-        // A pergunta sai pela mesma porta, pelo mesmo motivo.
-        question: action.state.kind === 'awaiting_answer' ? view.question : null,
+        permission: permissionOf(action.state),
+        question: questionOf(action.state),
+        queued: queuedOf(action.state),
       }
-    case 'permission':
-      return { ...view, permission: action.request }
-    case 'question':
-      return { ...view, question: action.request }
+    case 'hide-prompt':
+      // `queued` fica como está de propósito: há mesmo mais um esperando, e o `state` seguinte
+      // corrige o número em milissegundos.
+      return { ...view, permission: null, question: null }
     case 'activity':
       // Substitui, e não acumula: o pulso atravessa a ponte inteiro a cada batida, e um evento
       // perdido não deixa a tela contando a partir de um valor que nunca mais será corrigido.
