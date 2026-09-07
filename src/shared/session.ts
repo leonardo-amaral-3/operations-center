@@ -175,12 +175,19 @@ export interface SessionInit {
  *
  * O *formato* do estado é contrato e mora aqui; as *transições* são regra do `core` e moram em
  * `src/core/session/state.ts`.
+ *
+ * Nos dois estados que esperam uma pessoa, `request` é sempre **a frente da fila** de pedidos, e
+ * `queued` é quantos outros esperam **atrás dele** — `0` quando o da tela é o único. Não é o total:
+ * o número que a pessoa precisa ler é "quanto ainda vem depois de eu resolver este".
+ *
+ * A fila inteira **não** atravessa a ponte, de propósito: a tela desenha um pedido por vez, e
+ * mandar a lista seria mandar dado que ninguém desenha.
  */
 export type SessionState =
   | { kind: 'starting' }
   | { kind: 'working' }
   | { kind: 'awaiting_input' }
-  | { kind: 'awaiting_decision'; request: PermissionRequest }
-  | { kind: 'awaiting_answer'; request: QuestionRequest }
+  | { kind: 'awaiting_decision'; request: PermissionRequest; queued: number }
+  | { kind: 'awaiting_answer'; request: QuestionRequest; queued: number }
   | { kind: 'closed' }
   | { kind: 'failed'; reason: string }
