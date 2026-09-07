@@ -8,6 +8,7 @@ import type {
   ChooseFolderRequest,
   ChooseFolderResult,
   CloseRequest,
+  ConversationsSnapshot,
   OcApi,
   ReadCardRequest,
   ReadCardResult,
@@ -81,6 +82,10 @@ const api: OcApi = {
   onBoard: (listener) => subscribe<BoardSnapshot>(IPC_EVENT.board, listener),
   readCard: (request: ReadCardRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.readCard, request) as Promise<ReadCardResult>,
+  readConversations: () =>
+    ipcRenderer.invoke(IPC_INVOKE.readConversations) as Promise<ConversationsSnapshot>,
+  onConversations: (listener) =>
+    subscribe<ConversationsSnapshot>(IPC_EVENT.conversations, listener),
 }
 
 contextBridge.exposeInMainWorld('oc', api)

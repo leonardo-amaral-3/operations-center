@@ -168,6 +168,60 @@ describe('SessionHost', () => {
     expect(fake.options?.settingSources).toEqual([])
   })
 
+  it('sem retomada, nada de resume: o cwd é o único endereço da conversa nova', () => {
+    const fake = createFakeQuery()
+    start(fake)
+
+    expect(fake.options?.resume).toBeUndefined()
+  })
+
+  it('retoma pelo session_id do Claude Code — e sem forkSession', () => {
+    const fake = createFakeQuery()
+    new SessionHost({ query: fake.query }).start({ cwd: CWD, resume: 'sessao-de-ontem' })
+
+    expect(fake.options?.resume).toBe('sessao-de-ontem')
+
+    // `forkSession` é o que faria o SDK abrir um transcript novo. Como o vínculo gravado é por
+    // `session_id`, um fork silencioso deixaria o registro apontando para uma conversa que parou —
+    // e todos os turnos seguintes se perderiam sem nenhum sinal na tela.
+    expect(fake.options?.forkSession).toBeUndefined()
+  })
+
+  it('o histórico restaurado já está na conversa antes do primeiro evento', async () => {
+    const fake = createFakeQuery({
+      turn: (text) => Promise.resolve([assistantMessage(`li: ${text}`), successResult()]),
+    })
+    const history: ChatMessage[] = [
+      { id: 'antes-1', role: 'user', text: 'o que eu disse ontem' },
+      { id: 'antes-2', role: 'assistant', text: 'o que foi respondido ontem' },
+    ]
+    const handle = new SessionHost({ query: fake.query }).start({
+      cwd: CWD,
+      resume: 'sessao-de-ontem',
+      history,
+    })
+
+    // Na mesma volta em que o `start` devolveu, antes de qualquer evento do SDK: é este retrato que
+    // a tela lê ao reabrir o cartão, e um `messages` vazio aqui o reabriria em branco mesmo com a
+    // retomada tendo funcionado do lado do modelo.
+    expect(handle.messages.map(textOf)).toEqual([
+      'o que eu disse ontem',
+      'o que foi respondido ontem',
+    ])
+
+    handle.send('e agora?')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // O turno novo entra **depois** do histórico, na ordem: o `resume` não reemite o que já
+    // aconteceu (medido), então o que veio do transcript e o que veio do stream não se duplicam.
+    expect(handle.messages.map(textOf)).toEqual([
+      'o que eu disse ontem',
+      'o que foi respondido ontem',
+      'e agora?',
+      'li: e agora?',
+    ])
+  })
+
   it('apresenta a sessão quando o init chega, e passa a trabalhar', async () => {
     const fake = createFakeQuery({ init: { model: 'fake-model', apiKeySource: 'none' } })
     const handle = start(fake)

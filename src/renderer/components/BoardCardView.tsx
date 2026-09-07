@@ -8,6 +8,7 @@ import { Card } from '../ui/card'
 import { CardChat } from './CardChat'
 import type { CardSession } from './CardChat'
 import { CardContent } from './CardContent'
+import { ConversationBadge } from './ConversationBadge'
 import { StateBadge } from './StateBadge'
 
 interface BoardCardViewProps {
@@ -22,6 +23,8 @@ interface BoardCardViewProps {
   expanded: boolean
   /** A sessão deste cartão, se o kanban já souber de alguma. */
   session: CardSession | undefined
+  /** Há conversa a retomar neste cartão — de uma execução anterior do app (CA-1). */
+  dormant: boolean
   onToggle: (itemId: string) => void
   onSession: (itemId: string, session: CardSession) => void
 }
@@ -42,6 +45,7 @@ export function BoardCardView({
   conversable,
   expanded,
   session,
+  dormant,
   onToggle,
   onSession,
 }: BoardCardViewProps): JSX.Element {
@@ -138,6 +142,15 @@ export function BoardCardView({
             <StateBadge state={live.state} />
           </div>
         ) : null}
+
+        {/* O sinal do CA-1: houve conversa aqui e ela volta ao clique. A sessão viva **vence** o
+            dormente — enquanto ela existe, o estado dela informa mais —, e por isso os dois crachás
+            nunca aparecem juntos. Expandido, quem conta a história é o próprio `CardChat`. */}
+        {!expanded && !live && dormant ? (
+          <div className="min-w-0">
+            <ConversationBadge />
+          </div>
+        ) : null}
       </div>
     </>
   )
@@ -151,6 +164,11 @@ export function BoardCardView({
    * não precisa de skill nenhuma.
    *
    * Logo: a conversabilidade decide **o chat**, e não a abertura.
+   *
+   * E o `dormant` decide junto com ela, pelo mesmo motivo que o `live`: o CA-6 do #6 exige que uma
+   * conversa já existente continue alcançável quando o card anda no board — inclusive para 🧪
+   * Validação em Dev ou ✅ Produção, que não têm skill. Um card que andou de coluna não pode
+   * trancar a conversa que o levou até lá só porque o app foi reiniciado no caminho (CA-1 do #22).
    */
   if (expanded) {
     return (
@@ -159,10 +177,12 @@ export function BoardCardView({
           {body}
 
           {/* Acima da conversa, e dentro do próprio cartão: o conteúdo é o assunto, e a conversa
-              acontece sobre ele. `hasSession` só escolhe se a seção nasce aberta ou recolhida. */}
-          <CardContent itemId={card.itemId} hasSession={live !== null} />
+              acontece sobre ele. `hasSession` só escolhe se a seção nasce aberta ou recolhida — e o
+              dormente conta como sessão pela regra que o próprio `CardContent` enuncia: quem clica
+              num cartão com conversa guardada abriu para falar, não para ler. */}
+          <CardContent itemId={card.itemId} hasSession={live !== null || dormant} />
 
-          {conversable || live ? (
+          {conversable || live || dormant ? (
             <CardChat
               itemId={card.itemId}
               onCollapse={() => {
@@ -171,10 +191,10 @@ export function BoardCardView({
               onSession={onSession}
             />
           ) : (
-            // Sem skill e sem sessão: o cartão abriu para ser lido, e a única ação que ele oferece é
-            // fechar. A âncora `card-collapse` é a mesma do `CardChat` de propósito — fechar um
-            // cartão é fechar um cartão, e o smoke não deve precisar saber qual ramo desenhou o
-            // botão.
+            // Sem skill, sem sessão e sem conversa guardada: o cartão abriu para ser lido, e a
+            // única ação que ele oferece é fechar. A âncora `card-collapse` é a mesma do `CardChat`
+            // de propósito — fechar um cartão é fechar um cartão, e o smoke não deve precisar saber
+            // qual ramo desenhou o botão.
             <div className="mt-3 flex justify-end border-t-2 border-border pt-3">
               <Button
                 type="button"

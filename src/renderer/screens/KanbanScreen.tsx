@@ -67,6 +67,12 @@ export function KanbanScreen(): JSX.Element {
   const [snapshot, dispatch] = useReducer(reduce, INITIAL_SNAPSHOT)
   const [sessions, dispatchSession] = useReducer(reduceSessions, {})
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
+  /**
+   * Os cartões com conversa a retomar. Vazio até a verificação do boot terminar — e é assim que
+   * deve ser: um cartão sem conversa recuperável volta sem crachá (CA-3), e o vazio é a mesma
+   * resposta que ele daria depois.
+   */
+  const [conversations, setConversations] = useState<readonly string[]>([])
 
   useEffect(() => {
     // Assinar vem **antes** de pedir, como no `ChatScreen`: uma leitura que termine entre o pedido
@@ -83,6 +89,24 @@ export function KanbanScreen(): JSX.Element {
       // enquanto a resposta voltava é mais novo que ele. Sem esta guarda, a resposta em trânsito
       // sobrescreveria uma leitura mais fresca — e a tela retrocederia no tempo.
       if (!pushed) dispatch({ type: 'snapshot', snapshot: next })
+    })
+
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    // Assinar antes de pedir, e pela mesma razão do board logo acima.
+    let pushed = false
+
+    const unsubscribe = window.oc.onConversations((next) => {
+      pushed = true
+      setConversations(next.itemIds)
+    })
+
+    void window.oc.readConversations().then((next) => {
+      // A verificação do boot pode terminar enquanto esta resposta volta. Sem a guarda, o retrato
+      // antigo sobrescreveria o evento mais novo — a mesma corrida do `readBoard`.
+      if (!pushed) setConversations(next.itemIds)
     })
 
     return unsubscribe
@@ -131,6 +155,7 @@ export function KanbanScreen(): JSX.Element {
               cards={board.cards.filter((card) => card.columnId === column.id)}
               expandedItemId={expandedItemId}
               sessions={sessions}
+              conversations={conversations}
               onToggle={toggle}
               onSession={registerSession}
             />

@@ -9,6 +9,15 @@ import type {
 import { InputQueue } from './InputQueue'
 import { initialState, nextState } from './state'
 import type { PendingRequest, SessionEvent, SessionState } from './state'
+import {
+  INTERRUPTED_NOTICE,
+  asArray,
+  asRecord,
+  asString,
+  assistantText,
+  toolResults,
+  toolUses,
+} from './transcript'
 import type {
   ChatMessage,
   ChatToolUse,
@@ -19,8 +28,13 @@ import type {
   QuestionOption,
   QuestionRequest,
   SessionInit,
-  ToolStatus,
 } from './types'
+
+/**
+ * A nota de turno interrompido é reexportada daqui porque é daqui que ela sempre foi lida — quem a
+ * declara agora é o `transcript.ts`, que a compartilha com o histórico restaurado.
+ */
+export { INTERRUPTED_NOTICE }
 
 /**
  * O que o core sabe do turno corrente. Sem relógio: o core não carimba tempo — quem o faz é a
@@ -110,21 +124,6 @@ const SESSION_CLOSED_DENIAL = 'Sessão encerrada antes da decisão.'
 /** Motivo devolvido quando dois pedidos chegam com o mesmo `toolUseID` — ver `#enqueue`. */
 const DUPLICATE_TOOL_USE_ID = 'Já há um pedido em aberto com este toolUseID.'
 
-/** A nota que a parada deixa na conversa. Exportada porque o teste a lê daqui, e não a redigita. */
-export const INTERRUPTED_NOTICE = 'Turno interrompido.'
-
-/**
- * Os campos que identificam uma chamada, em ordem de preferência. Uma lista ordenada, e não uma
- * tabela por ferramenta: a tabela viraria dívida no primeiro release do CLI com ferramenta nova.
- *
- * `command` vem antes de `description` porque no `Bash` a descrição já chega pelo `task_started` e
- * vira `headline` — repeti-la no detalhe desperdiçaria a linha.
- */
-const DETAIL_FIELDS = ['command', 'file_path', 'pattern', 'url', 'query', 'description', 'prompt']
-
-/** O teto de uma linha de trilha. O corte é aqui, e não na tela: ver `ChatToolUse.detail`. */
-const DETAIL_MAX = 120
-
 /**
  * A ferramenta com que o Claude faz uma pergunta. Ela chega pelo mesmo `canUseTool` de qualquer
  * outra — não há canal separado no SDK —, e é este nome que separa os dois tratamentos.
@@ -184,8 +183,18 @@ export class SessionHandle {
   /** O acumulado de raciocínio do turno corrente. Zera na fronteira, junto com o bump do ordinal. */
   #thinkingTokens = 0
 
-  constructor(id: string, startQuery: StartQuery) {
+  /**
+   * O `history` é a conversa de antes, de uma sessão retomada. Ele é semeado **antes** de o
+   * `query()` subir porque o retrato que o `start` devolve é lido pela tela na mesma volta: um
+   * `#messages` vazio ali reabriria o cartão em branco mesmo com a retomada tendo funcionado.
+   *
+   * Entra direto no array, sem passar pelo `#upsert`: não há ninguém assinando ainda, e um evento
+   * `message` por mensagem restaurada seria ruído sobre um estado que a tela já vai receber inteiro
+   * no retrato.
+   */
+  constructor(id: string, startQuery: StartQuery, history: readonly ChatMessage[] = []) {
     this.id = id
+    this.#messages.push(...history)
     this.#query = startQuery({
       prompt: this.#queue,
       canUseTool: (toolName, input, options) => this.#requestDecision(toolName, input, options),
@@ -557,111 +566,6 @@ export class SessionHandle {
 }
 
 /**
- * O texto de uma mensagem de assistente, achatado.
- *
- * A carga é lida como `unknown` de propósito: o tipo do SDK para ela vem de um pacote que é só peer
- * dependency (`@anthropic-ai/sdk`) e por isso não se resolve aqui — sem a leitura defensiva, o que
- * atravessaria o core seria um `any`.
- */
-function assistantText(payload: unknown): string {
-  const message = asRecord(payload)
-  if (!message) return ''
-
-  const texts: string[] = []
-  for (const raw of asArray(message['content'])) {
-    const block = asRecord(raw)
-    if (block?.['type'] !== 'text') continue
-
-    const text = asString(block['text'])
-    if (text !== null) texts.push(text)
-  }
-
-  return texts.join('\n')
-}
-
-/**
- * As ferramentas que uma mensagem de assistente chamou, na ordem em que aparecem no `content`.
- *
- * Mesma leitura defensiva do `assistantText`, e pelo mesmo motivo: a carga vem do modelo, não do
- * nosso código. Bloco que não dá para ler é ignorado, e nunca derruba a sessão.
- */
-function toolUses(payload: unknown, parentId: string | null): ChatToolUse[] {
-  const message = asRecord(payload)
-  if (!message) return []
-
-  const uses: ChatToolUse[] = []
-  for (const raw of asArray(message['content'])) {
-    const block = asRecord(raw)
-    if (block?.['type'] !== 'tool_use') continue
-
-    const id = asString(block['id'])
-    const name = asString(block['name'])
-    // Sem id o `tool_result` não teria a que casar; sem nome a entrada não diria nada. Faltando
-    // qualquer um dos dois, a entrada não informa — e inventá-los informaria errado.
-    if (id === null || name === null) continue
-
-    uses.push({
-      id,
-      role: 'tool',
-      name,
-      detail: detailOf(block['input']),
-      headline: '',
-      parentId,
-      status: 'running',
-    })
-  }
-
-  return uses
-}
-
-/** O que uma ferramenta relatou: o id da chamada e o degrau em que ela parou. */
-interface ToolOutcome {
-  id: string
-  status: ToolStatus
-}
-
-/** Os resultados de ferramenta de uma mensagem `user`, casados pelo `tool_use_id`. */
-function toolResults(payload: unknown): ToolOutcome[] {
-  const message = asRecord(payload)
-  if (!message) return []
-
-  const outcomes: ToolOutcome[] = []
-  for (const raw of asArray(message['content'])) {
-    const block = asRecord(raw)
-    if (block?.['type'] !== 'tool_result') continue
-
-    const id = asString(block['tool_use_id'])
-    if (id === null) continue
-
-    // A ausência é sucesso: no sucesso o SDK **não manda** `is_error`, em vez de mandá-lo `false`.
-    outcomes.push({ id, status: block['is_error'] === true ? 'error' : 'done' })
-  }
-
-  return outcomes
-}
-
-/**
- * O argumento que identifica uma chamada: o primeiro campo de `DETAIL_FIELDS` que exista e seja
- * string, achatado numa linha só e cortado em `DETAIL_MAX`. Nenhum casa → `''`, e a entrada mostra
- * só o nome — é o que acontece com o `AskUserQuestion`, cuja pergunta o prompt logo abaixo já diz.
- */
-function detailOf(input: unknown): string {
-  const record = asRecord(input)
-  if (!record) return ''
-
-  for (const field of DETAIL_FIELDS) {
-    const value = asString(record[field])
-    if (value === null) continue
-
-    // Um passe só resolve as duas coisas: quebra de linha e espaço repetido viram um espaço.
-    const flat = value.replace(/\s+/g, ' ').trim()
-    return flat.length > DETAIL_MAX ? `${flat.slice(0, DETAIL_MAX)}…` : flat
-  }
-
-  return ''
-}
-
-/**
  * As perguntas de um `AskUserQuestion`, ou `null` quando o payload não dá para desenhar.
  *
  * O `input` do `canUseTool` é dado de fora — vem do modelo, não do nosso código —, então passa
@@ -706,20 +610,6 @@ function readOptions(raw: unknown): readonly QuestionOption[] | null {
   }
 
   return options
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
-}
-
-function asArray(value: unknown): readonly unknown[] {
-  return Array.isArray(value) ? (value as readonly unknown[]) : []
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
 }
 
 function describe(error: unknown): string {

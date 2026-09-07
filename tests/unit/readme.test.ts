@@ -65,6 +65,7 @@ describe('README', () => {
       'OC_BOARD_FIXTURE',
       'OC_CARD_FIXTURE',
       'OC_CLAUDE_PROJECTS',
+      'OC_STATE_DIR',
     ]) {
       expect(readme).toContain(variavel)
     }

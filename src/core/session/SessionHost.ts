@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
 
 import { SessionHandle } from './SessionHandle'
+import type { ChatMessage } from './types'
 
 /** O `query()` do SDK, pelo tipo. É este contrato que o fake dos testes cumpre. */
 export type QueryFn = typeof import('@anthropic-ai/claude-agent-sdk').query
@@ -20,6 +21,20 @@ export interface SessionHostDeps {
 
 export interface StartSessionInput {
   cwd: string
+  /**
+   * O `session_id` do Claude Code a retomar. Ausente: conversa nova.
+   *
+   * Vai sozinho, **sem `forkSession`**: foi medido que o `resume` puro mantém o mesmo `session_id`
+   * no `init`, e é disso que o vínculo durável depende — um fork silencioso escreveria os turnos
+   * seguintes noutro transcript, e o registro ficaria apontando para uma conversa que parou.
+   */
+  resume?: string
+  /**
+   * A conversa de antes, já traduzida. Semeia a sessão porque o `resume` **não** reemite o
+   * histórico pelo stream (medido): sem isto o cartão retomado reabriria em branco, com o contexto
+   * intacto do lado do modelo e nada do lado de quem olha.
+   */
+  history?: readonly ChatMessage[]
 }
 
 /**
@@ -50,22 +65,27 @@ export class SessionHost {
   start(input: StartSessionInput): SessionHandle {
     const { query, model, settingSources = [...DEFAULT_SETTING_SOURCES] } = this.#deps
 
-    return new SessionHandle(randomUUID(), ({ prompt, canUseTool }) =>
-      query({
-        prompt,
-        options: {
-          cwd: input.cwd,
-          model,
-          permissionMode: 'default',
-          settingSources,
-          // A ponte que leva a decisão até a tela. Ela é a razão de `allowedTools` não ser passado:
-          // ferramenta pré-aprovada não dispara o callback, e sem o callback o usuário deixa de ser
-          // o portão da sessão.
-          canUseTool,
-          // Streaming token a token é card do RF-6, não desta fatia.
-          includePartialMessages: false,
-        },
-      }),
+    return new SessionHandle(
+      randomUUID(),
+      ({ prompt, canUseTool }) =>
+        query({
+          prompt,
+          options: {
+            cwd: input.cwd,
+            // Sem `forkSession`: ver `StartSessionInput.resume`. Ausente, o SDK abre conversa nova.
+            resume: input.resume,
+            model,
+            permissionMode: 'default',
+            settingSources,
+            // A ponte que leva a decisão até a tela. Ela é a razão de `allowedTools` não ser
+            // passado: ferramenta pré-aprovada não dispara o callback, e sem o callback o usuário
+            // deixa de ser o portão da sessão.
+            canUseTool,
+            // Streaming token a token é card do RF-6, não desta fatia.
+            includePartialMessages: false,
+          },
+        }),
+      input.history,
     )
   }
 }

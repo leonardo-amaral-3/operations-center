@@ -61,6 +61,10 @@ describe('a superfície de board é somente-leitura', () => {
     // E a do canal do #12: `stop` interrompe o turno em curso da sessão e **não toca o board** —
     // nem para ler. Ele fica colado no `close` de propósito: uma para a vez que está rodando, a
     // outra encerra a sessão inteira, e a vizinhança é o que lembra disso a quem lê.
+    //
+    // E a do canal do #22: `readConversations` responde quais cartões têm conversa a retomar. O que
+    // ele carrega sai do registro do próprio app (`conversations.json` em `OC_STATE_DIR`) e da
+    // leitura dos transcripts do Claude Code — **o board não é consultado**, nem para ler.
     expect(IPC_INVOKE).toEqual({
       start: 'session:start',
       send: 'session:send',
@@ -71,6 +75,7 @@ describe('a superfície de board é somente-leitura', () => {
       chooseFolder: 'repo:choose-folder',
       readBoard: 'board:read',
       readCard: 'card:read',
+      readConversations: 'conversations:read',
     })
   })
 
@@ -79,6 +84,11 @@ describe('a superfície de board é somente-leitura', () => {
     // tokens de raciocínio e há quanto tempo não chega sinal — para a conversa aberta. É de mão
     // única e **não toca o board**, nem para ler: o que ele carrega o main compõe a partir dos
     // canais da própria sessão mais o relógio dele.
+    //
+    // E a do canal do #22: `conversations` avisa que mudou o conjunto de cartões com conversa
+    // recuperável. Canal próprio, e não carona no do board, porque o board tem throttle de 10s e
+    // fala do GitHub — isto é estado do app. **Não toca o board**, nem para ler: o conjunto sai do
+    // índice de conversas, que só conhece o registro em disco e os transcripts.
     //
     // **A declaração da remoção do #11**: `permissionRequest` e `questionRequest` saíram. Eles
     // diziam o mesmo fato que o `state` já carrega — o pedido que trava a sessão — e ter dois
@@ -92,6 +102,7 @@ describe('a superfície de board é somente-leitura', () => {
       state: 'session:state',
       activity: 'session:activity',
       board: 'board:changed',
+      conversations: 'conversations:changed',
     })
   })
 
