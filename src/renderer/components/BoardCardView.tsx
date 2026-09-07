@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardCard } from '../../shared/board'
+import { Badge } from '../ui/badge'
+import { Card } from '../ui/card'
 import { CardChat } from './CardChat'
 import type { CardSession } from './CardChat'
 import { StateBadge } from './StateBadge'
@@ -79,47 +81,47 @@ export function BoardCardView({
    */
   const clickable = conversable || live !== null
 
-  const skin = `rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2.5 ${
-    card.closed ? 'opacity-55' : ''
-  }`
+  /**
+   * A face do cartão, e **só** a face: a casca — canto, borda de 2px, sombra dura — vem da `Card`.
+   *
+   * Um mecanismo só para o cartão fechado: o `opacity-60` apaga o cartão inteiro. Antes havia dois
+   * — a opacidade e um cinza no título —, e o segundo era cor decidida no arquivo.
+   */
+  const skin = `bg-secondary-background px-3 py-2.5 ${card.closed ? 'opacity-60' : ''}`
 
   // `div` e não `p`: no cartão clicável tudo isto vive dentro de um `button`, cujo conteúdo só
   // admite frase — e o mesmo corpo serve os três casos.
   const body = (
     <>
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="font-mono text-[11px] text-neutral-500">#{card.number}</span>
+        <span className="font-mono text-[11px] text-foreground/70">#{card.number}</span>
         {card.fields.map((field) => (
           // A chave é o nome do campo, não o `optionId`: um card tem no máximo uma opção por campo,
           // e o nome é o que continua único mesmo se duas opções compartilharem rótulo.
-          <span
+          <Badge
             key={field.name}
+            variant="neutral"
             title={`${field.name}: ${field.value}`}
-            className="rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-[10px] text-neutral-400"
+            className="rounded-base px-1.5 py-0 text-[10px] font-normal"
           >
             {field.value}
-          </span>
+          </Badge>
         ))}
       </div>
 
       {/* `line-clamp` porque a legibilidade da coluna é NFR do PRD: um título de duas linhas não
           pode empurrar o cartão seguinte para fora da vista. O `title` devolve o texto inteiro. */}
-      <div
-        title={card.title}
-        className={`mt-1.5 line-clamp-3 text-sm leading-snug ${
-          card.closed ? 'text-neutral-400' : 'text-neutral-100'
-        }`}
-      >
+      <div title={card.title} className="mt-1.5 line-clamp-3 text-sm leading-snug">
         {card.title}
       </div>
 
       <div className="mt-2 flex items-center justify-between gap-2">
-        <div className="min-w-0 truncate text-[11px] text-neutral-500">
+        <div className="min-w-0 truncate text-[11px] text-foreground/70">
           {card.assignees.length === 0 ? (
             // Visível de propósito: hoje não distingue nada neste board, mas é o campo que a RF-4
             // vai usar para decidir quem abre chat sozinho — e o cartão sem responsável é o convite
             // da F5.
-            <span className="text-neutral-600 italic">sem dono</span>
+            <span className="text-foreground/60 italic">sem dono</span>
           ) : (
             card.assignees.join(', ')
           )}
@@ -140,38 +142,48 @@ export function BoardCardView({
 
   if (expanded) {
     return (
-      <article ref={open} {...anchors} className={skin}>
-        {body}
-        <CardChat
-          itemId={card.itemId}
-          onCollapse={() => {
-            onToggle(card.itemId)
-          }}
-          onSession={onSession}
-        />
-      </article>
+      <Card asChild className={skin}>
+        <article ref={open} {...anchors}>
+          {body}
+          <CardChat
+            itemId={card.itemId}
+            onCollapse={() => {
+              onToggle(card.itemId)
+            }}
+            onSession={onSession}
+          />
+        </article>
+      </Card>
     )
   }
 
   // Coluna sem skill dedicada e sem sessão: `article` inerte, sem handler nenhum (CA-4).
   if (!clickable) {
     return (
-      <article {...anchors} className={skin}>
-        {body}
-      </article>
+      <Card asChild className={skin}>
+        <article {...anchors}>{body}</article>
+      </Card>
     )
   }
 
   return (
-    <button
-      {...anchors}
-      type="button"
-      onClick={() => {
-        onToggle(card.itemId)
-      }}
-      className={`block w-full cursor-pointer text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 ${skin}`}
+    // O `block` derruba o `flex` da primitiva pelo `twMerge` — conflito de `display`, a última
+    // vence —, e é o que preserva o empilhamento de hoje dentro do `<button>`; `text-left` desfaz a
+    // centralização nativa. Tudo isso vai no `className` da `Card`, e não no `<button>`: o `Slot`
+    // concatena os dois `className` sem passar pelo `twMerge`, então conflito no filho não resolve.
+    <Card
+      asChild
+      className={`block w-full cursor-pointer text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${skin}`}
     >
-      {body}
-    </button>
+      <button
+        {...anchors}
+        type="button"
+        onClick={() => {
+          onToggle(card.itemId)
+        }}
+      >
+        {body}
+      </button>
+    </Card>
   )
 }

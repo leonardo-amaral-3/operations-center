@@ -110,11 +110,11 @@ export function KanbanScreen(): JSX.Element {
   const { board, readAt, error } = snapshot
 
   return (
-    <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
-      <header className="flex items-center justify-between gap-4 border-b border-neutral-800 px-4 py-3">
+    <div className="flex h-full flex-col bg-background font-base text-foreground">
+      <header className="flex items-center justify-between gap-4 border-b-2 border-border px-4 py-3">
         {/* O título do board, e não "Operations Center": é o que faz o app dizer **qual** board
             está olhando — hoje isso vem de uma variável de ambiente invisível. */}
-        <h1 className="truncate text-sm font-semibold tracking-tight">
+        <h1 className="truncate text-sm font-heading tracking-tight">
           {board?.title ?? 'Operations Center'}
         </h1>
         <Freshness readAt={readAt} error={error} />
@@ -139,13 +139,13 @@ export function KanbanScreen(): JSX.Element {
       ) : (
         <main className="flex min-h-0 flex-1 items-center justify-center p-8">
           {error === null ? (
-            <p className="text-sm text-neutral-600">Lendo o board…</p>
+            <p className="text-sm text-foreground/60">Lendo o board…</p>
           ) : (
             // O único caso em que o erro toma a tela: sem primeira leitura não há cartão a
             // preservar, e um vazio silencioso pareceria um board sem cards.
             <div className="max-w-lg text-center">
-              <p className="text-sm text-neutral-300">Não foi possível ler o board.</p>
-              <p className="mt-2 text-xs break-words text-neutral-500">{error}</p>
+              <p className="text-sm text-foreground">Não foi possível ler o board.</p>
+              <p className="mt-2 text-xs break-words text-foreground/60">{error}</p>
             </div>
           )}
         </main>
