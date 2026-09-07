@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { contrastRatio, oklchToSrgb, toHex } from '../../src/main/color'
 import { parseOklch, parseThemes } from '../../src/main/sheet'
+import { resolveTheme, windowBackground } from '../../src/main/theme'
 
 /**
  * A matemática de cor do card #29 e a leitura da folha, pinadas nos números que o #8 publicou.
@@ -145,5 +146,48 @@ describe('`parseOklch`', () => {
   it('lança no que não é cor da folha, com o valor cru na mensagem', () => {
     // Um hex é o engano mais provável — é o formato que o main escrevia à mão antes deste card.
     expect(() => parseOklch('#eee6fe')).toThrow('#eee6fe')
+  })
+})
+
+describe('`resolveTheme` lê `OC_THEME`', () => {
+  it.each([
+    { nome: 'ausente', raw: undefined },
+    { nome: 'vazia', raw: '' },
+    { nome: 'só espaço', raw: '  ' },
+  ])('cai na lavanda com a variável $nome', ({ raw }) => {
+    expect(resolveTheme(raw)).toBe('lavanda')
+  })
+
+  it.each([{ raw: 'ametista' }, { raw: ' ametista ' }])('aceita `$raw`', ({ raw }) => {
+    expect(resolveTheme(raw)).toBe('ametista')
+  })
+
+  /**
+   * O lado oposto, e é ele que dá sentido ao de cima: valor **presente e inválido** lança, em vez de
+   * cair na lavanda. `Ametista` está aqui junto de `roxo` porque a comparação é sensível a
+   * maiúsculas de propósito — os nomes são minúsculos, e a maiúscula é engano de quem digitou.
+   */
+  it.each([
+    { nome: 'a maiúscula, que é engano de digitação', raw: 'Ametista' },
+    { nome: 'a combinação que não existe', raw: 'roxo' },
+  ])('lança em $nome, com o valor cru na mensagem', ({ raw }) => {
+    expect(() => resolveTheme(raw)).toThrow(`OC_THEME inválido: ${raw}`)
+  })
+
+  it('a mensagem preserva o espaço invisível em vez de aparar antes de reclamar', () => {
+    // O valor cru e não o aparado: quem digitou ` roxo` precisa ver o espaço no erro, senão a
+    // mensagem descreve um valor que a pessoa não escreveu.
+    expect(() => resolveTheme(' roxo')).toThrow('OC_THEME inválido:  roxo')
+  })
+})
+
+describe('`windowBackground` tira a cor da janela da folha', () => {
+  it.each([
+    // O hex que estava escrito à mão em `src/main/index.ts` antes deste card: é ele que prova que
+    // trocar o literal pela folha é no-op para o tema de hoje.
+    { theme: 'lavanda', esperado: '#eee6fe' },
+    { theme: 'ametista', esperado: '#e6eafc' },
+  ] as const)('a janela da $theme abre em $esperado', ({ theme, esperado }) => {
+    expect(windowBackground(theme)).toBe(esperado)
   })
 })
