@@ -144,8 +144,11 @@ describe('CA-4 — as âncoras de teste seguem nos mesmos elementos', () => {
   })
 
   it('a escala muda o tamanho do corpo, e só isso', () => {
-    expect(render('oi', 'assistant', 'sm')).toContain('class="text-sm text-neutral-100"')
-    expect(render('oi', 'assistant', 'xs')).toContain('class="text-xs text-neutral-100"')
+    // A cor saiu do corpo quando o card #8 recompôs a bolha: quem pinta o texto agora é a face da
+    // `Card` (`text-main-foreground` na do usuário, `text-foreground` na do Claude), e o que resta
+    // aqui é a escala — que é exatamente o que este teste sempre cobrou.
+    expect(render('oi', 'assistant', 'sm')).toContain('class="text-sm"')
+    expect(render('oi', 'assistant', 'xs')).toContain('class="text-xs"')
   })
 })
 

@@ -43,6 +43,8 @@ exatamente o que o torna a escolha certa aqui.
 | `src/renderer/` | React + Tailwind: o kanban (colunas, cartões e carimbo de frescor), a tela de chat da fatia vertical e a bolha de mensagem que as duas compartilham — ela desenha o markdown com [`react-markdown`](https://www.npmjs.com/package/react-markdown) + `remark-gfm`, e `rehype-raw` + `rehype-sanitize` (nessa ordem) no HTML embutido nas respostas |
 | `src/shared/`   | o contrato IPC e o vocabulário do board, compilados pelos dois lados                                                                                                                                                                                                                                                                              |
 
+A tela veste o [neobrutalism.dev](https://www.neobrutalism.dev/) sobre shadcn/ui: as primitivas ficam vendorizadas em `src/renderer/ui/`, o tema em modo claro fixo mora em `src/renderer/index.css`, e `tests/unit/design-system.test.ts` reprova a cor de paleta ou a casca escrita à mão fora dali.
+
 Build com `electron-vite` (Vite 7). Testes: Vitest nas unidades, Playwright + Electron nos smokes.
 
 ## Pré-requisitos

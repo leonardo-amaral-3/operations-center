@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 
 import type { TurnActivity } from '../../shared/session'
 import { isSilent } from '../session/sessionView'
+import { Badge } from '../ui/badge'
 
 interface TurnPulseProps {
   activity: TurnActivity
@@ -65,9 +66,7 @@ export function TurnPulse({ activity, somethingRunning }: TurnPulseProps): JSX.E
       data-silent={silent ? 'true' : 'false'}
       // `my-2` e não `mt-2`: em `CardChat` a margem de baixo colapsa com a da caixa de texto, e na
       // tela de chat ela é o único respiro entre a linha e a caixa.
-      className={`my-2 flex items-center gap-2 text-[11px] ${
-        silent ? 'text-amber-300' : 'text-neutral-400'
-      }`}
+      className="my-2 flex items-center gap-2 text-[11px] text-foreground/60"
     >
       <span aria-hidden className={silent ? '' : 'animate-pulse'}>
         ●
@@ -79,8 +78,17 @@ export function TurnPulse({ activity, somethingRunning }: TurnPulseProps): JSX.E
       ) : null}
 
       {/* A frase inteira, e não um ícone: o CA-4 existe para o humano saber que **pode** ser
-          travamento, e um símbolo âmbar sozinho não diz isso a ninguém. */}
-      {silent ? <span>sem sinal há mais de 1 min</span> : null}
+          travamento, e um símbolo âmbar sozinho não diz isso a ninguém.
+
+          **Chip `bg-warning`, e não texto âmbar**: neste tema o âmbar é fundo, não tinta. O
+          `--warning` foi escolhido por ter 12.74:1 com preto **por cima**; escrito como cor de
+          texto sobre a face branca da conversa ele cai para perto de 1.6:1 e some. É o mesmo trato
+          que o `Freshness` dá ao dado envelhecido, e é a mesma frase: pare e olhe. */}
+      {silent ? (
+        <Badge variant="neutral" className="bg-warning px-1.5 py-0 text-[11px] font-normal">
+          sem sinal há mais de 1 min
+        </Badge>
+      ) : null}
     </p>
   )
 }
