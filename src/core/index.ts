@@ -20,6 +20,9 @@ export type { Board, BoardCard, BoardCardField, BoardColumn } from './board/type
 export { RepoIndex } from './repos/RepoIndex'
 export type { RepoIndexDeps, SessionFolder } from './repos/RepoIndex'
 
+export { ConversationIndex } from './session/ConversationIndex'
+export type { ConversationIndexDeps, Restoration } from './session/ConversationIndex'
+
 export { DEFAULT_SETTING_SOURCES, SessionHost } from './session/SessionHost'
 export type { QueryFn, SessionHostDeps, StartSessionInput } from './session/SessionHost'
 export type { SessionHandle } from './session/SessionHandle'
