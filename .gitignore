@@ -13,8 +13,14 @@ Thumbs.db
 *.pem
 *.key
 
-# Saida de build e dependencias sao adicionadas junto com o scaffold da stack,
-# quando a spec da primeira feature fechar qual e.
+# Dependencias e saida de build
+node_modules/
+dist/
+out/
+
+# Saida de teste
+test-results/
+playwright-report/
 
 # Claude Code
 .claude/settings.local.json

@@ -1,0 +1,11 @@
+@import 'tailwindcss';
+
+/*
+ * A janela inteira é a tela: quem rola é a lista de mensagens, com scroll próprio. Sem estas
+ * alturas o `h-full` do App não teria contra o que medir e o layout desabaria para o conteúdo.
+ */
+html,
+body,
+#root {
+  height: 100%;
+}
