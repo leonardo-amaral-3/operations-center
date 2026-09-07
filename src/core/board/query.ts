@@ -116,3 +116,24 @@ export const CONVERSABLE_STATIONS = [
   'Revisão',
   'Release',
 ] as const
+
+/**
+ * As 8 estações da norma, na ordem da esteira. É a assinatura de "este board roda a esteira" e a
+ * única regra que decide se um Project vira aba.
+ *
+ * São as 8, e não as 6 conversáveis: as 6 admitiriam um board que vai de Triagem a Release sem ter
+ * Validação em Dev nem Produção — um board que não roda a esteira, e que ganharia aba assim mesmo.
+ *
+ * Casadas por **nome** pela mesma razão que as conversáveis: o nome pertence à norma e é idêntico
+ * nos dois boards reais; o `optionId` pertence ao board e é diferente em cada um.
+ */
+export const ESTEIRA_STATIONS = [
+  'Triagem',
+  'Backlog',
+  'Especificação',
+  'Implementação',
+  'Revisão',
+  'Validação em Dev',
+  'Release',
+  'Produção',
+] as const

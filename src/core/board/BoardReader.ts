@@ -1,13 +1,14 @@
+import { MAX_PAGES, selectByAlias } from './envelope'
 import { asArray, asNumber, asRecord, asString } from './narrow'
-import { BOARD_QUERY, CARD_FIELDS, CONVERSABLE_STATIONS, STATUS_FIELD } from './query'
-import type {
-  Board,
-  BoardCard,
-  BoardCardField,
-  BoardColumn,
-  GraphQLError,
-  GraphQLFn,
-} from './types'
+import { BOARD_QUERY, CARD_FIELDS, STATUS_FIELD } from './query'
+import { CONVERSABLE, normalizeStation } from './stations'
+import type { Board, BoardCard, BoardCardField, BoardColumn, GraphQLFn } from './types'
+
+/**
+ * O teto de páginas mudou de casa — é regra de envelope, não de board —, mas continua visível
+ * daqui: quem lê um leitor paginado procura o teto dele no próprio leitor.
+ */
+export { MAX_PAGES }
 
 export interface BoardReaderDeps {
   /**
@@ -20,26 +21,6 @@ export interface BoardReaderDeps {
 export interface ReadBoardInput {
   owner: string
   number: number
-}
-
-/**
- * Teto de páginas. 2000 cards é ordens de grandeza acima de qualquer board real; o teto existe para
- * que um `pageInfo` malformado vire erro em vez de laço infinito.
- */
-export const MAX_PAGES = 20
-
-/** Os dois aliases do documento, na ordem de preferência. */
-const ALIASES = ['user', 'organization'] as const
-
-/** As estações conversáveis já normalizadas — a forma em que a comparação de `readColumns` acontece. */
-const CONVERSABLE = new Set(CONVERSABLE_STATIONS.map(normalizeStation))
-
-type Alias = (typeof ALIASES)[number]
-
-/** Um `projectV2` que resolveu, e por qual alias — o outro é o que pode falhar impunemente. */
-interface ResolvedProject {
-  alias: Alias
-  project: Record<string, unknown>
 }
 
 /** Um valor single-select do item, já achatado. */
@@ -82,7 +63,7 @@ export class BoardReader {
         cursor,
       })
 
-      const project = selectProject(response)
+      const project = selectByAlias(response, 'projectV2')
       if (page === 0) {
         title = asString(project['title']) ?? ''
         columns = readColumns(project)
@@ -102,44 +83,6 @@ export class BoardReader {
       `o board devolveu mais de ${MAX_PAGES} páginas de itens — pageInfo provavelmente malformado`,
     )
   }
-}
-
-/**
- * Regras 1 e 2: escolhe o alias que resolveu e decide quais erros são toleráveis.
- *
- * A resposta real do board deste projeto (owner usuário) vem com `data.user` preenchido,
- * `data.organization: null` **e** um `NOT_FOUND` em `errors` apontando para `["organization"]`.
- * Ignorar só esse erro — o do alias que não foi usado — é o que impede o app de engolir em
- * silêncio uma falha de verdade em algum campo.
- */
-function selectProject(response: {
-  data: unknown
-  errors?: readonly GraphQLError[]
-}): Record<string, unknown> {
-  const errors = response.errors ?? []
-  const resolved = pickAlias(response.data)
-
-  if (!resolved) {
-    throw new Error(errors[0]?.message ?? 'board não encontrado')
-  }
-
-  const unused: Alias = resolved.alias === 'user' ? 'organization' : 'user'
-  const fatal = errors.find((error) => error.path?.[0] !== unused)
-  if (fatal) throw new Error(fatal.message)
-
-  return resolved.project
-}
-
-function pickAlias(data: unknown): ResolvedProject | null {
-  const root = asRecord(data)
-  if (!root) return null
-
-  for (const alias of ALIASES) {
-    const project = asRecord(asRecord(root[alias])?.['projectV2'])
-    if (project) return { alias, project }
-  }
-
-  return null
 }
 
 /**
@@ -170,24 +113,6 @@ function readColumns(project: Record<string, unknown>): readonly BoardColumn[] {
   }
 
   return columns
-}
-
-/**
- * O nome da estação reduzido ao que a norma nomeia, para a comparação não depender de como o board
- * decorou o rótulo.
- *
- * Duas variações existem de verdade e nenhuma delas é o assunto: o **emoji** que o board prefixa
- * (`'📥 Triagem'` contra `'Triagem'`) e o **acento** (`'Especificação'` contra `'especificacao'`).
- * Derrubar tudo antes da primeira letra cuida do primeiro; `NFD` + descarte dos diacríticos, do
- * segundo. O que sobra distingue exatamente o que precisa ser distinguido — `'🧪 Validação em Dev'`
- * continua sendo outra coisa.
- */
-function normalizeStation(name: string): string {
-  return name
-    .replace(/^\P{L}+/u, '')
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
 }
 
 function readItems(project: Record<string, unknown>): ItemsPage {
