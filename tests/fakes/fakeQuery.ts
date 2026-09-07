@@ -8,6 +8,7 @@ import type {
   SDKResultMessage,
   SDKSystemMessage,
   SDKTaskStartedMessage,
+  SDKThinkingTokensMessage,
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk'
 
@@ -317,6 +318,25 @@ export function toolResult(toolUseId: string, isError = false): SDKUserMessage {
       ],
     },
     parent_tool_use_id: null,
+    uuid: nextUuid(),
+    session_id: SESSION_ID,
+  }
+}
+
+/**
+ * Um quadro de raciocínio — o único heartbeat que o SDK dá, a cada ~1,3s enquanto o modelo pensa.
+ *
+ * Os dois números são pedidos separadamente porque no SDK eles são coisas diferentes:
+ * `estimated_tokens` é o **acumulado** do bloco corrente e `estimated_tokens_delta` é o incremento
+ * deste quadro. Um default que derivasse um do outro esconderia justamente o caso que o core trata
+ * — o quadro perdido, em que a soma dos deltas deixa de bater com o acumulado.
+ */
+export function thinkingTokens(estimated: number, delta: number): SDKThinkingTokensMessage {
+  return {
+    type: 'system',
+    subtype: 'thinking_tokens',
+    estimated_tokens: estimated,
+    estimated_tokens_delta: delta,
     uuid: nextUuid(),
     session_id: SESSION_ID,
   }

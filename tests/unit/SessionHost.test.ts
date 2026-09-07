@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_SETTING_SOURCES, SessionHost } from '../../src/core/session/SessionHost'
 import { INTERRUPTED_NOTICE } from '../../src/core/session/SessionHandle'
-import type { SessionHandle } from '../../src/core/session/SessionHandle'
+import type { SessionHandle, TurnPulseCore } from '../../src/core/session/SessionHandle'
 import type { SessionState } from '../../src/core/session/state'
 import type { ChatMessage, ChatToolUse } from '../../src/shared/session'
 import {
@@ -13,6 +13,7 @@ import {
   createFakeQuery,
   successResult,
   taskStarted,
+  thinkingTokens,
   toolResult,
   userEcho,
 } from '../fakes/fakeQuery'
@@ -973,6 +974,63 @@ describe('SessionHost', () => {
     expect(trilha(handle).map((entrada) => [entrada.id, entrada.headline])).toEqual([
       ['toolu_b3', 'Run node timer for 20 seconds'],
     ])
+  })
+
+  it('o contador de raciocínio é o acumulado do SDK, e zera na fronteira do turno', async () => {
+    const fake = createFakeQuery({
+      turn: () =>
+        Promise.resolve([
+          thinkingTokens(50, 50),
+          // O segundo quadro chega com um delta que **não** completa a soma — é o quadro perdido.
+          // Somar deltas daria 170 aqui; ler o acumulado dá os 450 que o SDK está afirmando.
+          thinkingTokens(450, 120),
+          assistantMessage('pensei e respondo'),
+          successResult(),
+        ]),
+    })
+    const handle = start(fake)
+
+    const pulsos: TurnPulseCore[] = []
+    handle.on('turn', (pulso) => pulsos.push(pulso))
+
+    handle.send('pense antes de responder')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // O `result` fecha o turno: o ordinal vira 2 e o contador volta a zero, que é o que apaga a
+    // linha viva do turno que acabou em vez de deixá-la contando o raciocínio do turno anterior.
+    expect(pulsos).toEqual([
+      { index: 1, thinkingTokens: 50 },
+      { index: 1, thinkingTokens: 450 },
+      { index: 2, thinkingTokens: 0 },
+    ])
+  })
+
+  it('o ordinal marca a fronteira mesmo quando a fila mantém a sessão trabalhando', async () => {
+    const fake = createFakeQuery({
+      turn: (text) => Promise.resolve([assistantMessage(`li: ${text}`), successResult(1)]),
+    })
+    const handle = start(fake)
+
+    const pulsos: TurnPulseCore[] = []
+    const ordem: string[] = []
+    handle.on('turn', (pulso) => {
+      pulsos.push(pulso)
+      ordem.push('turn')
+    })
+    handle.on('state', () => ordem.push('state'))
+
+    handle.send('oi')
+    await untilState(handle, (state) => state.kind === 'working' && handle.messages.length === 2)
+
+    // A sessão **não** saiu de `working`, então "entrou em working" não serviria de fronteira: sem
+    // o ordinal os dois turnos enfileirados apareceriam como um só, com o relógio somando os dois.
+    expect(handle.state).toEqual({ kind: 'working' })
+    expect(pulsos).toEqual([{ index: 2, thinkingTokens: 0 }])
+
+    // O primeiro `state` é o do `init`; o segundo e o `turn` são os do `result`, **nessa** ordem. É
+    // contrato, e não coincidência: o main decide o carimbo do relógio olhando o estado já
+    // atualizado, e é só assim que ele distingue "o turno acabou" de "o próximo da fila começou".
+    expect(ordem).toEqual(['state', 'state', 'turn'])
   })
 
   it('o texto que chega como mensagem de usuário não vira balão na conversa', async () => {

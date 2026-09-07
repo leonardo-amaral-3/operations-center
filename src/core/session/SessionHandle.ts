@@ -22,15 +22,38 @@ import type {
   ToolStatus,
 } from './types'
 
-/** Os três canais que uma sessão publica. */
+/**
+ * O que o core sabe do turno corrente. Sem relógio: o core não carimba tempo — quem o faz é a
+ * casca, como já acontece com o `readAt` do board.
+ *
+ * Declarado **aqui**, e não em `src/shared/session.ts`, porque ele não atravessa a ponte: quem
+ * cruza é o `TurnActivity`, que o main compõe a partir deste mais os dois carimbos de relógio.
+ * `src/shared/` é para o vocabulário que os dois processos precisam compilar junto, e inchá-lo com
+ * tipo interno do core desfaria a razão de ele existir — mesmo lugar do `StartQuery`, logo abaixo.
+ */
+export interface TurnPulseCore {
+  /**
+   * Começa em 1 e incrementa a cada `result`. É o que marca a fronteira entre turnos.
+   *
+   * Não é enfeite: com `queued_turn_count > 0` o `result` **não** tira a sessão de `working`
+   * (`state.ts`), então "entrou em `working`" não serve como fronteira. Sem o ordinal, dois turnos
+   * enfileirados apareceriam como um só e o relógio contaria o tempo dos dois.
+   */
+  index: number
+  thinkingTokens: number
+}
+
+/** Os quatro canais que uma sessão publica. */
 interface SessionEvents {
   state: SessionState
   message: ChatMessage
   init: SessionInit
+  /** O pulso do turno corrente. Canal à parte porque ele bate a cada ~1,3s e morre com o turno. */
+  turn: TurnPulseCore
 }
 
 /**
- * Emissor tipado dos três canais acima. Trinta linhas em vez de uma dependência: uma biblioteca de
+ * Emissor tipado dos canais acima. Trinta linhas em vez de uma dependência: uma biblioteca de
  * eventos traria wildcards, `once`, prioridade e tipagem por string solta — nada disso é usado
  * aqui, e a tipagem por canal é justamente o que a biblioteca genérica não dá.
  */
@@ -118,7 +141,7 @@ interface PendingQuestion {
 
 /**
  * Uma sessão viva: a fila de entrada, o `query()` que a consome, a máquina de estados e as
- * mensagens já vistas — mais os três canais por onde a casca observa tudo isso.
+ * mensagens já vistas — mais os quatro canais por onde a casca observa tudo isso.
  *
  * Não conhece Electron, React nem IPC. O que sai daqui são valores simples, prontos para atravessar
  * a ponte até a tela.
@@ -145,6 +168,10 @@ export class SessionHandle {
   /** Numera o id da nota de parada, como `#sentCount` numera o do envio. */
   #stopCount = 0
   #closing = false
+  /** O ordinal do turno corrente. Nasce em 1: o primeiro turno já está a caminho antes do `init`. */
+  #turn = 1
+  /** O acumulado de raciocínio do turno corrente. Zera na fronteira, junto com o bump do ordinal. */
+  #thinkingTokens = 0
 
   constructor(id: string, startQuery: StartQuery) {
     this.id = id
@@ -286,6 +313,15 @@ export class SessionHandle {
         return
       }
 
+      // O contador de raciocínio é o único heartbeat que o SDK dá: ele bate a cada ~1,3s enquanto
+      // o modelo pensa, e cala enquanto uma ferramenta roda. O valor é o **acumulado** que o SDK
+      // manda, e não a soma dos `estimated_tokens_delta`: somar deltas erra se um quadro se perder.
+      if (message.subtype === 'thinking_tokens') {
+        this.#thinkingTokens = message.estimated_tokens
+        this.#emitPulse()
+        return
+      }
+
       // A frase que o próprio Claude Code escreveu para a chamada. Ela só toca o `headline`, nunca
       // o `status`: um `task_progress` atrasado não pode ressuscitar ferramenta que já terminou.
       if (message.subtype === 'task_started' || message.subtype === 'task_progress') {
@@ -336,6 +372,13 @@ export class SessionHandle {
       // mesma ordem em que o texto do assistente chega antes do `result` que fecha o turno.
       this.#apply({ kind: 'result', outcome: message, interrupted })
       this.#abortRunning()
+
+      // A fronteira do turno, e ela vem **depois** do `#apply` de propósito: o main decide o
+      // carimbo do relógio olhando o estado já atualizado, e é isso que distingue "o turno acabou"
+      // de "o próximo turno da fila começou". A ordem é contrato.
+      this.#turn += 1
+      this.#thinkingTokens = 0
+      this.#emitPulse()
     }
   }
 
@@ -451,6 +494,11 @@ export class SessionHandle {
         this.#upsert({ ...message, status: 'aborted' })
       }
     }
+  }
+
+  /** Publica o pulso corrente. Sempre o valor inteiro, e não o que mudou: o consumidor substitui. */
+  #emitPulse(): void {
+    this.#emitter.emit('turn', { index: this.#turn, thinkingTokens: this.#thinkingTokens })
   }
 
   #apply(event: SessionEvent): void {
