@@ -1,9 +1,12 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { contrastRatio, oklchToSrgb, toHex } from '../../src/main/color'
+import { parseOklch, parseThemes } from '../../src/main/sheet'
 
 /**
- * A matemática de cor do card #29, pinada nos números que o #8 publicou.
+ * A matemática de cor do card #29 e a leitura da folha, pinadas nos números que o #8 publicou.
  *
  * O que este arquivo protege não é "a conversão roda", é **que ela é a mesma conversão** que
  * produziu os valores hoje em uso. Por isso todo esperado aqui é citação de um documento aprovado —
@@ -71,5 +74,76 @@ describe('a guarda de gamut', () => {
 
   it.each(APERTADOS)('não lança em $nome', ({ l, c, h }) => {
     expect(() => oklchToSrgb(l, c, h)).not.toThrow()
+  })
+})
+
+/** A folha de verdade, lida do disco como `design-system.test.ts:142` monta o caminho dele. */
+const CAMINHO_DA_FOLHA = fileURLToPath(new URL('../../src/renderer/index.css', import.meta.url))
+
+describe('`parseThemes` lê a folha do disco', () => {
+  const combinacoes = parseThemes(readFileSync(CAMINHO_DA_FOLHA, 'utf8'))
+
+  it('acha as duas combinações declaradas', () => {
+    expect([...combinacoes.keys()]).toEqual(['lavanda', 'ametista'])
+  })
+
+  it.each(['lavanda', 'ametista'] as const)('a %s traz os onze tokens', (nome) => {
+    expect(combinacoes.get(nome)?.size).toBe(11)
+  })
+
+  it('o valor chega inteiro e sem o `\\r` do CRLF grudado no fim', () => {
+    // Este é o ponto em que um parser escrito no Linux passa e aqui falha: sem o `.trim()`, o valor
+    // sairia daqui como `oklch(…)\r` e não casaria com nada em `parseOklch` — um vermelho que
+    // acusaria a folha, que está intacta.
+    expect(combinacoes.get('lavanda')?.get('--background')).toBe('oklch(93.88% 0.033 300.19)')
+  })
+})
+
+describe('`parseThemes` não se perde na sintaxe da folha', () => {
+  /**
+   * Aspas duplas no seletor. O Prettier deste repo normaliza para aspas simples e é assim que a folha
+   * está escrita — o parser aceita as duas porque o custo é um caractere e o modo de falha seria o
+   * app abrir sem cor nenhuma.
+   */
+  const FOLHA_EM_ASPAS_DUPLAS = [
+    '[data-theme="lavanda"] {',
+    '  --background: oklch(93.88% 0.033 300.19);',
+    '  --main: oklch(70.28% 0.1753 295.36);',
+    '}',
+  ].join('\r\n')
+
+  /** Um `}` no meio do bloco, dentro de comentário: sem apagar comentários antes, ele fecha cedo. */
+  const FOLHA_COM_CHAVE_EM_COMENTARIO = [
+    "[data-theme='lavanda'] {",
+    '  --background: oklch(93.88% 0.033 300.19);',
+    '  /* uma chave } aqui no meio, e o bloco terminaria antes da hora */',
+    '  --main: oklch(70.28% 0.1753 295.36);',
+    '}',
+  ].join('\r\n')
+
+  it.each([
+    { nome: 'com o seletor em aspas duplas', folha: FOLHA_EM_ASPAS_DUPLAS },
+    { nome: 'com um `}` dentro de comentário', folha: FOLHA_COM_CHAVE_EM_COMENTARIO },
+  ])('devolve o bloco inteiro $nome', ({ folha }) => {
+    // Os dois tokens, e não só o primeiro: é a segunda declaração — a que vem depois da armadilha —
+    // que prova que o bloco não foi cortado no meio.
+    expect([...(parseThemes(folha).get('lavanda') ?? [])]).toEqual([
+      ['--background', 'oklch(93.88% 0.033 300.19)'],
+      ['--main', 'oklch(70.28% 0.1753 295.36)'],
+    ])
+  })
+})
+
+describe('`parseOklch`', () => {
+  it.each([
+    { valor: 'oklch(70.28% 0.1753 295.36)', esperado: [70.28, 0.1753, 295.36] },
+    { valor: 'oklch(100% 0 0)', esperado: [100, 0, 0] },
+  ])('lê $valor', ({ valor, esperado }) => {
+    expect(parseOklch(valor)).toEqual(esperado)
+  })
+
+  it('lança no que não é cor da folha, com o valor cru na mensagem', () => {
+    // Um hex é o engano mais provável — é o formato que o main escrevia à mão antes deste card.
+    expect(() => parseOklch('#eee6fe')).toThrow('#eee6fe')
   })
 })
