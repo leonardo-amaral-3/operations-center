@@ -56,8 +56,17 @@ const LOOKS: Record<SessionState['kind'], { label: string; className: string }> 
  */
 export function StateBadge({ state }: StateBadgeProps): JSX.Element {
   const look = LOOKS[state.kind]
-  // O motivo da falha só existe neste estado, e é a única informação que o rótulo sozinho não dá.
-  const label = state.kind === 'failed' ? `${look.label}: ${state.reason}` : look.label
+  // Derivado aqui, e não lido do `SessionView`, de propósito: este componente também desenha o
+  // cartão **colapsado** do kanban (`BoardCardView.tsx`), que só tem um `SessionState` na mão.
+  const queued =
+    state.kind === 'awaiting_decision' || state.kind === 'awaiting_answer' ? state.queued : 0
+  // O motivo da falha e o tamanho da fila são as duas informações que o rótulo sozinho não dá.
+  const label =
+    state.kind === 'failed'
+      ? `${look.label}: ${state.reason}`
+      : queued > 0
+        ? `${look.label} · +${queued}`
+        : look.label
 
   return (
     // `variant="neutral"` nos sete, e não a default: a default é `bg-main`, e usá-la faria os quatro
@@ -67,6 +76,7 @@ export function StateBadge({ state }: StateBadgeProps): JSX.Element {
       variant="neutral"
       data-testid="state-badge"
       data-state={state.kind}
+      data-queued={String(queued)}
       title={label}
       className={cn('max-w-80 truncate', look.className)}
     >

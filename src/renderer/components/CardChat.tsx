@@ -168,13 +168,13 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
 
       {view.permission ? (
         <div className="mt-2">
-          <PermissionPrompt request={view.permission} onDecide={decide} />
+          <PermissionPrompt request={view.permission} onDecide={decide} queued={view.queued} />
         </div>
       ) : null}
 
       {view.question ? (
         <div className="mt-2">
-          <QuestionPrompt request={view.question} onAnswer={answer} />
+          <QuestionPrompt request={view.question} onAnswer={answer} queued={view.queued} />
         </div>
       ) : null}
 
