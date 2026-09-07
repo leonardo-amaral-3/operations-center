@@ -1,9 +1,14 @@
-import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
 import { STATUS_FIELD } from '../../src/core/board/query'
+import {
+  BOARDS_FIXTURE_PATH,
+  BOARD_FIXTURE_PATH,
+  FIRST_BOARD,
+  fixtureProject,
+} from './boards-fixture'
 
 /**
  * O smoke do kanban: o board da fixture desenhado na tela, de ponta a ponta.
@@ -25,21 +30,14 @@ import { STATUS_FIELD } from '../../src/core/board/query'
 // `package.json` não for `type: module`, e `import.meta` ali é erro de sintaxe.
 const REPO_ROOT = join(__dirname, '..', '..')
 
-/** **Absoluto**, e é o ponto: o processo do Electron não roda com a `cwd` do runner. */
-const FIXTURE_PATH = join(REPO_ROOT, 'tests', 'fixtures', 'board.json')
-
 /**
- * O envelope cru, do jeito que o `BoardReader` o recebe.
+ * O board do envelope cru, do jeito que o `BoardReader` o recebe.
  *
  * O `as` é o mesmo trato que `createFixtureGraphQL` faz com o mesmo arquivo: o que valida a forma de
  * verdade é o app rodando logo abaixo — se a fixture não tiver a forma que a API devolve, o kanban
  * sobe vazio e todas as asserções caem juntas. Os opcionais existem porque a resposta é heterogênea:
  * rascunho e pull request não têm número, e valor de campo que não é single-select chega como `{}`.
  */
-interface FixtureEnvelope {
-  data: { user: { projectV2: FixtureProject } }
-}
-
 interface FixtureProject {
   field: { options: readonly FixtureOption[] }
   items: { nodes: readonly FixtureNode[] }
@@ -88,8 +86,8 @@ interface Caixa {
   height: number
 }
 
-const PROJECT = (JSON.parse(readFileSync(FIXTURE_PATH, 'utf8')) as FixtureEnvelope).data.user
-  .projectV2
+/** O board que o app desenha: o primeiro da ordem da descoberta, derivado da fixture. */
+const PROJECT = fixtureProject(FIRST_BOARD.key) as FixtureProject
 
 /** As colunas esperadas, **na ordem em que o board as declara** — que é o CA-1. */
 const COLUMNS = PROJECT.field.options
@@ -119,17 +117,17 @@ test.beforeAll(async () => {
     cwd: REPO_ROOT,
     env: {
       ...inheritedEnv(),
-      // A porta que troca o GitHub por um arquivo. É ela que torna este smoke determinístico.
-      OC_BOARD_FIXTURE: FIXTURE_PATH,
+      // As portas que trocam o GitHub por arquivo. São elas que tornam este smoke determinístico.
+      OC_BOARD_FIXTURE: BOARD_FIXTURE_PATH,
+      OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell de quem roda abriria a tela
       // errada e o teste falharia por um motivo que não tem nada a ver com o kanban.
       OC_SCREEN: 'kanban',
-      // Inertes de propósito. A fixture ignora documento e variáveis, então estes valores não
-      // podem importar — e se um dia a fiação da fixture quebrar, o app tentará ler um board que
-      // não existe e o smoke fica vermelho na hora, em vez de passar em silêncio contra o board de
-      // verdade.
-      OC_PROJECT_OWNER: 'dono-que-a-fixture-ignora',
-      OC_PROJECT_NUMBER: '999',
+      // A coordenada sai da própria fixture, e não escrita à mão: é o primeiro board da ordem da
+      // descoberta, o mesmo que o app escolherá sozinho quando a descoberta virar a fonte.
+      // ESTAS DUAS LINHAS MORREM NA TASK 5, junto com o `OC_PROJECT_*`.
+      OC_PROJECT_OWNER: FIRST_BOARD.owner,
+      OC_PROJECT_NUMBER: String(FIRST_BOARD.number),
     },
   })
 

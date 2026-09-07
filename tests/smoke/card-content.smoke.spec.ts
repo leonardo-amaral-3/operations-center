@@ -5,14 +5,20 @@ import { _electron as electron, expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
 import { CONVERSABLE_STATIONS, STATUS_FIELD } from '../../src/core/board/query'
+import {
+  BOARDS_FIXTURE_PATH,
+  BOARD_FIXTURE_PATH,
+  FIRST_BOARD,
+  fixtureProject,
+} from './boards-fixture'
 
 /**
  * O smoke do conteúdo: abrir um cartão que não conversa, ler o que está escrito nele e recarregar —
  * de ponta a ponta, e **sem sessão, sem modelo e sem cota**.
  *
  * Ele é do time do `kanban.smoke.spec.ts`, e não do `card-chat.smoke.spec.ts`: a única fonte de dado
- * são os dois arquivos de `tests/fixtures/`, e nada aqui fala com o Claude Code. Por isso as
- * variáveis são só `OC_SCREEN`, `OC_BOARD_FIXTURE` e `OC_CARD_FIXTURE` — sem `OC_MODEL`, sem
+ * são os arquivos de `tests/fixtures/`, e nada aqui fala com o Claude Code. Por isso as
+ * variáveis são só `OC_SCREEN` e as três de fixture — sem `OC_MODEL`, sem
  * `OC_ISOLATED` e sem `OC_CLAUDE_PROJECTS`, que são o que amarra aquele outro smoke à bancada. O
  * percurso, mesmo assim, é o inteiro: `fixture → main → core → renderer`.
  *
@@ -32,8 +38,6 @@ import { CONVERSABLE_STATIONS, STATUS_FIELD } from '../../src/core/board/query'
 // `__dirname` e não `import.meta.url`: o Playwright transpila os specs para CommonJS enquanto o
 // `package.json` não for `type: module`, e `import.meta` ali é erro de sintaxe.
 const REPO_ROOT = join(__dirname, '..', '..')
-
-const BOARD_FIXTURE_PATH = join(REPO_ROOT, 'tests', 'fixtures', 'board.json')
 
 const CARD_FIXTURE_PATH = join(REPO_ROOT, 'tests', 'fixtures', 'cards.json')
 
@@ -55,10 +59,6 @@ const NEW_COMMENT =
  * verdade é o app rodando logo abaixo. Os opcionais existem porque a resposta é heterogênea:
  * rascunho e pull request não têm número, e valor de campo que não é single-select chega como `{}`.
  */
-interface FixtureEnvelope {
-  data: { user: { projectV2: FixtureProject } }
-}
-
 interface FixtureProject {
   field: { options: readonly FixtureOption[] }
   items: { nodes: readonly FixtureNode[] }
@@ -135,8 +135,8 @@ interface Rolagem {
   clientHeight: number
 }
 
-const PROJECT = (JSON.parse(readFileSync(BOARD_FIXTURE_PATH, 'utf8')) as FixtureEnvelope).data.user
-  .projectV2
+/** O board que o app desenha: o primeiro da ordem da descoberta, derivado da fixture. */
+const PROJECT = fixtureProject(FIRST_BOARD.key) as FixtureProject
 
 const COLUMNS = PROJECT.field.options
 
@@ -189,11 +189,13 @@ test.describe.configure({ mode: 'serial' })
 
 test.beforeAll(async () => {
   scenario = mkdtempSync(join(tmpdir(), 'oc-card-content-'))
+  const boardsFixtureCopy = join(scenario, 'boards.json')
   const boardFixtureCopy = join(scenario, 'board.json')
   cardFixtureCopy = join(scenario, 'cards.json')
 
-  // As duas juntas, e não só a que muda: elas são um par, e apontar o app para uma cópia e uma
-  // original deixaria o cenário mais difícil de ler do que o que ele economizaria.
+  // As três juntas, e não só a que muda: elas são um conjunto, e apontar o app para uma cópia e
+  // duas originais deixaria o cenário mais difícil de ler do que o que ele economizaria.
+  copyFileSync(BOARDS_FIXTURE_PATH, boardsFixtureCopy)
   copyFileSync(BOARD_FIXTURE_PATH, boardFixtureCopy)
   copyFileSync(CARD_FIXTURE_PATH, cardFixtureCopy)
 
@@ -204,18 +206,19 @@ test.beforeAll(async () => {
     cwd: REPO_ROOT,
     env: {
       ...inheritedEnv(),
-      // As duas portas que trocam o GitHub por arquivo — e é só isso que este smoke precisa de
+      // As três portas que trocam o GitHub por arquivo — e é só isso que este smoke precisa de
       // ambiente. **Absolutos**, e é o ponto: o processo do Electron não roda com a `cwd` do runner.
       OC_BOARD_FIXTURE: boardFixtureCopy,
+      OC_BOARDS_FIXTURE: boardsFixtureCopy,
       OC_CARD_FIXTURE: cardFixtureCopy,
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell de quem roda abriria a tela
       // errada e o teste falharia por um motivo que não tem nada a ver com o conteúdo do card.
       OC_SCREEN: 'kanban',
-      // Inertes de propósito, como no smoke do kanban: se a fiação da fixture quebrar, o app tenta
-      // ler um board que não existe e o smoke fica vermelho na hora, em vez de passar em silêncio
-      // contra o board de verdade.
-      OC_PROJECT_OWNER: 'dono-que-a-fixture-ignora',
-      OC_PROJECT_NUMBER: '999',
+      // A coordenada sai da própria fixture, como no smoke do kanban: é o primeiro board da ordem
+      // da descoberta, o mesmo que o app escolherá sozinho quando a descoberta virar a fonte.
+      // ESTAS DUAS LINHAS MORREM NA TASK 5, junto com o `OC_PROJECT_*`.
+      OC_PROJECT_OWNER: FIRST_BOARD.owner,
+      OC_PROJECT_NUMBER: String(FIRST_BOARD.number),
     },
   })
 

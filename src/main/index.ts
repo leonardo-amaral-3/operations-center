@@ -81,15 +81,20 @@ function resolveBoard(): BoardIpcOptions {
  * Qual cliente o `core` recebe. `OC_BOARD_FIXTURE` é a porta do smoke: com ela o app lê arquivo e
  * não toca a rede; sem ela, é o GitHub de verdade, com o token do `gh`.
  *
- * `OC_CARD_FIXTURE` é a metade do conteúdo, e **só é consultada quando a do board existe**: fora do
- * smoke não há fixture nenhuma, e uma fixture de card sozinha só poderia servir cartões que o board
- * de verdade nunca prometeu.
+ * `OC_CARD_FIXTURE` e `OC_BOARDS_FIXTURE` são as outras duas metades — o conteúdo do cartão e a
+ * descoberta — e **só são consultadas quando a do board existe**: fora do smoke não há fixture
+ * nenhuma, e uma delas sozinha só poderia servir cartões ou abas que o board de verdade nunca
+ * prometeu. Quem decide fixture-vs-GitHub continua sendo `OC_BOARD_FIXTURE` sozinha.
  */
 function createGraphQL(): GraphQLFn {
   const board = process.env.OC_BOARD_FIXTURE
 
   return board
-    ? createFixtureGraphQL({ board, cards: process.env.OC_CARD_FIXTURE })
+    ? createFixtureGraphQL({
+        board,
+        boards: process.env.OC_BOARDS_FIXTURE,
+        cards: process.env.OC_CARD_FIXTURE,
+      })
     : createGitHubGraphQL(createGhTokenSource())
 }
 
