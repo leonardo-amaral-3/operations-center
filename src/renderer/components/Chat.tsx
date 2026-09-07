@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, JSX, KeyboardEvent } from 'react'
 
 import type { ChatMessage, TurnActivity } from '../../shared/session'
+import { isFala, MessageBubble } from './MessageBubble'
 import { ToolEntry } from './ToolEntry'
 import { TurnPulse } from './TurnPulse'
 
@@ -77,7 +78,9 @@ export function Chat({ messages, activity, disabled, onSend }: ChatProps): JSX.E
           // é isso que faz a trilha ser histórico, e não um painel ao lado dele.
           if (message.role === 'tool') return <ToolEntry key={message.id} entry={message} />
 
-          return message.role === 'notice' ? (
+          return isFala(message) ? (
+            <MessageBubble key={message.id} message={message} scale="sm" />
+          ) : (
             <p
               key={message.id}
               data-testid="message"
@@ -86,24 +89,6 @@ export function Chat({ messages, activity, disabled, onSend }: ChatProps): JSX.E
             >
               {message.text}
             </p>
-          ) : (
-            <article
-              key={message.id}
-              data-testid="message"
-              data-role={message.role}
-              className={
-                message.role === 'user'
-                  ? 'ml-auto max-w-[85%] rounded-lg bg-neutral-800 px-3 py-2'
-                  : 'max-w-[85%] rounded-lg bg-neutral-900 px-3 py-2'
-              }
-            >
-              <p className="mb-1 text-[11px] tracking-wide text-neutral-500 uppercase">
-                {message.role === 'user' ? 'você' : 'claude'}
-              </p>
-              <p className="text-sm break-words whitespace-pre-wrap text-neutral-100">
-                {message.text}
-              </p>
-            </article>
           )
         })}
 

@@ -316,6 +316,14 @@ test('CA-2: a permissão de escrita aparece no cartão e a decisão destrava o t
   await input.fill('Crie um arquivo `smoke.txt` com o texto OK')
   await input.press('Enter')
 
+  // A mesma carona do smoke da fatia vertical, agora dentro do cartão e igualmente **sem cota
+  // nenhuma**: as crases já estavam naquele prompt. `smoke.txt` vira `<code>` e a crase não sobra
+  // como caractere no texto visível — é o markdown do #9 provado na segunda tela, que é justamente
+  // a que a bolha compartilhada existe para não deixar divergir.
+  const sentBubble = userMessages(CHAT_CARD).last()
+  await expect(sentBubble.locator('code')).toHaveText('smoke.txt')
+  await expect(sentBubble).not.toContainText('`')
+
   await expect(cardLocator(CHAT_CARD).getByTestId('permission-prompt')).toBeVisible({
     timeout: TURN_TIMEOUT,
   })

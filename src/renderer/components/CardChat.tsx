@@ -3,6 +3,7 @@ import type { JSX, KeyboardEvent } from 'react'
 
 import type { SessionState } from '../../shared/session'
 import { useSessionView } from '../session/useSessionView'
+import { isFala, MessageBubble } from './MessageBubble'
 import { PermissionPrompt } from './PermissionPrompt'
 import { QuestionPrompt } from './QuestionPrompt'
 import { StateBadge } from './StateBadge'
@@ -145,7 +146,9 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
           // é isso que faz a trilha ser histórico, e não um painel ao lado dele.
           if (message.role === 'tool') return <ToolEntry key={message.id} entry={message} />
 
-          return message.role === 'notice' ? (
+          return isFala(message) ? (
+            <MessageBubble key={message.id} message={message} scale="xs" />
+          ) : (
             <p
               key={message.id}
               data-testid="message"
@@ -154,24 +157,6 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
             >
               {message.text}
             </p>
-          ) : (
-            <article
-              key={message.id}
-              data-testid="message"
-              data-role={message.role}
-              className={
-                message.role === 'user'
-                  ? 'ml-auto max-w-[85%] rounded-lg bg-neutral-800 px-2.5 py-1.5'
-                  : 'max-w-[85%] rounded-lg bg-neutral-900 px-2.5 py-1.5'
-              }
-            >
-              <p className="mb-0.5 text-[10px] tracking-wide text-neutral-500 uppercase">
-                {message.role === 'user' ? 'você' : 'claude'}
-              </p>
-              <p className="text-xs break-words whitespace-pre-wrap text-neutral-100">
-                {message.text}
-              </p>
-            </article>
           )
         })}
       </div>
