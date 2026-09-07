@@ -3,6 +3,10 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
+import { contrastRatio, oklchToSrgb, type Rgb8 } from '../../src/main/color'
+import { parseOklch, parseThemes } from '../../src/main/sheet'
+import { THEME_DEFAULT, THEMES, type Theme } from '../../src/shared/theme'
+
 /**
  * O `## O invariante` do card #8, mais a canária de âncoras do CA-4.
  *
@@ -277,15 +281,263 @@ describe('as âncoras que os testes leem seguem onde estavam', () => {
 })
 
 /**
+ * Daqui para baixo, o card #29: a folha deixou de ter **uma** paleta e passou a ter um conjunto.
+ *
+ * O mecanismo inteiro já funciona quando estas canárias nascem — o que falta são as guardas. Quase
+ * tudo o que aquele card decidiu pode ser desfeito sem nada ficar vermelho: um token esquecido numa
+ * combinação nova dá fundo transparente aqui e sombra sem cor ali; um croma "arredondado" muda a cor
+ * do app inteiro; uma cor fora do gamut faz a moldura da janela discordar do canvas em silêncio,
+ * porque o Chromium remapeia reduzindo croma enquanto `src/main/color.ts` clipa por canal.
+ *
+ * Todas seguem a disciplina que este arquivo já pratica: reportam **por nome** — qual combinação,
+ * qual token, qual valor —, porque uma canária que só diz "falhou" custa a quem a encontra vermelha
+ * mais do que resolve.
+ */
+
+/** Os mesmos onze, do jeito que a combinação os declara: sem o `--color-` que o `@theme inline` põe. */
+const TOKENS_DE_COMBINACAO = TOKENS_DE_COR.map((token) => token.replace('--color-', '--'))
+
+/**
+ * A folha lida uma vez, pelo mesmo parser que o main usa para pintar a janela.
+ *
+ * Reaproveitar `parseThemes` em vez de escrever uma segunda leitura aqui é o que faz este arquivo
+ * conferir **a folha que o app enxerga**. Um parser próprio do teste aceitaria um formato ligeiramente
+ * diferente, e é exatamente assim que um valor inválido passa verde e falha na janela.
+ */
+const COMBINACOES = parseThemes(readFileSync(CAMINHO_DO_TEMA, 'utf8'))
+
+describe('o conjunto de combinações da folha é o declarado', () => {
+  it('a folha declara exatamente as combinações de `THEMES`', () => {
+    // Primeiro de propósito. Sem ele, os cinco describes abaixo passariam **verdes contra o vazio**:
+    // um `Map` sem chave nenhuma não tem token ausente, nem cor fora do gamut, nem par com contraste
+    // ruim. É o argumento de `## as varreduras têm o que varrer`, aplicado à folha em vez do disco.
+    //
+    // E ele pega os dois sentidos do erro: a combinação que a folha declarou e ninguém registrou em
+    // `THEMES` — que `parseThemes` ignora de propósito, e que só aparece por ausência aqui — e a que
+    // foi registrada e nunca escrita.
+    expect([...COMBINACOES.keys()]).toEqual([...THEMES])
+  })
+})
+
+describe('toda combinação declara os onze tokens', () => {
+  it.each(THEMES)('a %s não deixa token de fora', (tema) => {
+    const declarados = COMBINACOES.get(tema)
+
+    // Por nome, e não por contagem. Com o `:root` sem cor nenhuma, faltar um token não herda em
+    // silêncio da combinação anterior: dá fundo transparente aqui e sombra sem cor ali, cada um
+    // falhando à sua maneira e nenhum apontando para a folha. "Esperava 11, recebeu 10" deixaria
+    // esse trabalho todo para quem encontrasse o vermelho.
+    const ausentes = TOKENS_DE_COMBINACAO.filter((token) => declarados?.has(token) !== true)
+
+    expect(ausentes).toEqual([])
+  })
+})
+
+/**
+ * O pixel de um token da folha, e o único lugar onde "token ausente" vira mensagem com nome.
+ *
+ * Converter aqui — em vez de guardar hexes no teste — é o que amarra a canária à mesma matemática que
+ * pinta a janela: se `oklchToSrgb` divergir um dia, diverge para os dois.
+ */
+function corDoToken(tema: Theme, token: string): Rgb8 {
+  const valor = COMBINACOES.get(tema)?.get(token)
+
+  if (valor === undefined) throw new Error(`a combinação ${tema} não declara ${token}`)
+
+  return oklchToSrgb(...parseOklch(valor))
+}
+
+describe('toda cor de toda combinação cabe no sRGB', () => {
+  it.each(THEMES)('nenhuma cor da %s escapa do gamut', (tema) => {
+    const declarados = COMBINACOES.get(tema)
+
+    const fora = TOKENS_DE_COMBINACAO.flatMap((token) => {
+      const valor = declarados?.get(token)
+
+      // Token ausente é assunto do describe acima. Reportá-lo aqui de novo faria uma folha incompleta
+      // acender dois vermelhos dizendo a mesma coisa, e o segundo acusaria o gamut de um problema que
+      // é de completude.
+      if (valor === undefined) return []
+
+      try {
+        oklchToSrgb(...parseOklch(valor))
+
+        return []
+      } catch (erro) {
+        // Combinação, token e o valor cru: sem os três, quem encontra o vermelho abre a folha e
+        // adivinha qual das vinte e duas declarações não coube.
+        const motivo = erro instanceof Error ? erro.message : 'erro sem mensagem'
+
+        return [`${tema} ${token}: ${valor} — ${motivo}`]
+      }
+    })
+
+    expect(fora).toEqual([])
+  })
+})
+
+/**
+ * Os oito pares de texto-sobre-superfície que o código **realmente escreve**, levantados por
+ * varredura da árvore e não inventados.
+ *
+ * Quatro são o CA-4 do #29 — as cores de estado sob o preto de `--foreground` — e quatro são a
+ * extensão que aquela spec declarou (Technical Decisions 6), porque são os pares que existem na tela
+ * e que o #8 nunca precisou medir. Custam quatro linhas e fecham dois buracos: uma combinação futura
+ * escurecer o `--main`, hoje o mais apertado dos oito, sem nada ficar vermelho; e a divergência entre
+ * `--foreground` e `--main-foreground`, que hoje são a mesma cor e por isso escondem que o `<h2>` do
+ * cabeçalho de coluna herda o primeiro, não o segundo.
+ *
+ * **Fora daqui, com razão declarada:** os pares com opacidade (`text-foreground/70`, `/60`, `/50`).
+ * Não são cor sólida — a razão real depende da composição alfa contra o fundo —, e afirmá-la a partir
+ * dos tokens seria afirmar um número que não é o da tela. É pendência nomeada, não esquecimento.
+ */
+const PARES_AAA = [
+  { tinta: '--foreground', fundo: '--background' }, // o canvas do app, `index.css` no `body`
+  { tinta: '--foreground', fundo: '--secondary-background' }, // `input.tsx`, `textarea.tsx`, a face de todo cartão
+  { tinta: '--foreground', fundo: '--attention' },
+  { tinta: '--foreground', fundo: '--warning' },
+  { tinta: '--foreground', fundo: '--question' },
+  { tinta: '--foreground', fundo: '--danger' },
+  { tinta: '--main-foreground', fundo: '--main' }, // `badge.tsx`, `button.tsx`, `MessageBubble.tsx`
+  { tinta: '--foreground', fundo: '--main' }, // `Column.tsx`: o `<h2>` do cabeçalho não tem classe de cor
+]
+
+/** AAA para texto normal na WCAG 2.x. É o patamar que o #8 publicou e que o #29 manda manter. */
+const RAZAO_AAA = 7
+
+describe('toda combinação mantém AAA nos oito pares', () => {
+  it.each(THEMES.flatMap((tema) => PARES_AAA.map((par) => ({ tema, ...par }))))(
+    'na $tema, $tinta sobre $fundo',
+    ({ tema, tinta, fundo }) => {
+      const razao = contrastRatio(corDoToken(tema, tinta), corDoToken(tema, fundo))
+
+      // O nome do caso diz a combinação e o par; a razão obtida é o que o vitest imprime no vermelho.
+      // Quem chega aqui precisa saber **por quanto** passou: é a diferença entre reafinar uma cor e
+      // desfazer a decisão de acessibilidade inteira.
+      expect(razao).toBeGreaterThanOrEqual(RAZAO_AAA)
+    },
+  )
+})
+
+const CAMINHO_DO_HTML = fileURLToPath(new URL('../../src/renderer/index.html', import.meta.url))
+
+describe('o default do `index.html` é o `THEME_DEFAULT`', () => {
+  it('o `data-theme` do `<html>` é a combinação que o código chama de padrão', () => {
+    // O default mora no HTML, e não em JS, para não haver **um instante sem cor**: os onze tokens
+    // vivem só dentro dos blocos `[data-theme]`, e uma página sem o atributo não teria fundo nem
+    // tinta. O preço é que dois lugares podem divergir — e é essa divergência que este teste pega: o
+    // app abriria numa cor que ninguém pediu, com o CA-2 falhando sem nenhum vermelho.
+    const declarado = /data-theme="([a-z-]+)"/.exec(readFileSync(CAMINHO_DO_HTML, 'utf8'))?.[1]
+
+    expect(declarado).toBe(THEME_DEFAULT)
+    // E o nome escrito no HTML é o de uma combinação de verdade, não um que a folha nunca declarou.
+    expect(THEMES).toContain(declarado)
+  })
+})
+
+/**
+ * A metade de *valor* do CA-2: a lavanda é a combinação do #8, e nada aqui a reajusta "de passagem".
+ *
+ * Os onze pares abaixo foram transcritos do `:root` de antes do #29, caractere por caractere. É
+ * baseline congelado de propósito, pela mesma razão que `## as âncoras` já registra: o portão é a
+ * revisão consciente, não a esperteza do teste. Nada mais neste repo impede alguém de "arredondar" o
+ * `70.28%` para `70%` na folha e mudar a cor do app inteiro sem um vermelho em lugar nenhum.
+ *
+ * **Só a lavanda é congelada.** A ametista nasceu no #29 e não tem um "antes" a preservar;
+ * transcrevê-la aqui seria copiar a folha no teste por nenhuma razão, e o que ela precisa — caber no
+ * gamut e manter AAA — os dois describes acima já cobram dela.
+ */
+const LAVANDA_DO_8 = [
+  ['--background', 'oklch(93.88% 0.033 300.19)'],
+  ['--secondary-background', 'oklch(100% 0 0)'],
+  ['--foreground', 'oklch(0% 0 0)'],
+  ['--main-foreground', 'oklch(0% 0 0)'],
+  ['--main', 'oklch(70.28% 0.1753 295.36)'],
+  ['--border', 'oklch(0% 0 0)'],
+  ['--ring', 'oklch(0% 0 0)'],
+  ['--attention', 'oklch(78% 0.17 145)'],
+  ['--warning', 'oklch(84% 0.16 85)'],
+  ['--question', 'oklch(78% 0.13 230)'],
+  ['--danger', 'oklch(70% 0.19 25)'],
+] as const
+
+describe('a lavanda é a combinação do #8, valor por valor', () => {
+  it('os onze valores são os do `:root` de antes deste card', () => {
+    const declarados = COMBINACOES.get('lavanda')
+
+    // Por token, com esperado e obtido: quem vier mudar a lavanda de propósito tem de passar por
+    // aqui declarar a mudança, e o vermelho já lhe entrega qual linha da folha editar.
+    const divergencias = LAVANDA_DO_8.flatMap(([token, esperado]) => {
+      const obtido = declarados?.get(token)
+
+      return obtido === esperado
+        ? []
+        : [`${token}: esperado ${esperado}, obtido ${obtido ?? '(ausente)'}`]
+    })
+
+    expect(divergencias).toEqual([])
+  })
+})
+
+/**
+ * A Proibição 4: nenhum arquivo de `src/` escreve cor literal. É o CA-3 do #29 valendo **depois** do
+ * diff que o fechou.
+ *
+ * A Proibição 1 não cobre isto e não tem como cobrir: ela é uma regex sobre *nomes de classe* do
+ * Tailwind, e não casa com `'#eee6fe'`, `rgb(...)` nem `hsl(...)`. Um `style={{ color: '#eee6fe' }}`
+ * num `.tsx` passa por ela sem tocar. E o teste de `windowBackground` nunca abre `src/main/index.ts`,
+ * então alguém reintroduzindo o hex que este card acabou de tirar de lá passaria verde.
+ *
+ * Três decisões dela, que mudam o que ela pega:
+ *
+ * 1. **`oklch(` fica de fora.** Nesta árvore ele só aparece como *padrão a analisar* (`sheet.ts`),
+ *    nunca como valor — incluí-lo faria o parser tropeçar na própria canária. É por isso que
+ *    `color.ts` tem a convenção de nunca escrever a sequência: a alternativa seria exceção por
+ *    arquivo, e exceção por arquivo apodrece.
+ * 2. **Seis a oito dígitos de hex, nunca três.** `#161` e `#205` são números de decisão e este repo
+ *    os cita às dezenas em comentário; um `#fff` de verdade é indistinguível deles por regex. A
+ *    lacuna é declarada, e o caso que importa — `'#eee6fe'` — tem seis.
+ * 3. **`src/` inteiro, e não só `src/main/`.** Uma raiz só, escrita num ponto, como
+ *    `RAIZ_DA_VARREDURA`.
+ *
+ * O `\b` antes de `rgb`/`hsl` não afrouxa nada, e existe por um caso medido: sem ele, `oklchToSrgb(`
+ * contém a sequência `rgb(` e a canária nasceria vermelha em cima da própria função que o #29 manda
+ * escrever. Um literal de verdade sempre vem precedido de aspa, espaço, `(` ou `:` — todos
+ * não-palavra, todos com fronteira. O que o `\b` exclui é exatamente o caso em que `rgb` termina um
+ * identificador.
+ */
+const RAIZ_DE_TODA_FONTE = '../../src'
+
+const COR_LITERAL = /#[0-9a-fA-F]{6,8}\b|\brgba?\(|\bhsla?\(/g
+
+describe('nenhum arquivo de `src/` escreve cor literal', () => {
+  it(`não há hex, rgb nem hsl em ${RAIZ_DE_TODA_FONTE}`, () => {
+    // Arquivo, linha e o achado — a cor do app sai da folha, e quem encontra este vermelho precisa
+    // ver qual valor foi escrito à mão para saber qual token deveria tê-lo dado.
+    const ocorrencias = lerArquivos(RAIZ_DE_TODA_FONTE).flatMap(({ caminho, conteudo }) =>
+      conteudo
+        .split('\n')
+        .flatMap((linha, indice) =>
+          [...linha.matchAll(COR_LITERAL)].map(
+            (achado) => `${caminho}:${indice + 1} — ${achado[0]}`,
+          ),
+        ),
+    )
+
+    expect(ocorrencias).toEqual([])
+  })
+})
+
+/**
  * A guarda das varreduras: cada raiz varrida tem de devolver ao menos um arquivo.
  *
- * Sem ela, renomear `src/renderer/` — ou mudar a extensão da fonte — deixaria as três varreduras
- * **verdes contra o vazio**: zero ocorrência de paleta, zero casca à mão e zero âncora perdida, sem
- * nenhum arquivo lido. É o mesmo argumento que `board-readonly.test.ts:43` registra sobre o
- * `ENOENT`, levado um passo adiante: o `ENOENT` cobre a pasta que sumiu, esta cobre a pasta que
- * ficou e esvaziou.
+ * Sem ela, renomear `src/renderer/` — ou mudar a extensão da fonte — deixaria as varreduras **verdes
+ * contra o vazio**: zero ocorrência de paleta, zero casca à mão, zero cor literal e zero âncora
+ * perdida, sem nenhum arquivo lido. É o mesmo argumento que `board-readonly.test.ts:43` registra
+ * sobre o `ENOENT`, levado um passo adiante: o `ENOENT` cobre a pasta que sumiu, esta cobre a pasta
+ * que ficou e esvaziou.
  */
-const RAIZES_VARRIDAS = [RAIZ_DA_VARREDURA, ...DIRETORIOS_DE_ANCORA]
+const RAIZES_VARRIDAS = [RAIZ_DA_VARREDURA, RAIZ_DE_TODA_FONTE, ...DIRETORIOS_DE_ANCORA]
 
 describe('as varreduras têm o que varrer', () => {
   it.each(RAIZES_VARRIDAS)('`%s` devolve ao menos um arquivo de fonte', (raiz) => {

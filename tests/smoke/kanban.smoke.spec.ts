@@ -124,6 +124,9 @@ test.beforeAll(async () => {
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell de quem roda abriria a tela
       // errada e o teste falharia por um motivo que não tem nada a ver com o kanban.
       OC_SCREEN: 'kanban',
+      // Fixado pelo mesmo argumento, e não herdado: o CA-2 aqui afirma cor, e um `OC_THEME`
+      // exportado no shell de quem roda mudaria em silêncio o que estas asserções medem.
+      OC_THEME: 'lavanda',
       // Inertes de propósito. A fixture ignora documento e variáveis, então estes valores não
       // podem importar — e se um dia a fiação da fixture quebrar, o app tentará ler um board que
       // não existe e o smoke fica vermelho na hora, em vez de passar em silêncio contra o board de
