@@ -235,6 +235,9 @@ const ANCORAS = [
   'data-card-assignees',
   'data-card-closed',
   'data-card-column',
+  // Entrou com o card #13: a conversabilidade deixou de decidir se o cartão abre, e virou atributo
+  // para o smoke afirmar o CA-3 sem reimplementar a regra que o core decide.
+  'data-card-conversable',
   'data-card-number',
   'data-column-count',
   'data-column-id',

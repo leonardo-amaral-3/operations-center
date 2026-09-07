@@ -44,6 +44,16 @@ const REPO_ROOT = join(__dirname, '..', '..')
 /** **Absoluto**, e é o ponto: o processo do Electron não roda com a `cwd` do runner. */
 const FIXTURE_PATH = join(REPO_ROOT, 'tests', 'fixtures', 'board.json')
 
+/**
+ * A outra metade da fixture: o conteúdo de cada card.
+ *
+ * Ela não é opcional aqui desde o card #13. Todo cartão aberto lê o conteúdo dele, e sem esta porta
+ * o cliente de fixture **lança** — o cartão abriria com um erro na tela, e todo passo deste arquivo
+ * falharia por falta de arquivo, não por bug do app. A cópia versionada basta: nenhum teste daqui
+ * reescreve fixture (quem faz isso é o smoke do conteúdo, no diretório temporário dele).
+ */
+const CARD_FIXTURE_PATH = join(REPO_ROOT, 'tests', 'fixtures', 'cards.json')
+
 /** Modelo barato: cota é recurso compartilhado com as sessões de terminal de quem roda isto. */
 const SMOKE_MODEL = 'haiku'
 
@@ -180,10 +190,15 @@ const OUTSIDER_CARD = required(
   'um cartão conversável de um repo forasteiro (a borda do CA-5)',
 )
 
-/** O cartão do CA-4: coluna sem skill dedicada, logo clique nenhum abre nada. */
+/**
+ * O cartão do CA-3 do card #13: coluna sem skill dedicada, logo ele abre para ler e não conversa.
+ *
+ * Era a borda do CA-4 do #6 — "clique nenhum abre nada" —, e o #13 emendou aquele critério: o que
+ * sobrevive dele é a metade que este arquivo continua provando, que ali **nenhuma sessão sobe**.
+ */
 const INERT_CARD = required(
   CARDS.find((card) => !CONVERSABLE_COLUMN_IDS.has(card.columnId)),
-  'um cartão em coluna não conversável (a borda do CA-4)',
+  'um cartão em coluna não conversável (a borda do CA-3 do #13)',
 )
 
 let app: ElectronApplication
@@ -240,6 +255,8 @@ test.beforeAll(async () => {
       ...inheritedEnv(),
       // A porta que troca o GitHub por um arquivo: o board deste smoke não toca a rede.
       OC_BOARD_FIXTURE: FIXTURE_PATH,
+      // E a do conteúdo do card, pelo mesmo motivo — e obrigatória: ver o comentário da constante.
+      OC_CARD_FIXTURE: CARD_FIXTURE_PATH,
       // A porta que troca `~/.claude/projects` pela raiz do cenário. É ela que torna a descoberta
       // determinística sem substituir nenhuma peça dela.
       OC_CLAUDE_PROJECTS: projects,
@@ -339,6 +356,38 @@ test('CA-3: a sessão do cartão roda na pasta do repo dele, e o cartão mostra 
   expect(comparablePath(await cwd.textContent())).toBe(comparablePath(puppetRepo))
 })
 
+/**
+ * O CA-5 do card #13, de carona nesta sessão viva e **sem gastar um turno**: o que ele afirma é
+ * geometria e estado, e os dois já estão na tela.
+ *
+ * Ele fica aqui, e não no smoke do conteúdo, porque é o único arquivo com sessão de verdade — a
+ * pergunta "recarregar o conteúdo encerra a sessão?" não tem como ser respondida onde não há sessão.
+ */
+test('#13 CA-5: o conteúdo e a conversa dividem o cartão, e recarregar não toca a sessão', async () => {
+  const card = cardLocator(CHAT_CARD)
+
+  // Os dois no **mesmo** cartão: o conteúdo acima, a caixa de escrever abaixo. É o que separa esta
+  // decisão de abas ou de painel lateral, que cumpririam "conversa alcançável" e não "com o
+  // conteúdo à mostra".
+  await expect(card.getByTestId('card-content')).toBeVisible()
+  await expect(card.getByTestId('card-chat-input')).toBeVisible()
+
+  // Recolher a seção e recarregá-la são os dois gestos que mexem no conteúdo. Nenhum deles pode
+  // mexer na sessão — e o estado do badge é onde isso apareceria primeiro.
+  await card.getByTestId('card-content-toggle').click()
+  await expect(card.getByTestId('card-content-body')).toHaveCount(0)
+
+  const reload = card.getByTestId('card-content-reload')
+
+  await reload.click()
+  // O ⟳ volta a si quando a leitura aterrissa: esperar por isso é esperar a recarga **inteira**, e
+  // não só o clique — sem essa espera a asserção abaixo leria o badge antes de a resposta chegar.
+  await expect(reload).toBeEnabled()
+
+  await expect(card.getByTestId('card-chat-input')).toBeVisible()
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
+})
+
 test('CA-2: a permissão de escrita aparece no cartão e a decisão destrava o turno', async () => {
   const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
 
@@ -370,14 +419,44 @@ test('CA-2: a permissão de escrita aparece no cartão e a decisão destrava o t
   expect(existsSync(join(puppetRepo, 'smoke.txt'))).toBe(true)
 })
 
-test('CA-4: clicar num cartão de coluna sem skill dedicada não abre nada', async () => {
+/**
+ * A reescrita deliberada do teste do CA-4 do #6.
+ *
+ * Aquele teste afirmava duas coisas: que o clique não abre chat, e que o cartão-chat **continua
+ * aberto** atrás dele. A segunda deixou de ser verdade quando o #13 fez todo cartão abrir — um
+ * cartão por vez (RF-6), e agora o inerte também é um cartão. A primeira sobrevive inteira, e é o
+ * que o CA-3 do #13 herda: ali nenhuma sessão sobe.
+ *
+ * O passo de reabrir no fim não é zelo: sem ele o teste seguinte ("abrir o segundo cartão colapsa o
+ * primeiro") passaria verde afirmando um colapso que já tinha acontecido aqui — degradação
+ * silenciosa, que é pior que vermelho.
+ */
+test('#13 CA-3: o cartão de coluna sem skill abre o conteúdo, e não sobe sessão', async () => {
   await cardLocator(INERT_CARD).click()
 
-  await expect(cardLocator(INERT_CARD).getByTestId('card-chat')).toHaveCount(0)
-  // E o cartão que estava aberto **continua aberto**: prova que o clique foi um clique de verdade,
-  // num elemento que estava lá, e que simplesmente não fez nada — e não um clique que errou o alvo.
+  // Que a coluna é mesmo das sem skill não é suposição do teste: o atributo vem da regra que o core
+  // decidiu, e é por ele que este cartão é o cartão certo para o critério.
+  await expect(cardLocator(INERT_CARD)).toHaveAttribute('data-card-conversable', 'false')
+
+  // Abre — e abre **mostrando**, porque não há sessão viva aqui para disputar a atenção: cartão sem
+  // conversa nasce com o conteúdo à mostra, que é o único motivo de alguém tê-lo aberto.
+  await expect(cardLocator(INERT_CARD).getByTestId('card-content')).toBeVisible()
+  await expect(cardLocator(INERT_CARD).getByTestId('card-content-body')).toBeVisible()
+
+  // E nada de sessão: nem neste cartão, nem no kanban inteiro. Zero, e não "um" como antes — o
+  // cartão-chat colapsou, que é o RF-6 aplicado ao cartão que agora também abre.
+  await expect(window.getByTestId('card-chat')).toHaveCount(0)
+
+  // A sessão do outro cartão sobreviveu ao colapso. É o CA-6 do #6 ganhando uma prova a mais, no
+  // lugar da que a emenda tirou.
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
+
+  // Reabrir devolve **aquela** conversa, com o histórico: o `start` é idempotente por `itemId`, e
+  // nenhuma segunda sessão subiu enquanto o cartão esteve fechado.
+  await cardLocator(CHAT_CARD).click()
   await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
   await expect(window.getByTestId('card-chat')).toHaveCount(1)
+  await expect(userMessages(CHAT_CARD).first()).toContainText(FIRST_PROMPT)
 })
 
 test('CA-1 e CA-6: abrir o segundo cartão colapsa o primeiro, e a sessão dele continua viva', async () => {
