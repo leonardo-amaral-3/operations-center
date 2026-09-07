@@ -133,8 +133,12 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
         {/* A nota (`notice`) é o app falando sobre a sessão, e por isso não é bolha de ninguém: sem
             o desvio, o ternário abaixo a rotularia como fala do Claude. O `data-testid="message"`
             continua para ela ser contável pela mesma via dos seletores do smoke. */}
-        {view.messages.map((message) =>
-          message.role === 'notice' ? (
+        {view.messages.map((message) => {
+          // A entrada de ferramenta ainda não tem desenho: quem a põe na trilha é a task 5.
+          // Descartá-la aqui é o que mantém o compilador honesto sobre a união sem adiantar tela.
+          if (message.role === 'tool') return null
+
+          return message.role === 'notice' ? (
             <p
               key={message.id}
               data-testid="message"
@@ -161,8 +165,8 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
                 {message.text}
               </p>
             </article>
-          ),
-        )}
+          )
+        })}
       </div>
 
       {view.permission ? (

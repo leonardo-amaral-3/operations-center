@@ -11,6 +11,8 @@
 
 export type {
   ChatMessage,
+  ChatText,
+  ChatToolUse,
   PermissionDecision,
   PermissionRequest,
   Question,
@@ -19,4 +21,6 @@ export type {
   QuestionRequest,
   SessionInit,
   SessionState,
+  ToolStatus,
+  TurnActivity,
 } from '../../shared/session'

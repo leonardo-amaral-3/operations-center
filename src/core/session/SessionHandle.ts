@@ -11,6 +11,7 @@ import { initialState, nextState } from './state'
 import type { SessionEvent, SessionState } from './state'
 import type {
   ChatMessage,
+  ChatToolUse,
   PermissionDecision,
   PermissionRequest,
   Question,
@@ -18,6 +19,7 @@ import type {
   QuestionOption,
   QuestionRequest,
   SessionInit,
+  ToolStatus,
 } from './types'
 
 /** Os três canais que uma sessão publica. */
@@ -84,6 +86,18 @@ const SESSION_CLOSED_DENIAL = 'Sessão encerrada antes da decisão.'
 
 /** A nota que a parada deixa na conversa. Exportada porque o teste a lê daqui, e não a redigita. */
 export const INTERRUPTED_NOTICE = 'Turno interrompido.'
+
+/**
+ * Os campos que identificam uma chamada, em ordem de preferência. Uma lista ordenada, e não uma
+ * tabela por ferramenta: a tabela viraria dívida no primeiro release do CLI com ferramenta nova.
+ *
+ * `command` vem antes de `description` porque no `Bash` a descrição já chega pelo `task_started` e
+ * vira `headline` — repeti-la no detalhe desperdiçaria a linha.
+ */
+const DETAIL_FIELDS = ['command', 'file_path', 'pattern', 'url', 'query', 'description', 'prompt']
+
+/** O teto de uma linha de trilha. O corte é aqui, e não na tela: ver `ChatToolUse.detail`. */
+const DETAIL_MAX = 120
 
 /**
  * A ferramenta com que o Claude faz uma pergunta. Ela chega pelo mesmo `canUseTool` de qualquer
@@ -171,7 +185,7 @@ export class SessionHandle {
 
     this.#sentCount += 1
     this.#queue.push(text)
-    this.#record({ id: `${this.id}-u${this.#sentCount}`, role: 'user', text })
+    this.#upsert({ id: `${this.id}-u${this.#sentCount}`, role: 'user', text })
     this.#apply({ kind: 'sent' })
   }
 
@@ -259,21 +273,46 @@ export class SessionHandle {
   }
 
   #ingest(message: SDKMessage): void {
-    if (message.type === 'system' && message.subtype === 'init') {
-      this.#init = {
-        sessionId: message.session_id,
-        model: message.model,
-        cwd: message.cwd,
-        apiKeySource: message.apiKeySource,
+    if (message.type === 'system') {
+      if (message.subtype === 'init') {
+        this.#init = {
+          sessionId: message.session_id,
+          model: message.model,
+          cwd: message.cwd,
+          apiKeySource: message.apiKeySource,
+        }
+        this.#emitter.emit('init', this.#init)
+        this.#apply({ kind: 'init' })
+        return
       }
-      this.#emitter.emit('init', this.#init)
-      this.#apply({ kind: 'init' })
+
+      // A frase que o próprio Claude Code escreveu para a chamada. Ela só toca o `headline`, nunca
+      // o `status`: um `task_progress` atrasado não pode ressuscitar ferramenta que já terminou.
+      if (message.subtype === 'task_started' || message.subtype === 'task_progress') {
+        this.#patchTool(message.tool_use_id, { headline: message.description })
+      }
+
+      // `task_notification` e `task_updated` ficam de fora de propósito: o primeiro é redundante
+      // com o `tool_result`, e o segundo não traz `tool_use_id` — não há a que casá-lo.
       return
     }
 
     if (message.type === 'assistant') {
+      // O texto continua achatado numa mensagem só, com o `uuid` por id. Um `ChatText` por bloco
+      // seria a mudança "natural" e é armadilha: com o `#upsert`, dois blocos de texto na mesma
+      // mensagem dariam dois ids iguais e o segundo apagaria o primeiro. O id da ferramenta é o
+      // `block.id`, que é sempre único — por isso só ela pode ser uma entrada por bloco.
       const text = assistantText(message.message)
-      if (text) this.#record({ id: message.uuid, role: 'assistant', text })
+      if (text) this.#upsert({ id: message.uuid, role: 'assistant', text })
+
+      for (const use of toolUses(message.message, message.parent_tool_use_id)) this.#upsert(use)
+      return
+    }
+
+    if (message.type === 'user') {
+      // Só os blocos `tool_result`. A `user` também carrega texto — o eco do prompt de um subagente
+      // chega assim —, e lê-lo viraria balão de uma fala que ninguém disse na conversa.
+      for (const { id, status } of toolResults(message.message)) this.#patchTool(id, { status })
       return
     }
 
@@ -286,7 +325,7 @@ export class SessionHandle {
       // ali seria contar na conversa uma coisa que não aconteceu.
       if (interrupted && message.subtype !== 'success') {
         this.#stopCount += 1
-        this.#record({
+        this.#upsert({
           id: `${this.id}-i${this.#stopCount}`,
           role: 'notice',
           text: INTERRUPTED_NOTICE,
@@ -296,6 +335,7 @@ export class SessionHandle {
       // A nota é gravada **antes** do `#apply`: a tela recebe a mensagem e só depois o estado, na
       // mesma ordem em que o texto do assistente chega antes do `result` que fecha o turno.
       this.#apply({ kind: 'result', outcome: message, interrupted })
+      this.#abortRunning()
     }
   }
 
@@ -365,9 +405,52 @@ export class SessionHandle {
     for (const resolve of waiting) resolve({ behavior: 'deny', message: SESSION_CLOSED_DENIAL })
   }
 
-  #record(message: ChatMessage): void {
-    this.#messages.push(message)
+  /**
+   * Grava uma mensagem, ou **substitui no lugar** a de mesmo id, preservando a posição no array.
+   *
+   * Um canal só nos dois casos, e o consumidor casa por `id`: um canal separado de "atualização"
+   * obrigaria toda tela a implementar a mesma junção outra vez.
+   */
+  #upsert(message: ChatMessage): void {
+    const at = this.#messages.findIndex((existing) => existing.id === message.id)
+    if (at === -1) this.#messages.push(message)
+    else this.#messages[at] = message
+
     this.#emitter.emit('message', message)
+  }
+
+  /**
+   * Muda um campo de uma entrada de ferramenta já registrada.
+   *
+   * Id ausente ou sem entrada correspondente é **no-op**, e não uma entrada órfã: sem o `tool_use`
+   * ela não teria nome nem detalhe, e uma linha "algo terminou" não informa nada.
+   */
+  #patchTool(
+    id: string | undefined,
+    patch: Partial<Pick<ChatToolUse, 'headline' | 'status'>>,
+  ): void {
+    if (id === undefined) return
+
+    const entry = this.#messages.find((message) => message.id === id)
+    if (entry?.role !== 'tool') return
+
+    this.#upsert({ ...entry, ...patch })
+  }
+
+  /**
+   * O fecho do turno: o que não relatou não está mais rodando.
+   *
+   * Vale para o turno cortado pelo `stop()` e para qualquer caminho em que o `tool_result` não
+   * chegue. Sem isto, uma entrada presa em `running` afirmaria trabalho vivo sobre uma ferramenta
+   * morta — e desligaria para sempre o "nada está rodando" de que a marca de silêncio depende.
+   */
+  #abortRunning(): void {
+    // Sobre uma cópia: o `#upsert` escreve no array enquanto ele é percorrido.
+    for (const message of [...this.#messages]) {
+      if (message.role === 'tool' && message.status === 'running') {
+        this.#upsert({ ...message, status: 'aborted' })
+      }
+    }
   }
 
   #apply(event: SessionEvent): void {
@@ -401,6 +484,88 @@ function assistantText(payload: unknown): string {
   }
 
   return texts.join('\n')
+}
+
+/**
+ * As ferramentas que uma mensagem de assistente chamou, na ordem em que aparecem no `content`.
+ *
+ * Mesma leitura defensiva do `assistantText`, e pelo mesmo motivo: a carga vem do modelo, não do
+ * nosso código. Bloco que não dá para ler é ignorado, e nunca derruba a sessão.
+ */
+function toolUses(payload: unknown, parentId: string | null): ChatToolUse[] {
+  const message = asRecord(payload)
+  if (!message) return []
+
+  const uses: ChatToolUse[] = []
+  for (const raw of asArray(message['content'])) {
+    const block = asRecord(raw)
+    if (block?.['type'] !== 'tool_use') continue
+
+    const id = asString(block['id'])
+    const name = asString(block['name'])
+    // Sem id o `tool_result` não teria a que casar; sem nome a entrada não diria nada. Faltando
+    // qualquer um dos dois, a entrada não informa — e inventá-los informaria errado.
+    if (id === null || name === null) continue
+
+    uses.push({
+      id,
+      role: 'tool',
+      name,
+      detail: detailOf(block['input']),
+      headline: '',
+      parentId,
+      status: 'running',
+    })
+  }
+
+  return uses
+}
+
+/** O que uma ferramenta relatou: o id da chamada e o degrau em que ela parou. */
+interface ToolOutcome {
+  id: string
+  status: ToolStatus
+}
+
+/** Os resultados de ferramenta de uma mensagem `user`, casados pelo `tool_use_id`. */
+function toolResults(payload: unknown): ToolOutcome[] {
+  const message = asRecord(payload)
+  if (!message) return []
+
+  const outcomes: ToolOutcome[] = []
+  for (const raw of asArray(message['content'])) {
+    const block = asRecord(raw)
+    if (block?.['type'] !== 'tool_result') continue
+
+    const id = asString(block['tool_use_id'])
+    if (id === null) continue
+
+    // A ausência é sucesso: no sucesso o SDK **não manda** `is_error`, em vez de mandá-lo `false`.
+    outcomes.push({ id, status: block['is_error'] === true ? 'error' : 'done' })
+  }
+
+  return outcomes
+}
+
+/**
+ * O argumento que identifica uma chamada: o primeiro campo de `DETAIL_FIELDS` que exista e seja
+ * string, achatado numa linha só e cortado em `DETAIL_MAX`. Nenhum casa → `''`, e a entrada mostra
+ * só o nome — é o que acontece com o `AskUserQuestion`, cuja pergunta o prompt logo abaixo já diz.
+ */
+function detailOf(input: unknown): string {
+  const record = asRecord(input)
+  if (!record) return ''
+
+  for (const field of DETAIL_FIELDS) {
+    const value = asString(record[field])
+    if (value === null) continue
+
+    // Um passe só resolve as duas coisas: quebra de linha e espaço repetido viram um espaço.
+    const flat = value.replace(/\s+/g, ' ').trim()
+    return flat.length > DETAIL_MAX ? `${flat.slice(0, DETAIL_MAX)}…` : flat
+  }
+
+  return ''
 }
 
 /**

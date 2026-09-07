@@ -62,8 +62,12 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
             kanban). Mas sem o desvio o ternário abaixo rotularia uma `notice` como fala do Claude, e
             deixar um render sabidamente errado esperando o dia em que a nota chegar é plantar o bug
             com data marcada. */}
-        {messages.map((message) =>
-          message.role === 'notice' ? (
+        {messages.map((message) => {
+          // A entrada de ferramenta ainda não tem desenho: quem a põe na trilha é a task 5.
+          // Descartá-la aqui é o que mantém o compilador honesto sobre a união sem adiantar tela.
+          if (message.role === 'tool') return null
+
+          return message.role === 'notice' ? (
             <p
               key={message.id}
               data-testid="message"
@@ -90,8 +94,8 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
                 {message.text}
               </p>
             </article>
-          ),
-        )}
+          )
+        })}
 
         <div ref={bottom} />
       </div>

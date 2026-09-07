@@ -26,6 +26,8 @@ export type { SessionHandle } from './session/SessionHandle'
 export type { SessionState } from './session/state'
 export type {
   ChatMessage,
+  ChatText,
+  ChatToolUse,
   PermissionDecision,
   PermissionRequest,
   Question,
@@ -33,4 +35,6 @@ export type {
   QuestionOption,
   QuestionRequest,
   SessionInit,
+  ToolStatus,
+  TurnActivity,
 } from './session/types'
