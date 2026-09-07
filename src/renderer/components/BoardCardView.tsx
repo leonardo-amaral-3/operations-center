@@ -6,6 +6,7 @@ import { Badge } from '../ui/badge'
 import { Card } from '../ui/card'
 import { CardChat } from './CardChat'
 import type { CardSession } from './CardChat'
+import { ConversationBadge } from './ConversationBadge'
 import { StateBadge } from './StateBadge'
 
 interface BoardCardViewProps {
@@ -15,6 +16,8 @@ interface BoardCardViewProps {
   expanded: boolean
   /** A sessão deste cartão, se o kanban já souber de alguma. */
   session: CardSession | undefined
+  /** Há conversa a retomar neste cartão — de uma execução anterior do app (CA-1). */
+  dormant: boolean
   onToggle: (itemId: string) => void
   onSession: (itemId: string, session: CardSession) => void
 }
@@ -34,6 +37,7 @@ export function BoardCardView({
   conversable,
   expanded,
   session,
+  dormant,
   onToggle,
   onSession,
 }: BoardCardViewProps): JSX.Element {
@@ -73,13 +77,15 @@ export function BoardCardView({
     session && session.state.kind !== 'closed' && session.state.kind !== 'failed' ? session : null
 
   /**
-   * Um cartão com sessão viva abre **mesmo fora de coluna conversável**.
+   * Um cartão com conversa — viva **ou** a retomar — abre **mesmo fora de coluna conversável**.
    *
-   * O CA-4 fala de *começar* conversa onde não há skill; o CA-6 exige que uma conversa já existente
-   * continue alcançável quando o card anda no board — inclusive para 🧪 Validação em Dev ou ✅
-   * Produção. Cartão sem sessão nessas colunas segue inerte, que é o caso do CA-4.
+   * O CA-4 do card #6 fala de *começar* conversa onde não há skill; o CA-6 exige que uma conversa já
+   * existente continue alcançável quando o card anda no board — inclusive para 🧪 Validação em Dev
+   * ou ✅ Produção. `dormant` entra pelo mesmo motivo e com a mesma força: um card que andou de
+   * coluna não pode trancar a conversa que o levou até lá só porque o app foi reiniciado no
+   * caminho. Cartão sem conversa nenhuma nessas colunas segue inerte, que é o caso do CA-4.
    */
-  const clickable = conversable || live !== null
+  const clickable = conversable || live !== null || dormant
 
   /**
    * A face do cartão, e **só** a face: a casca — canto, borda de 2px, sombra dura — vem da `Card`.
@@ -134,6 +140,15 @@ export function BoardCardView({
         {!expanded && live ? (
           <div className="min-w-0">
             <StateBadge state={live.state} />
+          </div>
+        ) : null}
+
+        {/* O sinal do CA-1: houve conversa aqui e ela volta ao clique. A sessão viva **vence** o
+            dormente — enquanto ela existe, o estado dela informa mais —, e por isso os dois crachás
+            nunca aparecem juntos. Expandido, quem conta a história é o próprio `CardChat`. */}
+        {!expanded && !live && dormant ? (
+          <div className="min-w-0">
+            <ConversationBadge />
           </div>
         ) : null}
       </div>

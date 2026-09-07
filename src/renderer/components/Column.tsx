@@ -13,6 +13,8 @@ interface ColumnProps {
   /** O cartão aberto do kanban inteiro — pode não estar nesta coluna, ou não existir. */
   expandedItemId: string | null
   sessions: CardSessions
+  /** Os cartões com conversa a retomar — do kanban inteiro, não só desta coluna. */
+  conversations: readonly string[]
   onToggle: (itemId: string) => void
   onSession: (itemId: string, session: CardSession) => void
 }
@@ -33,6 +35,7 @@ export function Column({
   cards,
   expandedItemId,
   sessions,
+  conversations,
   onToggle,
   onSession,
 }: ColumnProps): JSX.Element {
@@ -80,6 +83,9 @@ export function Column({
               conversable={column.conversable}
               expanded={card.itemId === expandedItemId}
               session={sessions[card.itemId]}
+              // O conjunto vem inteiro e a coluna só pergunta por este cartão: a conversa é do
+              // cartão, e ele pode ter andado de coluna desde que ela aconteceu.
+              dormant={conversations.includes(card.itemId)}
               onToggle={onToggle}
               onSession={onSession}
             />
