@@ -12,10 +12,13 @@
  */
 
 export { BoardReader, MAX_PAGES } from './board/BoardReader'
-export { BOARD_QUERY, CARD_FIELDS, CONVERSABLE_STATIONS } from './board/query'
+export { CardReader, MAX_COMMENTS } from './board/CardReader'
+export { BOARD_QUERY, CARD_QUERY, CARD_FIELDS, CONVERSABLE_STATIONS } from './board/query'
 export type { BoardReaderDeps, ReadBoardInput } from './board/BoardReader'
+export type { CardReaderDeps, ReadCardInput } from './board/CardReader'
 export type { GraphQLFn, GraphQLResponse } from './board/types'
 export type { Board, BoardCard, BoardCardField, BoardColumn } from './board/types'
+export type { CardComment, CardContent } from './board/types'
 
 export { RepoIndex } from './repos/RepoIndex'
 export type { RepoIndexDeps, SessionFolder } from './repos/RepoIndex'
