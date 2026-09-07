@@ -24,6 +24,8 @@ export { DEFAULT_SETTING_SOURCES, SessionHost } from './session/SessionHost'
 export type { QueryFn, SessionHostDeps, StartSessionInput } from './session/SessionHost'
 export type { SessionHandle } from './session/SessionHandle'
 export type { SessionState } from './session/state'
+export { replay } from './session/transcript'
+export type { TranscriptEntry } from './session/transcript'
 export type {
   ChatMessage,
   ChatText,
