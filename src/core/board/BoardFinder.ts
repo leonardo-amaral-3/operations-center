@@ -24,7 +24,7 @@ export interface Discovery {
   boards: readonly DiscoveredBoard[]
   /**
    * Os donos que falharam, ou `[]`. Vem **junto** com `boards` de propósito, pela mesma razão que
-   * `BoardSnapshot` faz `board` e `error` coexistirem: um dono que caiu não pode apagar os boards
+   * `BoardTab` faz `board` e `error` coexistirem: um dono que caiu não pode apagar os boards
    * dos que responderam, e também não pode falhar em silêncio.
    */
   failed: readonly FailedOwner[]

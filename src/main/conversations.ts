@@ -150,7 +150,7 @@ export interface ConversationIpc {
 /**
  * Liga o canal das conversas recuperáveis ao índice.
  *
- * Espelha `registerBoardIpc` — guarda o conjunto de assinantes e devolve ao main as alças de que o
+ * Espelha `registerBoardsIpc` — guarda o conjunto de assinantes e devolve ao main as alças de que o
  * ciclo de vida precisa. Não há throttle nem leitura em voo para proteger: o retrato sai de um mapa
  * em memória, e é por isso que este canal não pega carona no do board.
  */
@@ -165,7 +165,7 @@ export function registerConversationIpc(index: ConversationIndex): ConversationI
     const proximo = retrato()
 
     for (const sender of subscribers) {
-      // Destruído é **removido**, como no `registerBoardIpc` e pelo mesmo motivo: este registro vive
+      // Destruído é **removido**, como no `registerBoardsIpc` e pelo mesmo motivo: este registro vive
       // o app inteiro, e o conjunto cresceria a cada janela nova.
       if (sender.isDestroyed()) {
         subscribers.delete(sender)

@@ -13,10 +13,10 @@ export interface CardIpcDeps {
 /**
  * O canal de leitura do conteúdo de um card.
  *
- * Arquivo próprio, e não dentro de `registerBoardIpc`: aquele registro existe para guardar o
+ * Arquivo próprio, e não dentro de `registerBoardsIpc`: aquele registro existe para guardar o
  * retrato do board e o ciclo de vida das releituras; este não guarda nada — é pergunta e resposta,
  * uma leitura por abertura de cartão. O nome e a forma espelham `registerSessionIpc`/
- * `registerBoardIpc`.
+ * `registerBoardsIpc`.
  *
  * Não devolve alça nenhuma: sem estado, não há ciclo de vida para o main operar de fora.
  */

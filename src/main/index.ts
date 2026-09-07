@@ -5,12 +5,18 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
 import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron'
 
-import { BoardReader, CardReader, ConversationIndex, RepoIndex, SessionHost } from '../core'
+import {
+  BoardFinder,
+  BoardReader,
+  CardReader,
+  ConversationIndex,
+  RepoIndex,
+  SessionHost,
+} from '../core'
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen } from '../shared/ipc'
-import { registerBoardIpc } from './board'
-import type { BoardIpcOptions } from './board'
+import { registerBoardsIpc } from './boards'
 import { registerCardIpc } from './card'
 import {
   inspectSession,
@@ -61,20 +67,6 @@ function resolveSettingSources(): SettingSource[] | undefined {
  */
 function resolveScreen(): Screen {
   return process.env.OC_SCREEN === 'chat' ? 'chat' : 'kanban'
-}
-
-/** Qual board ler. O default é o Operations Center; o mesmo binário serve outro board pelo ambiente. */
-function resolveBoard(): BoardIpcOptions {
-  const raw = process.env.OC_PROJECT_NUMBER
-  const number = raw === undefined || raw === '' ? 2 : Number(raw)
-
-  // Valor inválido **lança**, em vez de cair no default: abrir o board 2 com toda a confiança do
-  // mundo quando pediram outro é o pior modo de falha que existe aqui.
-  if (!Number.isInteger(number) || number < 1) {
-    throw new Error(`OC_PROJECT_NUMBER inválido: ${String(raw)}`)
-  }
-
-  return { owner: process.env.OC_PROJECT_OWNER || 'leonardo-amaral-3', number }
 }
 
 /**
@@ -178,23 +170,30 @@ const host = new SessionHost({
 // **O IPC de board só é registrado no kanban.** Assim o smoke da fatia vertical (`OC_SCREEN=chat`)
 // não tem como tocar o GitHub nem por acidente: o determinismo dele fica garantido por construção,
 // e não por disciplina de quem escreve o teste.
-const boardIpc =
+//
+// `createGraphQL()` uma vez por leitor — aqui já são dois, o descobridor e o leitor de board —, pela
+// razão declarada logo abaixo: a função não guarda estado e o `TokenSource` do `gh` tem cache
+// próprio. Um cliente por leitor mantém a injeção explícita e não introduz um singleton.
+const boardsIpc =
   screen === 'kanban'
-    ? registerBoardIpc(new BoardReader({ graphql: createGraphQL() }), resolveBoard())
+    ? registerBoardsIpc({
+        finder: new BoardFinder({ graphql: createGraphQL() }),
+        reader: new BoardReader({ graphql: createGraphQL() }),
+        // Inertes: a aba lembrada é da Fase 1, e é o `preferences.json` que entra nestas duas pontas.
+        loadActive: () => Promise.resolve(null),
+        saveActive: () => Promise.resolve(),
+      })
     : null
 
 // O conteúdo de um card corre pelo mesmo portão, e pela mesma razão: é leitura do GitHub. Sem
 // retrato de board não há como traduzir `itemId` em coordenada, então fora do kanban o canal
 // simplesmente não existe.
-if (boardIpc) {
-  // `createGraphQL()` de novo, devolvendo um segundo cliente: ela não guarda estado, e o
-  // `TokenSource` do `gh` tem cache próprio. Um cliente por leitor mantém a injeção explícita e não
-  // introduz um singleton.
+if (boardsIpc) {
   registerCardIpc(new CardReader({ graphql: createGraphQL() }), {
-    // Arrow, e **não** `cardById: boardIpc.cardById`: o `unbound-method` do ESLint reprova a
+    // Arrow, e **não** `cardById: boardsIpc.cardById`: o `unbound-method` do ESLint reprova a
     // referência solta a um método — mesmo aqui, onde ela funcionaria, porque `cardById` fecha
     // sobre o retrato e não sobre `this`.
-    cardById: (itemId) => boardIpc.cardById(itemId),
+    cardById: (itemId) => boardsIpc.cardById(itemId),
   })
 }
 
@@ -236,7 +235,7 @@ const sessionIpc = registerSessionIpc(host, {
   resolveCwd: async (itemId) => {
     if (itemId === undefined) return resolveCwd()
 
-    const card = boardIpc?.cardById(itemId)
+    const card = boardsIpc?.cardById(itemId)
     if (!card) return null
 
     let path = repos.pathFor(card.repository)
@@ -265,7 +264,7 @@ const sessionIpc = registerSessionIpc(host, {
 ipcMain.handle(
   IPC_INVOKE.chooseFolder,
   async (event, request: ChooseFolderRequest): Promise<ChooseFolderResult> => {
-    const card = boardIpc?.cardById(request.itemId)
+    const card = boardsIpc?.cardById(request.itemId)
     if (!card) return { chosen: false }
 
     // Preso à janela que perguntou: o seletor é modal dela, e não uma caixa solta que se perde atrás
@@ -288,21 +287,21 @@ ipcMain.handle(
 
 void app.whenReady().then(() => {
   const window = createWindow()
-  if (!boardIpc) return
+  if (!boardsIpc) return
 
   // Em paralelo à criação da janela: a leitura começa antes de o renderer pedir.
-  boardIpc.refresh()
+  boardsIpc.refresh()
 
   // Os dois gatilhos moram aqui dentro porque o `powerMonitor` do Electron só pode ser usado depois
   // do evento `ready` — registrá-lo no topo do módulo lança.
   window.on('focus', () => {
-    boardIpc.refresh()
+    boardsIpc.refresh()
   })
 
   // Necessário além do `focus`: quando a máquina acorda, a janela costuma já estar em foco e nenhum
   // evento de foco dispara. Sem ele, quem nunca fecha o app começaria a manhã com o board de ontem.
   powerMonitor.on('resume', () => {
-    boardIpc.refresh()
+    boardsIpc.refresh()
   })
 })
 
