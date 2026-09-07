@@ -239,6 +239,7 @@ const ANCORAS = [
   'data-column-count',
   'data-column-id',
   'data-column-name',
+  'data-comment-kind',
   'data-label',
   'data-parent',
   'data-question',
