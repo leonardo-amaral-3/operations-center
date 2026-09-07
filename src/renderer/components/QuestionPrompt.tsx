@@ -2,6 +2,10 @@ import { useState } from 'react'
 import type { JSX } from 'react'
 
 import type { Question, QuestionAnswers, QuestionRequest } from '../../shared/session'
+import { Button } from '../ui/button'
+import { Card } from '../ui/card'
+import { cn } from '../ui/cn'
+import { Input } from '../ui/input'
 
 interface QuestionPromptProps {
   request: QuestionRequest
@@ -75,87 +79,92 @@ export function QuestionPrompt({ request, onAnswer }: QuestionPromptProps): JSX.
   }
 
   return (
-    <section
-      data-testid="question-prompt"
-      // Azul, e não âmbar: é a cor do `awaiting_answer` no `StateBadge`, e a pergunta não é a
-      // permissão — quem olha o cartão precisa distinguir os dois de longe.
-      className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2.5"
-    >
-      <div className="space-y-3">
-        {request.questions.map((question) => (
-          // A chave é o texto da pergunta, que é a mesma chave da resposta: se ele não fosse único,
-          // o mapa de respostas já não teria como distinguir as duas.
-          <div key={question.question} data-question={question.question}>
-            <p className="text-[10px] font-semibold tracking-wide text-sky-300 uppercase">
-              {question.header}
-              {question.multiSelect ? (
-                <span className="ml-1.5 font-normal text-sky-300/60 normal-case">
-                  escolha quantas quiser
-                </span>
-              ) : null}
-            </p>
-            <p className="mt-0.5 text-sm break-words text-sky-100">{question.question}</p>
+    // Azul, e não âmbar: `bg-question` é a mesma cor do `awaiting_answer` no `StateBadge`, e a
+    // pergunta não é a permissão — quem olha o cartão precisa distinguir os dois de longe.
+    <Card asChild className="bg-question px-3 py-2.5">
+      <section data-testid="question-prompt">
+        <div className="space-y-3">
+          {request.questions.map((question) => (
+            // A chave é o texto da pergunta, que é a mesma chave da resposta: se ele não fosse único,
+            // o mapa de respostas já não teria como distinguir as duas.
+            <div key={question.question} data-question={question.question}>
+              <p className="text-[10px] font-semibold tracking-wide text-foreground/70 uppercase">
+                {question.header}
+                {question.multiSelect ? (
+                  <span className="ml-1.5 font-normal normal-case">escolha quantas quiser</span>
+                ) : null}
+              </p>
+              <p className="mt-0.5 text-sm break-words">{question.question}</p>
 
-            <div className="mt-2 space-y-1.5">
-              {question.options.map((option) => {
-                const selected = (picked[question.question] ?? []).includes(option.label)
+              <div className="mt-2 space-y-1.5">
+                {question.options.map((option) => {
+                  const selected = (picked[question.question] ?? []).includes(option.label)
 
-                return (
-                  <button
-                    key={option.label}
-                    type="button"
-                    data-testid="question-option"
-                    data-label={option.label}
-                    // `'false'` explícito, e não o atributo ausente: é o que deixa um teste afirmar
-                    // "esta não está escolhida" em vez de só não achar a marca.
-                    data-selected={selected ? 'true' : 'false'}
-                    onClick={() => {
-                      choose(question, option.label)
-                    }}
-                    className={`block w-full cursor-pointer rounded-md border px-2.5 py-1.5 text-left ${
-                      selected
-                        ? 'border-sky-400 bg-sky-400/20'
-                        : 'border-sky-500/30 hover:bg-sky-400/10'
-                    }`}
-                  >
-                    <span className="block text-xs font-medium text-sky-100">{option.label}</span>
-                    {option.description ? (
-                      <span className="mt-0.5 block text-[11px] break-words text-sky-200/70">
-                        {option.description}
-                      </span>
-                    ) : null}
-                  </button>
-                )
-              })}
+                  return (
+                    // `block` derruba o `inline-flex` da primitiva e `whitespace-normal` derruba o
+                    // `whitespace-nowrap`, os dois pelo `twMerge`: a opção tem descrição em segunda
+                    // linha, e um botão que não quebra linha a esconderia. `h-auto` pelo mesmo
+                    // motivo — a altura é o conteúdo, não os 28px do `xs`.
+                    //
+                    // A escolhida vai ao acento porque aqui ele **é** a escolha, e não a esteira: o
+                    // painel inteiro já está no azul de `awaiting_answer`.
+                    <Button
+                      key={option.label}
+                      type="button"
+                      variant="neutral"
+                      size="xs"
+                      data-testid="question-option"
+                      data-label={option.label}
+                      // `'false'` explícito, e não o atributo ausente: é o que deixa um teste afirmar
+                      // "esta não está escolhida" em vez de só não achar a marca.
+                      data-selected={selected ? 'true' : 'false'}
+                      onClick={() => {
+                        choose(question, option.label)
+                      }}
+                      className={cn(
+                        'block h-auto w-full px-2.5 py-1.5 text-left whitespace-normal',
+                        selected && 'bg-main text-main-foreground',
+                      )}
+                    >
+                      <span className="block text-xs font-medium">{option.label}</span>
+                      {option.description ? (
+                        <span className="mt-0.5 block text-[11px] break-words text-foreground/70">
+                          {option.description}
+                        </span>
+                      ) : null}
+                    </Button>
+                  )
+                })}
 
-              <input
-                data-testid="question-other"
-                data-question={question.question}
-                value={typed[question.question] ?? ''}
-                onChange={(event) => {
-                  write(question, event.target.value)
-                }}
-                placeholder="Outro…"
-                className="w-full rounded-md border border-sky-500/30 bg-neutral-950 px-2.5 py-1.5 text-xs text-sky-100 placeholder:text-sky-200/40 focus:border-sky-400 focus:outline-none"
-              />
+                <Input
+                  data-testid="question-other"
+                  data-question={question.question}
+                  value={typed[question.question] ?? ''}
+                  onChange={(event) => {
+                    write(question, event.target.value)
+                  }}
+                  placeholder="Outro…"
+                  className="h-8 text-xs"
+                />
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
-      <div className="mt-3 flex justify-end">
-        <button
-          type="button"
-          data-testid="question-submit"
-          disabled={!complete}
-          onClick={() => {
-            onAnswer(answers)
-          }}
-          className="cursor-pointer rounded-md bg-sky-400 px-3 py-1.5 text-xs font-semibold text-sky-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Responder
-        </button>
-      </div>
-    </section>
+        <div className="mt-3 flex justify-end">
+          <Button
+            type="button"
+            data-testid="question-submit"
+            size="xs"
+            disabled={!complete}
+            onClick={() => {
+              onAnswer(answers)
+            }}
+          >
+            Responder
+          </Button>
+        </div>
+      </section>
+    </Card>
   )
 }
