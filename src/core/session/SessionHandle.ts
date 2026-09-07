@@ -172,8 +172,18 @@ export class SessionHandle {
   /** O acumulado de raciocínio do turno corrente. Zera na fronteira, junto com o bump do ordinal. */
   #thinkingTokens = 0
 
-  constructor(id: string, startQuery: StartQuery) {
+  /**
+   * O `history` é a conversa de antes, de uma sessão retomada. Ele é semeado **antes** de o
+   * `query()` subir porque o retrato que o `start` devolve é lido pela tela na mesma volta: um
+   * `#messages` vazio ali reabriria o cartão em branco mesmo com a retomada tendo funcionado.
+   *
+   * Entra direto no array, sem passar pelo `#upsert`: não há ninguém assinando ainda, e um evento
+   * `message` por mensagem restaurada seria ruído sobre um estado que a tela já vai receber inteiro
+   * no retrato.
+   */
+  constructor(id: string, startQuery: StartQuery, history: readonly ChatMessage[] = []) {
     this.id = id
+    this.#messages.push(...history)
     this.#query = startQuery({
       prompt: this.#queue,
       canUseTool: (toolName, input, options) => this.#requestDecision(toolName, input, options),
