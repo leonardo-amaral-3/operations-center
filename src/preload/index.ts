@@ -8,6 +8,7 @@ import type {
   ChooseFolderRequest,
   ChooseFolderResult,
   CloseRequest,
+  ConversationsSnapshot,
   OcApi,
   RespondPermissionRequest,
   Screen,
@@ -83,6 +84,10 @@ const api: OcApi = {
   onActivity: (listener) => subscribe<SessionActivityEvent>(IPC_EVENT.activity, listener),
   readBoard: () => ipcRenderer.invoke(IPC_INVOKE.readBoard) as Promise<BoardSnapshot>,
   onBoard: (listener) => subscribe<BoardSnapshot>(IPC_EVENT.board, listener),
+  readConversations: () =>
+    ipcRenderer.invoke(IPC_INVOKE.readConversations) as Promise<ConversationsSnapshot>,
+  onConversations: (listener) =>
+    subscribe<ConversationsSnapshot>(IPC_EVENT.conversations, listener),
 }
 
 contextBridge.exposeInMainWorld('oc', api)

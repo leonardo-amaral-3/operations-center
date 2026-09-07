@@ -35,6 +35,7 @@ export const IPC_INVOKE = {
   close: 'session:close',
   chooseFolder: 'repo:choose-folder',
   readBoard: 'board:read',
+  readConversations: 'conversations:read',
 } as const
 
 /** Main → renderer. Avisos de mão única, disparados pelo `core` quando a sessão se mexe. */
@@ -51,6 +52,12 @@ export const IPC_EVENT = {
    */
   activity: 'session:activity',
   board: 'board:changed',
+  /**
+   * Mudou o conjunto de cartões com conversa recuperável. Canal próprio, e não carona no board: o
+   * board tem throttle de 10s (`BOARD_REREAD_THROTTLE_MS`) e fala do GitHub; isto é estado do app e
+   * precisa aparecer na hora em que uma sessão nasce ou é encerrada.
+   */
+  conversations: 'conversations:changed',
 } as const
 
 /**
@@ -180,6 +187,18 @@ export interface SessionActivityEvent {
 }
 
 /**
+ * Quais cartões têm conversa a retomar. Vem inteiro a cada mudança, e o consumidor substitui — a
+ * mesma regra do `BoardSnapshot` e do `TurnActivity`, e pelo mesmo motivo: evento perdido não deixa
+ * a tela num estado que nunca mais será corrigido.
+ *
+ * **Só `itemId`.** Nenhum `sessionId` e nenhuma pasta atravessam a ponte: o renderer não tem o que
+ * fazer com eles, e a canária do `ipc-no-path` existe para manter isso assim.
+ */
+export interface ConversationsSnapshot {
+  itemIds: readonly string[]
+}
+
+/**
  * A superfície inteira que o renderer enxerga, exposta como `window.oc` pelo preload. O que não
  * está aqui não existe do lado de lá — não há `ipcRenderer`, não há `require`, não há Node.
  *
@@ -224,6 +243,11 @@ export interface OcApi {
   readBoard(): Promise<BoardSnapshot>
   /** Todo fim de leitura — com sucesso ou com falha — empurra um retrato novo. */
   onBoard(listener: (snapshot: BoardSnapshot) => void): () => void
+
+  /** Os cartões com conversa recuperável. Pode voltar vazio se a verificação do boot não terminou. */
+  readConversations(): Promise<ConversationsSnapshot>
+  /** Toda mudança do conjunto — sessão que nasce, sessão encerrada, verificação do boot. */
+  onConversations(listener: (snapshot: ConversationsSnapshot) => void): () => void
 }
 
 declare global {

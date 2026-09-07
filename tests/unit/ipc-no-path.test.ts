@@ -85,6 +85,7 @@ describe('nenhum caminho de disco atravessa a ponte', () => {
         'CloseRequest',
         'ChooseFolderRequest',
         'ChooseFolderResult',
+        'ConversationsSnapshot',
       ]),
     )
     expect(cargas.every((carga) => carga.campos.length > 0)).toBe(true)
