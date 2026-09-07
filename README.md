@@ -84,7 +84,7 @@ tem.
 
 ## Configuração
 
-Sem banco e sem arquivo de config. Dez variáveis de ambiente, lidas no main:
+Sem banco e sem arquivo de config. Onze variáveis de ambiente, lidas no main:
 
 | Variável             | Default                                                                       | Para quê                                                                                                                                                                                                                                                                                                                                                                        |
 | -------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -92,6 +92,7 @@ Sem banco e sem arquivo de config. Dez variáveis de ambiente, lidas no main:
 | `OC_MODEL`           | ausente: herda o default do Claude Code                                       | modelo da sessão                                                                                                                                                                                                                                                                                                                                                                |
 | `OC_ISOLATED`        | ausente                                                                       | `1` passa `settingSources: []` ao SDK, e a sessão deixa de carregar `CLAUDE.md`, settings e skills. Existe **para o smoke** — fora dele, uma sessão isolada é um Claude Code amputado                                                                                                                                                                                           |
 | `OC_SCREEN`          | ausente: o kanban                                                             | `chat` abre a tela da fatia vertical. Porta de ambiente sem botão na UI, que existe **para o smoke** daquela fatia                                                                                                                                                                                                                                                              |
+| `OC_THEME`           | ausente: `lavanda`, a combinação de sempre                                    | qual combinação de cores desenhar, entre as declaradas em `src/renderer/index.css`: hoje `lavanda` e `ametista`. Nome desconhecido **lança** — cair na lavanda em silêncio faria parecer que o tema não funciona                                                                                                                                                                |
 | `OC_PROJECT_OWNER`   | `leonardo-amaral-3`                                                           | dono do board a ler                                                                                                                                                                                                                                                                                                                                                             |
 | `OC_PROJECT_NUMBER`  | `2` — o board Operations Center                                               | número do Project. Valor inválido **lança**, em vez de cair no default: abrir o board 2 com toda a confiança do mundo quando pediram outro é o pior modo de falha que existe aqui                                                                                                                                                                                               |
 | `OC_BOARD_FIXTURE`   | ausente: lê o GitHub de verdade                                               | caminho de um JSON com a resposta da API, que substitui o GitHub inteiro. Existe **para o smoke do kanban**, que por causa dela não pede token nem toca a rede                                                                                                                                                                                                                  |
@@ -101,6 +102,10 @@ Sem banco e sem arquivo de config. Dez variáveis de ambiente, lidas no main:
 
 `OC_SCREEN`, `OC_BOARD_FIXTURE`, `OC_CARD_FIXTURE`, `OC_CLAUDE_PROJECTS` e `OC_STATE_DIR` são portas
 de teste, como `OC_ISOLATED`: fora do smoke não há razão para tocá-las.
+
+`OC_THEME` é a exceção: também não tem botão na UI, mas não é porta de teste — é a única forma, por
+ora, de abrir o app numa combinação de cores que não a padrão. O botão vem no card que ensinar o app
+a lembrar da escolha.
 
 ## Custo
 
