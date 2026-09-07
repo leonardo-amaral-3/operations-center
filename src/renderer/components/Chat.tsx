@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, JSX, KeyboardEvent } from 'react'
 
-import type { ChatMessage } from '../../shared/session'
+import type { ChatMessage, TurnActivity } from '../../shared/session'
 import { Textarea } from '../ui/textarea'
 import { isFala, MessageBubble } from './MessageBubble'
+import { ToolEntry } from './ToolEntry'
+import { TurnPulse } from './TurnPulse'
 
 interface ChatProps {
   messages: readonly ChatMessage[]
+  /** O pulso do turno corrente, para a linha viva acima da caixa. */
+  activity: TurnActivity
   /** Sessão morta (encerrada ou falha): não há para onde mandar texto. */
   disabled: boolean
   onSend: (text: string) => void
@@ -22,9 +26,15 @@ interface ChatProps {
  * A caixa **não** desabilita enquanto a sessão trabalha: o `core` tem fila de entrada, e é ela que
  * torna possível emendar uma segunda instrução sem esperar o turno terminar.
  */
-export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
+export function Chat({ messages, activity, disabled, onSend }: ChatProps): JSX.Element {
   const [draft, setDraft] = useState('')
   const bottom = useRef<HTMLDivElement>(null)
+
+  // A outra metade do CA-4, e ela mora aqui porque é aqui que a lista está: silêncio com ferramenta
+  // rodando é o normal de uma ferramenta demorada, e acusá-lo ensinaria a ignorar a marca.
+  const somethingRunning = messages.some(
+    (message) => message.role === 'tool' && message.status === 'running',
+  )
 
   // A conversa cresce por baixo: sem isto, toda resposta nova nasce fora da vista.
   useEffect(() => {
@@ -64,8 +74,12 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
             kanban). Mas sem o desvio o ternário abaixo rotularia uma `notice` como fala do Claude, e
             deixar um render sabidamente errado esperando o dia em que a nota chegar é plantar o bug
             com data marcada. */}
-        {messages.map((message) =>
-          isFala(message) ? (
+        {messages.map((message) => {
+          // A ação entra na conversa pela mesma porta que a fala, e na posição em que aconteceu:
+          // é isso que faz a trilha ser histórico, e não um painel ao lado dele.
+          if (message.role === 'tool') return <ToolEntry key={message.id} entry={message} />
+
+          return isFala(message) ? (
             <MessageBubble key={message.id} message={message} scale="sm" />
           ) : (
             <p
@@ -76,13 +90,17 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
             >
               {message.text}
             </p>
-          ),
-        )}
+          )
+        })}
 
         <div ref={bottom} />
       </div>
 
       <div className="border-t-2 border-border p-3">
+        {/* Fora da lista que rola, entre o histórico e a caixa: é onde o spinner do Claude Code
+            vive, e é o que impede a linha viva de sair da vista justamente quando ela importa. */}
+        <TurnPulse activity={activity} somethingRunning={somethingRunning} />
+
         {/* Sem `min-h-0` aqui, ao contrário do cartão: esta tela é a janela inteira, e a altura
             mínima da primitiva cabe nela sem disputar largura com coluna nenhuma. */}
         <Textarea

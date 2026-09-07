@@ -1,31 +1,43 @@
 import { memo } from 'react'
 import type { JSX } from 'react'
 
-import type { ChatMessage } from '../../shared/session'
+import type { ChatMessage, ChatText } from '../../shared/session'
 import { Markdown } from './Markdown'
 
 /** `sm` na tela de chat; `xs` dentro do cartão, que vive numa coluna e não tem largura de sobra. */
 export type BubbleScale = 'sm' | 'xs'
 
 /**
- * Uma mensagem que é **fala** de alguém. A `notice` — o app falando *sobre* a sessão — não é bolha
- * de ninguém (`src/shared/session.ts`), e o tipo estreito é o que impede o desvio das telas de sumir
- * numa refatoração distraída: sem ele, uma nota do app cairia no ramo do `else` lá embaixo e
- * apareceria na tela como fala do Claude.
+ * Uma mensagem que é **fala** de alguém. Nem toda `ChatMessage` é: a `notice` é o app falando
+ * *sobre* a sessão e a `tool` é uma ação que a sessão executou (`src/shared/session.ts`) — nenhuma
+ * das duas é bolha de ninguém. O tipo estreito é o que impede os desvios das telas de sumirem numa
+ * refatoração distraída: sem ele, uma nota do app ou uma entrada de ferramenta cairia no ramo do
+ * `else` lá embaixo e apareceria na tela como fala do Claude.
+ *
+ * Ancorado em `ChatText`, e não mais em `ChatMessage`: desde que a mensagem virou união, uma
+ * interseção com a união inteira distribuiria pelos dois braços e produziria um `ChatToolUse` de
+ * `role: never` — um tipo que não existe na conversa, guardado num nome que diz que existe.
  */
-export type Fala = ChatMessage & { role: 'user' | 'assistant' }
+export type Fala = ChatText & { role: 'user' | 'assistant' }
 
 /**
  * O desvio das duas telas, em forma de guarda.
  *
- * **Guarda, e não a comparação `role === 'notice'` direta**: `ChatMessage` é uma interface achatada,
- * não uma união discriminada, e comparar o campo estreita a *expressão* `message.role` sem estreitar
- * a *variável* `message` — o `<MessageBubble>` no outro ramo não compilaria. E precisa ser a forma
- * **positiva**: negar uma guarda de `notice` não devolveria a fala, porque o TypeScript só subtrai
- * de união.
+ * **Guarda, e não a comparação direta**, e a razão sobreviveu à mensagem virar união discriminada —
+ * só mudou de andar. Antes era a `ChatMessage` que era achatada; hoje ela discrimina por `role` e
+ * separa `ChatToolUse` sozinha, mas o que sobra dela é `ChatText`, que continua sendo **uma
+ * interface só** com um `role` de três literais. Comparar o campo ali estreita a *expressão*
+ * `message.role` sem estreitar a *variável* `message`, e o `<MessageBubble>` no outro ramo não
+ * compilaria. E precisa ser a forma **positiva**: negar uma guarda de `notice` não devolveria a
+ * fala, porque o TypeScript só subtrai de união.
+ *
+ * As **duas** exclusões são deliberadas, mesmo com as telas já desviando a `tool` antes de chegar
+ * aqui. Um guarda que respondesse `true` para uma ferramenta seria uma afirmação falsa que o
+ * compilador aceitaria — e ele existe justamente para ser a última palavra sobre o que é fala,
+ * não para repetir o que a tela já sabe.
  */
 export function isFala(message: ChatMessage): message is Fala {
-  return message.role !== 'notice'
+  return message.role !== 'notice' && message.role !== 'tool'
 }
 
 interface MessageBubbleProps {

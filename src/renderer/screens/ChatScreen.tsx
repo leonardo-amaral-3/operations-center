@@ -40,7 +40,12 @@ export function ChatScreen(): JSX.Element {
 
       {view.permission ? <PermissionPrompt request={view.permission} onDecide={decide} /> : null}
 
-      <Chat messages={view.messages} disabled={dead || !view.id} onSend={send} />
+      <Chat
+        messages={view.messages}
+        activity={view.activity}
+        disabled={dead || !view.id}
+        onSend={send}
+      />
 
       <StatusBar init={view.init} />
     </div>

@@ -13,6 +13,8 @@ import type {
   StartResult,
   StopRequest,
 } from '../shared/ipc'
+import { IDLE_ACTIVITY } from '../shared/session'
+import type { TurnActivity } from '../shared/session'
 
 export interface SessionIpcOptions {
   /**
@@ -30,6 +32,33 @@ export interface SessionIpc {
 }
 
 /**
+ * O relógio de uma sessão — o `TurnActivity` que atravessa a ponte mais o ordinal do turno.
+ *
+ * **O relógio mora no main, e não no core**, pelo mesmo motivo do `readAt` do board: o `core` conta
+ * tokens e ordena fatos, a casca carimba tempo (`src/main/board.ts:79`). É o que mantém o `yarn
+ * test` do core sem relógio.
+ *
+ * O `index` não sai daqui: ele é só como o main reconhece a fronteira entre turnos. A tela não tem
+ * o que fazer com o ordinal, e mandá-lo seria contrato a mais para manter.
+ */
+interface Pulse {
+  index: number
+  startedAt: number | null
+  lastSignalAt: number | null
+  thinkingTokens: number
+}
+
+/**
+ * O ordinal com que o core começa a contar (`TurnPulseCore.index`), e com que um registro novo
+ * nasce — não em zero.
+ *
+ * Com zero, o primeiro `turn` do primeiro turno pareceria fronteira de turno e recarimbaria o
+ * `startedAt` que a entrada em `working` acabou de pôr: o relógio da tela voltaria a zero um
+ * segundo depois de o turno começar, e mentiria justamente na única leitura que ele tem.
+ */
+const FIRST_TURN = 1
+
+/**
  * Liga os canais do contrato ao `core`.
  *
  * As sessões vivas moram aqui porque este é o único lugar que as cria: quem sabe abrir é quem deve
@@ -45,6 +74,16 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
    * da conversa preso no primeiro.
    */
   const byCard = new Map<string, string>()
+
+  /** O relógio de cada sessão viva, alimentado pelo `forwardEvents` e lido pelo retrato. */
+  const pulses = new Map<string, Pulse>()
+
+  /** O pulso daquela sessão, ou o de quem não está em turno nenhum. */
+  function activityOf(sessionId: string): TurnActivity {
+    const pulse = pulses.get(sessionId)
+
+    return pulse ? toActivity(pulse) : IDLE_ACTIVITY
+  }
 
   /**
    * A sessão viva daquele cartão, se houver.
@@ -78,7 +117,11 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
         const living = livingSessionFor(itemId)
         // Sem criar outra e **sem registrar os ouvintes de novo**: a tela que reabre o cartão parte
         // do retrato, e uma segunda assinatura duplicaria cada mensagem daí em diante.
-        if (living) return { started: true, session: snapshot(living, itemId) }
+        // O retrato leva o pulso vivo daquela sessão: reabrir o cartão no meio do turno tem de
+        // continuar a contagem, e não recomeçá-la.
+        if (living) {
+          return { started: true, session: snapshot(living, itemId, activityOf(living.id)) }
+        }
       }
 
       const cwd = await options.resolveCwd(itemId)
@@ -90,9 +133,9 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
       sessions.set(session.id, session)
       if (itemId !== undefined) byCard.set(itemId, session.id)
       // Os eventos vão para a janela que pediu a sessão, não para todas: é ela quem a está mostrando.
-      forwardEvents(session, event.sender)
+      forwardEvents(session, event.sender, pulses)
 
-      return { started: true, session: snapshot(session, itemId) }
+      return { started: true, session: snapshot(session, itemId, activityOf(session.id)) }
     },
   )
 
@@ -123,8 +166,11 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     if (!session) return
 
     sessions.delete(request.sessionId)
-    // Dos **dois** mapas: deixar o cartão apontando para uma sessão que já não existe faria o clique
-    // seguinte cair no `livingSessionFor` de um fantasma.
+    // O relógio morre com a sessão: registro órfão faria o retrato do próximo clique naquele
+    // cartão nascer com a idade de um turno que já acabou.
+    pulses.delete(request.sessionId)
+    // Dos **três** mapas: deixar o cartão apontando para uma sessão que já não existe faria o
+    // clique seguinte cair no `livingSessionFor` de um fantasma.
     for (const [itemId, sessionId] of byCard) {
       if (sessionId === request.sessionId) byCard.delete(itemId)
     }
@@ -137,6 +183,7 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
       const living = [...sessions.values()]
       sessions.clear()
       byCard.clear()
+      pulses.clear()
       // `allSettled`: uma sessão que falhe ao fechar não pode impedir as outras de fechar nem
       // derrubar o desligamento com uma rejeição sem dono.
       await Promise.allSettled(living.map((session) => session.close()))
@@ -144,32 +191,87 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
   }
 }
 
-function snapshot(session: SessionHandle, itemId: string | undefined): SessionSnapshot {
+function snapshot(
+  session: SessionHandle,
+  itemId: string | undefined,
+  activity: TurnActivity,
+): SessionSnapshot {
   return {
     id: session.id,
     itemId,
     init: session.init,
     state: session.state,
     messages: [...session.messages],
+    activity,
   }
 }
 
-function forwardEvents(session: SessionHandle, sender: WebContents): void {
+/** O que atravessa a ponte: o registro sem o ordinal, que é assunto interno do main. */
+function toActivity(pulse: Pulse): TurnActivity {
+  return {
+    startedAt: pulse.startedAt,
+    lastSignalAt: pulse.lastSignalAt,
+    thinkingTokens: pulse.thinkingTokens,
+  }
+}
+
+function forwardEvents(
+  session: SessionHandle,
+  sender: WebContents,
+  pulses: Map<string, Pulse>,
+): void {
   const emit = (channel: string, payload: unknown): void => {
     // A janela pode morrer com um turno em andamento; mandar para um `WebContents` destruído joga.
     if (sender.isDestroyed()) return
     sender.send(channel, payload)
   }
 
+  // O registro nasce junto com a assinatura, e não na primeira batida: o `start` monta o retrato
+  // logo depois desta chamada, e um registro ausente ali faria a sessão nova nascer `IDLE` por um
+  // instante em que ela já está de pé.
+  const pulse: Pulse = {
+    index: FIRST_TURN,
+    startedAt: null,
+    lastSignalAt: null,
+    thinkingTokens: 0,
+  }
+  pulses.set(session.id, pulse)
+
+  /**
+   * Carimba o sinal e publica o pulso inteiro.
+   *
+   * **Os quatro canais carimbam**, e não só o `turn`: o CA-4 pergunta "há quanto tempo esta sessão
+   * não dá sinal nenhum", e uma mensagem ou uma troca de estado são sinal tanto quanto o contador
+   * de raciocínio. Chamar sempre no fim do handler é o que garante que a tela receba o fato
+   * (mensagem, estado) antes do pulso que o acompanha.
+   */
+  const publish = (): void => {
+    pulse.lastSignalAt = Date.now()
+    emit(IPC_EVENT.activity, { sessionId: session.id, activity: toActivity(pulse) })
+  }
+
   session.on('init', (init) => {
     emit(IPC_EVENT.init, { sessionId: session.id, init })
+    publish()
   })
 
   session.on('message', (message) => {
     emit(IPC_EVENT.message, { sessionId: session.id, message })
+    publish()
   })
 
   session.on('state', (state) => {
+    // A entrada em `working` é o que começa o relógio, e a saída é o que o para. `startedAt === null`
+    // **é** "o kind anterior não era `working`": ele só fica não-nulo enquanto a sessão trabalha, e
+    // toda saída o zera aqui — por isso o main não precisa guardar o estado anterior para saber.
+    // Consequência aceita: um prompt de permissão para o relógio, porque a sessão de fato parou de
+    // trabalhar e passou a esperar por gente.
+    if (state.kind === 'working') {
+      if (pulse.startedAt === null) pulse.startedAt = Date.now()
+    } else {
+      pulse.startedAt = null
+    }
+
     emit(IPC_EVENT.state, { sessionId: session.id, state })
 
     // O `core` não publica um canal de permissão: o pedido chega dentro do estado, porque é ele que
@@ -184,5 +286,24 @@ function forwardEvents(session: SessionHandle, sender: WebContents): void {
     if (state.kind === 'awaiting_answer') {
       emit(IPC_EVENT.questionRequest, { sessionId: session.id, request: state.request })
     }
+
+    publish()
+  })
+
+  session.on('turn', ({ index, thinkingTokens }) => {
+    if (index === pulse.index) {
+      pulse.thinkingTokens = thinkingTokens
+    } else {
+      // Fronteira de turno. Zerar o contador aqui, e não confiar no que vem no evento, é o que faz
+      // o turno seguinte começar limpo mesmo que um quadro se perca.
+      pulse.index = index
+      pulse.thinkingTokens = 0
+      // O ordinal mudou no `result`, que o core já passou pelo `#apply` antes de emitir — a ordem é
+      // contrato dele. Seguir em `working` aqui só acontece com fila (`queued_turn_count > 0`), e é
+      // o próximo turno começando: relógio novo. Fora disso o turno acabou, e o relógio some.
+      pulse.startedAt = session.state.kind === 'working' ? Date.now() : null
+    }
+
+    publish()
   })
 }

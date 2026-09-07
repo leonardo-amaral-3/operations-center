@@ -12,6 +12,7 @@ import type {
   RespondPermissionRequest,
   Screen,
   SendRequest,
+  SessionActivityEvent,
   SessionInitEvent,
   SessionMessageEvent,
   SessionPermissionEvent,
@@ -79,6 +80,7 @@ const api: OcApi = {
     subscribe<SessionPermissionEvent>(IPC_EVENT.permissionRequest, listener),
   onQuestionRequest: (listener) =>
     subscribe<SessionQuestionEvent>(IPC_EVENT.questionRequest, listener),
+  onActivity: (listener) => subscribe<SessionActivityEvent>(IPC_EVENT.activity, listener),
   readBoard: () => ipcRenderer.invoke(IPC_INVOKE.readBoard) as Promise<BoardSnapshot>,
   onBoard: (listener) => subscribe<BoardSnapshot>(IPC_EVENT.board, listener),
 }
