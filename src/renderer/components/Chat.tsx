@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, JSX, KeyboardEvent } from 'react'
 
 import type { ChatMessage } from '../../shared/session'
+import { Textarea } from '../ui/textarea'
 import { isFala, MessageBubble } from './MessageBubble'
 
 interface ChatProps {
@@ -54,7 +55,7 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
     <main className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {messages.length === 0 ? (
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-foreground/60">
             A sessão está de pé. Escreva a primeira mensagem.
           </p>
         ) : null}
@@ -71,7 +72,7 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
               key={message.id}
               data-testid="message"
               data-role="notice"
-              className="py-1 text-center text-[11px] tracking-wide text-neutral-500 uppercase"
+              className="py-1 text-center text-[11px] tracking-wide text-foreground/60 uppercase"
             >
               {message.text}
             </p>
@@ -81,8 +82,10 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
         <div ref={bottom} />
       </div>
 
-      <div className="border-t border-neutral-800 p-3">
-        <textarea
+      <div className="border-t-2 border-border p-3">
+        {/* Sem `min-h-0` aqui, ao contrário do cartão: esta tela é a janela inteira, e a altura
+            mínima da primitiva cabe nela sem disputar largura com coluna nenhuma. */}
+        <Textarea
           data-testid="chat-input"
           // A janela existe para ser digitada: abrir e ter de clicar na caixa antes é atrito puro.
           autoFocus
@@ -92,7 +95,7 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
           onKeyDown={handleKeyDown}
           rows={3}
           placeholder="Escreva para a sessão…  Enter envia, Shift+Enter quebra linha."
-          className="w-full resize-none rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none disabled:opacity-50"
+          className="resize-none"
         />
       </div>
     </main>
