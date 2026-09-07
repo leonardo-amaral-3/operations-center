@@ -94,12 +94,6 @@ export function useSessionView({ itemId, closeOnUnmount }: SessionViewOptions): 
       window.oc.onState((event) => {
         deliver(event.sessionId, { type: 'state', state: event.state })
       }),
-      window.oc.onPermissionRequest((event) => {
-        deliver(event.sessionId, { type: 'permission', request: event.request })
-      }),
-      window.oc.onQuestionRequest((event) => {
-        deliver(event.sessionId, { type: 'question', request: event.request })
-      }),
       // Assinado aqui, e não em quem desenha a linha viva, porque o pulso é estado da sessão como
       // qualquer outro: passa pelo mesmo filtro por id e pelo mesmo represamento até o retrato
       // chegar — sem o que uma batida disparada antes dele iria para a sessão errada.
@@ -165,9 +159,10 @@ export function useSessionView({ itemId, closeOnUnmount }: SessionViewOptions): 
       const { id, permission } = view
       if (!id || !permission) return
 
-      // Some da tela na hora: a confirmação volta pelo `state`, e até lá o botão continuaria clicável
-      // para um pedido que já foi respondido.
-      dispatch({ type: 'permission', request: null })
+      // Some da tela na hora: até a resposta voltar, o botão continuaria clicável para um pedido já
+      // respondido. Quem repõe a tela é o `state` seguinte — e o que ele traz pode ser o **próximo**
+      // pedido da fila, não necessariamente a sessão de volta ao trabalho.
+      dispatch({ type: 'hide-prompt' })
       void window.oc.respondPermission({ sessionId: id, requestId: permission.id, decision })
     },
 
@@ -176,8 +171,9 @@ export function useSessionView({ itemId, closeOnUnmount }: SessionViewOptions): 
       if (!id || !question) return
 
       // Some pela mesma razão da decisão de permissão: pergunta respondida não se responde duas
-      // vezes, e a confirmação vem pelo `state`.
-      dispatch({ type: 'question', request: null })
+      // vezes, e o `state` seguinte é quem manda — inclusive quando o que ele traz é o próximo
+      // pedido da fila.
+      dispatch({ type: 'hide-prompt' })
       void window.oc.answerQuestion({ sessionId: id, requestId: question.id, answers })
     },
 

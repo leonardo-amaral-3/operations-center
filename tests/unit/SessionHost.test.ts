@@ -71,6 +71,73 @@ const turnoParado: FakeTurn = async (_text, tools) => {
   return [abortedResult()]
 }
 
+/** Grava tudo que o canal de estado publicar, na ordem — é assim que se prova o que **não** apareceu. */
+function gravarEstados(handle: SessionHandle): SessionState[] {
+  const vistos: SessionState[] = []
+  handle.on('state', (state) => vistos.push(state))
+  return vistos
+}
+
+/** Um pedido do roteiro concorrente. O `toolName` só importa onde o caso o inspeciona. */
+type PedidoConcorrente =
+  { tipo: 'permissao'; id: string; toolName?: string } | { tipo: 'pergunta'; id: string }
+
+/** O payload de uma pergunta simples — o mínimo que o `readQuestions` aceita desenhar. */
+function perguntaCrua(texto: string): unknown {
+  return [
+    {
+      question: texto,
+      header: 'Cor',
+      multiSelect: false,
+      options: [
+        { label: 'Azul', description: 'o céu' },
+        { label: 'Verde', description: 'o mato' },
+      ],
+    },
+  ]
+}
+
+interface Concorrentes {
+  readonly turn: FakeTurn
+  /** Resolve quando **todos** os pedidos já estão em voo: o ponto em que a fila já está formada. */
+  readonly asked: Promise<void>
+  /** O `behavior` que cada ferramenta recebeu, na ordem em que os pedidos foram disparados. */
+  readonly behaviors: string[]
+}
+
+/**
+ * O roteiro dos casos concorrentes: dispara os pedidos **sem `await` entre eles** e avisa por uma
+ * promise quando todos já estão em voo.
+ *
+ * Sem temporizador de propósito. `askPermission`/`askQuestion` chamam o `canUseTool` de forma
+ * síncrona antes do primeiro `await`, então quando `asked` resolve os pedidos já entraram na fila,
+ * na ordem em que foram disparados — que é justamente a ordem sob teste. Um `setTimeout` no lugar
+ * disso provaria o relógio da máquina, não a FIFO.
+ */
+function concorrentes(...pedidos: readonly PedidoConcorrente[]): Concorrentes {
+  const behaviors: string[] = []
+  let todosPedidos!: () => void
+  const asked = new Promise<void>((resolve) => {
+    todosPedidos = resolve
+  })
+
+  const turn: FakeTurn = async (text, tools) => {
+    const emVoo = pedidos.map((pedido) =>
+      pedido.tipo === 'permissao'
+        ? tools.askPermission({ toolName: pedido.toolName ?? 'Write', toolUseID: pedido.id })
+        : tools.askQuestion({
+            toolUseID: pedido.id,
+            questions: perguntaCrua(`Qual cor? ${pedido.id}`),
+          }),
+    )
+    todosPedidos()
+    behaviors.push(...(await Promise.all(emVoo)).map((resultado) => resultado.behavior))
+    return [assistantMessage(text), successResult()]
+  }
+
+  return { turn, asked, behaviors }
+}
+
 describe('SessionHost', () => {
   it('chama o query com as opções que o SDK precisa ver — e sem as que matariam o canUseTool', () => {
     const fake = createFakeQuery()
@@ -203,6 +270,7 @@ describe('SessionHost', () => {
         displayName: 'Write file',
         description: undefined,
       },
+      queued: 0,
     })
     // O turno está parado: sem decisao humana, nada de resposta.
     expect(decisoes).toEqual([])
@@ -256,6 +324,242 @@ describe('SessionHost', () => {
     expect(handle.state).toEqual({ kind: 'closed' })
   })
 
+  it('dois pedidos de permissão concorrentes: o primeiro fica na frente, o segundo espera', async () => {
+    const { turn, asked } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'permissao', id: 'toolu_b' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('faça as duas coisas')
+    await asked
+
+    // Quem chegou primeiro fica na frente, e o segundo **espera** em vez de tomar o lugar dele —
+    // sobrescrever o incumbente é exatamente o travamento que este card conserta.
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_a' },
+      queued: 1,
+    })
+
+    await handle.close()
+  })
+
+  it('resolver a frente revela o de trás, e não devolve a vez', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'permissao', id: 'toolu_b' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('faça as duas coisas')
+    await asked
+
+    handle.respondPermission('toolu_a', 'allow')
+    // Lido logo em seguida, sem esperar canal nenhum: a republicação da frente é síncrona.
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_b' },
+      queued: 0,
+    })
+
+    handle.respondPermission('toolu_b', 'allow')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // As **duas** ferramentas receberam resposta: nenhuma ficou esperando o que não vinha.
+    expect(behaviors).toEqual(['allow', 'allow'])
+  })
+
+  it('duas perguntas concorrentes seguem a mesma fila', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'pergunta', id: 'toolu_a' },
+      { tipo: 'pergunta', id: 'toolu_b' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('pergunte duas vezes')
+    await asked
+
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_answer',
+      request: { id: 'toolu_a' },
+      queued: 1,
+    })
+
+    handle.answerQuestion('toolu_a', { 'Qual cor? toolu_a': 'Azul' })
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_answer',
+      request: { id: 'toolu_b' },
+      queued: 0,
+    })
+
+    handle.answerQuestion('toolu_b', { 'Qual cor? toolu_b': 'Verde' })
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(behaviors).toEqual(['allow', 'allow'])
+  })
+
+  it('o par misto: quem chegou primeiro fica na frente, seja permissão ou pergunta', async () => {
+    const permissaoNaFrente = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'pergunta', id: 'toolu_b' },
+    )
+    const primeiro = start(createFakeQuery({ turn: permissaoNaFrente.turn }))
+
+    primeiro.send('decida e pergunte')
+    await permissaoNaFrente.asked
+
+    expect(primeiro.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_a' },
+      queued: 1,
+    })
+
+    primeiro.respondPermission('toolu_a', 'allow')
+    // A fila é uma só, e a ordem entre os dois tipos é o que o par misto precisa preservar.
+    expect(primeiro.state).toMatchObject({
+      kind: 'awaiting_answer',
+      request: { id: 'toolu_b' },
+      queued: 0,
+    })
+
+    await primeiro.close()
+
+    // E o simétrico, com a pergunta chegando primeiro.
+    const perguntaNaFrente = concorrentes(
+      { tipo: 'pergunta', id: 'toolu_c' },
+      { tipo: 'permissao', id: 'toolu_d' },
+    )
+    const segundo = start(createFakeQuery({ turn: perguntaNaFrente.turn }))
+
+    segundo.send('pergunte e decida')
+    await perguntaNaFrente.asked
+
+    expect(segundo.state).toMatchObject({
+      kind: 'awaiting_answer',
+      request: { id: 'toolu_c' },
+      queued: 1,
+    })
+
+    segundo.answerQuestion('toolu_c', { 'Qual cor? toolu_c': 'Azul' })
+    expect(segundo.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_d' },
+      queued: 0,
+    })
+
+    await segundo.close()
+  })
+
+  it('a sessão só volta a trabalhar quando a fila esvazia', async () => {
+    const { turn, asked } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'pergunta', id: 'toolu_b' },
+      { tipo: 'permissao', id: 'toolu_c' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+    const vistos = gravarEstados(handle)
+
+    handle.send('faça as três coisas')
+    await asked
+
+    const antesDasRespostas = vistos.length
+    handle.respondPermission('toolu_a', 'allow')
+    handle.answerQuestion('toolu_b', { 'Qual cor? toolu_b': 'Azul' })
+
+    // O `working` no meio da fila é a mentira que este card mata: o cartão diria "trabalhando"
+    // enquanto ainda há gente esperando que alguém decida.
+    expect(vistos.slice(antesDasRespostas).map((estado) => estado.kind)).toEqual([
+      'awaiting_answer',
+      'awaiting_decision',
+    ])
+
+    handle.respondPermission('toolu_c', 'allow')
+    await untilState(handle, isKind('awaiting_input'))
+  })
+
+  it('responder um pedido que não está na frente não muda quem está', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'permissao', id: 'toolu_b' },
+      { tipo: 'permissao', id: 'toolu_c' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('faça as três coisas')
+    await asked
+
+    expect(handle.state).toMatchObject({ request: { id: 'toolu_a' }, queued: 2 })
+
+    // A guarda da tela desatualizada: ela responde por `requestId`, e o pedido do meio pode ser
+    // decidido sem que a frente tenha saído.
+    handle.respondPermission('toolu_b', 'allow')
+
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_a' },
+      queued: 1,
+    })
+
+    handle.respondPermission('toolu_a', 'allow')
+    handle.respondPermission('toolu_c', 'allow')
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(behaviors).toEqual(['allow', 'allow', 'allow'])
+  })
+
+  it('toolUseID repetido não substitui quem já esperava', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a', toolName: 'Write' },
+      { tipo: 'permissao', id: 'toolu_a', toolName: 'Read' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('faça a mesma coisa duas vezes')
+    await asked
+
+    // O incumbente segue na frente com a promise intacta, e o recém-chegado nem entra na fila:
+    // `Write`, e não `Read`, é o que prova que ninguém foi substituído.
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_a', toolName: 'Write' },
+      queued: 0,
+    })
+
+    handle.respondPermission('toolu_a', 'allow')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // O repetido foi negado na hora, em vez de passar em silêncio.
+    expect(behaviors).toEqual(['allow', 'deny'])
+  })
+
+  it('fechar com a fila cheia nega todos, e nenhum turno fica pendurado', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'pergunta', id: 'toolu_b' },
+      { tipo: 'permissao', id: 'toolu_c' },
+    )
+    const fake = createFakeQuery({ turn })
+    const handle = start(fake)
+    const vistos = gravarEstados(handle)
+
+    handle.send('faça as três coisas')
+    await asked
+
+    const antesDoFecho = vistos.length
+    await handle.close()
+
+    expect(behaviors).toEqual(['deny', 'deny', 'deny'])
+    expect(fake.finished).toBe(true)
+    expect(handle.state).toEqual({ kind: 'closed' })
+    // Negar a fila **não** publica: um `settled` no caminho pintaria "Trabalhando" numa sessão que
+    // está morrendo. O que aparece é o fim natural do turno, que os `deny` destravaram.
+    expect(vistos.slice(antesDoFecho).map((estado) => estado.kind)).toEqual([
+      'awaiting_input',
+      'closed',
+    ])
+  })
+
   it('um AskUserQuestion vira pergunta na tela, e a resposta volta ao SDK do jeito exato', async () => {
     const resultados: PermissionResult[] = []
     const fake = createFakeQuery({
@@ -300,6 +604,7 @@ describe('SessionHost', () => {
           },
         ],
       },
+      queued: 0,
     })
     // O turno está parado esperando a pessoa, como na permissão.
     expect(resultados).toEqual([])
@@ -466,6 +771,7 @@ describe('SessionHost', () => {
           },
         ],
       },
+      queued: 0,
     })
 
     await handle.close()
@@ -505,6 +811,7 @@ describe('SessionHost', () => {
           displayName: undefined,
           description: undefined,
         },
+        queued: 0,
       })
 
       handle.respondPermission(id, 'deny')

@@ -26,6 +26,13 @@ const pergunta: QuestionRequest = {
   ],
 }
 
+const outroPedido: PermissionRequest = {
+  id: 'toolu_02',
+  toolName: 'Read',
+  title: 'Claude wants to read smoke.txt',
+  displayName: 'Read file',
+}
+
 /** Atalho: aplica os eventos em sequência a partir do estado inicial. */
 function apply(...events: Parameters<typeof nextState>[1][]): SessionState {
   return events.reduce<SessionState>(nextState, initialState)
@@ -64,25 +71,50 @@ describe('máquina de estados da sessão', () => {
     expect(state).toEqual({ kind: 'working' })
   })
 
-  it('um pedido de permissão espera decisão, e a resposta volta a trabalhar', () => {
-    const esperando = apply({ kind: 'init' }, { kind: 'permission_requested', request: pedido })
-    expect(esperando).toEqual({ kind: 'awaiting_decision', request: pedido })
+  it('awaiting com uma permissão vira awaiting_decision, carregando o contador', () => {
+    const esperando = apply(
+      { kind: 'init' },
+      { kind: 'awaiting', pending: { kind: 'permission', request: pedido }, queued: 2 },
+    )
 
-    expect(nextState(esperando, { kind: 'permission_resolved' })).toEqual({ kind: 'working' })
+    expect(esperando).toEqual({ kind: 'awaiting_decision', request: pedido, queued: 2 })
   })
 
-  it('uma pergunta espera resposta, e respondê-la volta a trabalhar', () => {
-    const esperando = apply({ kind: 'init' }, { kind: 'question_requested', request: pergunta })
-    expect(esperando).toEqual({ kind: 'awaiting_answer', request: pergunta })
+  it('awaiting com uma pergunta vira awaiting_answer, carregando o contador', () => {
+    const esperando = apply(
+      { kind: 'init' },
+      { kind: 'awaiting', pending: { kind: 'question', request: pergunta }, queued: 1 },
+    )
 
-    expect(nextState(esperando, { kind: 'question_answered' })).toEqual({ kind: 'working' })
+    expect(esperando).toEqual({ kind: 'awaiting_answer', request: pergunta, queued: 1 })
   })
 
-  it('pergunta e permissão são estados distintos, e um sobrescreve o outro', () => {
-    const decidindo = apply({ kind: 'init' }, { kind: 'permission_requested', request: pedido })
-    const perguntando = nextState(decidindo, { kind: 'question_requested', request: pergunta })
+  it('settled devolve a sessão ao trabalho', () => {
+    const esperando = apply(
+      { kind: 'init' },
+      { kind: 'awaiting', pending: { kind: 'permission', request: pedido }, queued: 0 },
+    )
 
-    expect(perguntando).toEqual({ kind: 'awaiting_answer', request: pergunta })
+    expect(nextState(esperando, { kind: 'settled' })).toEqual({ kind: 'working' })
+  })
+
+  it('a máquina desenha sempre a frente da fila que o handle publicar', () => {
+    // Quem opera a fila é o `SessionHandle`; a máquina só projeta a frente que ele publicar. Dois
+    // `awaiting` seguidos são "a frente mudou", e não "um pedido sobrescreveu o outro" — a premissa
+    // do sobrescrever é justamente a que produziu o travamento do #11.
+    const primeiro = apply(
+      { kind: 'init' },
+      { kind: 'awaiting', pending: { kind: 'permission', request: pedido }, queued: 1 },
+    )
+    expect(primeiro).toEqual({ kind: 'awaiting_decision', request: pedido, queued: 1 })
+
+    const segundo = nextState(primeiro, {
+      kind: 'awaiting',
+      pending: { kind: 'permission', request: outroPedido },
+      queued: 0,
+    })
+
+    expect(segundo).toEqual({ kind: 'awaiting_decision', request: outroPedido, queued: 0 })
   })
 
   it('result que não é de sucesso falha a sessão, carregando o subtype como motivo', () => {
@@ -137,8 +169,14 @@ describe('máquina de estados da sessão', () => {
     // decidir ou responder. E em `starting` quem anuncia o trabalho é o `init`.
     const casos: SessionState[] = [
       { kind: 'starting' },
-      apply({ kind: 'init' }, { kind: 'permission_requested', request: pedido }),
-      apply({ kind: 'init' }, { kind: 'question_requested', request: pergunta }),
+      apply(
+        { kind: 'init' },
+        { kind: 'awaiting', pending: { kind: 'permission', request: pedido }, queued: 0 },
+      ),
+      apply(
+        { kind: 'init' },
+        { kind: 'awaiting', pending: { kind: 'question', request: pergunta }, queued: 0 },
+      ),
       apply({ kind: 'init' }, { kind: 'closed' }),
       apply({ kind: 'init' }, { kind: 'failed', reason: 'claude não encontrado' }),
     ]
@@ -173,20 +211,31 @@ describe('máquina de estados da sessão', () => {
     const fechada = apply({ kind: 'init' }, { kind: 'closed' })
 
     expect(nextState(fechada, { kind: 'init' })).toEqual({ kind: 'closed' })
-    expect(nextState(fechada, { kind: 'permission_requested', request: pedido })).toEqual({
-      kind: 'closed',
-    })
-    expect(nextState(fechada, { kind: 'question_requested', request: pergunta })).toEqual({
-      kind: 'closed',
-    })
+    expect(
+      nextState(fechada, {
+        kind: 'awaiting',
+        pending: { kind: 'permission', request: pedido },
+        queued: 0,
+      }),
+    ).toEqual({ kind: 'closed' })
+    expect(
+      nextState(fechada, {
+        kind: 'awaiting',
+        pending: { kind: 'question', request: pergunta },
+        queued: 0,
+      }),
+    ).toEqual({ kind: 'closed' })
   })
 
   it('depois de falhar, uma pergunta atrasada não apaga o motivo da falha', () => {
     const falhou = apply({ kind: 'init' }, { kind: 'failed', reason: 'claude não encontrado' })
 
-    expect(nextState(falhou, { kind: 'question_requested', request: pergunta })).toEqual({
-      kind: 'failed',
-      reason: 'claude não encontrado',
-    })
+    expect(
+      nextState(falhou, {
+        kind: 'awaiting',
+        pending: { kind: 'question', request: pergunta },
+        queued: 0,
+      }),
+    ).toEqual({ kind: 'failed', reason: 'claude não encontrado' })
   })
 })

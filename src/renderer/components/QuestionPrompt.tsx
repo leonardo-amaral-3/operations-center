@@ -10,6 +10,8 @@ import { Input } from '../ui/input'
 interface QuestionPromptProps {
   request: QuestionRequest
   onAnswer: (answers: QuestionAnswers) => void
+  /** Quantos pedidos esperam **atrás** deste na fila do `SessionHandle`. `0` quando é o único. */
+  queued: number
 }
 
 /** Os rótulos escolhidos em cada pergunta. A chave é o texto da pergunta, como no `QuestionAnswers`. */
@@ -39,7 +41,7 @@ function answerOf(question: string, picked: Picked, typed: Typed): string {
  * O envio é **um só**, com todas as perguntas juntas, porque é assim que a ferramenta as recebe de
  * volta: um `updatedInput` com o mapa completo. Responder uma de cada vez não tem para onde ir.
  */
-export function QuestionPrompt({ request, onAnswer }: QuestionPromptProps): JSX.Element {
+export function QuestionPrompt({ request, onAnswer, queued }: QuestionPromptProps): JSX.Element {
   const [picked, setPicked] = useState<Picked>({})
   const [typed, setTyped] = useState<Typed>({})
 
@@ -151,7 +153,15 @@ export function QuestionPrompt({ request, onAnswer }: QuestionPromptProps): JSX.
           ))}
         </div>
 
-        <div className="mt-3 flex justify-end">
+        {/* `justify-end` continua, e não vira `justify-between`: com `between` e o contador
+            ausente o botão sozinho iria para a esquerda, e a linha mudaria de lugar conforme o
+            tamanho da fila. */}
+        <div className="mt-3 flex items-center justify-end gap-3">
+          {queued > 0 ? (
+            <p data-testid="prompt-queued" className="text-[11px] text-foreground/70">
+              mais {queued} esperando
+            </p>
+          ) : null}
           <Button
             type="button"
             data-testid="question-submit"

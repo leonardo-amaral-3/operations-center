@@ -11,9 +11,7 @@ import type { BoardSnapshot, CardContent } from './board'
 import type {
   ChatMessage,
   PermissionDecision,
-  PermissionRequest,
   QuestionAnswers,
-  QuestionRequest,
   SessionInit,
   SessionState,
   TurnActivity,
@@ -43,8 +41,6 @@ export const IPC_EVENT = {
   init: 'session:init',
   message: 'session:message',
   state: 'session:state',
-  permissionRequest: 'session:permission-request',
-  questionRequest: 'session:question-request',
   /**
    * O pulso do turno. Canal próprio, e não um campo do `state`: ele bate a cada ~1,3s enquanto o
    * modelo pensa, e o kanban assina o `state` para manter o crachá dos cartões fechados vivo. Quem
@@ -171,16 +167,6 @@ export interface SessionStateEvent {
   state: SessionState
 }
 
-export interface SessionPermissionEvent {
-  sessionId: string
-  request: PermissionRequest
-}
-
-export interface SessionQuestionEvent {
-  sessionId: string
-  request: QuestionRequest
-}
-
 /**
  * O pulso do turno corrente, já com os dois carimbos de relógio que o main põe.
  *
@@ -228,8 +214,6 @@ export interface OcApi {
   onInit(listener: (event: SessionInitEvent) => void): () => void
   onMessage(listener: (event: SessionMessageEvent) => void): () => void
   onState(listener: (event: SessionStateEvent) => void): () => void
-  onPermissionRequest(listener: (event: SessionPermissionEvent) => void): () => void
-  onQuestionRequest(listener: (event: SessionQuestionEvent) => void): () => void
   /** O pulso do turno. Só quem mostra a conversa aberta assina — ver `IPC_EVENT.activity`. */
   onActivity(listener: (event: SessionActivityEvent) => void): () => void
 

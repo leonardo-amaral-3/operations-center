@@ -8,7 +8,7 @@ import type {
 
 import { InputQueue } from './InputQueue'
 import { initialState, nextState } from './state'
-import type { SessionEvent, SessionState } from './state'
+import type { PendingRequest, SessionEvent, SessionState } from './state'
 import type {
   ChatMessage,
   ChatToolUse,
@@ -107,6 +107,9 @@ export type StartQuery = (params: {
 /** Motivo devolvido ao SDK quando a decisão não pode mais ser tomada por uma pessoa. */
 const SESSION_CLOSED_DENIAL = 'Sessão encerrada antes da decisão.'
 
+/** Motivo devolvido quando dois pedidos chegam com o mesmo `toolUseID` — ver `#enqueue`. */
+const DUPLICATE_TOOL_USE_ID = 'Já há um pedido em aberto com este toolUseID.'
+
 /** A nota que a parada deixa na conversa. Exportada porque o teste a lê daqui, e não a redigita. */
 export const INTERRUPTED_NOTICE = 'Turno interrompido.'
 
@@ -128,16 +131,18 @@ const DETAIL_MAX = 120
  */
 const ASK_USER_QUESTION = 'AskUserQuestion'
 
-/** Uma pergunta em aberto: como devolvê-la ao SDK, e o `questions` cru que ela precisa espelhar. */
-interface PendingQuestion {
-  resolve: (result: PermissionResult) => void
-  /**
-   * O valor de `input.questions` **exatamente como veio**. O executor da ferramenta espelha este
-   * campo, então devolver a versão traduzida (a que a tela desenhou) mudaria o payload por baixo
-   * dele — o que se perde na tradução é justamente o que ele espera de volta.
-   */
-  questions: unknown
-}
+type Resolve = (result: PermissionResult) => void
+
+/**
+ * Um pedido esperando uma pessoa: como devolvê-lo ao SDK, e o que a tela precisa desenhar.
+ *
+ * `questions` só existe na pergunta, e é o `input.questions` **cru**: o executor da ferramenta
+ * espelha esse campo, então devolver a versão traduzida (a que a tela desenhou) mudaria o payload
+ * por baixo dele — o que se perde na tradução é justamente o que ele espera de volta.
+ */
+type Pending =
+  | { kind: 'permission'; request: PermissionRequest; resolve: Resolve }
+  | { kind: 'question'; request: QuestionRequest; resolve: Resolve; questions: unknown }
 
 /**
  * Uma sessão viva: a fila de entrada, o `query()` que a consome, a máquina de estados e as
@@ -152,10 +157,16 @@ export class SessionHandle {
   readonly #queue = new InputQueue()
   readonly #emitter = new Emitter()
   readonly #messages: ChatMessage[] = []
-  /** Decisões de permissão em aberto, por id do pedido: resolvê-las é o que destrava o turno. */
-  readonly #pending = new Map<string, (result: PermissionResult) => void>()
-  /** Perguntas em aberto, no mesmo papel — mapa próprio porque a resposta delas não é sim/não. */
-  readonly #pendingQuestions = new Map<string, PendingQuestion>()
+  /**
+   * Os pedidos esperando uma pessoa, **na ordem em que chegaram** — permissões e perguntas no mesmo
+   * mapa, porque a ordem entre elas é o que o par misto precisa preservar. `Map` preserva a ordem de
+   * inserção, e é essa garantia que faz a FIFO existir sem estrutura própria.
+   *
+   * Mapa único, e não dois: com dois, "qual é o próximo" só teria resposta comparando carimbos de
+   * chegada — e o dia em que essa comparação divergisse do que a tela mostra é o dia em que o bug
+   * do #11 volta com outra cara.
+   */
+  readonly #pending = new Map<string, Pending>()
   readonly #query: Query
   /** A leitura do `query()`, viva enquanto a sessão existir. `close()` espera por ela. */
   readonly #pump: Promise<void>
@@ -218,16 +229,18 @@ export class SessionHandle {
 
   /** A decisão humana sobre um pedido. Pedido desconhecido (ou já resolvido): no-op. */
   respondPermission(requestId: string, decision: PermissionDecision): void {
-    const resolve = this.#pending.get(requestId)
-    if (!resolve) return
+    const entry = this.#pending.get(requestId)
+    // A guarda por tipo, e não só por existência: sem ela um `respondPermission` com o id de uma
+    // pergunta resolveria a ferramenta errada com um payload que ela não sabe ler.
+    if (entry?.kind !== 'permission') return
 
     this.#pending.delete(requestId)
-    resolve(
+    entry.resolve(
       decision === 'allow'
         ? { behavior: 'allow' }
         : { behavior: 'deny', message: 'Negado pelo usuário.' },
     )
-    this.#apply({ kind: 'permission_resolved' })
+    this.#publish()
   }
 
   /**
@@ -237,18 +250,19 @@ export class SessionHandle {
    * `allow` com o `answers` no `updatedInput` é o único caminho que produz um `tool_result` limpo:
    * `allow` puro executa a ferramenta sem quem a desenhe e devolve "The user did not answer the
    * questions", e `deny` com a resposta na mensagem marca o resultado como erro — mentir para o
-   * modelo sobre o que aconteceu. O `questions` volta cru; ver `PendingQuestion`.
+   * modelo sobre o que aconteceu. O `questions` volta cru; ver `Pending`.
    */
   answerQuestion(requestId: string, answers: QuestionAnswers): void {
-    const pending = this.#pendingQuestions.get(requestId)
-    if (!pending) return
+    const entry = this.#pending.get(requestId)
+    // Simétrica à do `respondPermission`, e pelo mesmo motivo.
+    if (entry?.kind !== 'question') return
 
-    this.#pendingQuestions.delete(requestId)
-    pending.resolve({
+    this.#pending.delete(requestId)
+    entry.resolve({
       behavior: 'allow',
-      updatedInput: { questions: pending.questions, answers },
+      updatedInput: { questions: entry.questions, answers },
     })
-    this.#apply({ kind: 'question_answered' })
+    this.#publish()
   }
 
   /**
@@ -411,8 +425,7 @@ export class SessionHandle {
     const request: QuestionRequest = { id: options.toolUseID, questions }
 
     return new Promise<PermissionResult>((resolve) => {
-      this.#pendingQuestions.set(request.id, { resolve, questions: raw })
-      this.#apply({ kind: 'question_requested', request })
+      this.#enqueue({ kind: 'question', request, resolve, questions: raw })
     })
   }
 
@@ -429,23 +442,55 @@ export class SessionHandle {
     }
 
     return new Promise<PermissionResult>((resolve) => {
-      this.#pending.set(request.id, resolve)
-      this.#apply({ kind: 'permission_requested', request })
+      this.#enqueue({ kind: 'permission', request, resolve })
     })
   }
 
   /**
-   * Nega tudo que estava esperando uma pessoa — os dois mapas. Pergunta em aberto trava o turno
-   * exatamente como permissão em aberto, e um `close()` que esquecesse dela esperaria para sempre.
+   * Põe o pedido na fila e republica a frente.
+   *
+   * `toolUseID` repetido é impossível pelo contrato do SDK — e é justamente por isso que o caso não
+   * pode passar em silêncio: **substituir o incumbente é o bug deste card**. O recém-chegado é
+   * negado na hora, e o que já esperava continua na frente, com a sua promise intacta.
+   */
+  #enqueue(entry: Pending): void {
+    if (this.#pending.has(entry.request.id)) {
+      entry.resolve({ behavior: 'deny', message: DUPLICATE_TOOL_USE_ID })
+      return
+    }
+
+    this.#pending.set(entry.request.id, entry)
+    this.#publish()
+  }
+
+  /** O estado que a frente da fila descreve — ou `working`, quando não há mais ninguém nela. */
+  #publish(): void {
+    const head = this.#pending.values().next().value
+    if (!head) {
+      this.#apply({ kind: 'settled' })
+      return
+    }
+
+    const pending: PendingRequest =
+      head.kind === 'permission'
+        ? { kind: 'permission', request: head.request }
+        : { kind: 'question', request: head.request }
+
+    this.#apply({ kind: 'awaiting', pending, queued: this.#pending.size - 1 })
+  }
+
+  /**
+   * Nega tudo que estava esperando uma pessoa. Pergunta em aberto trava o turno exatamente como
+   * permissão em aberto, e um `close()` que esquecesse dela esperaria para sempre.
+   *
+   * **Não publica**, de propósito: quem chama é o `close()` e o `finally` do `#consume()`, e os
+   * dois levam a sessão a `closed`/`failed` logo em seguida — um `settled` no meio pintaria
+   * "Trabalhando" numa sessão que está morrendo.
    */
   #denyPending(): void {
-    const waiting = [
-      ...this.#pending.values(),
-      ...[...this.#pendingQuestions.values()].map((pending) => pending.resolve),
-    ]
+    const waiting = [...this.#pending.values()]
     this.#pending.clear()
-    this.#pendingQuestions.clear()
-    for (const resolve of waiting) resolve({ behavior: 'deny', message: SESSION_CLOSED_DENIAL })
+    for (const entry of waiting) entry.resolve({ behavior: 'deny', message: SESSION_CLOSED_DENIAL })
   }
 
   /**

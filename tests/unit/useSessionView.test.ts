@@ -4,7 +4,15 @@ import { INITIAL_VIEW, isSilent, reduce, SILENCIO_MS } from '../../src/renderer/
 import type { SessionAction, SessionView } from '../../src/renderer/session/sessionView'
 import type { SessionSnapshot } from '../../src/shared/ipc'
 import { IDLE_ACTIVITY } from '../../src/shared/session'
-import type { ChatMessage, ChatToolUse, ToolStatus, TurnActivity } from '../../src/shared/session'
+import type {
+  ChatMessage,
+  ChatToolUse,
+  PermissionRequest,
+  QuestionRequest,
+  SessionState,
+  ToolStatus,
+  TurnActivity,
+} from '../../src/shared/session'
 
 /**
  * A parte pura do `useSessionView`: o estado da sessão na tela e a regra que o move.
@@ -42,15 +50,39 @@ function pulso(idadeDoSinal: number): TurnActivity {
   }
 }
 
-function retrato(messages: readonly ChatMessage[], activity: TurnActivity): SessionSnapshot {
+function retrato(
+  messages: readonly ChatMessage[],
+  activity: TurnActivity,
+  state: SessionState = { kind: 'working' },
+): SessionSnapshot {
   return {
     id: 'sess_01',
     itemId: 'card_14',
     init: undefined,
-    state: { kind: 'working' },
+    state,
     messages,
     activity,
   }
+}
+
+/** Nos casos da fila o que importa de um pedido é só o id: é por ele que se sabe qual está em cartaz. */
+function permissao(id: string): PermissionRequest {
+  return { id, toolName: 'Read', description: 'package.json' }
+}
+
+function pergunta(id: string): QuestionRequest {
+  return {
+    id,
+    questions: [{ question: 'Seguir?', header: 'Rota', multiSelect: false, options: [] }],
+  }
+}
+
+function esperandoDecisao(id: string, queued: number): SessionState {
+  return { kind: 'awaiting_decision', request: permissao(id), queued }
+}
+
+function esperandoResposta(id: string, queued: number): SessionState {
+  return { kind: 'awaiting_answer', request: pergunta(id), queued }
 }
 
 describe('o pulso na vista', () => {
@@ -162,5 +194,83 @@ describe('a marca de silêncio (CA-4)', () => {
     const recemNascida: TurnActivity = { startedAt: AGORA, lastSignalAt: null, thinkingTokens: 0 }
 
     expect(isSilent(recemNascida, false, AGORA)).toBe(false)
+  })
+})
+
+describe('o pedido em cartaz sai do estado (#11)', () => {
+  it('um awaiting_decision põe o pedido na tela, com o contador', () => {
+    const view = apply({ type: 'state', state: esperandoDecisao('toolu_a', 1) })
+
+    expect(view.permission).toEqual(permissao('toolu_a'))
+    expect(view.question).toBeNull()
+    expect(view.queued).toBe(1)
+  })
+
+  it('um segundo awaiting_decision troca o pedido em cartaz', () => {
+    // **O caso que reprova o código de hoje.** O redutor antigo *preservava* `view.permission`
+    // enquanto o `kind` não mudasse, contando com um canal IPC à parte para atualizá-lo — e era
+    // por esse canal que um segundo pedido concorrente apagava o primeiro. Com o estado por única
+    // fonte, o segundo `state` é a fila andando, e adotá-lo é o que faz o próximo aparecer.
+    const view = apply(
+      { type: 'state', state: esperandoDecisao('toolu_a', 0) },
+      { type: 'state', state: esperandoDecisao('toolu_b', 2) },
+    )
+
+    expect(view.permission?.id).toBe('toolu_b')
+    expect(view.queued).toBe(2)
+  })
+
+  it('a permissão dá lugar à pergunta quando a fila muda de tipo', () => {
+    // O par misto do CA-2: a fila é FIFO e não tem prioridade por tipo, então o que sai da frente
+    // pode dar lugar a um pedido de outra natureza — e os dois prompts não podem coexistir.
+    const view = apply(
+      { type: 'state', state: esperandoDecisao('toolu_a', 1) },
+      { type: 'state', state: esperandoResposta('toolu_b', 0) },
+    )
+
+    expect(view.permission).toBeNull()
+    expect(view.question).toEqual(pergunta('toolu_b'))
+    expect(view.queued).toBe(0)
+  })
+
+  it('um estado que não espera ninguém limpa os dois prompts e zera o contador', () => {
+    const view = apply(
+      { type: 'state', state: esperandoDecisao('toolu_a', 3) },
+      { type: 'state', state: { kind: 'working' } },
+    )
+
+    expect(view.permission).toBeNull()
+    expect(view.question).toBeNull()
+    expect(view.queued).toBe(0)
+  })
+
+  it('o retrato de uma sessão já parada num pedido já traz o prompt e o contador', () => {
+    // A regressão do reabrir-cartão: o evento que parou a sessão foi disparado quando esta tela
+    // ainda nem existia, e o retrato é o único lugar de onde o prompt pode vir.
+    const view = apply({
+      type: 'snapshot',
+      snapshot: retrato([], IDLE_ACTIVITY, esperandoResposta('toolu_a', 2)),
+    })
+
+    expect(view.question).toEqual(pergunta('toolu_a'))
+    expect(view.permission).toBeNull()
+    expect(view.queued).toBe(2)
+  })
+
+  it('hide-prompt esconde os dois, e o estado seguinte manda', () => {
+    const escondido = apply(
+      { type: 'state', state: esperandoDecisao('toolu_a', 1) },
+      { type: 'hide-prompt' },
+    )
+
+    expect(escondido.permission).toBeNull()
+    // O contador não se mexe: há mesmo mais um esperando, e quem corrige o número é o `state` que
+    // vem em seguida — não o clique.
+    expect(escondido.queued).toBe(1)
+
+    const proximo = reduce(escondido, { type: 'state', state: esperandoDecisao('toolu_b', 0) })
+
+    expect(proximo.permission?.id).toBe('toolu_b')
+    expect(proximo.queued).toBe(0)
   })
 })
