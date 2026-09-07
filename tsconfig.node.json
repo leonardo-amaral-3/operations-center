@@ -30,6 +30,14 @@
     "src/preload/**/*.ts",
     "src/core/**/*.ts",
     "src/shared/**/*.ts",
+
+    // A exceção nominal do renderer, e ela é nominal de propósito: `src/renderer/**` inteiro não
+    // cabe neste programa (não há `lib: DOM` aqui), mas o estado da sessão e a regra que o move são
+    // puros e precisam ser legíveis pelo teste, que roda no programa do Node. Mesmo arranjo do
+    // `src/shared/`: listado nos dois, e por isso um só. Se a lista crescer, o sinal é que a parte
+    // pura virou pasta — e aí ela vira glob, não uma segunda linha.
+    "src/renderer/session/sessionView.ts",
+
     "tests/**/*.ts"
   ]
 }
