@@ -3,6 +3,7 @@ import type { JSX, KeyboardEvent } from 'react'
 
 import type { SessionState } from '../../shared/session'
 import { useSessionView } from '../session/useSessionView'
+import { isFala, MessageBubble } from './MessageBubble'
 import { PermissionPrompt } from './PermissionPrompt'
 import { QuestionPrompt } from './QuestionPrompt'
 import { StateBadge } from './StateBadge'
@@ -134,7 +135,9 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
             o desvio, o ternário abaixo a rotularia como fala do Claude. O `data-testid="message"`
             continua para ela ser contável pela mesma via dos seletores do smoke. */}
         {view.messages.map((message) =>
-          message.role === 'notice' ? (
+          isFala(message) ? (
+            <MessageBubble key={message.id} message={message} scale="xs" />
+          ) : (
             <p
               key={message.id}
               data-testid="message"
@@ -143,24 +146,6 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
             >
               {message.text}
             </p>
-          ) : (
-            <article
-              key={message.id}
-              data-testid="message"
-              data-role={message.role}
-              className={
-                message.role === 'user'
-                  ? 'ml-auto max-w-[85%] rounded-lg bg-neutral-800 px-2.5 py-1.5'
-                  : 'max-w-[85%] rounded-lg bg-neutral-900 px-2.5 py-1.5'
-              }
-            >
-              <p className="mb-0.5 text-[10px] tracking-wide text-neutral-500 uppercase">
-                {message.role === 'user' ? 'você' : 'claude'}
-              </p>
-              <p className="text-xs break-words whitespace-pre-wrap text-neutral-100">
-                {message.text}
-              </p>
-            </article>
           ),
         )}
       </div>

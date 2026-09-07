@@ -7,14 +7,29 @@ import { Markdown } from './Markdown'
 /** `sm` na tela de chat; `xs` dentro do cartão, que vive numa coluna e não tem largura de sobra. */
 export type BubbleScale = 'sm' | 'xs'
 
+/**
+ * Uma mensagem que é **fala** de alguém. A `notice` — o app falando *sobre* a sessão — não é bolha
+ * de ninguém (`src/shared/session.ts`), e o tipo estreito é o que impede o desvio das telas de sumir
+ * numa refatoração distraída: sem ele, uma nota do app cairia no ramo do `else` lá embaixo e
+ * apareceria na tela como fala do Claude.
+ */
+export type Fala = ChatMessage & { role: 'user' | 'assistant' }
+
+/**
+ * O desvio das duas telas, em forma de guarda.
+ *
+ * **Guarda, e não a comparação `role === 'notice'` direta**: `ChatMessage` é uma interface achatada,
+ * não uma união discriminada, e comparar o campo estreita a *expressão* `message.role` sem estreitar
+ * a *variável* `message` — o `<MessageBubble>` no outro ramo não compilaria. E precisa ser a forma
+ * **positiva**: negar uma guarda de `notice` não devolveria a fala, porque o TypeScript só subtrai
+ * de união.
+ */
+export function isFala(message: ChatMessage): message is Fala {
+  return message.role !== 'notice'
+}
+
 interface MessageBubbleProps {
-  /**
-   * A bolha é o `<article>` de **fala**. A `notice` — o app falando *sobre* a sessão — não é bolha
-   * de ninguém (`src/shared/session.ts`), e as duas telas a desviam antes de chegar aqui. O tipo
-   * estreito é o que impede o desvio de sumir numa refatoração distraída: sem ele, uma nota do app
-   * cairia no ramo do `else` abaixo e apareceria na tela como fala do Claude.
-   */
-  message: ChatMessage & { role: 'user' | 'assistant' }
+  message: Fala
   scale: BubbleScale
 }
 

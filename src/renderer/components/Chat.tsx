@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, JSX, KeyboardEvent } from 'react'
 
 import type { ChatMessage } from '../../shared/session'
+import { isFala, MessageBubble } from './MessageBubble'
 
 interface ChatProps {
   messages: readonly ChatMessage[]
@@ -63,7 +64,9 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
             deixar um render sabidamente errado esperando o dia em que a nota chegar é plantar o bug
             com data marcada. */}
         {messages.map((message) =>
-          message.role === 'notice' ? (
+          isFala(message) ? (
+            <MessageBubble key={message.id} message={message} scale="sm" />
+          ) : (
             <p
               key={message.id}
               data-testid="message"
@@ -72,24 +75,6 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
             >
               {message.text}
             </p>
-          ) : (
-            <article
-              key={message.id}
-              data-testid="message"
-              data-role={message.role}
-              className={
-                message.role === 'user'
-                  ? 'ml-auto max-w-[85%] rounded-lg bg-neutral-800 px-3 py-2'
-                  : 'max-w-[85%] rounded-lg bg-neutral-900 px-3 py-2'
-              }
-            >
-              <p className="mb-1 text-[11px] tracking-wide text-neutral-500 uppercase">
-                {message.role === 'user' ? 'você' : 'claude'}
-              </p>
-              <p className="text-sm break-words whitespace-pre-wrap text-neutral-100">
-                {message.text}
-              </p>
-            </article>
           ),
         )}
 
