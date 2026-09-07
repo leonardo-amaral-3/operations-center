@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
-import { app, BrowserWindow, dialog, ipcMain, powerMonitor } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron'
 
 import { BoardReader, CardReader, RepoIndex, SessionHost } from '../core'
 import type { GraphQLFn } from '../core'
@@ -15,6 +16,7 @@ import { createFixtureGraphQL } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
 import { registerSessionIpc } from './ipc'
+import { judgeNavigation } from './navigation'
 import { gitOrigin, scanSessionFolders } from './repos'
 
 /**
@@ -90,6 +92,9 @@ function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1100,
     height: 760,
+    // A cor do tema (`--background`, oklch(93.88% 0.033 300.19)) em sRGB. Sem isto o Chromium pinta a
+    // janela com o branco default antes do primeiro paint do renderer, e a abertura pisca.
+    backgroundColor: '#eee6fe',
     show: false,
     autoHideMenuBar: true,
     title: 'Operations Center',
@@ -109,11 +114,40 @@ function createWindow(): BrowserWindow {
     window.show()
   })
 
-  const devServerUrl = process.env.ELECTRON_RENDERER_URL
+  // `||` e não `??`: variável vazia já significava "sem dev server" para o `loadURL` abaixo, e as
+  // duas decisões precisam concordar — um `appUrl` que discordasse da URL realmente carregada
+  // julgaria a própria janela como forasteira e barraria a recarga dela.
+  const devServerUrl = process.env.ELECTRON_RENDERER_URL || undefined
+  const indexFile = join(__dirname, '../renderer/index.html')
+  // Contra o que uma navegação é julgada própria ou de fora.
+  const appUrl = devServerUrl ?? pathToFileURL(indexFile).href
+
+  // Um `target="_blank"` do markdown cai aqui. **Sempre `deny`**: o app tem uma janela só, e uma
+  // segunda seria um navegador sem barra de endereço dentro do Operations Center.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    const verdict = judgeNavigation(url, appUrl)
+    if (verdict.kind === 'external') void shell.openExternal(verdict.url)
+
+    return { action: 'deny' }
+  })
+
+  // A rede de segurança: um `<a>` sem `target`, um arrastar-e-soltar de URL na janela, ou qualquer
+  // código futuro que tente navegar. Sem ela a janela vira o site clicado — sem menu bar
+  // (`autoHideMenuBar: true` acima) e sem caminho de volta.
+  window.webContents.on('will-navigate', (event, url) => {
+    const verdict = judgeNavigation(url, appUrl)
+    if (verdict.kind === 'internal') return
+
+    event.preventDefault()
+    if (verdict.kind === 'external') void shell.openExternal(verdict.url)
+  })
+
+  // `loadURL`/`loadFile` são programáticos e **não** disparam `will-navigate`: só o que o renderer
+  // inicia passa pela guarda acima.
   if (devServerUrl) {
     void window.loadURL(devServerUrl)
   } else {
-    void window.loadFile(join(__dirname, '../renderer/index.html'))
+    void window.loadFile(indexFile)
   }
 
   // Devolvida porque é nela que o gatilho de foco se pendura — o observador do board precisa de uma

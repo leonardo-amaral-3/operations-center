@@ -19,6 +19,11 @@ pasta; ele nunca chuta. Colapsar o cartão não encerra nada: quem encerra é o 
 A tela de chat avulsa continua existindo atrás de `OC_SCREEN=chat`: ela é a fatia vertical que
 provou o caminho `renderer ↔ main ↔ core ↔ SDK`, e é o que o smoke daquela fatia percorre.
 
+O que o Claude responde chega **formatado** nas duas telas: título, lista, tabela, bloco de código,
+citação e link viram elemento de verdade, e não caractere de markdown na tela. Link clicado abre no
+navegador do sistema — a janela do app nunca navega para fora dela mesma —, e nada do que o modelo
+escreve executa script ou dispara requisição de rede a partir da janela.
+
 ## Stack
 
 App **desktop Electron + TypeScript**, com React e Tailwind na tela.
@@ -30,13 +35,15 @@ process do Electron _é_ Node — então o host de sessões roda nele direto, se
 terceira linguagem no stack. A crítica de sempre ao Electron (carregar um runtime Node junto) é
 exatamente o que o torna a escolha certa aqui.
 
-| Camada          | O que vive lá                                                                                                                                                                                                                                                                                                                                         |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Camada          | O que vive lá                                                                                                                                                                                                                                                                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/core/`     | a lógica de produto agnóstica de casca: o host de sessões (fila de entrada, máquina de estados, `SessionHost`) e a leitura do GitHub — o board inteiro (`BoardReader`) e o conteúdo de um card sob demanda (`CardReader`), ambos com o cliente GraphQL injetado. Não conhece Electron, React nem HTTP, e uma regra de lint garante que continue assim |
-| `src/main/`     | o processo Node: cria as sessões com o `query` real do SDK, pega o token com o `gh`, fala com a API do GitHub, lê o ambiente e registra os canais IPC                                                                                                                                                                                                 |
-| `src/preload/`  | o `contextBridge` — a única superfície que o renderer enxerga                                                                                                                                                                                                                                                                                         |
-| `src/renderer/` | React + Tailwind: o kanban (colunas, cartões e carimbo de frescor) e a tela de chat da fatia vertical                                                                                                                                                                                                                                                 |
-| `src/shared/`   | o contrato IPC e o vocabulário do board, compilados pelos dois lados                                                                                                                                                                                                                                                                                  |
+| `src/main/`     | o processo Node: cria as sessões com o `query` real do SDK, pega o token com o `gh`, fala com a API do GitHub, lê o ambiente e registra os canais IPC                                                                                                                                                                                             |
+| `src/preload/`  | o `contextBridge` — a única superfície que o renderer enxerga                                                                                                                                                                                                                                                                                     |
+| `src/renderer/` | React + Tailwind: o kanban (colunas, cartões e carimbo de frescor), a tela de chat da fatia vertical e a bolha de mensagem que as duas compartilham — ela desenha o markdown com [`react-markdown`](https://www.npmjs.com/package/react-markdown) + `remark-gfm`, e `rehype-raw` + `rehype-sanitize` (nessa ordem) no HTML embutido nas respostas |
+| `src/shared/`   | o contrato IPC e o vocabulário do board, compilados pelos dois lados                                                                                                                                                                                                                                                                              |
+
+A tela veste o [neobrutalism.dev](https://www.neobrutalism.dev/) sobre shadcn/ui: as primitivas ficam vendorizadas em `src/renderer/ui/`, o tema em modo claro fixo mora em `src/renderer/index.css`, e `tests/unit/design-system.test.ts` reprova a cor de paleta ou a casca escrita à mão fora dali.
 
 Build com `electron-vite` (Vite 7). Testes: Vitest nas unidades, Playwright + Electron nos smokes.
 

@@ -6,7 +6,7 @@
  * que as duas têm em comum é o mecanismo que as torna testáveis, o cliente injetado.
  *
  * O que a casca (hoje o main do Electron) precisa é: criar um host, começar uma sessão e observar
- * os três canais dela; e ler o board. O resto — fila de entrada, máquina de estados, emissor, as
+ * os quatro canais dela; e ler o board. O resto — fila de entrada, máquina de estados, emissor, as
  * guardas de narrowing da resposta — é interno, e mantê-lo fora daqui é o que deixa reescrevê-lo
  * sem tocar em quem consome.
  */
@@ -29,6 +29,8 @@ export type { SessionHandle } from './session/SessionHandle'
 export type { SessionState } from './session/state'
 export type {
   ChatMessage,
+  ChatText,
+  ChatToolUse,
   PermissionDecision,
   PermissionRequest,
   Question,
@@ -36,4 +38,6 @@ export type {
   QuestionOption,
   QuestionRequest,
   SessionInit,
+  ToolStatus,
+  TurnActivity,
 } from './session/types'

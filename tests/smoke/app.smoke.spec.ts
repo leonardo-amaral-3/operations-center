@@ -78,6 +78,7 @@ test('a fatia vertical responde, se identifica e pede permissão para escrever',
   const badge = window.getByTestId('state-badge')
   const input = window.getByTestId('chat-input')
   const assistantMessages = window.locator('[data-testid="message"][data-role="assistant"]')
+  const userMessages = window.locator('[data-testid="message"][data-role="user"]')
 
   // 1 — a janela abre e a tela de chat renderiza.
   await expect(input).toBeVisible()
@@ -106,6 +107,14 @@ test('a fatia vertical responde, se identifica e pede permissão para escrever',
   // 5 — a metade difícil da ponte: uma instrução que exige escrita faz o `canUseTool` disparar.
   await input.fill('Crie um arquivo `smoke.txt` com o texto OK')
   await input.press('Enter')
+
+  // De carona neste envio, e por isso **sem cota nenhuma**: as crases já estavam naquele prompt
+  // desde sempre — o que faltava era alguém olhar para elas. A bolha do que acabou de ser dito
+  // desenha `smoke.txt` como `<code>`, e a crase não sobra como caractere no texto visível. É o
+  // markdown do #9 vivo no app de verdade, e não em `renderToStaticMarkup`.
+  const sentBubble = userMessages.last()
+  await expect(sentBubble.locator('code')).toHaveText('smoke.txt')
+  await expect(sentBubble).not.toContainText('`')
 
   await expect(window.getByTestId('permission-prompt')).toBeVisible({ timeout: TURN_TIMEOUT })
   await expect(badge).toHaveAttribute('data-state', 'awaiting_decision')

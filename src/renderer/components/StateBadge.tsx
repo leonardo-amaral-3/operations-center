@@ -1,6 +1,8 @@
 import type { JSX } from 'react'
 
 import type { SessionState } from '../../shared/session'
+import { Badge } from '../ui/badge'
+import { cn } from '../ui/cn'
 
 interface StateBadgeProps {
   state: SessionState
@@ -12,35 +14,39 @@ interface StateBadgeProps {
  * `awaiting_input`, `awaiting_decision` e `awaiting_answer` são os únicos coloridos, de propósito:
  * são os estados em que a sessão parou para esperar uma pessoa. É o embrião do RF-8 — quando houver muitas sessões
  * num kanban, "quem está me esperando" precisa ser respondido pela cor, sem leitura.
+ *
+ * É aqui que a divisão semântica do tema vira código: os quatro tokens de estado marcam **o que a
+ * sessão quer de você**, e o acento violet (`--main`) fica de fora — ele marca a esteira. Por isso
+ * nenhum destes é a variante default do `Badge`, que é `bg-main`.
  */
 const LOOKS: Record<SessionState['kind'], { label: string; className: string }> = {
   starting: {
     label: 'Iniciando',
-    className: 'border-neutral-700 bg-neutral-900 text-neutral-400',
+    className: 'bg-secondary-background text-foreground/70',
   },
   working: {
     label: 'Trabalhando',
-    className: 'border-neutral-700 bg-neutral-900 text-neutral-300',
+    className: 'bg-secondary-background text-foreground',
   },
   awaiting_input: {
     label: 'Sua vez',
-    className: 'border-emerald-500 bg-emerald-500/15 text-emerald-300',
+    className: 'bg-attention text-foreground',
   },
   awaiting_decision: {
     label: 'Decisão pendente',
-    className: 'border-amber-400 bg-amber-400/15 text-amber-200',
+    className: 'bg-warning text-foreground',
   },
   awaiting_answer: {
     label: 'Pergunta pendente',
-    className: 'border-sky-400 bg-sky-400/15 text-sky-200',
+    className: 'bg-question text-foreground',
   },
   closed: {
     label: 'Encerrada',
-    className: 'border-neutral-800 bg-neutral-900 text-neutral-500',
+    className: 'bg-secondary-background text-foreground/50',
   },
   failed: {
     label: 'Falhou',
-    className: 'border-red-500 bg-red-500/15 text-red-300',
+    className: 'bg-danger text-foreground',
   },
 }
 
@@ -54,13 +60,17 @@ export function StateBadge({ state }: StateBadgeProps): JSX.Element {
   const label = state.kind === 'failed' ? `${look.label}: ${state.reason}` : look.label
 
   return (
-    <span
+    // `variant="neutral"` nos sete, e não a default: a default é `bg-main`, e usá-la faria os quatro
+    // estados coloridos dependerem do `twMerge` para apagar um violet que nunca deveria ter sido
+    // pedido. A borda de 2px preta vem da primitiva.
+    <Badge
+      variant="neutral"
       data-testid="state-badge"
       data-state={state.kind}
       title={label}
-      className={`max-w-80 truncate rounded-full border px-3 py-1 text-xs font-medium ${look.className}`}
+      className={cn('max-w-80 truncate', look.className)}
     >
       {label}
-    </span>
+    </Badge>
   )
 }

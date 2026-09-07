@@ -1,104 +1,14 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 
 import type { SessionSnapshot, StartRequest, StartResult } from '../../shared/ipc'
-import type {
-  ChatMessage,
-  PermissionDecision,
-  PermissionRequest,
-  QuestionAnswers,
-  QuestionRequest,
-  SessionInit,
-  SessionState,
-} from '../../shared/session'
+import type { PermissionDecision, QuestionAnswers } from '../../shared/session'
+import { INITIAL_VIEW, reduce } from './sessionView'
+import type { SessionAction, SessionView } from './sessionView'
 
-/** Tudo que a tela sabe da sessão. Nada aqui é derivado: é o que chegou pela ponte, e só. */
-export interface SessionView {
-  id: string | null
-  init: SessionInit | null
-  state: SessionState
-  messages: readonly ChatMessage[]
-  permission: PermissionRequest | null
-  question: QuestionRequest | null
-  /**
-   * O `started: false` do `start`: o main não sabe em que pasta o repo daquele cartão vive.
-   *
-   * Não é falha, é resposta prevista (CA-5) — e por isso tem campo próprio em vez de virar `failed`:
-   * quem a recebe troca o chat pelo pedido da pasta, e o `restart()` é o caminho de volta depois que
-   * o humano a aponta.
-   */
-  unknownFolder: boolean
-}
-
-type SessionAction =
-  | { type: 'reset' }
-  | { type: 'snapshot'; snapshot: SessionSnapshot }
-  | { type: 'init'; init: SessionInit }
-  | { type: 'message'; message: ChatMessage }
-  | { type: 'state'; state: SessionState }
-  | { type: 'permission'; request: PermissionRequest | null }
-  | { type: 'question'; request: QuestionRequest | null }
-  | { type: 'unknown-folder' }
-
-/** Antes do retrato a tela não tem sessão nenhuma — e `starting` é exatamente o que o core diz. */
-const INITIAL_VIEW: SessionView = {
-  id: null,
-  init: null,
-  state: { kind: 'starting' },
-  messages: [],
-  permission: null,
-  question: null,
-  unknownFolder: false,
-}
-
-function reduce(view: SessionView, action: SessionAction): SessionView {
-  switch (action.type) {
-    case 'reset':
-      // A mesma referência de sempre, de propósito: no primeiro monte o React a compara com o
-      // estado inicial e não re-renderiza por causa dela.
-      return INITIAL_VIEW
-    case 'snapshot':
-      // O pedido pendente sai **do próprio retrato**, e não só do evento. Enquanto `start` criava
-      // sempre uma sessão nova, o retrato era o do nascimento dela e nunca esperava por nada; agora
-      // ele pode ser o de uma sessão que já estava parada num pedido cujo evento foi disparado
-      // quando esta tela ainda nem existia. Sem isto, reabrir um cartão travado não mostraria o que
-      // o destrava.
-      return {
-        id: action.snapshot.id,
-        init: action.snapshot.init ?? null,
-        state: action.snapshot.state,
-        messages: [...action.snapshot.messages],
-        permission:
-          action.snapshot.state.kind === 'awaiting_decision' ? action.snapshot.state.request : null,
-        question:
-          action.snapshot.state.kind === 'awaiting_answer' ? action.snapshot.state.request : null,
-        unknownFolder: false,
-      }
-    case 'init':
-      return { ...view, init: action.init }
-    case 'message':
-      // Mensagem já vista não entra de novo: o retrato e os eventos represados podem descrever o
-      // mesmo fato, e o `id` (o `uuid` do SDK, ou o do envio) é o que decide se é o mesmo.
-      return view.messages.some((message) => message.id === action.message.id)
-        ? view
-        : { ...view, messages: [...view.messages, action.message] }
-    case 'state':
-      return {
-        ...view,
-        state: action.state,
-        // Sair de `awaiting_decision` é o que aposenta o pedido: sessão que voltou a trabalhar (ou
-        // que morreu) não tem mais decisão a receber, e o prompt não pode sobreviver a ela.
-        permission: action.state.kind === 'awaiting_decision' ? view.permission : null,
-        // A pergunta sai pela mesma porta, pelo mesmo motivo.
-        question: action.state.kind === 'awaiting_answer' ? view.question : null,
-      }
-    case 'permission':
-      return { ...view, permission: action.request }
-    case 'question':
-      return { ...view, question: action.request }
-    case 'unknown-folder':
-      return { ...view, unknownFolder: true }
-  }
-}
+// O estado e a regra que o move são puros e moram ao lado; o que sobrou aqui é a assinatura dos
+// canais e a corrida de montagem, que é a parte que precisa de `window`. Quem importa daqui não
+// enxerga a mudança — ver o cabeçalho do `sessionView`.
+export type { SessionView }
 
 export interface SessionViewOptions {
   /** De qual cartão é a sessão. Ausente = a tela de chat da fatia vertical, que roda em `OC_CWD`. */
@@ -118,6 +28,8 @@ export interface SessionViewHandle {
   send: (text: string) => void
   decide: (decision: PermissionDecision) => void
   answer: (answers: QuestionAnswers) => void
+  /** Para o turno em curso; a sessão continua viva. Quem a encerra é o `end`. */
+  stop: () => void
   /** O encerramento do CA-6: ação minha, e só minha. */
   end: () => void
   /** Pede a sessão de novo — o caminho de volta depois de o humano apontar a pasta (CA-5). */
@@ -187,6 +99,12 @@ export function useSessionView({ itemId, closeOnUnmount }: SessionViewOptions): 
       }),
       window.oc.onQuestionRequest((event) => {
         deliver(event.sessionId, { type: 'question', request: event.request })
+      }),
+      // Assinado aqui, e não em quem desenha a linha viva, porque o pulso é estado da sessão como
+      // qualquer outro: passa pelo mesmo filtro por id e pelo mesmo represamento até o retrato
+      // chegar — sem o que uma batida disparada antes dele iria para a sessão errada.
+      window.oc.onActivity((event) => {
+        deliver(event.sessionId, { type: 'activity', activity: event.activity })
       }),
     ]
 
@@ -261,6 +179,15 @@ export function useSessionView({ itemId, closeOnUnmount }: SessionViewOptions): 
       // vezes, e a confirmação vem pelo `state`.
       dispatch({ type: 'question', request: null })
       void window.oc.answerQuestion({ sessionId: id, requestId: question.id, answers })
+    },
+
+    stop(): void {
+      if (!view.id || view.state.kind !== 'working') return
+
+      // Sem `dispatch` otimista, ao contrário de `decide` e `answer`: ali o prompt precisava sumir da
+      // tela para não ser respondido duas vezes; aqui não há nada a esconder, e o `#stopping` do core
+      // já engole um segundo clique dado antes de o estado voltar.
+      void window.oc.stop({ sessionId: view.id })
     },
 
     end(): void {

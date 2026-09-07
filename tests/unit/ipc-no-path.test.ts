@@ -81,6 +81,7 @@ describe('nenhum caminho de disco atravessa a ponte', () => {
         'SendRequest',
         'RespondPermissionRequest',
         'AnswerQuestionRequest',
+        'StopRequest',
         'CloseRequest',
         'ChooseFolderRequest',
         'ChooseFolderResult',

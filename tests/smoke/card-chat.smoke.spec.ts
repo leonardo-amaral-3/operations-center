@@ -60,6 +60,28 @@ const POLL_INTERVAL = 250
 const FIRST_PROMPT = 'Responda apenas: OK'
 
 /**
+ * O turno que o #12 manda parar: longo o bastante para dar tempo do clique, e **de texto puro**.
+ *
+ * O "sem usar ferramenta nenhuma" não é enfeite: o smoke roda com `OC_ISOLATED=1`, e ali *toda*
+ * ferramenta passa pelo `canUseTool` — um pedido de permissão levaria o cartão a
+ * `awaiting_decision`, o botão sumiria (CA-3) e o clique falharia por um motivo que não tem nada a
+ * ver com parar turno.
+ */
+const LONG_PROMPT = 'Conte de 1 a 200, um número por linha, sem usar ferramenta nenhuma'
+
+/**
+ * O turno do CA-3 do #14: **de texto puro**, pela mesma razão do `LONG_PROMPT`, e longo o bastante
+ * para haver turno em curso a observar quando a asserção chegar.
+ *
+ * O "explique o raciocínio" não é enfeite de prompt: o único heartbeat que o SDK publica são os
+ * quadros de `thinking_tokens`, e sem fase de raciocínio o contador fica em zero e o teste falharia
+ * por escolha do modelo, não por bug do app.
+ */
+const THINKING_PROMPT =
+  'Pense com calma e explique o seu raciocínio passo a passo: quantos dias há entre 3 de março de ' +
+  '2027 e 19 de novembro de 2027? Não use ferramenta nenhuma.'
+
+/**
  * O envelope cru, do jeito que o `BoardReader` o recebe — reduzido ao que este smoke precisa.
  *
  * O `as` é o mesmo trato que `createFixtureGraphQL` faz com o mesmo arquivo: o que valida a forma de
@@ -100,6 +122,14 @@ interface FixtureCard {
   number: number
   columnId: string
   repository: string
+}
+
+/** O retângulo que o Playwright devolve, em pixels da viewport. */
+interface Caixa {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 const PROJECT = (JSON.parse(readFileSync(FIXTURE_PATH, 'utf8')) as FixtureEnvelope).data.user
@@ -276,6 +306,27 @@ test('CA-1 e CA-2: o cartão vira chat no próprio lugar, e a sessão responde',
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
     timeout: TURN_TIMEOUT,
   })
+
+  // O CA-3 do card #8, de carona nesta sessão viva: a borda de 2px e a sombra de 4px do design
+  // system comem largura útil dentro da coluna de 288px, e o sinal de estado é o que mais cresce
+  // aqui dentro. **Nos quatro lados**, e não só pela direita: na barra de ações ele divide a linha
+  // com três botões, e um estouro por cima ou por baixo seria clipado pelo scroll do mesmo jeito.
+  //
+  // Medido aqui e não em teste próprio porque um teste novo custaria um turno novo — e a asserção
+  // não precisa de um: o que ela lê é geometria, e a geometria já está na tela.
+  const sinal = await caixaDe(badge(CHAT_CARD), 'o sinal de estado do cartão-chat')
+  const cartao = await caixaDe(cardLocator(CHAT_CARD), 'o cartão-chat')
+
+  expect(sinal.width, 'o sinal de estado não ocupa largura').toBeGreaterThan(0)
+  expect(sinal.x, 'o sinal de estado vaza pela esquerda do cartão').toBeGreaterThanOrEqual(cartao.x)
+  expect(sinal.y, 'o sinal de estado vaza por cima do cartão').toBeGreaterThanOrEqual(cartao.y)
+  expect(
+    sinal.x + sinal.width,
+    'o sinal de estado vaza pela direita do cartão',
+  ).toBeLessThanOrEqual(cartao.x + cartao.width)
+  expect(sinal.y + sinal.height, 'o sinal de estado vaza por baixo do cartão').toBeLessThanOrEqual(
+    cartao.y + cartao.height,
+  )
 })
 
 test('CA-3: a sessão do cartão roda na pasta do repo dele, e o cartão mostra qual é', async () => {
@@ -293,6 +344,14 @@ test('CA-2: a permissão de escrita aparece no cartão e a decisão destrava o t
 
   await input.fill('Crie um arquivo `smoke.txt` com o texto OK')
   await input.press('Enter')
+
+  // A mesma carona do smoke da fatia vertical, agora dentro do cartão e igualmente **sem cota
+  // nenhuma**: as crases já estavam naquele prompt. `smoke.txt` vira `<code>` e a crase não sobra
+  // como caractere no texto visível — é o markdown do #9 provado na segunda tela, que é justamente
+  // a que a bolha compartilhada existe para não deixar divergir.
+  const sentBubble = userMessages(CHAT_CARD).last()
+  await expect(sentBubble.locator('code')).toHaveText('smoke.txt')
+  await expect(sentBubble).not.toContainText('`')
 
   await expect(cardLocator(CHAT_CARD).getByTestId('permission-prompt')).toBeVisible({
     timeout: TURN_TIMEOUT,
@@ -341,6 +400,98 @@ test('CA-1 e CA-6: abrir o segundo cartão colapsa o primeiro, e a sessão dele 
   const mine = userMessages(CHAT_CARD)
   await expect(mine).toHaveCount(2)
   await expect(mine.first()).toContainText(FIRST_PROMPT)
+})
+
+test('#12: parar o turno corta a vez, deixa a nota e devolve a sessão viva', async () => {
+  const stopButton = cardLocator(CHAT_CARD).getByTestId('card-stop-turn')
+  const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
+
+  // Nada rodando, nada a parar: o botão do CA-3 é situacional, e em `awaiting_input` ele nem existe
+  // no DOM.
+  await expect(stopButton).toHaveCount(0)
+
+  await input.fill(LONG_PROMPT)
+  await input.press('Enter')
+
+  // `working` já no Enter — é o CA-4, e é ele que faz o botão existir num turno que não pede
+  // permissão nenhuma. O prazo é o do IPC, não o do modelo: a transição é síncrona no core.
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'working', {
+    timeout: DECISION_TIMEOUT,
+  })
+  await expect(stopButton).toBeVisible()
+
+  await stopButton.click()
+
+  // O CA-1 na sessão real: a vez volta, e volta como `awaiting_input` — e não como `failed`, que é
+  // o que um result de turno abortado viraria sem a bandeira do core.
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
+    timeout: TURN_TIMEOUT,
+  })
+
+  // A parada é visível (a nota) e a ação some com o turno que ela cortou.
+  await expect(noticeMessages(CHAT_CARD)).toHaveCount(1)
+  await expect(stopButton).toHaveCount(0)
+
+  // O CA-2 pela metade da memória: a conversa inteira continua na tela, na ordem, com a primeira
+  // mensagem ainda sendo a primeira.
+  const mine = userMessages(CHAT_CARD)
+  await expect(mine).toHaveCount(3)
+  await expect(mine.first()).toContainText(FIRST_PROMPT)
+
+  // E a outra metade: a **mesma** sessão responde o turno seguinte. A contagem é lida agora e
+  // comparada com `+1` porque quantas bolhas o turno cortado deixou é escolha do modelo — fixar um
+  // número aqui seria escrever à mão um valor esperado que o teste pode ler.
+  const answers = await assistantMessages(CHAT_CARD).count()
+
+  await input.fill('Responda apenas: SEGUE')
+  await input.press('Enter')
+
+  await expect(assistantMessages(CHAT_CARD)).toHaveCount(answers + 1, { timeout: TURN_TIMEOUT })
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
+    timeout: TURN_TIMEOUT,
+  })
+})
+
+test('#14 CA-2: a trilha da ferramenta sobrevive ao colapso do cartão', async () => {
+  // A ferramenta que gerou a trilha é a do passo da permissão de escrita, lá em cima: aqui o que se
+  // prova é que aquilo **ficou**, e não que o modelo usa ferramenta — isso ele já provou uma vez, e
+  // provar de novo custaria outro turno de cota por nada.
+  await expect(toolEntries(CHAT_CARD).first()).toBeVisible()
+
+  await cardLocator(CHAT_CARD).getByTestId('card-collapse').click()
+  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toHaveCount(0)
+
+  await cardLocator(CHAT_CARD).click()
+  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
+
+  // Com o status final, e não só presente: uma entrada que voltasse `running` seria uma sessão que
+  // a tela afirma trabalhando sobre uma ferramenta que terminou faz tempo.
+  await expect(doneToolEntries(CHAT_CARD).first()).toBeVisible()
+  await expect(runningToolEntries(CHAT_CARD)).toHaveCount(0)
+})
+
+test('#14 CA-3: a linha viva conta o turno, e some quando ele acaba', async () => {
+  const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
+  const pulse = cardLocator(CHAT_CARD).getByTestId('turn-pulse')
+
+  // Fora de turno não há pulso: ele é o spinner, não o histórico.
+  await expect(pulse).toHaveCount(0)
+
+  await input.fill(THINKING_PROMPT)
+  await input.press('Enter')
+
+  await expect(pulse).toBeVisible({ timeout: DECISION_TIMEOUT })
+  // O contador de raciocínio é o único heartbeat que o SDK dá: vê-lo passar de zero é a prova de
+  // que a linha está viva de verdade, e não desenhando um relógio local sobre uma sessão muda.
+  await expect(pulse).toHaveAttribute('data-tokens', /^[1-9]\d*$/, { timeout: TURN_TIMEOUT })
+
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
+    timeout: TURN_TIMEOUT,
+  })
+
+  // E some. Sem isto o app teria trocado um sinal que mente por outro: uma linha eternamente viva
+  // sobre uma sessão parada é exatamente o que este card existe para tirar da tela.
+  await expect(pulse).toHaveCount(0)
 })
 
 test('CA-6: encerrar é ação minha — e o botão mata a sessão', async () => {
@@ -432,12 +583,41 @@ function badge(card: FixtureCard): Locator {
   return cardLocator(card).getByTestId('state-badge')
 }
 
+/**
+ * A caixa do elemento, com o `null` virando vermelho **aqui** e nomeando quem sumiu.
+ *
+ * `boundingBox()` devolve `null` para elemento fora do layout, e deixar o `null` seguir daria um
+ * `TypeError` sobre `x` três linhas adiante — que não diz nada sobre o critério que falhou.
+ */
+async function caixaDe(locator: Locator, oQue: string): Promise<Caixa> {
+  const caixa = await locator.boundingBox()
+  if (caixa === null) throw new Error(`${oQue}: sem caixa — fora do layout`)
+
+  return caixa
+}
+
 function assistantMessages(card: FixtureCard): Locator {
   return cardLocator(card).locator('[data-testid="message"][data-role="assistant"]')
 }
 
 function userMessages(card: FixtureCard): Locator {
   return cardLocator(card).locator('[data-testid="message"][data-role="user"]')
+}
+
+function noticeMessages(card: FixtureCard): Locator {
+  return cardLocator(card).locator('[data-testid="message"][data-role="notice"]')
+}
+
+function toolEntries(card: FixtureCard): Locator {
+  return cardLocator(card).locator('[data-testid="tool-entry"]')
+}
+
+function doneToolEntries(card: FixtureCard): Locator {
+  return cardLocator(card).locator('[data-testid="tool-entry"][data-status="done"]')
+}
+
+function runningToolEntries(card: FixtureCard): Locator {
+  return cardLocator(card).locator('[data-testid="tool-entry"][data-status="running"]')
 }
 
 /**

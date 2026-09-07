@@ -57,11 +57,16 @@ describe('a superfície de board é somente-leitura', () => {
     // acrescentou: `answerQuestion` responde um `AskUserQuestion` para a sessão; `chooseFolder`
     // abre o seletor de diretório e guarda a escolha em memória no main; `questionRequest` é o
     // aviso da pergunta chegando à tela. **Nenhum dos três toca o board** — nem para ler.
+    //
+    // E a do canal do #12: `stop` interrompe o turno em curso da sessão e **não toca o board** —
+    // nem para ler. Ele fica colado no `close` de propósito: uma para a vez que está rodando, a
+    // outra encerra a sessão inteira, e a vizinhança é o que lembra disso a quem lê.
     expect(IPC_INVOKE).toEqual({
       start: 'session:start',
       send: 'session:send',
       respondPermission: 'session:respond-permission',
       answerQuestion: 'session:answer-question',
+      stop: 'session:stop',
       close: 'session:close',
       chooseFolder: 'repo:choose-folder',
       readBoard: 'board:read',
@@ -70,12 +75,17 @@ describe('a superfície de board é somente-leitura', () => {
   })
 
   it('IPC_EVENT é exatamente os avisos de sessão mais o do board', () => {
+    // A declaração do canal do #14: `activity` leva o pulso do turno em curso — tempo decorrido,
+    // tokens de raciocínio e há quanto tempo não chega sinal — para a conversa aberta. É de mão
+    // única e **não toca o board**, nem para ler: o que ele carrega o main compõe a partir dos
+    // canais da própria sessão mais o relógio dele.
     expect(IPC_EVENT).toEqual({
       init: 'session:init',
       message: 'session:message',
       state: 'session:state',
       permissionRequest: 'session:permission-request',
       questionRequest: 'session:question-request',
+      activity: 'session:activity',
       board: 'board:changed',
     })
   })

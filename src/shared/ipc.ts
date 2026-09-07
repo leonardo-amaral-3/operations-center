@@ -16,6 +16,7 @@ import type {
   QuestionRequest,
   SessionInit,
   SessionState,
+  TurnActivity,
 } from './session'
 
 /**
@@ -30,6 +31,7 @@ export const IPC_INVOKE = {
   send: 'session:send',
   respondPermission: 'session:respond-permission',
   answerQuestion: 'session:answer-question',
+  stop: 'session:stop',
   close: 'session:close',
   chooseFolder: 'repo:choose-folder',
   readBoard: 'board:read',
@@ -43,6 +45,12 @@ export const IPC_EVENT = {
   state: 'session:state',
   permissionRequest: 'session:permission-request',
   questionRequest: 'session:question-request',
+  /**
+   * O pulso do turno. Canal próprio, e não um campo do `state`: ele bate a cada ~1,3s enquanto o
+   * modelo pensa, e o kanban assina o `state` para manter o crachá dos cartões fechados vivo. Quem
+   * não quer o pulso não assina.
+   */
+  activity: 'session:activity',
   board: 'board:changed',
 } as const
 
@@ -64,6 +72,11 @@ export interface SessionSnapshot {
   init: SessionInit | undefined
   state: SessionState
   messages: readonly ChatMessage[]
+  /**
+   * O pulso no instante do retrato — é o que faz um cartão reaberto no meio do turno já nascer com
+   * o relógio certo, em vez de começar a contar do zero e mentir sobre a idade do turno.
+   */
+  activity: TurnActivity
 }
 
 /**
@@ -98,6 +111,14 @@ export interface AnswerQuestionRequest {
   sessionId: string
   requestId: string
   answers: QuestionAnswers
+}
+
+/**
+ * Parar o turno em curso. **Não** é `close`: a sessão continua viva, com id, contexto e histórico —
+ * o que morre é a vez que estava rodando.
+ */
+export interface StopRequest {
+  sessionId: string
 }
 
 export interface CloseRequest {
@@ -161,6 +182,17 @@ export interface SessionQuestionEvent {
 }
 
 /**
+ * O pulso do turno corrente, já com os dois carimbos de relógio que o main põe.
+ *
+ * Vem inteiro a cada batida, e não como delta: o consumidor substitui o que tem, e um evento
+ * perdido não deixa a tela contando de um valor que nunca mais será corrigido.
+ */
+export interface SessionActivityEvent {
+  sessionId: string
+  activity: TurnActivity
+}
+
+/**
  * A superfície inteira que o renderer enxerga, exposta como `window.oc` pelo preload. O que não
  * está aqui não existe do lado de lá — não há `ipcRenderer`, não há `require`, não há Node.
  *
@@ -187,6 +219,7 @@ export interface OcApi {
    */
   start(request?: StartRequest): Promise<StartResult>
   send(request: SendRequest): Promise<void>
+  stop(request: StopRequest): Promise<void>
   respondPermission(request: RespondPermissionRequest): Promise<void>
   answerQuestion(request: AnswerQuestionRequest): Promise<void>
   close(request: CloseRequest): Promise<void>
@@ -197,6 +230,8 @@ export interface OcApi {
   onState(listener: (event: SessionStateEvent) => void): () => void
   onPermissionRequest(listener: (event: SessionPermissionEvent) => void): () => void
   onQuestionRequest(listener: (event: SessionQuestionEvent) => void): () => void
+  /** O pulso do turno. Só quem mostra a conversa aberta assina — ver `IPC_EVENT.activity`. */
+  onActivity(listener: (event: SessionActivityEvent) => void): () => void
 
   /** O retrato atual do board. Pode voltar com `board: null` se a primeira leitura não terminou. */
   readBoard(): Promise<BoardSnapshot>

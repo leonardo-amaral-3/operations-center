@@ -14,13 +14,87 @@
  */
 
 /**
- * Uma mensagem já pronta para a tela. O `id` da mensagem de assistente vem do `uuid` do SDK; o da
- * mensagem do usuário é gerado pela sessão, porque ela a registra no envio e não no eco do SDK.
+ * Uma fala. O `id` da mensagem de assistente vem do `uuid` do SDK; o da mensagem do usuário é
+ * gerado pela sessão, porque ela a registra no envio e não no eco do SDK.
  */
-export interface ChatMessage {
+export interface ChatText {
   id: string
-  role: 'user' | 'assistant'
+  /**
+   * `notice` é o **app falando sobre a sessão**, e não alguém falando na conversa: a nota de turno
+   * interrompido é a primeira dessas, e ela não foi ao modelo.
+   *
+   * Papel próprio, e não uma mensagem de usuário com texto marcador (que é o que o Claude Code
+   * grava no transcript dele): uma bolha "você" que o usuário não digitou faz a tela mentir sobre
+   * quem disse o quê, e o histórico da conversa é a coisa que este app existe para preservar.
+   */
+  role: 'user' | 'assistant' | 'notice'
   text: string
+}
+
+/**
+ * Em que pé está uma ação. `running` é sempre o primeiro degrau; os outros três são terminais.
+ *
+ * `aborted` existe porque nem toda chamada devolve resultado: um turno cortado pode deixar a
+ * ferramenta sem `tool_result` nenhum. Sem este valor a entrada ficaria `running` para sempre — a
+ * tela afirmaria trabalho vivo sobre uma ferramenta morta, e pior, a marca de silêncio pararia de
+ * funcionar em **todos** os turnos seguintes, porque "há algo rodando" nunca mais seria falso.
+ * `error` seria mentira: ela não falhou, ela não chegou a relatar.
+ */
+export type ToolStatus = 'running' | 'done' | 'error' | 'aborted'
+
+/**
+ * Uma ferramenta que a sessão usou. É **um fato só que muda de status**, e não dois eventos: por
+ * isso o `id` é o `tool_use_id` do bloco — a mesma chave que o `tool_result` referencia.
+ */
+export interface ChatToolUse {
+  id: string
+  role: 'tool'
+  /** O nome cru: `Bash`, `Read`, `Agent`. Único campo garantido. */
+  name: string
+  /**
+   * O argumento que identifica a chamada, já achatado e truncado **no core**. Truncar aqui e não na
+   * tela não é estética: sem isso um `Write` de 300 linhas atravessa a ponte inteiro para caber
+   * numa linha de 120 caracteres.
+   */
+  detail: string
+  /**
+   * A frase que o próprio Claude Code escreveu para esta chamada (`task_started`/`task_progress`),
+   * ou `''` quando ele não mandou nenhuma. Mesmo padrão do `PermissionRequest`: usar a frase pronta
+   * quando ela vem, em vez de remontá-la pior.
+   */
+  headline: string
+  /** `tool_use_id` do `Agent` que gerou esta chamada, ou `null` no nível de cima. */
+  parentId: string | null
+  status: ToolStatus
+}
+
+/**
+ * Uma mensagem já pronta para a tela — uma fala ou uma ação.
+ *
+ * União discriminada, e não um registro com campos opcionais: é o compilador que aponta cada tela
+ * que precisa tratar o caso novo, e são poucas.
+ */
+export type ChatMessage = ChatText | ChatToolUse
+
+/**
+ * O pulso do turno corrente. **Não entra no histórico**: é o spinner, e morre com o turno.
+ *
+ * Os dois carimbos são epoch ms e vêm do main, não do core — mesmo arranjo do `readAt` do board.
+ */
+export interface TurnActivity {
+  /** Quando o turno corrente começou, ou `null` quando não há turno em curso. */
+  startedAt: number | null
+  /** Último sinal recebido do SDK nesta sessão, ou `null` antes do primeiro. */
+  lastSignalAt: number | null
+  /** Tokens de raciocínio acumulados no turno corrente. Zera quando um turno começa. */
+  thinkingTokens: number
+}
+
+/** O pulso de uma sessão que não está em turno nenhum. */
+export const IDLE_ACTIVITY: TurnActivity = {
+  startedAt: null,
+  lastSignalAt: null,
+  thinkingTokens: 0,
 }
 
 /**

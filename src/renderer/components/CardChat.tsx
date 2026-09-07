@@ -3,9 +3,14 @@ import type { JSX, KeyboardEvent } from 'react'
 
 import type { SessionState } from '../../shared/session'
 import { useSessionView } from '../session/useSessionView'
+import { Button } from '../ui/button'
+import { Textarea } from '../ui/textarea'
+import { isFala, MessageBubble } from './MessageBubble'
 import { PermissionPrompt } from './PermissionPrompt'
 import { QuestionPrompt } from './QuestionPrompt'
 import { StateBadge } from './StateBadge'
+import { ToolEntry } from './ToolEntry'
+import { TurnPulse } from './TurnPulse'
 
 /**
  * O que o kanban guarda da sessão de um cartão para continuar desenhando-a depois que o chat sai da
@@ -38,7 +43,7 @@ interface CardChatProps {
  * teto, uma conversa longa empurraria a coluna para sempre e o kanban deixaria de ser um kanban.
  */
 export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.Element {
-  const { view, send, decide, answer, end, restart } = useSessionView({
+  const { view, send, decide, answer, stop, end, restart } = useSessionView({
     itemId,
     closeOnUnmount: false,
   })
@@ -67,38 +72,46 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
 
   if (view.unknownFolder) {
     return (
-      <div className="mt-3 border-t border-neutral-800 pt-3">
+      <div className="mt-3 border-t-2 border-border pt-3">
         {/* Sem `card-chat` aqui, de propósito: não há sessão e não há conversa. O cartão está aberto
             para pedir a pasta, e é só isso que ele oferece (CA-5). */}
-        <p className="text-xs break-words text-neutral-400">
+        <p className="text-xs break-words text-foreground/60">
           Não sei em que pasta deste computador o repo deste card vive. Aponte-a e a sessão sobe lá.
         </p>
 
         <div className="mt-2 flex items-center justify-end gap-2">
-          <button
+          <Button
             type="button"
             data-testid="card-collapse"
+            variant="neutral"
+            size="xs"
             onClick={onCollapse}
-            className="cursor-pointer rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
           >
             Fechar
-          </button>
-          <button
+          </Button>
+          {/* A ação primária desta vista, e a única que leva a algum lugar: sem pasta não há
+              conversa, e o violet é o que separa "faça isto" de "saia daqui". */}
+          <Button
             type="button"
             data-testid="choose-folder"
+            size="xs"
             onClick={() => {
               void pickFolder()
             }}
-            className="cursor-pointer rounded-md bg-neutral-200 px-2.5 py-1 text-xs font-semibold text-neutral-900 hover:bg-white"
           >
             Escolher a pasta…
-          </button>
+          </Button>
         </div>
       </div>
     )
   }
 
   const dead = view.state.kind === 'closed' || view.state.kind === 'failed'
+  // A outra metade do CA-4, e ela mora aqui porque é aqui que a lista está: silêncio com ferramenta
+  // rodando é o normal de uma ferramenta demorada, e acusá-lo ensinaria a ignorar a marca.
+  const somethingRunning = view.messages.some(
+    (message) => message.role === 'tool' && message.status === 'running',
+  )
   // A caixa trava enquanto há pergunta aberta, e **não** trava durante uma permissão: com a pergunta
   // o turno está parado esperando o `tool_result`, e o que fosse digitado aqui entraria na fila
   // atrás de uma resposta que ninguém deu. A saída para "nenhuma dessas" é o campo livre da própria
@@ -122,33 +135,35 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
   }
 
   return (
-    <div data-testid="card-chat" className="mt-3 border-t border-neutral-800 pt-3">
+    <div data-testid="card-chat" className="mt-3 border-t-2 border-border pt-3">
       <div ref={history} className="max-h-80 space-y-2 overflow-y-auto">
         {view.messages.length === 0 ? (
-          <p className="text-xs text-neutral-600">
+          <p className="text-xs text-foreground/60">
             A sessão está de pé. Escreva a primeira mensagem.
           </p>
         ) : null}
 
-        {view.messages.map((message) => (
-          <article
-            key={message.id}
-            data-testid="message"
-            data-role={message.role}
-            className={
-              message.role === 'user'
-                ? 'ml-auto max-w-[85%] rounded-lg bg-neutral-800 px-2.5 py-1.5'
-                : 'max-w-[85%] rounded-lg bg-neutral-900 px-2.5 py-1.5'
-            }
-          >
-            <p className="mb-0.5 text-[10px] tracking-wide text-neutral-500 uppercase">
-              {message.role === 'user' ? 'você' : 'claude'}
-            </p>
-            <p className="text-xs break-words whitespace-pre-wrap text-neutral-100">
+        {/* A nota (`notice`) é o app falando sobre a sessão, e por isso não é bolha de ninguém: sem
+            o desvio, o ternário abaixo a rotularia como fala do Claude. O `data-testid="message"`
+            continua para ela ser contável pela mesma via dos seletores do smoke. */}
+        {view.messages.map((message) => {
+          // A ação entra na conversa pela mesma porta que a fala, e na posição em que aconteceu:
+          // é isso que faz a trilha ser histórico, e não um painel ao lado dele.
+          if (message.role === 'tool') return <ToolEntry key={message.id} entry={message} />
+
+          return isFala(message) ? (
+            <MessageBubble key={message.id} message={message} scale="xs" />
+          ) : (
+            <p
+              key={message.id}
+              data-testid="message"
+              data-role="notice"
+              className="py-0.5 text-center text-[10px] tracking-wide text-foreground/60 uppercase"
+            >
               {message.text}
             </p>
-          </article>
-        ))}
+          )
+        })}
       </div>
 
       {view.permission ? (
@@ -163,7 +178,14 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
         </div>
       ) : null}
 
-      <textarea
+      {/* Entre o histórico e a caixa: é onde o spinner do Claude Code vive, e o único lugar em que
+          o scroll da conversa não o leva embora justamente quando ele importa. */}
+      <TurnPulse activity={view.activity} somethingRunning={somethingRunning} />
+
+      {/* O `min-h-0` derruba o `min-h-[80px]` da primitiva pelo `twMerge`, e não é enfeite:
+          aquela altura mínima estouraria a coluna de 288px que o CA-3 defende. Quem manda na
+          altura aqui continua sendo o `rows`. */}
+      <Textarea
         data-testid="card-chat-input"
         value={draft}
         disabled={mute}
@@ -177,7 +199,7 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
             ? 'Responda à pergunta acima para voltar a escrever.'
             : 'Escreva para a sessão…  Enter envia, Shift+Enter quebra linha.'
         }
-        className="mt-2 w-full resize-none rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-600 focus:outline-none disabled:opacity-50"
+        className="mt-2 min-h-0 resize-none text-xs"
       />
 
       {/* A pasta na tela é o CA-3, e não enfeite: é a única forma de flagrar a olho uma sessão que
@@ -187,12 +209,12 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
         <p
           data-testid="card-chat-cwd"
           title={view.init.cwd}
-          className="mt-2 truncate font-mono text-[10px] text-neutral-500"
+          className="mt-2 truncate font-mono text-[10px] text-foreground/60"
         >
           {view.init.cwd}
         </p>
       ) : (
-        <p className="mt-2 text-[10px] text-neutral-600">Conectando à sessão do Claude Code…</p>
+        <p className="mt-2 text-[10px] text-foreground/60">Conectando à sessão do Claude Code…</p>
       )}
 
       <div className="mt-1.5 flex items-center justify-between gap-2">
@@ -203,23 +225,44 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
         {/* Duas ações distintas, e é o CA-6 inteiro: colapsar devolve o cartão fechado com a sessão
             viva; encerrar mata a sessão. O app nunca faz o segundo por conta própria. */}
         <div className="flex shrink-0 gap-2">
-          <button
+          {/* Renderização condicional, e não `disabled`: o botão ausente é a afirmação que um teste
+              faz sem ambiguidade, e o olho não precisa distinguir dois cinzas. A ação do turno vem
+              antes das ações da sessão. */}
+          {view.state.kind === 'working' ? (
+            <Button
+              type="button"
+              data-testid="card-stop-turn"
+              variant="neutral"
+              size="xs"
+              className="bg-warning"
+              onClick={stop}
+            >
+              Parar
+            </Button>
+          ) : null}
+          <Button
             type="button"
             data-testid="card-collapse"
+            variant="neutral"
+            size="xs"
             onClick={onCollapse}
-            className="cursor-pointer rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
           >
             Colapsar
-          </button>
-          <button
+          </Button>
+          {/* Âmbar em "Parar" e vermelho em "Encerrar", pelos mesmos tokens do `StateBadge`: parar
+              o turno é interrupção, encerrar a sessão é destruição, e a cor separa as duas antes de
+              o olho chegar ao rótulo. */}
+          <Button
             type="button"
             data-testid="card-end-session"
+            variant="neutral"
+            size="xs"
+            className="bg-danger"
             disabled={dead || view.id === null}
             onClick={end}
-            className="cursor-pointer rounded-md border border-red-500/50 px-2.5 py-1 text-xs text-red-300 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Encerrar sessão
-          </button>
+          </Button>
         </div>
       </div>
     </div>
