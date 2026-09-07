@@ -70,6 +70,18 @@ const FIRST_PROMPT = 'Responda apenas: OK'
 const LONG_PROMPT = 'Conte de 1 a 200, um número por linha, sem usar ferramenta nenhuma'
 
 /**
+ * O turno do CA-3 do #14: **de texto puro**, pela mesma razão do `LONG_PROMPT`, e longo o bastante
+ * para haver turno em curso a observar quando a asserção chegar.
+ *
+ * O "explique o raciocínio" não é enfeite de prompt: o único heartbeat que o SDK publica são os
+ * quadros de `thinking_tokens`, e sem fase de raciocínio o contador fica em zero e o teste falharia
+ * por escolha do modelo, não por bug do app.
+ */
+const THINKING_PROMPT =
+  'Pense com calma e explique o seu raciocínio passo a passo: quantos dias há entre 3 de março de ' +
+  '2027 e 19 de novembro de 2027? Não use ferramenta nenhuma.'
+
+/**
  * O envelope cru, do jeito que o `BoardReader` o recebe — reduzido ao que este smoke precisa.
  *
  * O `as` é o mesmo trato que `createFixtureGraphQL` faz com o mesmo arquivo: o que valida a forma de
@@ -403,6 +415,48 @@ test('#12: parar o turno corta a vez, deixa a nota e devolve a sessão viva', as
   })
 })
 
+test('#14 CA-2: a trilha da ferramenta sobrevive ao colapso do cartão', async () => {
+  // A ferramenta que gerou a trilha é a do passo da permissão de escrita, lá em cima: aqui o que se
+  // prova é que aquilo **ficou**, e não que o modelo usa ferramenta — isso ele já provou uma vez, e
+  // provar de novo custaria outro turno de cota por nada.
+  await expect(toolEntries(CHAT_CARD).first()).toBeVisible()
+
+  await cardLocator(CHAT_CARD).getByTestId('card-collapse').click()
+  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toHaveCount(0)
+
+  await cardLocator(CHAT_CARD).click()
+  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
+
+  // Com o status final, e não só presente: uma entrada que voltasse `running` seria uma sessão que
+  // a tela afirma trabalhando sobre uma ferramenta que terminou faz tempo.
+  await expect(doneToolEntries(CHAT_CARD).first()).toBeVisible()
+  await expect(runningToolEntries(CHAT_CARD)).toHaveCount(0)
+})
+
+test('#14 CA-3: a linha viva conta o turno, e some quando ele acaba', async () => {
+  const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
+  const pulse = cardLocator(CHAT_CARD).getByTestId('turn-pulse')
+
+  // Fora de turno não há pulso: ele é o spinner, não o histórico.
+  await expect(pulse).toHaveCount(0)
+
+  await input.fill(THINKING_PROMPT)
+  await input.press('Enter')
+
+  await expect(pulse).toBeVisible({ timeout: DECISION_TIMEOUT })
+  // O contador de raciocínio é o único heartbeat que o SDK dá: vê-lo passar de zero é a prova de
+  // que a linha está viva de verdade, e não desenhando um relógio local sobre uma sessão muda.
+  await expect(pulse).toHaveAttribute('data-tokens', /^[1-9]\d*$/, { timeout: TURN_TIMEOUT })
+
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
+    timeout: TURN_TIMEOUT,
+  })
+
+  // E some. Sem isto o app teria trocado um sinal que mente por outro: uma linha eternamente viva
+  // sobre uma sessão parada é exatamente o que este card existe para tirar da tela.
+  await expect(pulse).toHaveCount(0)
+})
+
 test('CA-6: encerrar é ação minha — e o botão mata a sessão', async () => {
   await cardLocator(CHAT_CARD).getByTestId('card-end-session').click()
 
@@ -502,6 +556,18 @@ function userMessages(card: FixtureCard): Locator {
 
 function noticeMessages(card: FixtureCard): Locator {
   return cardLocator(card).locator('[data-testid="message"][data-role="notice"]')
+}
+
+function toolEntries(card: FixtureCard): Locator {
+  return cardLocator(card).locator('[data-testid="tool-entry"]')
+}
+
+function doneToolEntries(card: FixtureCard): Locator {
+  return cardLocator(card).locator('[data-testid="tool-entry"][data-status="done"]')
+}
+
+function runningToolEntries(card: FixtureCard): Locator {
+  return cardLocator(card).locator('[data-testid="tool-entry"][data-status="running"]')
 }
 
 /**

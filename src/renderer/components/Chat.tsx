@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, JSX, KeyboardEvent } from 'react'
 
-import type { ChatMessage } from '../../shared/session'
+import type { ChatMessage, TurnActivity } from '../../shared/session'
+import { ToolEntry } from './ToolEntry'
+import { TurnPulse } from './TurnPulse'
 
 interface ChatProps {
   messages: readonly ChatMessage[]
+  /** O pulso do turno corrente, para a linha viva acima da caixa. */
+  activity: TurnActivity
   /** Sessão morta (encerrada ou falha): não há para onde mandar texto. */
   disabled: boolean
   onSend: (text: string) => void
@@ -20,9 +24,15 @@ interface ChatProps {
  * A caixa **não** desabilita enquanto a sessão trabalha: o `core` tem fila de entrada, e é ela que
  * torna possível emendar uma segunda instrução sem esperar o turno terminar.
  */
-export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
+export function Chat({ messages, activity, disabled, onSend }: ChatProps): JSX.Element {
   const [draft, setDraft] = useState('')
   const bottom = useRef<HTMLDivElement>(null)
+
+  // A outra metade do CA-4, e ela mora aqui porque é aqui que a lista está: silêncio com ferramenta
+  // rodando é o normal de uma ferramenta demorada, e acusá-lo ensinaria a ignorar a marca.
+  const somethingRunning = messages.some(
+    (message) => message.role === 'tool' && message.status === 'running',
+  )
 
   // A conversa cresce por baixo: sem isto, toda resposta nova nasce fora da vista.
   useEffect(() => {
@@ -63,9 +73,9 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
             deixar um render sabidamente errado esperando o dia em que a nota chegar é plantar o bug
             com data marcada. */}
         {messages.map((message) => {
-          // A entrada de ferramenta ainda não tem desenho: quem a põe na trilha é a task 5.
-          // Descartá-la aqui é o que mantém o compilador honesto sobre a união sem adiantar tela.
-          if (message.role === 'tool') return null
+          // A ação entra na conversa pela mesma porta que a fala, e na posição em que aconteceu:
+          // é isso que faz a trilha ser histórico, e não um painel ao lado dele.
+          if (message.role === 'tool') return <ToolEntry key={message.id} entry={message} />
 
           return message.role === 'notice' ? (
             <p
@@ -101,6 +111,10 @@ export function Chat({ messages, disabled, onSend }: ChatProps): JSX.Element {
       </div>
 
       <div className="border-t border-neutral-800 p-3">
+        {/* Fora da lista que rola, entre o histórico e a caixa: é onde o spinner do Claude Code
+            vive, e é o que impede a linha viva de sair da vista justamente quando ela importa. */}
+        <TurnPulse activity={activity} somethingRunning={somethingRunning} />
+
         <textarea
           data-testid="chat-input"
           // A janela existe para ser digitada: abrir e ter de clicar na caixa antes é atrito puro.
