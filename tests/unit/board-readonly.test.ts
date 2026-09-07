@@ -74,12 +74,17 @@ describe('a superfície de board é somente-leitura', () => {
   })
 
   it('IPC_EVENT é exatamente os avisos de sessão mais o do board', () => {
+    // A declaração do canal do #14: `activity` leva o pulso do turno em curso — tempo decorrido,
+    // tokens de raciocínio e há quanto tempo não chega sinal — para a conversa aberta. É de mão
+    // única e **não toca o board**, nem para ler: o que ele carrega o main compõe a partir dos
+    // canais da própria sessão mais o relógio dele.
     expect(IPC_EVENT).toEqual({
       init: 'session:init',
       message: 'session:message',
       state: 'session:state',
       permissionRequest: 'session:permission-request',
       questionRequest: 'session:question-request',
+      activity: 'session:activity',
       board: 'board:changed',
     })
   })
