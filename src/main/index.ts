@@ -5,12 +5,19 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
 import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron'
 
-import { BoardReader, RepoIndex, SessionHost } from '../core'
+import { BoardReader, ConversationIndex, RepoIndex, SessionHost } from '../core'
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen } from '../shared/ipc'
 import { registerBoardIpc } from './board'
 import type { BoardIpcOptions } from './board'
+import {
+  inspectSession,
+  loadConversations,
+  readTranscript,
+  registerConversationIpc,
+  saveConversations,
+} from './conversations'
 import { createFixtureGraphQL } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
@@ -173,7 +180,32 @@ const repos = new RepoIndex({ scan: scanSessionFolders(), origin: gitOrigin })
 // varredura ali seria um `git` por pasta de sessão da máquina para ninguém.
 if (screen === 'kanban') void repos.refresh()
 
+// O único dado durável do app. As quatro pontas de IO são do main pela mesma razão das do
+// `RepoIndex`: o core não lê disco nem chama o SDK.
+const conversations = new ConversationIndex({
+  load: loadConversations,
+  save: saveConversations,
+  inspect: inspectSession,
+  transcript: readTranscript,
+  // Referência para a frente de propósito: o índice não conhece Electron, e quem publica pela
+  // ponte é o main. O callback só roda quando algo muda, muito depois das duas declarações.
+  onChange: publicarConversas,
+})
+
+// **Só no kanban**, pela mesma razão de `repos.refresh()`: a tela de chat não tem cartão, e
+// verificar vínculo de cartão nenhum é trabalho para ninguém.
+const conversationIpc = screen === 'kanban' ? registerConversationIpc(conversations) : null
+
+// Em paralelo à janela, como a primeira leitura do board: a verificação do que está gravado começa
+// antes de o renderer pedir o primeiro retrato, e o `onChange` corrige a tela quando ela terminar.
+conversationIpc?.refresh()
+
+function publicarConversas(): void {
+  conversationIpc?.publish()
+}
+
 const sessionIpc = registerSessionIpc(host, {
+  conversations,
   resolveCwd: async (itemId) => {
     if (itemId === undefined) return resolveCwd()
 
