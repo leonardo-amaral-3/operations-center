@@ -18,9 +18,7 @@
  * confundiria, e no `will-navigate` isso deixaria passar um `file:///C:/Windows/win.ini`.
  */
 export type NavigationVerdict =
-  | { kind: 'internal' }
-  | { kind: 'external'; url: string }
-  | { kind: 'blocked' }
+  { kind: 'internal' } | { kind: 'external'; url: string } | { kind: 'blocked' }
 
 /** Os únicos protocolos que valem uma entrega ao navegador do sistema. */
 const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:'])
