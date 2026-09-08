@@ -5,16 +5,18 @@ import { DEFAULT_SETTING_SOURCES, SessionHost } from '../../src/core/session/Ses
 import { INTERRUPTED_NOTICE, SessionHandle } from '../../src/core/session/SessionHandle'
 import type { TurnPulseCore } from '../../src/core/session/SessionHandle'
 import type { SessionState } from '../../src/core/session/state'
-import type { ChatMessage, ChatToolUse } from '../../src/shared/session'
+import type { ChatMessage, ChatToolUse, FileDiff } from '../../src/shared/session'
 import {
   abortedResult,
   assistantMessage,
   assistantToolUse,
   createFakeQuery,
+  patchResult,
   successResult,
   taskStarted,
   thinkingTokens,
   toolResult,
+  toolResultBatch,
   userEcho,
 } from '../fakes/fakeQuery'
 import type { FakeQuery, FakeTurn } from '../fakes/fakeQuery'
@@ -56,6 +58,26 @@ function textOf(message: ChatMessage): string {
 /** Só a trilha de ferramentas, já estreitada — o resto da conversa não interessa a estes casos. */
 function trilha(handle: SessionHandle): ChatToolUse[] {
   return handle.messages.filter((message): message is ChatToolUse => message.role === 'tool')
+}
+
+/**
+ * Espera a entrada de ferramenta que interessa, pelo canal das mensagens.
+ *
+ * Existe porque o caso do diff ao vivo termina no `tool_result`, **sem** `result`: não há estado
+ * terminal a esperar, e é justamente essa ausência que o caso precisa preservar. Registrar antes do
+ * `send()` é obrigatório — quem passar por aqui depois do fato perde o evento.
+ */
+function untilTool(
+  handle: SessionHandle,
+  matches: (tool: ChatToolUse) => boolean,
+): Promise<ChatToolUse> {
+  return new Promise((resolve) => {
+    const off = handle.on('message', (message) => {
+      if (message.role !== 'tool' || !matches(message)) return
+      off()
+      resolve(message)
+    })
+  })
 }
 
 function start(fake: FakeQuery, model?: string): SessionHandle {
@@ -1307,6 +1329,119 @@ describe('SessionHost', () => {
       'tool:Read',
       'assistant:li: é um app Electron',
     ])
+  })
+
+  it('o diff chega na entrada ainda em turno, no lugar dela e sem virar duas', async () => {
+    const fake = createFakeQuery({
+      turn: () =>
+        Promise.resolve([
+          assistantToolUse([
+            { id: 'toolu_e1', name: 'Edit', input: { file_path: '/repo/app.ts' } },
+          ]),
+          // O roteiro **termina aqui, sem `result`**, e é essa ausência que prova o "antes de o
+          // turno terminar" do CA-1: com o fecho do turno no roteiro, uma implementação que só
+          // preenchesse o diff no `result` passaria neste teste do mesmo jeito.
+          toolResult(
+            'toolu_e1',
+            false,
+            patchResult([
+              {
+                newStart: 10,
+                oldStart: 10,
+                lines: [' const a = 1', '-const b = 2', '+const b = 3'],
+              },
+            ]),
+          ),
+        ]),
+    })
+    const handle = start(fake)
+
+    const degraus: { status: string; diff: FileDiff | null }[] = []
+    handle.on('message', (message) => {
+      if (message.role === 'tool') degraus.push({ status: message.status, diff: message.diff })
+    })
+
+    const terminou = untilTool(handle, (tool) => tool.status === 'done')
+    handle.send('troque o b')
+    await terminou
+
+    // A sessão **não** saiu de `working`: o turno segue aberto e o diff já está na conversa.
+    expect(handle.state).toEqual({ kind: 'working' })
+
+    const esperado: FileDiff = {
+      additions: 1,
+      deletions: 1,
+      truncated: 0,
+      hunks: [
+        {
+          lines: [
+            { kind: 'context', number: 10, text: 'const a = 1' },
+            // A linha de contexto anda dos **dois** lados, então a removida é a 11 do arquivo
+            // velho enquanto a acrescentada é a 11 do novo — mesmo número, arquivos diferentes.
+            { kind: 'remove', number: 11, text: 'const b = 2' },
+            { kind: 'add', number: 11, text: 'const b = 3' },
+          ],
+        },
+      ],
+    }
+
+    // Uma entrada só, na posição em que nasceu — o `#upsert` atualizou no lugar em vez de empurrar
+    // uma segunda linha para o fim da conversa.
+    expect(trilha(handle)).toEqual([
+      {
+        id: 'toolu_e1',
+        role: 'tool',
+        name: 'Edit',
+        detail: '/repo/app.ts',
+        headline: '',
+        parentId: null,
+        status: 'done',
+        diff: esperado,
+      },
+    ])
+    expect(handle.messages.map((message) => message.role)).toEqual(['user', 'tool'])
+
+    // O mesmo fato contado pelos degraus: ela nasceu `running` e sem diff, e foi o `tool_result`
+    // que trouxe os dois — status e diff — de uma vez.
+    expect(degraus).toEqual([
+      { status: 'running', diff: null },
+      { status: 'done', diff: esperado },
+    ])
+
+    await handle.close()
+  })
+
+  it('com dois resultados na mesma mensagem, as duas terminam done e nenhuma ganha diff', async () => {
+    const fake = createFakeQuery({
+      turn: () =>
+        Promise.resolve([
+          assistantToolUse([
+            { id: 'toolu_e2', name: 'Edit', input: { file_path: '/repo/a.ts' } },
+            { id: 'toolu_e3', name: 'Edit', input: { file_path: '/repo/b.ts' } },
+          ]),
+          // Um `tool_use_result` para dois `tool_result`: o campo é da **mensagem**, não do bloco,
+          // então não há como saber de qual das duas escritas ele é. Pendurá-lo na primeira
+          // mostraria o diff de um arquivo na chamada do outro — erro pior que a ausência.
+          toolResultBatch(
+            ['toolu_e2', 'toolu_e3'],
+            patchResult([{ newStart: 1, oldStart: 1, lines: ['-antes', '+depois'] }]),
+          ),
+          successResult(),
+        ]),
+    })
+    const handle = start(fake)
+
+    handle.send('edite os dois')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // O status continua sendo lido por bloco, que é por bloco que ele vem: a guarda recusa o diff,
+    // e não o resultado.
+    expect(trilha(handle).map((entrada) => [entrada.detail, entrada.status, entrada.diff])).toEqual(
+      [
+        ['/repo/a.ts', 'done', null],
+        ['/repo/b.ts', 'done', null],
+      ],
+    )
   })
 
   it('a ferramenta do subagente aponta para o Agent que a gerou', async () => {

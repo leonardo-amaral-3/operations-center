@@ -15,6 +15,7 @@ import {
   asRecord,
   asString,
   assistantText,
+  diffOf,
   toolResults,
   toolUses,
 } from './transcript'
@@ -429,7 +430,19 @@ export class SessionHandle {
     if (message.type === 'user') {
       // Só os blocos `tool_result`. A `user` também carrega texto — o eco do prompt de um subagente
       // chega assim —, e lê-lo viraria balão de uma fala que ninguém disse na conversa.
-      for (const { id, status } of toolResults(message.message)) this.#patchTool(id, { status })
+      const outcomes = toolResults(message.message)
+
+      // `tool_use_result` é **um objeto só** por mensagem, então com dois resultados na mesma
+      // mensagem não haveria como saber a qual deles ele pertence — e atribuí-lo ao primeiro
+      // penduraria o diff de um arquivo na chamada errada. Nunca foi observado (0 de 5.428), e é
+      // barato recusar.
+      const diff = outcomes.length === 1 ? diffOf(message.tool_use_result) : null
+
+      // O `diff` vai junto do `status` mesmo quando é `null`: o `tool_result` de uma chamada chega
+      // **uma vez**, então não há valor anterior a preservar, e um `null` explícito é mais barato
+      // de ler do que um spread condicional. Quem toca só o `headline` — `task_started` e
+      // `task_progress` — segue sem apagar diff nenhum.
+      for (const { id, status } of outcomes) this.#patchTool(id, { status, diff })
       return
     }
 
@@ -607,7 +620,7 @@ export class SessionHandle {
    */
   #patchTool(
     id: string | undefined,
-    patch: Partial<Pick<ChatToolUse, 'headline' | 'status'>>,
+    patch: Partial<Pick<ChatToolUse, 'headline' | 'status' | 'diff'>>,
   ): void {
     if (id === undefined) return
 
