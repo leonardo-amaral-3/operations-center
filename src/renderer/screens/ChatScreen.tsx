@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import type { SessionState } from '../../shared/session'
 import { Chat } from '../components/Chat'
 import { PermissionPrompt } from '../components/PermissionPrompt'
+import { QuestionPrompt } from '../components/QuestionPrompt'
 import { StateBadge } from '../components/StateBadge'
 import { StatusBar } from '../components/StatusBar'
 import { useSessionView } from '../session/useSessionView'
@@ -20,7 +21,7 @@ const RAZAO_SEM_PASTA = 'a sessão não subiu: o main não resolveu a pasta de t
  * para continuar segurando a conversa.
  */
 export function ChatScreen(): JSX.Element {
-  const { view, send, decide } = useSessionView({ closeOnUnmount: true })
+  const { view, send, decide, answer } = useSessionView({ closeOnUnmount: true })
 
   // Aqui a `cwd` vem de `OC_CWD` e sempre resolve, então "não sei onde é" é impossível por
   // construção — e é exatamente por isso que não pode passar em silêncio: se um dia acontecer, é o
@@ -32,18 +33,29 @@ export function ChatScreen(): JSX.Element {
   const dead = state.kind === 'closed' || state.kind === 'failed'
 
   return (
-    <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
-      <header className="flex items-center justify-between gap-4 border-b border-neutral-800 px-4 py-3">
-        <h1 className="text-sm font-semibold tracking-tight">Operations Center</h1>
+    <div className="flex h-full flex-col bg-background font-base text-foreground">
+      <header className="flex items-center justify-between gap-4 border-b-2 border-border px-4 py-3">
+        <h1 className="text-sm font-heading tracking-tight">Operations Center</h1>
         <StateBadge state={state} />
       </header>
 
-      {view.permission ? <PermissionPrompt request={view.permission} onDecide={decide} /> : null}
+      {view.permission ? (
+        <PermissionPrompt request={view.permission} onDecide={decide} queued={view.queued} />
+      ) : null}
+
+      {/* A pergunta que esta tela nunca desenhou. Com a fila FIFO ela pode ficar **na frente** de
+          uma permissão, e uma tela que só sabe desenhar permissão deixaria o turno parado sem nada
+          a clicar — o próprio travamento que este card conserta, com outra cara. */}
+      {view.question ? (
+        <QuestionPrompt request={view.question} onAnswer={answer} queued={view.queued} />
+      ) : null}
 
       <Chat
         messages={view.messages}
         activity={view.activity}
-        disabled={dead || !view.id}
+        // A pergunta trava a caixa aqui pelo mesmo motivo do `CardChat`: o turno está parado
+        // esperando o `tool_result` dela, e o que for digitado entraria na fila atrás disso.
+        disabled={dead || !view.id || view.question !== null}
         onSend={send}
       />
 

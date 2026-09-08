@@ -1,0 +1,554 @@
+{
+  "_comment": [
+    "Envelopes CRUS das respostas do GitHub aos DOIS documentos da descoberta — OWNERS_QUERY e",
+    "PROJECTS_QUERY de src/core/board/query.ts. Serve os smokes pelo `OC_BOARDS_FIXTURE`, via",
+    "src/main/github/fixture.ts, e é dele que sai a lista de boards que rodam a esteira.",
+    "",
+    "`owners` é o envelope do OWNERS_QUERY. `byOwner` é o mapa `login` → envelope do PROJECTS_QUERY",
+    "daquele dono — uma entrada por dono que o OWNERS_QUERY devolve, e é assim que o BoardFinder as",
+    "pede, um dono por chamada.",
+    "",
+    "CAPTURA REAL (2026-09-07): tudo que não está listado como sintético abaixo veio de uma execução",
+    "dos dois documentos contra a API, salva como ela devolveu — inclusive os `errors` parciais com o",
+    "NOT_FOUND do alias que não resolveu (o `organization` para o dono usuário, o `user` para a org),",
+    "que é a resposta normal e o caso que a regra 2 do envelope existe para tolerar.",
+    "",
+    "São 16 Projects reais: 2 do viewer e 14 da ICSF-Solutions. Deles, apenas DOIS declaram as 8",
+    "estações — o board 2 (Operations Center) e o 19 (Plataformas v2). Os outros 14 são o material",
+    "contra o qual o filtro é cobrado de verdade, e não contra um cenário inventado: os `untitled",
+    "project` com Todo|In Progress|Done, o `teste` e o `Módulos Legados` com Backlog|Ready|…, o",
+    "`Plataformas` legado com Backlog|A Fazer|… e os arquivados (`closed: true`), que caem no primeiro",
+    "degrau do filtro.",
+    "",
+    "SINTÉTICO (1, acrescentado à mão, no fim dos nodes do viewer):",
+    "  · Sintético: board que roda a esteira — dono `dono-sintetico`, número 901, as 8 estações",
+    "    declaradas. É o 17º Project, e a única função dele é fazer uma lista fixa de abas escrita no",
+    "    código errar a CONTAGEM ou o RÓTULO: sem ele, \"dois boards\" seria um número que dá para",
+    "    acertar por acaso. O dono é fabricado e diferente do dono cuja lista o traz — o que exercita",
+    "    de graça a decisão de montar a chave da aba com o `owner { login }` que o NÓ declara, e não",
+    "    com o dono que estava sendo varrido.",
+    "  · O título começa com \"S\" de propósito: a ordem das abas é alfabética pelo título, e este",
+    "    sintético tem de cair DEPOIS de \"Operations Center\" e \"Plataformas v2\". Um título que",
+    "    ordenasse antes trocaria o board que os quatro smokes desenham — que é sempre o primeiro da",
+    "    ordem — e os quebraria por um motivo que nada tem a ver com o que eles provam.",
+    "",
+    "MUDOU O OWNERS_QUERY OU O PROJECTS_QUERY? RECAPTURE. Uma fixture capturada com uma versão",
+    "anterior da consulta fica verde contra dados que a API não devolve mais. Recapture com os",
+    "documentos que estiverem em src/core/board/query.ts e recoloque o sintético no fim.",
+    "",
+    "ESTA FIXTURE TEM PAR: tests/fixtures/board.json guarda o envelope do BOARD_QUERY de cada board",
+    "que a descoberta aqui devolve — uma entrada por chave `owner/number`. Entrou ou saiu board da",
+    "esteira aqui? board.json precisa da entrada, ou a leitura daquela aba LANÇA, de propósito."
+  ],
+  "owners": {
+    "data": {
+      "viewer": {
+        "login": "leonardo-amaral-3",
+        "organizations": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "Y3Vyc29yOnYyOpHOC7979g=="
+          },
+          "nodes": [
+            {
+              "login": "ICSF-Solutions"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "byOwner": {
+    "leonardo-amaral-3": {
+      "data": {
+        "user": {
+          "projectsV2": {
+            "pageInfo": {
+              "hasNextPage": false,
+              "endCursor": "Mg"
+            },
+            "nodes": [
+              {
+                "number": 2,
+                "title": "Operations Center",
+                "closed": false,
+                "owner": {
+                  "login": "leonardo-amaral-3"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "📥 Triagem"
+                    },
+                    {
+                      "name": "📋 Backlog"
+                    },
+                    {
+                      "name": "🎯 Especificação"
+                    },
+                    {
+                      "name": "🔨 Implementação"
+                    },
+                    {
+                      "name": "👀 Revisão"
+                    },
+                    {
+                      "name": "🧪 Validação em Dev"
+                    },
+                    {
+                      "name": "🚂 Release"
+                    },
+                    {
+                      "name": "✅ Produção"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 1,
+                "title": "@leonardo-amaral-3's untitled project",
+                "closed": true,
+                "owner": {
+                  "login": "leonardo-amaral-3"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Todo"
+                    },
+                    {
+                      "name": "In Progress"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 901,
+                "title": "Sintético: board que roda a esteira",
+                "closed": false,
+                "owner": {
+                  "login": "dono-sintetico"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "📥 Triagem"
+                    },
+                    {
+                      "name": "📋 Backlog"
+                    },
+                    {
+                      "name": "🎯 Especificação"
+                    },
+                    {
+                      "name": "🔨 Implementação"
+                    },
+                    {
+                      "name": "👀 Revisão"
+                    },
+                    {
+                      "name": "🧪 Validação em Dev"
+                    },
+                    {
+                      "name": "🚂 Release"
+                    },
+                    {
+                      "name": "✅ Produção"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "organization": null
+      },
+      "errors": [
+        {
+          "type": "NOT_FOUND",
+          "path": ["organization"],
+          "locations": [
+            {
+              "line": 4,
+              "column": 3
+            }
+          ],
+          "message": "Could not resolve to an Organization with the login of 'leonardo-amaral-3'."
+        }
+      ]
+    },
+    "ICSF-Solutions": {
+      "data": {
+        "user": null,
+        "organization": {
+          "projectsV2": {
+            "pageInfo": {
+              "hasNextPage": false,
+              "endCursor": "MTQ"
+            },
+            "nodes": [
+              {
+                "number": 19,
+                "title": "Plataformas v2",
+                "closed": false,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "📥 Triagem"
+                    },
+                    {
+                      "name": "📋 Backlog"
+                    },
+                    {
+                      "name": "🎯 Especificação"
+                    },
+                    {
+                      "name": "🔨 Implementação"
+                    },
+                    {
+                      "name": "👀 Revisão"
+                    },
+                    {
+                      "name": "🧪 Validação em Dev"
+                    },
+                    {
+                      "name": "🚂 Release"
+                    },
+                    {
+                      "name": "✅ Produção"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 18,
+                "title": "@leonardo-amaral-3's untitled project",
+                "closed": true,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Todo"
+                    },
+                    {
+                      "name": "In Progress"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 17,
+                "title": "Integração AGHU",
+                "closed": false,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Todo"
+                    },
+                    {
+                      "name": "In Progress"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 16,
+                "title": "teste",
+                "closed": true,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Backlog"
+                    },
+                    {
+                      "name": "Ready"
+                    },
+                    {
+                      "name": "In progress"
+                    },
+                    {
+                      "name": "In review"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 15,
+                "title": "@guilhermt's untitled project",
+                "closed": true,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Todo"
+                    },
+                    {
+                      "name": "In Progress"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 14,
+                "title": "Plataformas",
+                "closed": false,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Backlog"
+                    },
+                    {
+                      "name": "A Fazer"
+                    },
+                    {
+                      "name": "Em andamento"
+                    },
+                    {
+                      "name": "Revisao de codigo"
+                    },
+                    {
+                      "name": "Ajustes"
+                    },
+                    {
+                      "name": "Aprovado"
+                    },
+                    {
+                      "name": "Disponivel em Dev"
+                    },
+                    {
+                      "name": "Pronto para release"
+                    },
+                    {
+                      "name": "Concluido"
+                    },
+                    {
+                      "name": "Pausado"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 13,
+                "title": "Plataformas",
+                "closed": true,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Todo"
+                    },
+                    {
+                      "name": "In Progress"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 10,
+                "title": "Módulos Legados",
+                "closed": true,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Backlog"
+                    },
+                    {
+                      "name": "Ready"
+                    },
+                    {
+                      "name": "In progress"
+                    },
+                    {
+                      "name": "In review"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 9,
+                "title": "@guilhermt's untitled project",
+                "closed": true,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Todo"
+                    },
+                    {
+                      "name": "In Progress"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 8,
+                "title": "OCI",
+                "closed": false,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Todo"
+                    },
+                    {
+                      "name": "In Progress"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 7,
+                "title": "OCI",
+                "closed": true,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Todo"
+                    },
+                    {
+                      "name": "In Progress"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 5,
+                "title": "@guilhermt's untitled project",
+                "closed": true,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Todo"
+                    },
+                    {
+                      "name": "In Progress"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 3,
+                "title": "@waltertadeu's untitled template",
+                "closed": true,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Todo"
+                    },
+                    {
+                      "name": "In Progress"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              },
+              {
+                "number": 1,
+                "title": "SES Faturamento",
+                "closed": true,
+                "owner": {
+                  "login": "ICSF-Solutions"
+                },
+                "field": {
+                  "options": [
+                    {
+                      "name": "Todo"
+                    },
+                    {
+                      "name": "In Progress"
+                    },
+                    {
+                      "name": "Done"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "errors": [
+        {
+          "type": "NOT_FOUND",
+          "path": ["user"],
+          "locations": [
+            {
+              "line": 3,
+              "column": 3
+            }
+          ],
+          "message": "Could not resolve to a User with the login of 'ICSF-Solutions'."
+        }
+      ]
+    }
+  }
+}

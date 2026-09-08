@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import type { WebContents } from 'electron'
 
-import type { SessionHandle, SessionHost } from '../core'
+import type { ConversationIndex, DangerIndex, SessionHandle, SessionHost } from '../core'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type {
   AnswerQuestionRequest,
@@ -9,6 +9,7 @@ import type {
   RespondPermissionRequest,
   SendRequest,
   SessionSnapshot,
+  SetDangerousRequest,
   StartRequest,
   StartResult,
   StopRequest,
@@ -24,6 +25,14 @@ export interface SessionIpcOptions {
    * Assíncrono porque a resolução tem uma segunda chance: ver `src/main/index.ts`.
    */
   resolveCwd(itemId: string | undefined): Promise<string | null>
+  /** O vínculo durável. Consultado antes de criar; alimentado pelo `init`; podado pelo `close`. */
+  conversations: ConversationIndex
+  /**
+   * A marca do modo *dangerously*, por cartão. Lida no nascimento de toda sessão e escrita pelo
+   * handler `setDangerous` — e **nunca** pelo `close`/`closeAll`: a marca é decisão sobre o cartão,
+   * não sobre a conversa.
+   */
+  danger: DangerIndex
 }
 
 export interface SessionIpc {
@@ -35,7 +44,7 @@ export interface SessionIpc {
  * O relógio de uma sessão — o `TurnActivity` que atravessa a ponte mais o ordinal do turno.
  *
  * **O relógio mora no main, e não no core**, pelo mesmo motivo do `readAt` do board: o `core` conta
- * tokens e ordena fatos, a casca carimba tempo (`src/main/board.ts:79`). É o que mantém o `yarn
+ * tokens e ordena fatos, a casca carimba tempo (`src/main/boards.ts`). É o que mantém o `yarn
  * test` do core sem relógio.
  *
  * O `index` não sai daqui: ele é só como o main reconhece a fronteira entre turnos. A tela não tem
@@ -108,6 +117,70 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     return null
   }
 
+  /** A guarda de partida concorrente. Ver `oneStartPerCard`. */
+  const gate = oneStartPerCard<StartResult>()
+
+  /**
+   * Registra a sessão recém-criada e devolve o retrato dela.
+   *
+   * O caminho da retomada e o da sessão nova terminam iguais — só a entrada muda —, e é por isso
+   * que o fim mora aqui: as duas pontas que o `close` depois limpa (`sessions`, `byCard`) e a
+   * assinatura dos eventos precisam acontecer nas duas, sempre na mesma ordem.
+   */
+  function begin(
+    session: SessionHandle,
+    itemId: string | undefined,
+    sender: WebContents,
+  ): SessionSnapshot {
+    sessions.set(session.id, session)
+    if (itemId !== undefined) byCard.set(itemId, session.id)
+    // Os eventos vão para a janela que pediu a sessão, não para todas: é ela quem a está mostrando.
+    forwardEvents(session, sender, pulses, itemId, options.conversations)
+
+    return snapshot(session, itemId, activityOf(session.id))
+  }
+
+  /**
+   * O caminho de criação inteiro — retomada **e** sessão nova. Roda dentro do `gate`, e é por isso
+   * que ele está aqui e não solto no handler: é este bloco que não pode acontecer duas vezes para
+   * o mesmo cartão.
+   */
+  async function create(itemId: string | undefined, sender: WebContents): Promise<StartResult> {
+    // Uma leitura só, no topo, porque os dois ramos (retomada e sessão nova) precisam dela e
+    // esquecê-la num deles faria a marca valer só para metade dos cliques. Ela é aqui dentro, e não
+    // no handler, porque é aqui que o `gate` já protege: duas partidas concorrentes leriam a marca
+    // duas vezes e subiriam duas sessões. Sem cartão — a tela de chat da fatia vertical — não há
+    // onde a marca ter sido gravada, e o portão de sempre vale (decisão 13).
+    const dangerous = itemId === undefined ? false : await options.danger.isDangerous(itemId)
+
+    if (itemId !== undefined) {
+      // A retomada vem **antes** do `resolveCwd`, e essa ordem é a regra: a pasta de uma conversa
+      // que existe é a pasta em que ela rodou, não a que o índice de repos apontaria agora. Um
+      // clone novo virando "a pasta daquele repo" não pode mudar onde uma conversa em curso
+      // continua.
+      const restoration = await options.conversations.restore(itemId)
+      if (restoration) {
+        const session = host.start({
+          cwd: restoration.cwd,
+          resume: restoration.sessionId,
+          history: restoration.history,
+          // A retomada carrega a marca junto: uma conversa que atravessou o restart volta no modo em
+          // que estava, que é o par natural do CA-2 com a retomada do #22.
+          dangerous,
+        })
+
+        return { started: true, session: begin(session, itemId, sender) }
+      }
+    }
+
+    const cwd = await options.resolveCwd(itemId)
+    // **Não existe default.** Subir sessão na pasta errada é o pior modo de falha desta feature —
+    // pior que não subir —, então "não sei onde é" vira resposta, e o cartão pede a pasta (CA-5).
+    if (cwd === null) return { started: false, reason: 'unknown-folder' }
+
+    return { started: true, session: begin(host.start({ cwd, dangerous }), itemId, sender) }
+  }
+
   ipcMain.handle(
     IPC_INVOKE.start,
     async (event, request: StartRequest | undefined): Promise<StartResult> => {
@@ -119,23 +192,14 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
         // do retrato, e uma segunda assinatura duplicaria cada mensagem daí em diante.
         // O retrato leva o pulso vivo daquela sessão: reabrir o cartão no meio do turno tem de
         // continuar a contagem, e não recomeçá-la.
+        //
+        // Continua **antes** do `gate`, e sem `await`: sessão já viva responde direto, como hoje.
         if (living) {
           return { started: true, session: snapshot(living, itemId, activityOf(living.id)) }
         }
       }
 
-      const cwd = await options.resolveCwd(itemId)
-      // **Não existe default.** Subir sessão na pasta errada é o pior modo de falha desta feature —
-      // pior que não subir —, então "não sei onde é" vira resposta, e o cartão pede a pasta (CA-5).
-      if (cwd === null) return { started: false, reason: 'unknown-folder' }
-
-      const session = host.start({ cwd })
-      sessions.set(session.id, session)
-      if (itemId !== undefined) byCard.set(itemId, session.id)
-      // Os eventos vão para a janela que pediu a sessão, não para todas: é ela quem a está mostrando.
-      forwardEvents(session, event.sender, pulses)
-
-      return { started: true, session: snapshot(session, itemId, activityOf(session.id)) }
+      return gate(itemId, () => create(itemId, event.sender))
     },
   )
 
@@ -161,6 +225,27 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     sessions.get(request.sessionId)?.answerQuestion(request.requestId, request.answers)
   })
 
+  /**
+   * Liga ou desliga o portão daquele cartão. **Por cartão, e não por sessão**: é o que faz a marca
+   * existir num cartão que ainda não foi clicado.
+   *
+   * **Sem retorno**, e por isso sem estado otimista do outro lado (decisão 12): o crachá segue o
+   * retrato que o `onChange` do índice publica, e só ele. Uma recusa do SDK deixa `efetivo` igual ao
+   * que já vigorava, o `set` não publica, e a tela simplesmente não se move — que é a verdade.
+   */
+  ipcMain.handle(
+    IPC_INVOKE.setDangerous,
+    async (_event, request: SetDangerousRequest): Promise<void> => {
+      const session = livingSessionFor(request.itemId)
+      // Sem sessão viva, a marca é só o registro — e ela vale: a próxima sessão daquele cartão nasce
+      // com ela. Com sessão viva, quem manda é o que o SDK aceitou, não o que a tela pediu; gravar o
+      // pedido faria o crachá prometer um cartão sem portão que o portão ainda guarda.
+      const efetivo = session ? await session.setDangerous(request.dangerous) : request.dangerous
+
+      options.danger.set(request.itemId, efetivo)
+    },
+  )
+
   ipcMain.handle(IPC_INVOKE.close, async (_event, request: CloseRequest): Promise<void> => {
     const session = sessions.get(request.sessionId)
     if (!session) return
@@ -172,7 +257,16 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     // Dos **três** mapas: deixar o cartão apontando para uma sessão que já não existe faria o
     // clique seguinte cair no `livingSessionFor` de um fantasma.
     for (const [itemId, sessionId] of byCard) {
-      if (sessionId === request.sessionId) byCard.delete(itemId)
+      if (sessionId === request.sessionId) {
+        // O CA-4: encerrar é definitivo. É o **único** lugar que esquece — `closeAll()` não esquece
+        // nada, e é justamente essa diferença que o card do #22 existe para criar.
+        //
+        // E esquece **só a conversa**: o `options.danger` não é tocado aqui de propósito (decisão
+        // 14 do #10). Encerrar a sessão encerra a conversa; a marca é uma decisão sobre o cartão, e
+        // revogá-la de carona seria o app decidindo por conta própria.
+        options.conversations.forget(itemId)
+        byCard.delete(itemId)
+      }
     }
 
     await session.close()
@@ -188,6 +282,47 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
       // derrubar o desligamento com uma rejeição sem dono.
       await Promise.allSettled(living.map((session) => session.close()))
     },
+  }
+}
+
+/**
+ * Uma partida de cada vez por cartão: **quem chega com outra em voo pega carona nela** em vez de
+ * abrir a segunda.
+ *
+ * Devolve o portão. Chamado com o mesmo cartão enquanto a partida anterior não terminou, ele
+ * devolve a promessa da primeira e não roda `start` de novo; ao terminar, a entrada some e o
+ * próximo clique parte de novo. Cartão ausente — a tela de chat da fatia vertical — não compartilha
+ * nada: cada chamada é uma partida.
+ *
+ * A janela entre "não achei sessão viva" e "registrei a nova" já existe hoje (o `await` do
+ * `resolveCwd`), e o duplo-monte do StrictMode a atravessa em desenvolvimento. Até agora o preço
+ * era uma sessão órfã. Com a retomada o preço muda de natureza: **dois processos do Claude Code
+ * escrevendo o mesmo transcript**, que é corrupção de dado do usuário e não desperdício de
+ * processo. A leitura do transcript ainda alarga essa janela em alguns milissegundos.
+ *
+ * Puro e exportado de propósito: é a peça que o `tests/unit/session-ipc.test.ts` prende, porque
+ * este é o pior modo de falha da retomada e ele não pode depender de revisão para não voltar.
+ */
+export function oneStartPerCard<T>(): (
+  itemId: string | undefined,
+  start: () => Promise<T>,
+) => Promise<T> {
+  const inFlight = new Map<string, Promise<T>>()
+
+  return (itemId, start) => {
+    if (itemId === undefined) return start()
+
+    const running = inFlight.get(itemId)
+    if (running) return running
+
+    // A remoção no `finally` e não no `then`: uma partida que falhou não pode deixar o cartão
+    // trancado até o app reiniciar.
+    const started = start().finally(() => {
+      inFlight.delete(itemId)
+    })
+    inFlight.set(itemId, started)
+
+    return started
   }
 }
 
@@ -219,6 +354,8 @@ function forwardEvents(
   session: SessionHandle,
   sender: WebContents,
   pulses: Map<string, Pulse>,
+  itemId: string | undefined,
+  conversations: ConversationIndex,
 ): void {
   const emit = (channel: string, payload: unknown): void => {
     // A janela pode morrer com um turno em andamento; mandar para um `WebContents` destruído joga.
@@ -251,6 +388,10 @@ function forwardEvents(
   }
 
   session.on('init', (init) => {
+    // O vínculo nasce aqui porque é aqui que o `session_id` do Claude Code aparece pela primeira
+    // vez — e é reescrito a cada `init` de propósito: o registro segue o que o SDK disse.
+    if (itemId !== undefined) conversations.remember(itemId, init.sessionId)
+
     emit(IPC_EVENT.init, { sessionId: session.id, init })
     publish()
   })
@@ -273,19 +414,6 @@ function forwardEvents(
     }
 
     emit(IPC_EVENT.state, { sessionId: session.id, state })
-
-    // O `core` não publica um canal de permissão: o pedido chega dentro do estado, porque é ele que
-    // trava a sessão. O contrato o publica à parte para a tela poder abrir o prompt sem inspecionar
-    // o `kind` do estado — e os dois eventos descrevem o mesmo fato, na mesma ordem.
-    if (state.kind === 'awaiting_decision') {
-      emit(IPC_EVENT.permissionRequest, { sessionId: session.id, request: state.request })
-    }
-
-    // A pergunta tem o par próprio pela mesma razão, e canal próprio porque não é a mesma coisa: uma
-    // permissão tem duas saídas fixas, uma pergunta tem N opções e texto livre.
-    if (state.kind === 'awaiting_answer') {
-      emit(IPC_EVENT.questionRequest, { sessionId: session.id, request: state.request })
-    }
 
     publish()
   })

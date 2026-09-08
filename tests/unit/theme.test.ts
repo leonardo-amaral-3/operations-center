@@ -1,0 +1,193 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
+
+import { contrastRatio, oklchToSrgb, toHex } from '../../src/main/color'
+import { parseOklch, parseThemes } from '../../src/main/sheet'
+import { resolveTheme, windowBackground } from '../../src/main/theme'
+
+/**
+ * A matemática de cor do card #29 e a leitura da folha, pinadas nos números que o #8 publicou.
+ *
+ * O que este arquivo protege não é "a conversão roda", é **que ela é a mesma conversão** que
+ * produziu os valores hoje em uso. Por isso todo esperado aqui é citação de um documento aprovado —
+ * o hex que estava escrito à mão em `src/main/index.ts` e as quatro razões de contraste do #8 — e
+ * não um número que este teste tenha calculado para si mesmo. É o que separa âncora de tautologia:
+ * se a implementação divergir, é aqui que se descobre, e não na janela do usuário.
+ *
+ * No teste **unitário** valores absolutos são a âncora, ao contrário do smoke, onde nenhuma cor é
+ * escrita à mão (`kanban.smoke.spec.ts` registra a razão).
+ */
+
+/** O `--foreground` de toda combinação: o preto que escreve sobre as quatro cores de estado. */
+const PRETO = oklchToSrgb(0, 0, 0)
+
+describe('a conversão reproduz o pixel que estava escrito à mão', () => {
+  it('o `--background` da lavanda é o `#eee6fe` de `src/main/index.ts`', () => {
+    // A prova de que trocar o literal por `windowBackground` é no-op para o tema de hoje: mesmo
+    // pixel, agora derivado da folha em vez de transcrito à mão.
+    expect(toHex(oklchToSrgb(93.88, 0.033, 300.19))).toBe('#eee6fe')
+  })
+})
+
+describe('a razão de contraste reproduz os quatro números que o #8 publicou', () => {
+  /**
+   * As quatro cores de estado e a razão AAA que o #8 mediu para cada uma contra preto. São os
+   * valores publicados naquele card: se a matemática daqui divergir da que os produziu, o vermelho
+   * aparece com o nome da cor, não como um booleano.
+   */
+  const ESTADOS = [
+    { nome: '--attention', l: 78, c: 0.17, h: 145, esperado: 11.14 },
+    { nome: '--warning', l: 84, c: 0.16, h: 85, esperado: 12.74 },
+    { nome: '--question', l: 78, c: 0.13, h: 230, esperado: 10.76 },
+    { nome: '--danger', l: 70, c: 0.19, h: 25, esperado: 7.24 },
+  ]
+
+  it.each(ESTADOS)('`$nome` contra o preto dá $esperado:1', ({ l, c, h, esperado }) => {
+    const razao = contrastRatio(PRETO, oklchToSrgb(l, c, h))
+
+    // Duas casas, que é a precisão em que o #8 publicou os números.
+    expect(Number(razao.toFixed(2))).toBe(esperado)
+  })
+})
+
+describe('a guarda de gamut', () => {
+  it('lança quando a cor não cabe no sRGB', () => {
+    // O croma da lavanda no matiz da ametista — literalmente a armadilha em que a spec do #29 quase
+    // caiu, e a razão de esta guarda existir: sem ela o Chromium remapearia por conta própria
+    // enquanto o main clipa por canal, e a janela pintaria de uma cor e o canvas de outra.
+    expect(() => oklchToSrgb(70.28, 0.1753, 278)).toThrow(/fora do gamut/)
+  })
+
+  it('a mensagem traz a cor recusada, para não obrigar a adivinhar qual era', () => {
+    expect(() => oklchToSrgb(70.28, 0.1753, 278)).toThrow('70.28% 0.1753 278')
+  })
+
+  /**
+   * Os dois casos mais apertados de **dentro** do gamut, e são eles que justificam a tolerância de
+   * `1e-6` — não uma preocupação genérica com float. Sem a folga, o branco de
+   * `--secondary-background`, que existe em toda combinação, viraria falso vermelho.
+   */
+  const APERTADOS = [
+    { nome: '--secondary-background (o branco, a 1.000000 exato)', l: 100, c: 0, h: 0 },
+    { nome: '--main da lavanda (a 3.0e-4 do limite no azul)', l: 70.28, c: 0.1753, h: 295.36 },
+  ]
+
+  it.each(APERTADOS)('não lança em $nome', ({ l, c, h }) => {
+    expect(() => oklchToSrgb(l, c, h)).not.toThrow()
+  })
+})
+
+/** A folha de verdade, lida do disco como `design-system.test.ts:142` monta o caminho dele. */
+const CAMINHO_DA_FOLHA = fileURLToPath(new URL('../../src/renderer/index.css', import.meta.url))
+
+describe('`parseThemes` lê a folha do disco', () => {
+  const combinacoes = parseThemes(readFileSync(CAMINHO_DA_FOLHA, 'utf8'))
+
+  it('acha as duas combinações declaradas', () => {
+    expect([...combinacoes.keys()]).toEqual(['lavanda', 'ametista'])
+  })
+
+  it.each(['lavanda', 'ametista'] as const)('a %s traz os onze tokens', (nome) => {
+    expect(combinacoes.get(nome)?.size).toBe(11)
+  })
+
+  it('o valor chega inteiro e sem o `\\r` do CRLF grudado no fim', () => {
+    // Este é o ponto em que um parser escrito no Linux passa e aqui falha: sem o `.trim()`, o valor
+    // sairia daqui como `oklch(…)\r` e não casaria com nada em `parseOklch` — um vermelho que
+    // acusaria a folha, que está intacta.
+    expect(combinacoes.get('lavanda')?.get('--background')).toBe('oklch(93.88% 0.033 300.19)')
+  })
+})
+
+describe('`parseThemes` não se perde na sintaxe da folha', () => {
+  /**
+   * Aspas duplas no seletor. O Prettier deste repo normaliza para aspas simples e é assim que a folha
+   * está escrita — o parser aceita as duas porque o custo é um caractere e o modo de falha seria o
+   * app abrir sem cor nenhuma.
+   */
+  const FOLHA_EM_ASPAS_DUPLAS = [
+    '[data-theme="lavanda"] {',
+    '  --background: oklch(93.88% 0.033 300.19);',
+    '  --main: oklch(70.28% 0.1753 295.36);',
+    '}',
+  ].join('\r\n')
+
+  /** Um `}` no meio do bloco, dentro de comentário: sem apagar comentários antes, ele fecha cedo. */
+  const FOLHA_COM_CHAVE_EM_COMENTARIO = [
+    "[data-theme='lavanda'] {",
+    '  --background: oklch(93.88% 0.033 300.19);',
+    '  /* uma chave } aqui no meio, e o bloco terminaria antes da hora */',
+    '  --main: oklch(70.28% 0.1753 295.36);',
+    '}',
+  ].join('\r\n')
+
+  it.each([
+    { nome: 'com o seletor em aspas duplas', folha: FOLHA_EM_ASPAS_DUPLAS },
+    { nome: 'com um `}` dentro de comentário', folha: FOLHA_COM_CHAVE_EM_COMENTARIO },
+  ])('devolve o bloco inteiro $nome', ({ folha }) => {
+    // Os dois tokens, e não só o primeiro: é a segunda declaração — a que vem depois da armadilha —
+    // que prova que o bloco não foi cortado no meio.
+    expect([...(parseThemes(folha).get('lavanda') ?? [])]).toEqual([
+      ['--background', 'oklch(93.88% 0.033 300.19)'],
+      ['--main', 'oklch(70.28% 0.1753 295.36)'],
+    ])
+  })
+})
+
+describe('`parseOklch`', () => {
+  it.each([
+    { valor: 'oklch(70.28% 0.1753 295.36)', esperado: [70.28, 0.1753, 295.36] },
+    { valor: 'oklch(100% 0 0)', esperado: [100, 0, 0] },
+  ])('lê $valor', ({ valor, esperado }) => {
+    expect(parseOklch(valor)).toEqual(esperado)
+  })
+
+  it('lança no que não é cor da folha, com o valor cru na mensagem', () => {
+    // Um hex é o engano mais provável — é o formato que o main escrevia à mão antes deste card.
+    expect(() => parseOklch('#eee6fe')).toThrow('#eee6fe')
+  })
+})
+
+describe('`resolveTheme` lê `OC_THEME`', () => {
+  it.each([
+    { nome: 'ausente', raw: undefined },
+    { nome: 'vazia', raw: '' },
+    { nome: 'só espaço', raw: '  ' },
+  ])('cai na lavanda com a variável $nome', ({ raw }) => {
+    expect(resolveTheme(raw)).toBe('lavanda')
+  })
+
+  it.each([{ raw: 'ametista' }, { raw: ' ametista ' }])('aceita `$raw`', ({ raw }) => {
+    expect(resolveTheme(raw)).toBe('ametista')
+  })
+
+  /**
+   * O lado oposto, e é ele que dá sentido ao de cima: valor **presente e inválido** lança, em vez de
+   * cair na lavanda. `Ametista` está aqui junto de `roxo` porque a comparação é sensível a
+   * maiúsculas de propósito — os nomes são minúsculos, e a maiúscula é engano de quem digitou.
+   */
+  it.each([
+    { nome: 'a maiúscula, que é engano de digitação', raw: 'Ametista' },
+    { nome: 'a combinação que não existe', raw: 'roxo' },
+  ])('lança em $nome, com o valor cru na mensagem', ({ raw }) => {
+    expect(() => resolveTheme(raw)).toThrow(`OC_THEME inválido: ${raw}`)
+  })
+
+  it('a mensagem preserva o espaço invisível em vez de aparar antes de reclamar', () => {
+    // O valor cru e não o aparado: quem digitou ` roxo` precisa ver o espaço no erro, senão a
+    // mensagem descreve um valor que a pessoa não escreveu.
+    expect(() => resolveTheme(' roxo')).toThrow('OC_THEME inválido:  roxo')
+  })
+})
+
+describe('`windowBackground` tira a cor da janela da folha', () => {
+  it.each([
+    // O hex que estava escrito à mão em `src/main/index.ts` antes deste card: é ele que prova que
+    // trocar o literal pela folha é no-op para o tema de hoje.
+    { theme: 'lavanda', esperado: '#eee6fe' },
+    { theme: 'ametista', esperado: '#e6eafc' },
+  ] as const)('a janela da $theme abre em $esperado', ({ theme, esperado }) => {
+    expect(windowBackground(theme)).toBe(esperado)
+  })
+})

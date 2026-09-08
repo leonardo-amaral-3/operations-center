@@ -5,18 +5,37 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
 import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron'
 
-import { BoardReader, RepoIndex, SessionHost } from '../core'
+import {
+  BoardFinder,
+  BoardReader,
+  CardReader,
+  ConversationIndex,
+  DangerIndex,
+  RepoIndex,
+  SessionHost,
+} from '../core'
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen } from '../shared/ipc'
-import { registerBoardIpc } from './board'
-import type { BoardIpcOptions } from './board'
+import { THEME_FLAG } from '../shared/theme'
+import { registerBoardsIpc } from './boards'
+import { registerCardIpc } from './card'
+import {
+  inspectSession,
+  loadConversations,
+  readTranscript,
+  registerConversationIpc,
+  saveConversations,
+} from './conversations'
+import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
 import { createFixtureGraphQL } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
 import { registerSessionIpc } from './ipc'
 import { judgeNavigation } from './navigation'
+import { loadActiveBoard, saveActiveBoard } from './preferences'
 import { gitOrigin, scanSessionFolders } from './repos'
+import { resolveTheme, windowBackground } from './theme'
 
 /**
  * A pasta de trabalho da sessão **sem cartão** — a da fatia vertical. Sem `OC_CWD`, é a raiz do repo:
@@ -55,44 +74,53 @@ function resolveScreen(): Screen {
   return process.env.OC_SCREEN === 'chat' ? 'chat' : 'kanban'
 }
 
-/** Qual board ler. O default é o Operations Center; o mesmo binário serve outro board pelo ambiente. */
-function resolveBoard(): BoardIpcOptions {
-  const raw = process.env.OC_PROJECT_NUMBER
-  const number = raw === undefined || raw === '' ? 2 : Number(raw)
-
-  // Valor inválido **lança**, em vez de cair no default: abrir o board 2 com toda a confiança do
-  // mundo quando pediram outro é o pior modo de falha que existe aqui.
-  if (!Number.isInteger(number) || number < 1) {
-    throw new Error(`OC_PROJECT_NUMBER inválido: ${String(raw)}`)
-  }
-
-  return { owner: process.env.OC_PROJECT_OWNER || 'leonardo-amaral-3', number }
-}
-
 /**
- * Qual cliente o `core` recebe. `OC_BOARD_FIXTURE` é a porta do smoke: com ela o app lê um arquivo e
+ * Qual cliente o `core` recebe. `OC_BOARD_FIXTURE` é a porta do smoke: com ela o app lê arquivo e
  * não toca a rede; sem ela, é o GitHub de verdade, com o token do `gh`.
+ *
+ * `OC_CARD_FIXTURE` e `OC_BOARDS_FIXTURE` são as outras duas metades — o conteúdo do cartão e a
+ * descoberta — e **só são consultadas quando a do board existe**: fora do smoke não há fixture
+ * nenhuma, e uma delas sozinha só poderia servir cartões ou abas que o board de verdade nunca
+ * prometeu. Quem decide fixture-vs-GitHub continua sendo `OC_BOARD_FIXTURE` sozinha.
  */
 function createGraphQL(): GraphQLFn {
-  const fixture = process.env.OC_BOARD_FIXTURE
+  const board = process.env.OC_BOARD_FIXTURE
 
-  return fixture ? createFixtureGraphQL(fixture) : createGitHubGraphQL(createGhTokenSource())
+  return board
+    ? createFixtureGraphQL({
+        board,
+        boards: process.env.OC_BOARDS_FIXTURE,
+        cards: process.env.OC_CARD_FIXTURE,
+      })
+    : createGitHubGraphQL(createGhTokenSource())
 }
 
 const screen = resolveScreen()
+const theme = resolveTheme(process.env.OC_THEME)
+// A cor calculada **no topo do módulo**, e não dentro de `createWindow`: aquela função roda dentro
+// do `void app.whenReady().then(...)` lá embaixo, e o `void` é justamente o que faria um `throw`
+// dali virar rejeição não tratada em vez de derrubar a subida. Aqui, folha malformada ou combinação
+// sem `--background` param o app antes de existir janela — que é a hora certa de reclamar.
+const windowColor = windowBackground(theme)
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1100,
     height: 760,
+    // A cor da janela sai da folha do design system, convertida para sRGB — nunca escrita aqui. Sem
+    // ela o Chromium pinta a janela de branco antes do primeiro paint do renderer e a abertura
+    // pisca; com um hex à mão, ela pisca no dia em que a folha mudar e ninguém lembrar deste
+    // arquivo.
+    backgroundColor: windowColor,
     show: false,
     autoHideMenuBar: true,
     title: 'Operations Center',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      // Como o preload sabe qual tela desenhar. É o mecanismo documentado do Electron para passar
-      // dados ao preload e funciona com `sandbox: true` — ler `process.env` lá dentro não.
-      additionalArguments: [`--oc-screen=${screen}`],
+      // Como o preload sabe qual tela desenhar e qual combinação de cores vale. É o mecanismo
+      // documentado do Electron para passar dados ao preload e funciona com `sandbox: true` — ler
+      // `process.env` lá dentro não.
+      additionalArguments: [`--oc-screen=${screen}`, `${THEME_FLAG}${theme}`],
       // O renderer nunca vê Node. Toda capacidade dele passa pelo contrato do preload.
       nodeIntegration: false,
       contextIsolation: true,
@@ -156,10 +184,34 @@ const host = new SessionHost({
 // **O IPC de board só é registrado no kanban.** Assim o smoke da fatia vertical (`OC_SCREEN=chat`)
 // não tem como tocar o GitHub nem por acidente: o determinismo dele fica garantido por construção,
 // e não por disciplina de quem escreve o teste.
-const boardIpc =
+//
+// `createGraphQL()` uma vez por leitor — aqui já são dois, o descobridor e o leitor de board —, pela
+// razão declarada logo abaixo: a função não guarda estado e o `TokenSource` do `gh` tem cache
+// próprio. Um cliente por leitor mantém a injeção explícita e não introduz um singleton.
+const boardsIpc =
   screen === 'kanban'
-    ? registerBoardIpc(new BoardReader({ graphql: createGraphQL() }), resolveBoard())
+    ? registerBoardsIpc({
+        finder: new BoardFinder({ graphql: createGraphQL() }),
+        reader: new BoardReader({ graphql: createGraphQL() }),
+        // A aba lembrada, no `preferences.json` do mesmo `OC_STATE_DIR` do `conversations.json`. As
+        // duas pontas de IO vêm do main pela mesma razão que as do `ConversationIndex`: quem lê e
+        // escreve disco é ele, e o observador fica testável sem tocar em arquivo nenhum.
+        loadActive: loadActiveBoard,
+        saveActive: saveActiveBoard,
+      })
     : null
+
+// O conteúdo de um card corre pelo mesmo portão, e pela mesma razão: é leitura do GitHub. Sem
+// retrato de board não há como traduzir `itemId` em coordenada, então fora do kanban o canal
+// simplesmente não existe.
+if (boardsIpc) {
+  registerCardIpc(new CardReader({ graphql: createGraphQL() }), {
+    // Arrow, e **não** `cardById: boardsIpc.cardById`: o `unbound-method` do ESLint reprova a
+    // referência solta a um método — mesmo aqui, onde ela funcionaria, porque `cardById` fecha
+    // sobre o retrato e não sobre `this`.
+    cardById: (itemId) => boardsIpc.cardById(itemId),
+  })
+}
 
 // O mapa `repo → pasta local` do RF-10. As duas pontas de IO são do main: o core não lê disco nem
 // spawna processo.
@@ -170,11 +222,60 @@ const repos = new RepoIndex({ scan: scanSessionFolders(), origin: gitOrigin })
 // varredura ali seria um `git` por pasta de sessão da máquina para ninguém.
 if (screen === 'kanban') void repos.refresh()
 
+// O único dado durável do app. As quatro pontas de IO são do main pela mesma razão das do
+// `RepoIndex`: o core não lê disco nem chama o SDK.
+const conversations = new ConversationIndex({
+  load: loadConversations,
+  save: saveConversations,
+  inspect: inspectSession,
+  transcript: readTranscript,
+  // Referência para a frente de propósito: o índice não conhece Electron, e quem publica pela
+  // ponte é o main. O callback só roda quando algo muda, muito depois das duas declarações.
+  onChange: publicarConversas,
+})
+
+// **Só no kanban**, pela mesma razão de `repos.refresh()`: a tela de chat não tem cartão, e
+// verificar vínculo de cartão nenhum é trabalho para ninguém.
+const conversationIpc = screen === 'kanban' ? registerConversationIpc(conversations) : null
+
+// Em paralelo à janela, como a primeira leitura do board: a verificação do que está gravado começa
+// antes de o renderer pedir o primeiro retrato, e o `onChange` corrige a tela quando ela terminar.
+conversationIpc?.refresh()
+
+function publicarConversas(): void {
+  conversationIpc?.publish()
+}
+
+// O segundo dado durável do app, em arquivo próprio — ver `src/main/danger.ts` para o porquê de não
+// ser mais uma chave no `conversations.json`. As duas pontas de IO são do main pela mesma razão das
+// do `ConversationIndex`: o core não lê disco.
+const danger = new DangerIndex({
+  load: loadDangerous,
+  save: saveDangerous,
+  // Referência para a frente, como a de `publicarConversas`: o índice não conhece Electron.
+  onChange: publicarPerigo,
+})
+
+// **Só no kanban**, pela mesma razão do de conversas: a tela de chat não tem cartão, e é ela quem
+// mantém o portão de hoje sem exceção (decisão 13). Sem este registro, o canal de leitura da marca
+// simplesmente não existe lá.
+const dangerIpc = screen === 'kanban' ? registerDangerIpc(danger) : null
+
+// Em paralelo à janela, como a primeira leitura do board: o disco é lido antes de o renderer pedir o
+// primeiro retrato, e o `onChange` corrige a tela quando ele responder.
+dangerIpc?.refresh()
+
+function publicarPerigo(): void {
+  dangerIpc?.publish()
+}
+
 const sessionIpc = registerSessionIpc(host, {
+  conversations,
+  danger,
   resolveCwd: async (itemId) => {
     if (itemId === undefined) return resolveCwd()
 
-    const card = boardIpc?.cardById(itemId)
+    const card = boardsIpc?.cardById(itemId)
     if (!card) return null
 
     let path = repos.pathFor(card.repository)
@@ -203,7 +304,7 @@ const sessionIpc = registerSessionIpc(host, {
 ipcMain.handle(
   IPC_INVOKE.chooseFolder,
   async (event, request: ChooseFolderRequest): Promise<ChooseFolderResult> => {
-    const card = boardIpc?.cardById(request.itemId)
+    const card = boardsIpc?.cardById(request.itemId)
     if (!card) return { chosen: false }
 
     // Preso à janela que perguntou: o seletor é modal dela, e não uma caixa solta que se perde atrás
@@ -226,21 +327,21 @@ ipcMain.handle(
 
 void app.whenReady().then(() => {
   const window = createWindow()
-  if (!boardIpc) return
+  if (!boardsIpc) return
 
   // Em paralelo à criação da janela: a leitura começa antes de o renderer pedir.
-  boardIpc.refresh()
+  boardsIpc.refresh()
 
   // Os dois gatilhos moram aqui dentro porque o `powerMonitor` do Electron só pode ser usado depois
   // do evento `ready` — registrá-lo no topo do módulo lança.
   window.on('focus', () => {
-    boardIpc.refresh()
+    boardsIpc.refresh()
   })
 
   // Necessário além do `focus`: quando a máquina acorda, a janela costuma já estar em foco e nenhum
   // evento de foco dispara. Sem ele, quem nunca fecha o app começaria a manhã com o board de ontem.
   powerMonitor.on('resume', () => {
-    boardIpc.refresh()
+    boardsIpc.refresh()
   })
 })
 

@@ -1,15 +1,23 @@
 {
   "_comment": [
-    "Envelope CRU da resposta do GitHub — não um Board já traduzido. Serve o smoke do kanban pelo",
-    "`OC_BOARD_FIXTURE`, via src/main/github/fixture.ts, e é dele que tests/smoke/kanban.smoke.spec.ts",
-    "deriva TODO valor esperado: nenhum optionId, número de card ou nome de coluna é escrito à mão lá.",
+    "Envelopes CRUS do BOARD_QUERY, um por board que a descoberta devolve — não um Board já",
+    "traduzido. É um MAPA `owner/number` → envelope, sob a chave `boards`: a mesma coordenada que o",
+    "BoardReader.read recebe, e a mesma chave que tests/fixtures/boards.json faz nascer. Serve os",
+    "smokes pelo `OC_BOARD_FIXTURE`, via src/main/github/fixture.ts, e é dele que",
+    "tests/smoke/kanban.smoke.spec.ts deriva TODO valor esperado: nenhum optionId, número de card ou",
+    "nome de coluna é escrito à mão lá. Chave ausente LANÇA, de propósito.",
     "",
-    "CAPTURA REAL (2026-09-05): tudo que não está listado como sintético abaixo veio de uma execução do",
-    "BOARD_QUERY contra o board 2 de leonardo-amaral-3, salvo como a API devolveu — inclusive o",
-    "`errors` parcial com o NOT_FOUND do alias `organization`, que é a resposta normal de um Project",
-    "de usuário e o caso que a regra 2 do BoardReader existe para tolerar.",
+    "AS TRÊS CHAVES são exatamente os três boards que boards.json faz a descoberta devolver. Entrou",
+    "board novo na esteira lá? Precisa de entrada aqui.",
     "",
-    "SINTÉTICOS (5, acrescentados à mão, sempre no fim de items.nodes, ids prefixados PVTI_sintetico_):",
+    "=== leonardo-amaral-3/2 — CAPTURA REAL (2026-09-05), INTOCADA ===",
+    "Tudo que não está listado como sintético abaixo veio de uma execução do BOARD_QUERY contra o",
+    "board 2 de leonardo-amaral-3, salvo como a API devolveu — inclusive o `errors` parcial com o",
+    "NOT_FOUND do alias `organization`, que é a resposta normal de um Project de usuário e o caso que",
+    "a regra 2 do BoardReader existe para tolerar. É o PRIMEIRO da ordem de descoberta, e portanto o",
+    "board que os quatro smokes desenham.",
+    "",
+    "SINTÉTICOS DELE (5, acrescentados à mão, sempre no fim de items.nodes, ids PVTI_sintetico_):",
     "  · PVTI_sintetico_issue_fechada — issue FECHADA em ✅ Produção e SEM responsável. Prova que issue",
     "    fechada entra (sem ela a última coluna nasceria vazia, o sintoma que a regra existe para",
     "    evitar) e cobre o cartão sem dono. O board real hoje não tem nenhum dos dois.",
@@ -20,412 +28,660 @@
     "    especificamente, e não de um item sem campo nenhum.",
     "  · PVTI_sintetico_repo_forasteiro — issue de um repo que NÃO existe nesta máquina, em coluna",
     "    conversável (🎯 Especificação). É a borda do CA-5 do card #6: sem ela todos os cartões",
-    "    apontariam para o mesmo repo que o smoke resolve, e 'não sei onde este repo vive' nunca",
+    "    apontariam para o mesmo repo que o smoke resolve, e \"não sei onde este repo vive\" nunca",
     "    seria exercitado de ponta a ponta. O repo é forasteiro pelo NOME — nada a instalar.",
     "",
-    "MUDOU O BOARD_QUERY? RECAPTURE. Uma fixture capturada com uma versão anterior da consulta fica",
-    "verde contra dados que a API não devolve mais — é o único ponto deste card onde algo pode",
-    "apodrecer sem teste vermelho. Recapture com o documento que estiver em src/core/board/query.ts e",
-    "recoloque os cinco sintéticos no fim."
+    "=== ICSF-Solutions/19 e dono-sintetico/901 — INTEIRAMENTE SINTÉTICOS ===",
+    "Os dois outros boards da esteira. Os itens são escritos à mão, e não capturados: arrastar os 37",
+    "cards da Notoria para um repo pessoal traria ruído sem provar nada a mais — dois ou três cartões",
+    "bastam para a troca de aba da Fase 1. Os NÚMEROS de issue (910+) não colidem com os do board 2,",
+    "para que a entrada em cards.json de um nunca sirva ao outro por acidente.",
+    "",
+    "Os `optionId` deles são DIFERENTES dos do board 2 de propósito (prefixos `plat` e `sint`): o",
+    "optionId pertence ao board, e não à norma da esteira. Se algum dia o app fixar um id do board 2,",
+    "estes dois boards ficam vermelhos na hora — que é exatamente o que o CA-1 pede.",
+    "",
+    "O envelope do 19 vem pelo alias `organization` (com o NOT_FOUND do `user`), e o do 901 pelo",
+    "`user` (com o NOT_FOUND do `organization`): os dois lados do alias duplo exercitados, e não só o",
+    "que o board 2 já cobria sozinho.",
+    "",
+    "MUDOU O BOARD_QUERY? RECAPTURE a entrada do board 2. Uma fixture capturada com uma versão",
+    "anterior da consulta fica verde contra dados que a API não devolve mais. Recapture com o",
+    "documento que estiver em src/core/board/query.ts e recoloque os cinco sintéticos no fim.",
+    "",
+    "ESTA FIXTURE TEM PAR: tests/fixtures/cards.json guarda o conteúdo de cada issue daqui que vira",
+    "cartão. Mudou o CARD_QUERY, ou entrou/saiu cartão desta lista? Recapture cards.json também — uma",
+    "entrada faltando lá LANÇA na abertura do cartão, de propósito."
   ],
-  "data": {
-    "user": {
-      "projectV2": {
-        "title": "Operations Center",
-        "field": {
-          "options": [
-            {
-              "id": "4cf10d53",
-              "name": "📥 Triagem"
+  "boards": {
+    "leonardo-amaral-3/2": {
+      "data": {
+        "user": {
+          "projectV2": {
+            "title": "Operations Center",
+            "field": {
+              "options": [
+                {
+                  "id": "4cf10d53",
+                  "name": "📥 Triagem"
+                },
+                {
+                  "id": "4c049744",
+                  "name": "📋 Backlog"
+                },
+                {
+                  "id": "b003f501",
+                  "name": "🎯 Especificação"
+                },
+                {
+                  "id": "da732a01",
+                  "name": "🔨 Implementação"
+                },
+                {
+                  "id": "b3680a66",
+                  "name": "👀 Revisão"
+                },
+                {
+                  "id": "106b9865",
+                  "name": "🧪 Validação em Dev"
+                },
+                {
+                  "id": "d026d458",
+                  "name": "🚂 Release"
+                },
+                {
+                  "id": "98bb4dfe",
+                  "name": "✅ Produção"
+                }
+              ]
             },
-            {
-              "id": "4c049744",
-              "name": "📋 Backlog"
-            },
-            {
-              "id": "b003f501",
-              "name": "🎯 Especificação"
-            },
-            {
-              "id": "da732a01",
-              "name": "🔨 Implementação"
-            },
-            {
-              "id": "b3680a66",
-              "name": "👀 Revisão"
-            },
-            {
-              "id": "106b9865",
-              "name": "🧪 Validação em Dev"
-            },
-            {
-              "id": "d026d458",
-              "name": "🚂 Release"
-            },
-            {
-              "id": "98bb4dfe",
-              "name": "✅ Produção"
+            "items": {
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": "Y3Vyc29yOnYyOpK5MDAwMDAwMDAuMzMzMzMzMzMzMzMzMzMzM84OYopX"
+              },
+              "nodes": [
+                {
+                  "id": "PVTI_lAHODZRy6M4Bif00zg5heTY",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 1,
+                    "title": "Fundar o operations-center: objetivo, necessidades e estrutura inicial",
+                    "url": "https://github.com/leonardo-amaral-3/operations-center/issues/1",
+                    "closed": false,
+                    "repository": {
+                      "nameWithOwner": "leonardo-amaral-3/operations-center"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {},
+                      {},
+                      {
+                        "optionId": "b3680a66",
+                        "name": "👀 Revisão",
+                        "field": {
+                          "name": "Status"
+                        }
+                      },
+                      {
+                        "optionId": "b6b3a417",
+                        "name": "✨ Melhoria",
+                        "field": {
+                          "name": "Tipo"
+                        }
+                      },
+                      {
+                        "optionId": "88b477d4",
+                        "name": "Completa",
+                        "field": {
+                          "name": "Rota"
+                        }
+                      },
+                      {
+                        "optionId": "432503f9",
+                        "name": "Comum",
+                        "field": {
+                          "name": "Módulo"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_lAHODZRy6M4Bif00zg5iRPw",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 2,
+                    "title": "Peer dependencies do claude-agent-sdk ausentes: metade dos tipos do SDK não resolve",
+                    "url": "https://github.com/leonardo-amaral-3/operations-center/issues/2",
+                    "closed": false,
+                    "repository": {
+                      "nameWithOwner": "leonardo-amaral-3/operations-center"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {},
+                      {},
+                      {
+                        "optionId": "4cf10d53",
+                        "name": "📥 Triagem",
+                        "field": {
+                          "name": "Status"
+                        }
+                      },
+                      {
+                        "optionId": "353893bc",
+                        "name": "🧰 Débito técnico",
+                        "field": {
+                          "name": "Tipo"
+                        }
+                      },
+                      {
+                        "optionId": "74cf49fc",
+                        "name": "S2",
+                        "field": {
+                          "name": "Severidade"
+                        }
+                      },
+                      {
+                        "optionId": "432503f9",
+                        "name": "Comum",
+                        "field": {
+                          "name": "Módulo"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_lAHODZRy6M4Bif00zg5iilc",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 4,
+                    "title": "Ler o board do GitHub e desenhar o kanban somente-leitura",
+                    "url": "https://github.com/leonardo-amaral-3/operations-center/issues/4",
+                    "closed": false,
+                    "repository": {
+                      "nameWithOwner": "leonardo-amaral-3/operations-center"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {},
+                      {},
+                      {
+                        "optionId": "da732a01",
+                        "name": "🔨 Implementação",
+                        "field": {
+                          "name": "Status"
+                        }
+                      },
+                      {
+                        "optionId": "b6b3a417",
+                        "name": "✨ Melhoria",
+                        "field": {
+                          "name": "Tipo"
+                        }
+                      },
+                      {
+                        "optionId": "88b477d4",
+                        "name": "Completa",
+                        "field": {
+                          "name": "Rota"
+                        }
+                      },
+                      {
+                        "optionId": "432503f9",
+                        "name": "Comum",
+                        "field": {
+                          "name": "Módulo"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_sintetico_issue_fechada",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 901,
+                    "title": "Sintético: issue fechada em ✅ Produção, e sem responsável",
+                    "url": "https://github.com/leonardo-amaral-3/operations-center/issues/901",
+                    "closed": true,
+                    "repository": {
+                      "nameWithOwner": "leonardo-amaral-3/operations-center"
+                    },
+                    "assignees": {
+                      "nodes": []
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {
+                        "optionId": "98bb4dfe",
+                        "name": "✅ Produção",
+                        "field": {
+                          "name": "Status"
+                        }
+                      },
+                      {
+                        "optionId": "5bef632a",
+                        "name": "🐞 Bug",
+                        "field": {
+                          "name": "Tipo"
+                        }
+                      },
+                      {
+                        "optionId": "51e34c05",
+                        "name": "S3",
+                        "field": {
+                          "name": "Severidade"
+                        }
+                      },
+                      {
+                        "optionId": "6af14fdb",
+                        "name": "Hotfix",
+                        "field": {
+                          "name": "Rota"
+                        }
+                      },
+                      {
+                        "optionId": "432503f9",
+                        "name": "Comum",
+                        "field": {
+                          "name": "Módulo"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_sintetico_rascunho",
+                  "content": {
+                    "__typename": "DraftIssue"
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {
+                        "optionId": "4c049744",
+                        "name": "📋 Backlog",
+                        "field": {
+                          "name": "Status"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_sintetico_pull_request",
+                  "content": {
+                    "__typename": "PullRequest"
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {
+                        "optionId": "b3680a66",
+                        "name": "👀 Revisão",
+                        "field": {
+                          "name": "Status"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_sintetico_sem_status",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 902,
+                    "title": "Sintético: issue no board sem Status — não pertence a coluna nenhuma",
+                    "url": "https://github.com/leonardo-amaral-3/operations-center/issues/902",
+                    "closed": false,
+                    "repository": {
+                      "nameWithOwner": "leonardo-amaral-3/operations-center"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {
+                        "optionId": "b6b3a417",
+                        "name": "✨ Melhoria",
+                        "field": {
+                          "name": "Tipo"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_sintetico_repo_forasteiro",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 903,
+                    "title": "Sintético: card de um repo que não existe nesta máquina, em coluna conversável",
+                    "url": "https://github.com/leonardo-amaral-3/repo-forasteiro/issues/903",
+                    "closed": false,
+                    "repository": {
+                      "nameWithOwner": "leonardo-amaral-3/repo-forasteiro"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {
+                        "optionId": "b003f501",
+                        "name": "🎯 Especificação",
+                        "field": {
+                          "name": "Status"
+                        }
+                      },
+                      {
+                        "optionId": "b6b3a417",
+                        "name": "✨ Melhoria",
+                        "field": {
+                          "name": "Tipo"
+                        }
+                      },
+                      {
+                        "optionId": "432503f9",
+                        "name": "Comum",
+                        "field": {
+                          "name": "Módulo"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
             }
-          ]
+          }
         },
-        "items": {
-          "pageInfo": {
-            "hasNextPage": false,
-            "endCursor": "Y3Vyc29yOnYyOpK5MDAwMDAwMDAuMzMzMzMzMzMzMzMzMzMzM84OYopX"
-          },
-          "nodes": [
-            {
-              "id": "PVTI_lAHODZRy6M4Bif00zg5heTY",
-              "content": {
-                "__typename": "Issue",
-                "number": 1,
-                "title": "Fundar o operations-center: objetivo, necessidades e estrutura inicial",
-                "url": "https://github.com/leonardo-amaral-3/operations-center/issues/1",
-                "closed": false,
-                "repository": {
-                  "nameWithOwner": "leonardo-amaral-3/operations-center"
-                },
-                "assignees": {
-                  "nodes": [
-                    {
-                      "login": "leonardo-amaral-3"
-                    }
-                  ]
-                }
-              },
-              "fieldValues": {
-                "nodes": [
-                  {},
-                  {},
-                  {},
-                  {
-                    "optionId": "b3680a66",
-                    "name": "👀 Revisão",
-                    "field": {
-                      "name": "Status"
-                    }
-                  },
-                  {
-                    "optionId": "b6b3a417",
-                    "name": "✨ Melhoria",
-                    "field": {
-                      "name": "Tipo"
-                    }
-                  },
-                  {
-                    "optionId": "88b477d4",
-                    "name": "Completa",
-                    "field": {
-                      "name": "Rota"
-                    }
-                  },
-                  {
-                    "optionId": "432503f9",
-                    "name": "Comum",
-                    "field": {
-                      "name": "Módulo"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "id": "PVTI_lAHODZRy6M4Bif00zg5iRPw",
-              "content": {
-                "__typename": "Issue",
-                "number": 2,
-                "title": "Peer dependencies do claude-agent-sdk ausentes: metade dos tipos do SDK não resolve",
-                "url": "https://github.com/leonardo-amaral-3/operations-center/issues/2",
-                "closed": false,
-                "repository": {
-                  "nameWithOwner": "leonardo-amaral-3/operations-center"
-                },
-                "assignees": {
-                  "nodes": [
-                    {
-                      "login": "leonardo-amaral-3"
-                    }
-                  ]
-                }
-              },
-              "fieldValues": {
-                "nodes": [
-                  {},
-                  {},
-                  {},
-                  {
-                    "optionId": "4cf10d53",
-                    "name": "📥 Triagem",
-                    "field": {
-                      "name": "Status"
-                    }
-                  },
-                  {
-                    "optionId": "353893bc",
-                    "name": "🧰 Débito técnico",
-                    "field": {
-                      "name": "Tipo"
-                    }
-                  },
-                  {
-                    "optionId": "74cf49fc",
-                    "name": "S2",
-                    "field": {
-                      "name": "Severidade"
-                    }
-                  },
-                  {
-                    "optionId": "432503f9",
-                    "name": "Comum",
-                    "field": {
-                      "name": "Módulo"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "id": "PVTI_lAHODZRy6M4Bif00zg5iilc",
-              "content": {
-                "__typename": "Issue",
-                "number": 4,
-                "title": "Ler o board do GitHub e desenhar o kanban somente-leitura",
-                "url": "https://github.com/leonardo-amaral-3/operations-center/issues/4",
-                "closed": false,
-                "repository": {
-                  "nameWithOwner": "leonardo-amaral-3/operations-center"
-                },
-                "assignees": {
-                  "nodes": [
-                    {
-                      "login": "leonardo-amaral-3"
-                    }
-                  ]
-                }
-              },
-              "fieldValues": {
-                "nodes": [
-                  {},
-                  {},
-                  {},
-                  {
-                    "optionId": "da732a01",
-                    "name": "🔨 Implementação",
-                    "field": {
-                      "name": "Status"
-                    }
-                  },
-                  {
-                    "optionId": "b6b3a417",
-                    "name": "✨ Melhoria",
-                    "field": {
-                      "name": "Tipo"
-                    }
-                  },
-                  {
-                    "optionId": "88b477d4",
-                    "name": "Completa",
-                    "field": {
-                      "name": "Rota"
-                    }
-                  },
-                  {
-                    "optionId": "432503f9",
-                    "name": "Comum",
-                    "field": {
-                      "name": "Módulo"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "id": "PVTI_sintetico_issue_fechada",
-              "content": {
-                "__typename": "Issue",
-                "number": 901,
-                "title": "Sintético: issue fechada em ✅ Produção, e sem responsável",
-                "url": "https://github.com/leonardo-amaral-3/operations-center/issues/901",
-                "closed": true,
-                "repository": {
-                  "nameWithOwner": "leonardo-amaral-3/operations-center"
-                },
-                "assignees": {
-                  "nodes": []
-                }
-              },
-              "fieldValues": {
-                "nodes": [
-                  {},
-                  {
-                    "optionId": "98bb4dfe",
-                    "name": "✅ Produção",
-                    "field": {
-                      "name": "Status"
-                    }
-                  },
-                  {
-                    "optionId": "5bef632a",
-                    "name": "🐞 Bug",
-                    "field": {
-                      "name": "Tipo"
-                    }
-                  },
-                  {
-                    "optionId": "51e34c05",
-                    "name": "S3",
-                    "field": {
-                      "name": "Severidade"
-                    }
-                  },
-                  {
-                    "optionId": "6af14fdb",
-                    "name": "Hotfix",
-                    "field": {
-                      "name": "Rota"
-                    }
-                  },
-                  {
-                    "optionId": "432503f9",
-                    "name": "Comum",
-                    "field": {
-                      "name": "Módulo"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "id": "PVTI_sintetico_rascunho",
-              "content": {
-                "__typename": "DraftIssue"
-              },
-              "fieldValues": {
-                "nodes": [
-                  {},
-                  {
-                    "optionId": "4c049744",
-                    "name": "📋 Backlog",
-                    "field": {
-                      "name": "Status"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "id": "PVTI_sintetico_pull_request",
-              "content": {
-                "__typename": "PullRequest"
-              },
-              "fieldValues": {
-                "nodes": [
-                  {},
-                  {
-                    "optionId": "b3680a66",
-                    "name": "👀 Revisão",
-                    "field": {
-                      "name": "Status"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "id": "PVTI_sintetico_sem_status",
-              "content": {
-                "__typename": "Issue",
-                "number": 902,
-                "title": "Sintético: issue no board sem Status — não pertence a coluna nenhuma",
-                "url": "https://github.com/leonardo-amaral-3/operations-center/issues/902",
-                "closed": false,
-                "repository": {
-                  "nameWithOwner": "leonardo-amaral-3/operations-center"
-                },
-                "assignees": {
-                  "nodes": [
-                    {
-                      "login": "leonardo-amaral-3"
-                    }
-                  ]
-                }
-              },
-              "fieldValues": {
-                "nodes": [
-                  {},
-                  {
-                    "optionId": "b6b3a417",
-                    "name": "✨ Melhoria",
-                    "field": {
-                      "name": "Tipo"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "id": "PVTI_sintetico_repo_forasteiro",
-              "content": {
-                "__typename": "Issue",
-                "number": 903,
-                "title": "Sintético: card de um repo que não existe nesta máquina, em coluna conversável",
-                "url": "https://github.com/leonardo-amaral-3/repo-forasteiro/issues/903",
-                "closed": false,
-                "repository": {
-                  "nameWithOwner": "leonardo-amaral-3/repo-forasteiro"
-                },
-                "assignees": {
-                  "nodes": [
-                    {
-                      "login": "leonardo-amaral-3"
-                    }
-                  ]
-                }
-              },
-              "fieldValues": {
-                "nodes": [
-                  {},
-                  {
-                    "optionId": "b003f501",
-                    "name": "🎯 Especificação",
-                    "field": {
-                      "name": "Status"
-                    }
-                  },
-                  {
-                    "optionId": "b6b3a417",
-                    "name": "✨ Melhoria",
-                    "field": {
-                      "name": "Tipo"
-                    }
-                  },
-                  {
-                    "optionId": "432503f9",
-                    "name": "Comum",
-                    "field": {
-                      "name": "Módulo"
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      }
-    },
-    "organization": null
-  },
-  "errors": [
-    {
-      "type": "NOT_FOUND",
-      "path": ["organization"],
-      "locations": [
+        "organization": null
+      },
+      "errors": [
         {
-          "line": 4,
-          "column": 3
+          "type": "NOT_FOUND",
+          "path": ["organization"],
+          "locations": [
+            {
+              "line": 4,
+              "column": 3
+            }
+          ],
+          "message": "Could not resolve to an Organization with the login of 'leonardo-amaral-3'."
         }
-      ],
-      "message": "Could not resolve to an Organization with the login of 'leonardo-amaral-3'."
+      ]
+    },
+    "ICSF-Solutions/19": {
+      "data": {
+        "user": null,
+        "organization": {
+          "projectV2": {
+            "title": "Plataformas v2",
+            "field": {
+              "options": [
+                {
+                  "id": "plat1",
+                  "name": "📥 Triagem"
+                },
+                {
+                  "id": "plat2",
+                  "name": "📋 Backlog"
+                },
+                {
+                  "id": "plat3",
+                  "name": "🎯 Especificação"
+                },
+                {
+                  "id": "plat4",
+                  "name": "🔨 Implementação"
+                },
+                {
+                  "id": "plat5",
+                  "name": "👀 Revisão"
+                },
+                {
+                  "id": "plat6",
+                  "name": "🧪 Validação em Dev"
+                },
+                {
+                  "id": "plat7",
+                  "name": "🚂 Release"
+                },
+                {
+                  "id": "plat8",
+                  "name": "✅ Produção"
+                }
+              ]
+            },
+            "items": {
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              },
+              "nodes": [
+                {
+                  "id": "PVTI_sintetico_plat_espec",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 910,
+                    "title": "Sintético: cartão do Plataformas v2 em coluna conversável",
+                    "url": "https://github.com/ICSF-Solutions/plataformas/issues/910",
+                    "closed": false,
+                    "repository": {
+                      "nameWithOwner": "ICSF-Solutions/plataformas"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {
+                        "optionId": "plat3",
+                        "name": "🎯 Especificação",
+                        "field": {
+                          "name": "Status"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_sintetico_plat_revisao",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 911,
+                    "title": "Sintético: segundo cartão do Plataformas v2, em outra coluna",
+                    "url": "https://github.com/ICSF-Solutions/plataformas/issues/911",
+                    "closed": false,
+                    "repository": {
+                      "nameWithOwner": "ICSF-Solutions/plataformas"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {
+                        "optionId": "plat5",
+                        "name": "👀 Revisão",
+                        "field": {
+                          "name": "Status"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "errors": [
+        {
+          "type": "NOT_FOUND",
+          "path": ["user"],
+          "locations": [
+            {
+              "line": 3,
+              "column": 3
+            }
+          ],
+          "message": "Could not resolve to a User with the login of 'ICSF-Solutions'."
+        }
+      ]
+    },
+    "dono-sintetico/901": {
+      "data": {
+        "user": {
+          "projectV2": {
+            "title": "Sintético: board que roda a esteira",
+            "field": {
+              "options": [
+                {
+                  "id": "sint1",
+                  "name": "📥 Triagem"
+                },
+                {
+                  "id": "sint2",
+                  "name": "📋 Backlog"
+                },
+                {
+                  "id": "sint3",
+                  "name": "🎯 Especificação"
+                },
+                {
+                  "id": "sint4",
+                  "name": "🔨 Implementação"
+                },
+                {
+                  "id": "sint5",
+                  "name": "👀 Revisão"
+                },
+                {
+                  "id": "sint6",
+                  "name": "🧪 Validação em Dev"
+                },
+                {
+                  "id": "sint7",
+                  "name": "🚂 Release"
+                },
+                {
+                  "id": "sint8",
+                  "name": "✅ Produção"
+                }
+              ]
+            },
+            "items": {
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              },
+              "nodes": [
+                {
+                  "id": "PVTI_sintetico_terceiro_board",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 920,
+                    "title": "Sintético: o único cartão do 17º board",
+                    "url": "https://github.com/dono-sintetico/repo-sintetico/issues/920",
+                    "closed": false,
+                    "repository": {
+                      "nameWithOwner": "dono-sintetico/repo-sintetico"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {
+                        "optionId": "sint2",
+                        "name": "📋 Backlog",
+                        "field": {
+                          "name": "Status"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "organization": null
+      },
+      "errors": [
+        {
+          "type": "NOT_FOUND",
+          "path": ["organization"],
+          "locations": [
+            {
+              "line": 4,
+              "column": 3
+            }
+          ],
+          "message": "Could not resolve to an Organization with the login of 'dono-sintetico'."
+        }
+      ]
     }
-  ]
+  }
 }

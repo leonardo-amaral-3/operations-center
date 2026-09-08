@@ -1,6 +1,158 @@
 @import 'tailwindcss';
 
 /*
+ * O design system: neobrutalism.dev sobre shadcn/ui, em modo claro.
+ *
+ * A folha tem um **conjunto** de combinações de cores, não uma. Cada `[data-theme='<nome>']` declara
+ * os onze tokens de cor por inteiro, e nenhum deles mora no `:root`. O ganho é que uma combinação
+ * incompleta não herda em silêncio da anterior — e quem garante isso é `design-system.test.ts`, que
+ * exige os onze de cada bloco pelo nome, não a cascata: sem o teste, faltar um token daria fundo
+ * transparente aqui e sombra sem cor ali, cada um falhando à sua maneira. O preço é a repetição das
+ * quatro cores de estado, hoje iguais nas duas; o ganho é que a combinação **pode** reafiná-las, que
+ * é o que o CA-4 do #29 pressupõe ao falar em "toda combinação".
+ *
+ * **Ainda não há modo escuro, e continua sendo de propósito.** O que o #29 trouxe foi o mecanismo,
+ * não o escuro: o argumento do #8 não mudou — com superfície escura a borda preta de 2px fica mais
+ * escura que o fundo, deixa de recortar o cartão e passa a afundá-lo, que é o oposto do que o
+ * neobrutalismo faz. Um escuro aqui também precisaria de `--attention-foreground` e companhia, que
+ * nenhuma das duas combinações claras precisa.
+ *
+ * **Toda cor tem de caber no sRGB.** Fora do gamut o Chromium remapeia por conta própria (redução de
+ * croma em OKLCh), enquanto `src/main/color.ts` — que converte o `--background` desta folha para
+ * pintar a janela antes do primeiro paint — clipa por canal. Os dois discordariam, e a moldura
+ * ficaria de uma cor e o canvas de outra. Por isso a conversão lança fora do gamut e o teste varre
+ * as duas combinações inteiras: o vermelho aparece no CI, não na janela.
+ *
+ * Os valores vêm do arquivo canônico do projeto upstream, e **não** do preset
+ * `/r/styling/violet.json`: os presets publicados trocam `secondary-background` entre claro e
+ * escuro, o que renderiza `Input` e `Textarea` (que são `bg-secondary-background text-foreground`)
+ * preto-no-preto. Decisão #161 do brain.
+ */
+:root {
+  /* A geometria do sistema: borda de 2px, sombra dura de 4px sem blur, canto de 5px. */
+  --border-radius: 5px;
+  --box-shadow-x: 4px;
+  --box-shadow-y: 4px;
+  --reverse-box-shadow-x: -4px;
+  --reverse-box-shadow-y: -4px;
+
+  --heading-font-weight: 700;
+  --base-font-weight: 500;
+
+  /*
+   * Fica no `:root` mesmo dependendo de `--border`, que é da combinação: o `data-theme` mora no
+   * `<html>`, que **é** o `:root`, então os dois são declarados no mesmo elemento e a substituição
+   * resolve. Duas consequências a conhecer: uma combinação sem `--border` deixaria esta declaração
+   * inválida e a sombra sumiria em silêncio (é o teste de completude que impede, não a cascata); e
+   * pôr `data-theme` num subconjunto da árvore — uma prévia de tema, um dia — daria àquele pedaço as
+   * cores novas e a sombra da raiz. Quando esse dia chegar, `--shadow` desce para dentro de cada
+   * combinação.
+   */
+  --shadow: var(--box-shadow-x) var(--box-shadow-y) 0px 0px var(--border);
+}
+
+/*
+ * Os onze tokens, e o que cada um significa. Vale para toda combinação — o que varia é o valor.
+ *
+ * Sete são a casca do neobrutalism: três níveis de superfície (`--background` é o canvas do app,
+ * `--secondary-background` a face de cartão, `--foreground` o preto que escreve nas duas), o acento
+ * `--main` com a tinta que corre sobre ele, e `--border`/`--ring`, o preto que recorta e o que marca
+ * o foco.
+ *
+ * Quatro são do app, e o neobrutalism não os tem — ele dá **um** acento, e este app precisa de cinco
+ * cores semânticas. A divisão é dura e é o NFR "Fidelidade da sinalização" do PRD (`:253`) escrito em
+ * CSS: `--main` marca **a esteira e a casca do app**; os quatro marcam **o que a sessão quer de
+ * você**. Se o acento caísse em qualquer uma dessas famílias, "colorido = a sessão te espera"
+ * deixaria de ser verdade e o `StateBadge` perderia a função que a spec do #6 lhe deu. É essa regra
+ * que fecha a faixa de matiz disponível para um acento novo: verde 145°, âmbar 85°, azul 230° e
+ * vermelho 25° estão ocupados.
+ *
+ * Não existe `--attention-foreground` e companhia porque em toda combinação clara o texto sobre os
+ * quatro é `--foreground`, e o contraste é AAA — o que deixou de ser promessa de comentário e virou
+ * tabela conferida em `design-system.test.ts`.
+ */
+
+/*
+ * Lavanda — a combinação de origem, a do #8, e o default do app (`index.html`, `THEME_DEFAULT`).
+ *
+ * Os onze valores são os do `:root` de antes do #29, transcritos sem uma casa decimal de diferença:
+ * o CA-2 é "o app abre como abre hoje", e qualquer reajuste "de passagem" o quebraria. É por isso
+ * que este bloco — e só ele — está congelado valor a valor no teste.
+ */
+[data-theme='lavanda'] {
+  --background: oklch(93.88% 0.033 300.19);
+  --secondary-background: oklch(100% 0 0);
+  --foreground: oklch(0% 0 0);
+  --main-foreground: oklch(0% 0 0);
+  --main: oklch(70.28% 0.1753 295.36);
+  --border: oklch(0% 0 0);
+  --ring: oklch(0% 0 0);
+
+  --attention: oklch(78% 0.17 145); /* verde — a sessão devolveu a vez a você */
+  --warning: oklch(84% 0.16 85); /* âmbar — pare e olhe: permissão pendente, ou dado envelhecido */
+  --question: oklch(78% 0.13 230); /* azul — há uma pergunta aberta esperando resposta */
+  --danger: oklch(70% 0.19 25); /* vermelho — quebrou, ou vai destruir algo */
+}
+
+/*
+ * Ametista — a segunda combinação, e a prova de que a folha virou um conjunto.
+ *
+ * É a lavanda girada 22° para o frio, com a luminosidade intacta. Duas escolhas explicam os números:
+ *
+ * **Matiz 278°, e não 265°.** `--question` mora em 230°, e 265° deixaria 35° de folga — menos do que
+ * os 40° pelos quais o #8 já descartou teal/cyan por colisão; 278° abre 48°. `--main` pinta cabeçalho
+ * de coluna e bolha do usuário, que dividem a tela com o cartão azul de pergunta.
+ *
+ * **Croma reduzido, e não o da lavanda.** Neste matiz o sRGB acaba antes: o croma máximo é 0.1574 em
+ * L=70.28 e 0.0295 em L=93.88, então repetir 0.1753 e 0.033 poria as duas cores fora do gamut. Ver o
+ * comentário de gamut no topo desta folha para o que isso quebraria.
+ *
+ * As quatro cores de estado são as mesmas da lavanda, por escolha e não por herança: nada nesta
+ * combinação pede um verde diferente, e repeti-las aqui é o preço de cada bloco ser uma paleta
+ * completa e legível sozinha.
+ */
+[data-theme='ametista'] {
+  --background: oklch(93.88% 0.025 278);
+  --secondary-background: oklch(100% 0 0);
+  --foreground: oklch(0% 0 0);
+  --main-foreground: oklch(0% 0 0);
+  --main: oklch(70.28% 0.15 278);
+  --border: oklch(0% 0 0);
+  --ring: oklch(0% 0 0);
+
+  --attention: oklch(78% 0.17 145); /* verde — a sessão devolveu a vez a você */
+  --warning: oklch(84% 0.16 85); /* âmbar — pare e olhe: permissão pendente, ou dado envelhecido */
+  --question: oklch(78% 0.13 230); /* azul — há uma pergunta aberta esperando resposta */
+  --danger: oklch(70% 0.19 25); /* vermelho — quebrou, ou vai destruir algo */
+}
+
+@theme inline {
+  --color-main: var(--main);
+  --color-background: var(--background);
+  --color-secondary-background: var(--secondary-background);
+  --color-foreground: var(--foreground);
+  --color-main-foreground: var(--main-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+
+  --color-attention: var(--attention);
+  --color-warning: var(--warning);
+  --color-question: var(--question);
+  --color-danger: var(--danger);
+
+  --spacing-boxShadowX: var(--box-shadow-x);
+  --spacing-boxShadowY: var(--box-shadow-y);
+  --spacing-reverseBoxShadowX: var(--reverse-box-shadow-x);
+  --spacing-reverseBoxShadowY: var(--reverse-box-shadow-y);
+
+  --radius-base: var(--border-radius);
+  --shadow-shadow: var(--shadow);
+
+  --font-weight-base: var(--base-font-weight);
+  --font-weight-heading: var(--heading-font-weight);
+}
+
+/*
  * A janela inteira é a tela: quem rola é a lista de mensagens, com scroll próprio. Sem estas
  * alturas o `h-full` do App não teria contra o que medir e o layout desabaria para o conteúdo.
  */
@@ -8,4 +160,12 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+/*
+ * O fundo no `body`, e não só na raiz do React: o overscroll do Chromium pinta a área além do
+ * conteúdo com o fundo do `body`, e sem isto ela apareceria branca contra a lavanda da tela.
+ */
+body {
+  background-color: var(--background);
 }

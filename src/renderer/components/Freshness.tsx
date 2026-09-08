@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 
+import { Badge } from '../ui/badge'
+
 interface FreshnessProps {
   /** Epoch ms da última leitura bem-sucedida, ou `null` antes da primeira. */
   readAt: number | null
@@ -38,21 +40,20 @@ export function Freshness({ readAt, error }: FreshnessProps): JSX.Element {
   const stale = error !== null
 
   return (
-    <span
+    // `bg-warning` é o mesmo âmbar do `StateBadge` de decisão pendente, e é a mesma frase: pare e
+    // olhe, nada quebrou. Dado envelhecido não é falha — é dado com idade declarada.
+    <Badge
+      variant="neutral"
       data-testid="freshness"
       data-read-at={readAt === null ? '' : String(readAt)}
       data-stale={stale ? 'true' : 'false'}
       // O motivo inteiro fica no `title`: ele pode ser uma frase longa da API, e o cabeçalho é
       // estreito. O que a linha precisa dizer sem hover é que o dado parou no tempo.
       title={error ?? undefined}
-      className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
-        stale
-          ? 'border-amber-400/60 bg-amber-400/10 text-amber-200'
-          : 'border-neutral-800 bg-neutral-900 text-neutral-400'
-      }`}
+      className={stale ? 'bg-warning' : undefined}
     >
       {stale ? `desatualizado · ${age(readAt)}` : age(readAt)}
-    </span>
+    </Badge>
   )
 }
 

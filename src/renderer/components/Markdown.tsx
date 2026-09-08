@@ -15,7 +15,7 @@ import remarkGfm from 'remark-gfm'
  * módulo, porque recriá-los a cada render obrigaria o react-markdown a remontar o pipeline em toda
  * mensagem do histórico.
  *
- * A pele — cores, ritmo, tipografia — é assunto do card #8; aqui está só a estrutura.
+ * A pele veio pelo card #8: toda cor daqui é token do tema, nunca família da paleta.
  */
 
 /**
@@ -37,8 +37,15 @@ const SCHEMA: SanitizeSchema = {
   },
 }
 
-/** As classes do link, compartilhadas pelo `a` e pelo `img` — que também vira link. */
-const LINK_CLASSES = 'break-all text-sky-400 underline underline-offset-2 hover:text-sky-300'
+/**
+ * As classes do link, compartilhadas pelo `a` e pelo `img` — que também vira link.
+ *
+ * **Sublinhado grosso no lugar de uma cor de link.** O tema tem uma cor de texto só, e a única
+ * outra família disponível é `--main` — o violet da esteira, que é a face da bolha do usuário: um
+ * link violet dentro dela desapareceria. O traço de 2px é o que distingue o link em qualquer das
+ * duas faces, e é o mesmo argumento que põe `bg-background` no `th` mais abaixo.
+ */
+const LINK_CLASSES = 'break-all underline decoration-2 underline-offset-2'
 
 /**
  * O mapa de elemento → casca.
@@ -48,16 +55,16 @@ const LINK_CLASSES = 'break-all text-sky-400 underline underline-offset-2 hover:
  * correção que só um deles recebesse.
  */
 const COMPONENTS: Components = {
-  h1: ({ children }) => <h1 className="text-[1.35em] font-semibold text-neutral-50">{children}</h1>,
-  h2: ({ children }) => <h2 className="text-[1.2em] font-semibold text-neutral-50">{children}</h2>,
-  h3: ({ children }) => <h3 className="text-[1.1em] font-semibold text-neutral-50">{children}</h3>,
-  h4: ({ children }) => <h4 className="font-semibold text-neutral-50">{children}</h4>,
-  h5: ({ children }) => <h5 className="font-semibold text-neutral-50">{children}</h5>,
-  h6: ({ children }) => <h6 className="font-semibold text-neutral-50">{children}</h6>,
+  h1: ({ children }) => <h1 className="text-[1.35em] font-heading">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-[1.2em] font-heading">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-[1.1em] font-heading">{children}</h3>,
+  h4: ({ children }) => <h4 className="font-heading">{children}</h4>,
+  h5: ({ children }) => <h5 className="font-heading">{children}</h5>,
+  h6: ({ children }) => <h6 className="font-heading">{children}</h6>,
   p: ({ children }) => <p className="break-words">{children}</p>,
-  strong: ({ children }) => <strong className="font-semibold text-neutral-50">{children}</strong>,
+  strong: ({ children }) => <strong className="font-heading">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
-  del: ({ children }) => <del className="text-neutral-500 line-through">{children}</del>,
+  del: ({ children }) => <del className="text-foreground/60 line-through">{children}</del>,
 
   // A lista de tarefas do GFM precisa perder o marcador — o marcador dela é a caixa. O
   // `mdast-util-to-hast` põe `contains-task-list` na `ul`, e o `defaultSchema` permite essa
@@ -67,14 +74,14 @@ const COMPONENTS: Components = {
       className={
         className?.includes('contains-task-list')
           ? 'list-none space-y-1 pl-0'
-          : 'list-disc space-y-1 pl-5 marker:text-neutral-500'
+          : 'list-disc space-y-1 pl-5 marker:text-foreground/60'
       }
     >
       {children}
     </ul>
   ),
   ol: ({ children }) => (
-    <ol className="list-decimal space-y-1 pl-5 marker:text-neutral-500">{children}</ol>
+    <ol className="list-decimal space-y-1 pl-5 marker:text-foreground/60">{children}</ol>
   ),
   li: ({ children }) => <li className="break-words">{children}</li>,
 
@@ -91,16 +98,16 @@ const COMPONENTS: Components = {
       // `readOnly` explícito além do `disabled` que vem do schema: sem ele o React avisa em console
       // que há `checked` sem `onChange`.
       readOnly
-      className="mr-1.5 align-middle accent-neutral-500"
+      // `accent-foreground` e não `accent-main`: a caixa marcada precisa aparecer nas duas faces
+      // de bolha, e o violet do sistema é justamente a face do usuário.
+      className="mr-1.5 align-middle accent-foreground"
     />
   ),
 
   blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-neutral-700 pl-3 text-neutral-400">
-      {children}
-    </blockquote>
+    <blockquote className="border-l-4 border-border bg-background pl-3">{children}</blockquote>
   ),
-  hr: () => <hr className="border-neutral-800" />,
+  hr: () => <hr className="border-t-2 border-border" />,
 
   // A porta para fora do app. O `href` já passou pelo filtro de protocolo do `SCHEMA`, e a guarda
   // de `src/main/navigation.ts` o julga de novo do outro lado.
@@ -125,7 +132,7 @@ const COMPONENTS: Components = {
   },
 
   code: ({ children }) => (
-    <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[0.9em] text-neutral-100">
+    <code className="rounded-base border-2 border-border bg-background px-1 py-0.5 font-mono text-[0.9em]">
       {children}
     </code>
   ),
@@ -134,26 +141,33 @@ const COMPONENTS: Components = {
   // mantém dentro da largura da bolha do cartão sem quebrar linha de código nem desalinhar coluna.
   // `w-max min-w-full` é o par que encolhe até a bolha quando cabe e cresce até o conteúdo quando
   // não cabe. O `[&_code]` reseta a pílula que o componente de `code` inline traria para dentro do
-  // bloco — seletor descendente, determinístico, sem precisar descobrir o pai a partir do nó.
+  // bloco — seletor descendente, determinístico, sem precisar descobrir o pai a partir do nó. O
+  // `border-0` entrou nesse reset junto com a borda que o `code` inline ganhou: sem ele todo bloco
+  // de código nasceria com uma segunda caixa preta desenhada por dentro da primeira.
   pre: ({ children }) => (
-    <div className="overflow-x-auto rounded-md border border-neutral-800 bg-neutral-950">
-      <pre className="w-max min-w-full p-2.5 font-mono text-[0.9em] leading-relaxed text-neutral-200 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit">
+    <div className="overflow-x-auto rounded-base border-2 border-border bg-background">
+      <pre className="w-max min-w-full p-2.5 font-mono text-[0.9em] leading-relaxed [&_code]:border-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit">
         {children}
       </pre>
     </div>
   ),
   table: ({ children }) => (
     <div className="overflow-x-auto">
-      <table className="w-max min-w-full border-collapse text-left">{children}</table>
+      <table className="w-max min-w-full border-collapse border-2 border-border text-left">
+        {children}
+      </table>
     </div>
   ),
-  thead: ({ children }) => <thead className="border-b border-neutral-700">{children}</thead>,
+  thead: ({ children }) => <thead className="border-b-2 border-border">{children}</thead>,
+  // **`bg-background` no `th`, e não `bg-main`**: a bolha do usuário já é `bg-main`, e um cabeçalho
+  // de tabela violet dentro de uma bolha violet desaparece. A lavanda recuada é a mesma superfície
+  // do `code` e do `pre`, e é a única que funciona nas duas faces de bolha.
   th: ({ children }) => (
-    <th className="px-2 py-1 align-top font-semibold text-neutral-200">{children}</th>
+    <th className="border-2 border-border bg-background px-2 py-1 align-top font-heading">
+      {children}
+    </th>
   ),
-  td: ({ children }) => (
-    <td className="border-t border-neutral-800 px-2 py-1 align-top text-neutral-200">{children}</td>
-  ),
+  td: ({ children }) => <td className="border-2 border-border px-2 py-1 align-top">{children}</td>,
 }
 
 /** Desenha markdown. É o único caminho pelo qual texto de mensagem chega à tela. */

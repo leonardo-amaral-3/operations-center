@@ -8,7 +8,16 @@ import type {
 
 import { InputQueue } from './InputQueue'
 import { initialState, nextState } from './state'
-import type { SessionEvent, SessionState } from './state'
+import type { PendingRequest, SessionEvent, SessionState } from './state'
+import {
+  INTERRUPTED_NOTICE,
+  asArray,
+  asRecord,
+  asString,
+  assistantText,
+  toolResults,
+  toolUses,
+} from './transcript'
 import type {
   ChatMessage,
   ChatToolUse,
@@ -19,8 +28,13 @@ import type {
   QuestionOption,
   QuestionRequest,
   SessionInit,
-  ToolStatus,
 } from './types'
+
+/**
+ * A nota de turno interrompido é reexportada daqui porque é daqui que ela sempre foi lida — quem a
+ * declara agora é o `transcript.ts`, que a compartilha com o histórico restaurado.
+ */
+export { INTERRUPTED_NOTICE }
 
 /**
  * O que o core sabe do turno corrente. Sem relógio: o core não carimba tempo — quem o faz é a
@@ -107,20 +121,8 @@ export type StartQuery = (params: {
 /** Motivo devolvido ao SDK quando a decisão não pode mais ser tomada por uma pessoa. */
 const SESSION_CLOSED_DENIAL = 'Sessão encerrada antes da decisão.'
 
-/** A nota que a parada deixa na conversa. Exportada porque o teste a lê daqui, e não a redigita. */
-export const INTERRUPTED_NOTICE = 'Turno interrompido.'
-
-/**
- * Os campos que identificam uma chamada, em ordem de preferência. Uma lista ordenada, e não uma
- * tabela por ferramenta: a tabela viraria dívida no primeiro release do CLI com ferramenta nova.
- *
- * `command` vem antes de `description` porque no `Bash` a descrição já chega pelo `task_started` e
- * vira `headline` — repeti-la no detalhe desperdiçaria a linha.
- */
-const DETAIL_FIELDS = ['command', 'file_path', 'pattern', 'url', 'query', 'description', 'prompt']
-
-/** O teto de uma linha de trilha. O corte é aqui, e não na tela: ver `ChatToolUse.detail`. */
-const DETAIL_MAX = 120
+/** Motivo devolvido quando dois pedidos chegam com o mesmo `toolUseID` — ver `#enqueue`. */
+const DUPLICATE_TOOL_USE_ID = 'Já há um pedido em aberto com este toolUseID.'
 
 /**
  * A ferramenta com que o Claude faz uma pergunta. Ela chega pelo mesmo `canUseTool` de qualquer
@@ -128,16 +130,18 @@ const DETAIL_MAX = 120
  */
 const ASK_USER_QUESTION = 'AskUserQuestion'
 
-/** Uma pergunta em aberto: como devolvê-la ao SDK, e o `questions` cru que ela precisa espelhar. */
-interface PendingQuestion {
-  resolve: (result: PermissionResult) => void
-  /**
-   * O valor de `input.questions` **exatamente como veio**. O executor da ferramenta espelha este
-   * campo, então devolver a versão traduzida (a que a tela desenhou) mudaria o payload por baixo
-   * dele — o que se perde na tradução é justamente o que ele espera de volta.
-   */
-  questions: unknown
-}
+type Resolve = (result: PermissionResult) => void
+
+/**
+ * Um pedido esperando uma pessoa: como devolvê-lo ao SDK, e o que a tela precisa desenhar.
+ *
+ * `questions` só existe na pergunta, e é o `input.questions` **cru**: o executor da ferramenta
+ * espelha esse campo, então devolver a versão traduzida (a que a tela desenhou) mudaria o payload
+ * por baixo dele — o que se perde na tradução é justamente o que ele espera de volta.
+ */
+type Pending =
+  | { kind: 'permission'; request: PermissionRequest; resolve: Resolve }
+  | { kind: 'question'; request: QuestionRequest; resolve: Resolve; questions: unknown }
 
 /**
  * Uma sessão viva: a fila de entrada, o `query()` que a consome, a máquina de estados e as
@@ -152,10 +156,16 @@ export class SessionHandle {
   readonly #queue = new InputQueue()
   readonly #emitter = new Emitter()
   readonly #messages: ChatMessage[] = []
-  /** Decisões de permissão em aberto, por id do pedido: resolvê-las é o que destrava o turno. */
-  readonly #pending = new Map<string, (result: PermissionResult) => void>()
-  /** Perguntas em aberto, no mesmo papel — mapa próprio porque a resposta delas não é sim/não. */
-  readonly #pendingQuestions = new Map<string, PendingQuestion>()
+  /**
+   * Os pedidos esperando uma pessoa, **na ordem em que chegaram** — permissões e perguntas no mesmo
+   * mapa, porque a ordem entre elas é o que o par misto precisa preservar. `Map` preserva a ordem de
+   * inserção, e é essa garantia que faz a FIFO existir sem estrutura própria.
+   *
+   * Mapa único, e não dois: com dois, "qual é o próximo" só teria resposta comparando carimbos de
+   * chegada — e o dia em que essa comparação divergisse do que a tela mostra é o dia em que o bug
+   * do #11 volta com outra cara.
+   */
+  readonly #pending = new Map<string, Pending>()
   readonly #query: Query
   /** A leitura do `query()`, viva enquanto a sessão existir. `close()` espera por ela. */
   readonly #pump: Promise<void>
@@ -165,6 +175,10 @@ export class SessionHandle {
   #sentCount = 0
   /** Levantada entre o pedido de parada e o `result` que ele corta; é ela que vira `interrupted`. */
   #stopping = false
+  /** O portão está desligado? Nasce com o que a marca do cartão mandou; muda por `setDangerous`. */
+  #dangerous: boolean
+  /** Levantada entre o pedido de troca de modo e a resposta do SDK. Ver `setDangerous`. */
+  #switching = false
   /** Numera o id da nota de parada, como `#sentCount` numera o do envio. */
   #stopCount = 0
   #closing = false
@@ -173,8 +187,24 @@ export class SessionHandle {
   /** O acumulado de raciocínio do turno corrente. Zera na fronteira, junto com o bump do ordinal. */
   #thinkingTokens = 0
 
-  constructor(id: string, startQuery: StartQuery) {
+  /**
+   * O `history` é a conversa de antes, de uma sessão retomada. Ele é semeado **antes** de o
+   * `query()` subir porque o retrato que o `start` devolve é lido pela tela na mesma volta: um
+   * `#messages` vazio ali reabriria o cartão em branco mesmo com a retomada tendo funcionado.
+   *
+   * Entra direto no array, sem passar pelo `#upsert`: não há ninguém assinando ainda, e um evento
+   * `message` por mensagem restaurada seria ruído sobre um estado que a tela já vai receber inteiro
+   * no retrato.
+   */
+  constructor(
+    id: string,
+    startQuery: StartQuery,
+    history: readonly ChatMessage[] = [],
+    dangerous = false,
+  ) {
     this.id = id
+    this.#dangerous = dangerous
+    this.#messages.push(...history)
     this.#query = startQuery({
       prompt: this.#queue,
       canUseTool: (toolName, input, options) => this.#requestDecision(toolName, input, options),
@@ -189,6 +219,11 @@ export class SessionHandle {
 
   get state(): SessionState {
     return this.#state
+  }
+
+  /** O modo que vigora nesta sessão agora. É ele que o main grava e a tela desenha. */
+  get dangerous(): boolean {
+    return this.#dangerous
   }
 
   get messages(): readonly ChatMessage[] {
@@ -218,16 +253,18 @@ export class SessionHandle {
 
   /** A decisão humana sobre um pedido. Pedido desconhecido (ou já resolvido): no-op. */
   respondPermission(requestId: string, decision: PermissionDecision): void {
-    const resolve = this.#pending.get(requestId)
-    if (!resolve) return
+    const entry = this.#pending.get(requestId)
+    // A guarda por tipo, e não só por existência: sem ela um `respondPermission` com o id de uma
+    // pergunta resolveria a ferramenta errada com um payload que ela não sabe ler.
+    if (entry?.kind !== 'permission') return
 
     this.#pending.delete(requestId)
-    resolve(
+    entry.resolve(
       decision === 'allow'
         ? { behavior: 'allow' }
         : { behavior: 'deny', message: 'Negado pelo usuário.' },
     )
-    this.#apply({ kind: 'permission_resolved' })
+    this.#publish()
   }
 
   /**
@@ -237,18 +274,19 @@ export class SessionHandle {
    * `allow` com o `answers` no `updatedInput` é o único caminho que produz um `tool_result` limpo:
    * `allow` puro executa a ferramenta sem quem a desenhe e devolve "The user did not answer the
    * questions", e `deny` com a resposta na mensagem marca o resultado como erro — mentir para o
-   * modelo sobre o que aconteceu. O `questions` volta cru; ver `PendingQuestion`.
+   * modelo sobre o que aconteceu. O `questions` volta cru; ver `Pending`.
    */
   answerQuestion(requestId: string, answers: QuestionAnswers): void {
-    const pending = this.#pendingQuestions.get(requestId)
-    if (!pending) return
+    const entry = this.#pending.get(requestId)
+    // Simétrica à do `respondPermission`, e pelo mesmo motivo.
+    if (entry?.kind !== 'question') return
 
-    this.#pendingQuestions.delete(requestId)
-    pending.resolve({
+    this.#pending.delete(requestId)
+    entry.resolve({
       behavior: 'allow',
-      updatedInput: { questions: pending.questions, answers },
+      updatedInput: { questions: entry.questions, answers },
     })
-    this.#apply({ kind: 'question_answered' })
+    this.#publish()
   }
 
   /**
@@ -272,6 +310,48 @@ export class SessionHandle {
     void this.#query.interrupt().catch(() => {
       this.#stopping = false
     })
+  }
+
+  /**
+   * Liga ou desliga o portão desta sessão. Devolve **o modo que de fato vigora depois da
+   * tentativa** — que é o que o main grava e a tela desenha.
+   *
+   * `async`, ao contrário de `send`/`stop`/`respondPermission`: aqui a confirmação não volta pelo
+   * canal de estado, ela é a resposta do control request. Persistir a marca antes dela seria a
+   * tela afirmar uma coisa que a sessão não faz.
+   *
+   * **Um pedido de cada vez.** Um segundo clique durante a troca é engolido e devolve o modo
+   * corrente, exatamente como o `#stopping` engole o segundo clique em "Parar" — e pela mesma
+   * razão: sem a bandeira, dois pedidos em voo comparariam os dois o `#dangerous` **antigo**, o
+   * SDK receberia dois control requests, e quem vence a gravação passa a ser quem resolver por
+   * último, não quem clicou por último.
+   *
+   * **Sem prazo, de propósito.** Um `setPermissionMode` chamado antes de o `init` chegar é escrito
+   * no transporte como qualquer control request; se ele rejeitar, o `catch` já responde. O caso
+   * não medido é ele nunca resolver — e ali a escolha é não inventar um timeout: um número chutado
+   * que reportasse sucesso sobre um modo que não mudou é pior do que um pedido que não assenta,
+   * cujo custo é a tela não se mexer e o próximo clique tentar de novo.
+   */
+  async setDangerous(next: boolean): Promise<boolean> {
+    if (this.#closing || this.#switching) return this.#dangerous
+    if (next === this.#dangerous) return this.#dangerous
+
+    this.#switching = true
+    try {
+      await this.#query.setPermissionMode(next ? 'bypassPermissions' : 'default')
+    } catch {
+      // O SDK recusou. O modo **não** mudou, e nada é liberado: uma recusa que ainda assim
+      // aprovasse os pendentes teria dado, por acidente, exatamente a permissão que o usuário
+      // pediu por outra via e não recebeu.
+      return this.#dangerous
+    } finally {
+      this.#switching = false
+    }
+
+    this.#dangerous = next
+    if (next) this.#allowPending()
+
+    return this.#dangerous
   }
 
   /**
@@ -307,6 +387,7 @@ export class SessionHandle {
           model: message.model,
           cwd: message.cwd,
           apiKeySource: message.apiKeySource,
+          permissionMode: message.permissionMode,
         }
         this.#emitter.emit('init', this.#init)
         this.#apply({ kind: 'init' })
@@ -411,8 +492,7 @@ export class SessionHandle {
     const request: QuestionRequest = { id: options.toolUseID, questions }
 
     return new Promise<PermissionResult>((resolve) => {
-      this.#pendingQuestions.set(request.id, { resolve, questions: raw })
-      this.#apply({ kind: 'question_requested', request })
+      this.#enqueue({ kind: 'question', request, resolve, questions: raw })
     })
   }
 
@@ -429,23 +509,80 @@ export class SessionHandle {
     }
 
     return new Promise<PermissionResult>((resolve) => {
-      this.#pending.set(request.id, resolve)
-      this.#apply({ kind: 'permission_requested', request })
+      this.#enqueue({ kind: 'permission', request, resolve })
     })
   }
 
   /**
-   * Nega tudo que estava esperando uma pessoa — os dois mapas. Pergunta em aberto trava o turno
-   * exatamente como permissão em aberto, e um `close()` que esquecesse dela esperaria para sempre.
+   * Põe o pedido na fila e republica a frente.
+   *
+   * `toolUseID` repetido é impossível pelo contrato do SDK — e é justamente por isso que o caso não
+   * pode passar em silêncio: **substituir o incumbente é o bug deste card**. O recém-chegado é
+   * negado na hora, e o que já esperava continua na frente, com a sua promise intacta.
+   */
+  #enqueue(entry: Pending): void {
+    if (this.#pending.has(entry.request.id)) {
+      entry.resolve({ behavior: 'deny', message: DUPLICATE_TOOL_USE_ID })
+      return
+    }
+
+    this.#pending.set(entry.request.id, entry)
+    this.#publish()
+  }
+
+  /** O estado que a frente da fila descreve — ou `working`, quando não há mais ninguém nela. */
+  #publish(): void {
+    const head = this.#pending.values().next().value
+    if (!head) {
+      this.#apply({ kind: 'settled' })
+      return
+    }
+
+    const pending: PendingRequest =
+      head.kind === 'permission'
+        ? { kind: 'permission', request: head.request }
+        : { kind: 'question', request: head.request }
+
+    this.#apply({ kind: 'awaiting', pending, queued: this.#pending.size - 1 })
+  }
+
+  /**
+   * Libera com `allow` tudo que já estava esperando decisão — e **só as permissões**.
+   *
+   * A pergunta fica: ela é a decisão de produto que o modo não toca, e um `allow` puro nela
+   * devolveria "The user did not answer the questions" (ver `answerQuestion`).
+   *
+   * Roda **depois** de o SDK confirmar a troca, e não antes — ver o `catch` do `setDangerous`. Foi
+   * medido (M-6) que o control request é atendido em 3ms mesmo com o turno parado dentro do
+   * `canUseTool`, então esperar por ele não trava nada. Um `close()` que tenha acontecido no meio
+   * já esvaziou o mapa pelo `#denyPending`, e este método vira no-op sozinho.
+   */
+  #allowPending(): void {
+    const liberadas = [...this.#pending.values()].filter((entry) => entry.kind === 'permission')
+    if (liberadas.length === 0) return
+
+    for (const entry of liberadas) {
+      this.#pending.delete(entry.request.id)
+      entry.resolve({ behavior: 'allow' })
+    }
+
+    // Um `#publish()` só, no fim: se sobrou pergunta ela vira a frente da fila, e se a fila
+    // esvaziou o `settled` devolve a sessão a `working`. É o mesmo caminho do `respondPermission`.
+    this.#publish()
+  }
+
+  /**
+   * Nega tudo que estava esperando uma pessoa. Pergunta em aberto trava o turno exatamente como
+   * permissão em aberto, e um `close()` que esquecesse dela esperaria para sempre.
+   *
+   * **Não publica**, de propósito: quem chama é o `close()` e o `finally` do `#consume()`, e os
+   * dois levam a sessão a `closed`/`failed` logo em seguida — um `settled` no meio pintaria
+   * "Trabalhando" numa sessão que está morrendo.
    */
   #denyPending(): void {
-    const waiting = [
-      ...this.#pending.values(),
-      ...[...this.#pendingQuestions.values()].map((pending) => pending.resolve),
-    ]
+    const waiting = [...this.#pending.values()]
     this.#pending.clear()
-    this.#pendingQuestions.clear()
-    for (const resolve of waiting) resolve({ behavior: 'deny', message: SESSION_CLOSED_DENIAL })
+    for (const entry of waiting) entry.resolve({ behavior: 'deny', message: SESSION_CLOSED_DENIAL })
   }
 
   /**
@@ -512,111 +649,6 @@ export class SessionHandle {
 }
 
 /**
- * O texto de uma mensagem de assistente, achatado.
- *
- * A carga é lida como `unknown` de propósito: o tipo do SDK para ela vem de um pacote que é só peer
- * dependency (`@anthropic-ai/sdk`) e por isso não se resolve aqui — sem a leitura defensiva, o que
- * atravessaria o core seria um `any`.
- */
-function assistantText(payload: unknown): string {
-  const message = asRecord(payload)
-  if (!message) return ''
-
-  const texts: string[] = []
-  for (const raw of asArray(message['content'])) {
-    const block = asRecord(raw)
-    if (block?.['type'] !== 'text') continue
-
-    const text = asString(block['text'])
-    if (text !== null) texts.push(text)
-  }
-
-  return texts.join('\n')
-}
-
-/**
- * As ferramentas que uma mensagem de assistente chamou, na ordem em que aparecem no `content`.
- *
- * Mesma leitura defensiva do `assistantText`, e pelo mesmo motivo: a carga vem do modelo, não do
- * nosso código. Bloco que não dá para ler é ignorado, e nunca derruba a sessão.
- */
-function toolUses(payload: unknown, parentId: string | null): ChatToolUse[] {
-  const message = asRecord(payload)
-  if (!message) return []
-
-  const uses: ChatToolUse[] = []
-  for (const raw of asArray(message['content'])) {
-    const block = asRecord(raw)
-    if (block?.['type'] !== 'tool_use') continue
-
-    const id = asString(block['id'])
-    const name = asString(block['name'])
-    // Sem id o `tool_result` não teria a que casar; sem nome a entrada não diria nada. Faltando
-    // qualquer um dos dois, a entrada não informa — e inventá-los informaria errado.
-    if (id === null || name === null) continue
-
-    uses.push({
-      id,
-      role: 'tool',
-      name,
-      detail: detailOf(block['input']),
-      headline: '',
-      parentId,
-      status: 'running',
-    })
-  }
-
-  return uses
-}
-
-/** O que uma ferramenta relatou: o id da chamada e o degrau em que ela parou. */
-interface ToolOutcome {
-  id: string
-  status: ToolStatus
-}
-
-/** Os resultados de ferramenta de uma mensagem `user`, casados pelo `tool_use_id`. */
-function toolResults(payload: unknown): ToolOutcome[] {
-  const message = asRecord(payload)
-  if (!message) return []
-
-  const outcomes: ToolOutcome[] = []
-  for (const raw of asArray(message['content'])) {
-    const block = asRecord(raw)
-    if (block?.['type'] !== 'tool_result') continue
-
-    const id = asString(block['tool_use_id'])
-    if (id === null) continue
-
-    // A ausência é sucesso: no sucesso o SDK **não manda** `is_error`, em vez de mandá-lo `false`.
-    outcomes.push({ id, status: block['is_error'] === true ? 'error' : 'done' })
-  }
-
-  return outcomes
-}
-
-/**
- * O argumento que identifica uma chamada: o primeiro campo de `DETAIL_FIELDS` que exista e seja
- * string, achatado numa linha só e cortado em `DETAIL_MAX`. Nenhum casa → `''`, e a entrada mostra
- * só o nome — é o que acontece com o `AskUserQuestion`, cuja pergunta o prompt logo abaixo já diz.
- */
-function detailOf(input: unknown): string {
-  const record = asRecord(input)
-  if (!record) return ''
-
-  for (const field of DETAIL_FIELDS) {
-    const value = asString(record[field])
-    if (value === null) continue
-
-    // Um passe só resolve as duas coisas: quebra de linha e espaço repetido viram um espaço.
-    const flat = value.replace(/\s+/g, ' ').trim()
-    return flat.length > DETAIL_MAX ? `${flat.slice(0, DETAIL_MAX)}…` : flat
-  }
-
-  return ''
-}
-
-/**
  * As perguntas de um `AskUserQuestion`, ou `null` quando o payload não dá para desenhar.
  *
  * O `input` do `canUseTool` é dado de fora — vem do modelo, não do nosso código —, então passa
@@ -661,20 +693,6 @@ function readOptions(raw: unknown): readonly QuestionOption[] | null {
   }
 
   return options
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
-}
-
-function asArray(value: unknown): readonly unknown[] {
-  return Array.isArray(value) ? (value as readonly unknown[]) : []
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
 }
 
 function describe(error: unknown): string {

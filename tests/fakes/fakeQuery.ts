@@ -1,6 +1,7 @@
 import type { UUID } from 'node:crypto'
 
 import type {
+  PermissionMode,
   PermissionResult,
   Query,
   SDKAssistantMessage,
@@ -79,6 +80,14 @@ export interface FakeQuery {
   readonly finished: boolean
   /** Quantas vezes o core pediu a interrupção — é por aqui que se prova que `stop()` chegou. */
   readonly interrupts: number
+  /** O modo que vigora agora. Nasce do `permissionMode` das opções e muda por `setPermissionMode`. */
+  readonly permissionMode: string
+  /**
+   * Todo modo que o core **pediu**, na ordem — inclusive os pedidos que rejeitaram, como o
+   * `interrupts` conta o `interrupt()` que não pegou. É o que prova que um segundo clique durante
+   * a troca não virou um segundo control request.
+   */
+  readonly permissionModes: string[]
 }
 
 const SESSION_ID = 'fake-session'
@@ -104,14 +113,27 @@ function nextUuid(): UUID {
 export function createFakeQuery(script: FakeScript = {}): FakeQuery {
   const received: string[] = []
   const turn = script.turn ?? defaultTurn
-  const state: { options: QueryOptions | undefined; finished: boolean; interrupts: number } = {
+  const state: {
+    options: QueryOptions | undefined
+    finished: boolean
+    interrupts: number
+    permissionMode: PermissionMode
+    permissionModes: PermissionMode[]
+  } = {
     options: undefined,
     finished: false,
     interrupts: 0,
+    permissionMode: 'default',
+    permissionModes: [],
   }
 
   const query: QueryFn = ({ prompt, options }) => {
     state.options = options
+    state.permissionMode = options?.permissionMode ?? 'default'
+    // O modo com que a sessão **nasceu**, congelado aqui: é ele que o `init` reporta. O fake emite
+    // o `init` uma vez só (o SDK real manda um a cada turno, M-7), então uma troca posterior não
+    // tem por onde ser anunciada — a consequência está declarada no plano de testes da spec.
+    const bornMode = state.permissionMode
     const canUseTool = options?.canUseTool
     const aborter = new AbortController()
 
@@ -144,7 +166,16 @@ export function createFakeQuery(script: FakeScript = {}): FakeQuery {
     }
 
     const tools: FakeTools = {
-      askPermission: ask,
+      // Em `bypassPermissions` a ferramenta executa **sem passar pelo `canUseTool`** (M-1): o SDK
+      // nem chega a consultar o callback, e por isso o fake devolve `allow` daqui mesmo. Um fake
+      // que ainda assim chamasse o callback seria mais permissivo que a realidade ao contrário —
+      // o modo passaria a ser um auto-allow nosso, e o CA-1 provaria a nossa vontade, não o SDK.
+      askPermission: (request) =>
+        state.permissionMode === 'bypassPermissions'
+          ? Promise.resolve<PermissionResult>({ behavior: 'allow' })
+          : ask(request),
+      // A pergunta chega ao `canUseTool` **nos dois modos** (M-2), e é essa medição que autoriza o
+      // modo a ser o do próprio SDK: o `AskUserQuestion` continua parando a sessão.
       askQuestion: (question) =>
         ask({
           toolName: ASK_USER_QUESTION,
@@ -163,7 +194,7 @@ export function createFakeQuery(script: FakeScript = {}): FakeQuery {
       try {
         if (script.failWith) throw script.failWith
 
-        yield initMessage(script.init)
+        yield initMessage({ permissionMode: bornMode, ...script.init })
 
         // O host sempre passa o iterável (streaming input); a string existe só no tipo do SDK.
         if (typeof prompt === 'string') return
@@ -190,11 +221,34 @@ export function createFakeQuery(script: FakeScript = {}): FakeQuery {
       return Promise.resolve(undefined)
     }
 
+    /**
+     * A troca de modo em voo, **com o contrato medido**.
+     *
+     * A rejeição sem `allowDangerouslySkipPermissions` (M-3) é o que faz esta linha do fake ter
+     * dente: quem um dia remover a flag do `SessionHost` não quebra um smoke que quase ninguém
+     * roda — quebra um unitário do CI. A mensagem é a do SDK real, palavra por palavra.
+     */
+    const setPermissionMode = (mode: PermissionMode): Promise<void> => {
+      state.permissionModes.push(mode)
+
+      if (mode === 'bypassPermissions' && options?.allowDangerouslySkipPermissions !== true) {
+        return Promise.reject(
+          new Error(
+            `Cannot set permission mode to ${mode} because the session was not launched with --dangerously-skip-permissions`,
+          ),
+        )
+      }
+
+      state.permissionMode = mode
+
+      return Promise.resolve()
+    }
+
     // O `Query` do SDK é um AsyncGenerator mais um punhado de controles (interrupt, setModel,
-    // setPermissionMode...). O core itera e usa **um** deles, então o fake implementa a iteração e
-    // o `interrupt()` de verdade, e continua não fingindo os outros: usar um deles aqui estoura,
-    // em vez de passar em silêncio.
-    return Object.assign(run(), { interrupt }) as unknown as Query
+    // setPermissionMode...). O core itera e usa **dois** deles, então o fake implementa a iteração,
+    // o `interrupt()` e o `setPermissionMode()` de verdade, e continua não fingindo os outros: usar
+    // um deles aqui estoura, em vez de passar em silêncio.
+    return Object.assign(run(), { interrupt, setPermissionMode }) as unknown as Query
   }
 
   return {
@@ -208,6 +262,12 @@ export function createFakeQuery(script: FakeScript = {}): FakeQuery {
     },
     get interrupts() {
       return state.interrupts
+    },
+    get permissionMode() {
+      return state.permissionMode
+    },
+    get permissionModes() {
+      return state.permissionModes
     },
   }
 }

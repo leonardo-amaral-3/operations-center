@@ -35,13 +35,15 @@ process do Electron _é_ Node — então o host de sessões roda nele direto, se
 terceira linguagem no stack. A crítica de sempre ao Electron (carregar um runtime Node junto) é
 exatamente o que o torna a escolha certa aqui.
 
-| Camada          | O que vive lá                                                                                                                                                                                                                                                                                                                                     |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/core/`     | a lógica de produto agnóstica de casca: o host de sessões (fila de entrada, máquina de estados, `SessionHost`) e a leitura do board (`BoardReader`, com o cliente GraphQL injetado). Não conhece Electron, React nem HTTP, e uma regra de lint garante que continue assim                                                                         |
-| `src/main/`     | o processo Node: cria as sessões com o `query` real do SDK, pega o token com o `gh`, fala com a API do GitHub, lê o ambiente e registra os canais IPC                                                                                                                                                                                             |
-| `src/preload/`  | o `contextBridge` — a única superfície que o renderer enxerga                                                                                                                                                                                                                                                                                     |
-| `src/renderer/` | React + Tailwind: o kanban (colunas, cartões e carimbo de frescor), a tela de chat da fatia vertical e a bolha de mensagem que as duas compartilham — ela desenha o markdown com [`react-markdown`](https://www.npmjs.com/package/react-markdown) + `remark-gfm`, e `rehype-raw` + `rehype-sanitize` (nessa ordem) no HTML embutido nas respostas |
-| `src/shared/`   | o contrato IPC e o vocabulário do board, compilados pelos dois lados                                                                                                                                                                                                                                                                              |
+| Camada          | O que vive lá                                                                                                                                                                                                                                                                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/core/`     | a lógica de produto agnóstica de casca: o host de sessões (fila de entrada, máquina de estados, `SessionHost`) e a leitura do GitHub — o board inteiro (`BoardReader`) e o conteúdo de um card sob demanda (`CardReader`), ambos com o cliente GraphQL injetado. Não conhece Electron, React nem HTTP, e uma regra de lint garante que continue assim |
+| `src/main/`     | o processo Node: cria as sessões com o `query` real do SDK, pega o token com o `gh`, fala com a API do GitHub, lê o ambiente e registra os canais IPC                                                                                                                                                                                                 |
+| `src/preload/`  | o `contextBridge` — a única superfície que o renderer enxerga                                                                                                                                                                                                                                                                                         |
+| `src/renderer/` | React + Tailwind: o kanban (colunas, cartões e carimbo de frescor), a tela de chat da fatia vertical e a bolha de mensagem que as duas compartilham — ela desenha o markdown com [`react-markdown`](https://www.npmjs.com/package/react-markdown) + `remark-gfm`, e `rehype-raw` + `rehype-sanitize` (nessa ordem) no HTML embutido nas respostas     |
+| `src/shared/`   | o contrato IPC e o vocabulário do board, compilados pelos dois lados                                                                                                                                                                                                                                                                                  |
+
+A tela veste o [neobrutalism.dev](https://www.neobrutalism.dev/) sobre shadcn/ui: as primitivas ficam vendorizadas em `src/renderer/ui/`, o tema em modo claro fixo mora em `src/renderer/index.css`, e `tests/unit/design-system.test.ts` reprova a cor de paleta ou a casca escrita à mão fora dali.
 
 Build com `electron-vite` (Vite 7). Testes: Vitest nas unidades, Playwright + Electron nos smokes.
 
@@ -49,7 +51,7 @@ Build com `electron-vite` (Vite 7). Testes: Vitest nas unidades, Playwright + El
 
 - **Node ≥ 22.13** (ou 24.x) e **yarn 1.22**
 - **Claude Code instalado e logado** na máquina
-- **GitHub CLI (`gh`) instalado e logado** (`gh auth login`)
+- **GitHub CLI (`gh`) instalado e logado** (`gh auth login`), **com o escopo `read:org`**
 
 O piso do Node não é redondo porque é uma interseção, não uma escolha: `electron@44` exige
 `>= 22.12` e `eslint@10` exige `>= 22.13`. E a janela **pula os majors ímpares** — `vitest@5`
@@ -63,40 +65,57 @@ O `gh` também não: é dele que vem o token que lê o board. O app o pede por s
 onde o `gh` já o guarda. Sem `gh` no PATH ou sem login, a janela abre e o kanban mostra o erro no
 lugar dos cartões.
 
+O escopo `read:org` não é detalhe de configuração: é ele que faz o app enxergar os boards das
+**organizações** de que você participa, e não só os seus. Sem ele o token continua válido, o login
+continua verde e a descoberta simplesmente volta com menos boards — a lista de organizações vem
+vazia e ninguém é avisado. Confira com `gh auth status`; se faltar, `gh auth refresh -s read:org`.
+
 ## Comandos
 
-| Comando          | O que faz                                                                                                                                                                                                                                                |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `yarn dev`       | sobe o app com hot reload do renderer                                                                                                                                                                                                                    |
-| `yarn build`     | compila os três bundles (main, preload, renderer) em `out/`                                                                                                                                                                                              |
-| `yarn test`      | Vitest — as unidades do core. Sem rede, sem credencial, determinístico                                                                                                                                                                                   |
-| `yarn smoke`     | compila e roda os três smokes de ponta a ponta (Playwright + Electron): o **do kanban**, que lê uma fixture e não toca a rede, e os **dois que sobem sessão real** — o da fatia vertical e o do cartão-chat —, que precisam do login e **consomem cota** |
-| `yarn lint`      | ESLint                                                                                                                                                                                                                                                   |
-| `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                            |
-| `yarn format`    | Prettier                                                                                                                                                                                                                                                 |
+| Comando          | O que faz                                                                                                                                                                                                                                                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `yarn dev`       | sobe o app com hot reload do renderer                                                                                                                                                                                                                                                                                                |
+| `yarn build`     | compila os três bundles (main, preload, renderer) em `out/`                                                                                                                                                                                                                                                                          |
+| `yarn test`      | Vitest — as unidades do core. Sem rede, sem credencial, determinístico                                                                                                                                                                                                                                                               |
+| `yarn smoke`     | compila e roda os sete smokes de ponta a ponta (Playwright + Electron): os **três que leem fixture** e não tocam a rede — o do kanban, o do conteúdo do cartão e o do tema —, e os **quatro que sobem sessão real** — o da fatia vertical, o do cartão-chat, o da retomada e o das abas —, que precisam do login e **consomem cota** |
+| `yarn lint`      | ESLint                                                                                                                                                                                                                                                                                                                               |
+| `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                                                                                                        |
+| `yarn format`    | Prettier                                                                                                                                                                                                                                                                                                                             |
 
 `yarn lint`, `yarn typecheck` e `yarn test` formam o portão de qualidade, e são exatamente o que o
 CI roda a cada PR para `dev` e `main`. Os smokes ficam de fora do CI de propósito: o runner nem
-baixa o binário do Electron, e os dois que sobem sessão ainda dependem do login local, que ele não
-tem.
+baixa o binário do Electron, e os quatro que sobem sessão ainda dependem do login local, que ele
+não tem.
 
 ## Configuração
 
-Sem banco e sem arquivo de config. Oito variáveis de ambiente, lidas no main:
+Sem banco e sem arquivo de config. Dez variáveis de ambiente, lidas no main:
 
-| Variável             | Default                                                            | Para quê                                                                                                                                                                                                                                               |
-| -------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `OC_CWD`             | a pasta do app — em `yarn dev`, a raiz deste repo                  | pasta de trabalho da sessão                                                                                                                                                                                                                            |
-| `OC_MODEL`           | ausente: herda o default do Claude Code                            | modelo da sessão                                                                                                                                                                                                                                       |
-| `OC_ISOLATED`        | ausente                                                            | `1` passa `settingSources: []` ao SDK, e a sessão deixa de carregar `CLAUDE.md`, settings e skills. Existe **para o smoke** — fora dele, uma sessão isolada é um Claude Code amputado                                                                  |
-| `OC_SCREEN`          | ausente: o kanban                                                  | `chat` abre a tela da fatia vertical. Porta de ambiente sem botão na UI, que existe **para o smoke** daquela fatia                                                                                                                                     |
-| `OC_PROJECT_OWNER`   | `leonardo-amaral-3`                                                | dono do board a ler                                                                                                                                                                                                                                    |
-| `OC_PROJECT_NUMBER`  | `2` — o board Operations Center                                    | número do Project. Valor inválido **lança**, em vez de cair no default: abrir o board 2 com toda a confiança do mundo quando pediram outro é o pior modo de falha que existe aqui                                                                      |
-| `OC_BOARD_FIXTURE`   | ausente: lê o GitHub de verdade                                    | caminho de um JSON com a resposta da API, que substitui o GitHub inteiro. Existe **para o smoke do kanban**, que por causa dela não pede token nem toca a rede                                                                                         |
-| `OC_CLAUDE_PROJECTS` | ausente: `CLAUDE_CONFIG_DIR` se houver, senão `~/.claude/projects` | raiz dos transcripts do Claude Code, de onde sai o mapa `repo → pasta local` em que a sessão de um cartão roda. Existe **para o smoke do cartão-chat**, que aponta para uma raiz temporária e faz a descoberta rodar inteira sobre um repo descartável |
+| Variável             | Default                                                                       | Para quê                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OC_CWD`             | a pasta do app — em `yarn dev`, a raiz deste repo                             | pasta de trabalho da sessão                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `OC_MODEL`           | ausente: herda o default do Claude Code                                       | modelo da sessão                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `OC_ISOLATED`        | ausente                                                                       | `1` passa `settingSources: []` ao SDK, e a sessão deixa de carregar `CLAUDE.md`, settings e skills. Existe **para o smoke** — fora dele, uma sessão isolada é um Claude Code amputado                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `OC_SCREEN`          | ausente: o kanban                                                             | `chat` abre a tela da fatia vertical. Porta de ambiente sem botão na UI, que existe **para o smoke** daquela fatia                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `OC_THEME`           | ausente: `lavanda`, a combinação de sempre                                    | qual combinação de cores desenhar, entre as declaradas em `src/renderer/index.css`: hoje `lavanda` e `ametista`. Nome desconhecido **lança** — cair na lavanda em silêncio faria parecer que o tema não funciona                                                                                                                                                                                                                                                                                                                                                                                         |
+| `OC_BOARD_FIXTURE`   | ausente: lê o GitHub de verdade                                               | caminho de um JSON `"dono/número" → resposta da API`, que substitui o GitHub inteiro. É ela sozinha que decide fixture-vs-GitHub. Existe **para os smokes**, que por causa dela não pedem token nem tocam a rede. Coordenada sem entrada no mapa **lança**: uma aba cujo board não está na fixture tem de aparecer como erro, e não como kanban vazio                                                                                                                                                                                                                                                    |
+| `OC_BOARDS_FIXTURE`  | ausente: a descoberta não tem o que responder e **lança**                     | caminho de um JSON com as respostas da **descoberta** — os seus donos, e os Projects de cada dono. É o par de `OC_BOARD_FIXTURE` e só é consultada junto com ela; sem as duas, nenhum smoke desenha kanban                                                                                                                                                                                                                                                                                                                                                                                               |
+| `OC_CARD_FIXTURE`    | ausente: nenhum cartão tem conteúdo de fixture                                | caminho de um JSON `número da issue → resposta da API` com o corpo e os comentários de cada card. Só é consultada quando `OC_BOARD_FIXTURE` existe, e é o par dela no **smoke do conteúdo do cartão**. Cartão sem entrada no mapa vira erro na tela, e não card vazio                                                                                                                                                                                                                                                                                                                                    |
+| `OC_CLAUDE_PROJECTS` | ausente: `CLAUDE_CONFIG_DIR` se houver, senão `~/.claude/projects`            | raiz dos transcripts do Claude Code, de onde sai o mapa `repo → pasta local` em que a sessão de um cartão roda. Existe **para os smokes do cartão-chat e das abas**, que apontam para uma raiz temporária e fazem a descoberta rodar inteira sobre repos descartáveis                                                                                                                                                                                                                                                                                                                                    |
+| `OC_STATE_DIR`       | ausente: o `userData` do Electron — no Windows, `%APPDATA%\operations-center` | pasta em que o app grava o próprio estado, hoje em três arquivos: `conversations.json`, o vínculo `cartão → sessão do Claude Code` que faz a conversa voltar depois de fechar e reabrir; `dangerous.json`, a lista dos cartões marcados para rodar sem pedir permissão; e `preferences.json`, a aba que estava ativa quando o app fechou. Ser diretório, e não arquivo, é o que permitiu o segundo e o terceiro nascerem sem uma segunda variável. Existe **para os smokes da retomada, do cartão-chat e das abas**, que apontam para uma pasta temporária em vez de sujar o estado real de quem os roda |
 
-`OC_SCREEN`, `OC_BOARD_FIXTURE` e `OC_CLAUDE_PROJECTS` são portas de teste, como `OC_ISOLATED`:
-fora do smoke não há razão para tocá-las.
+`OC_SCREEN`, `OC_BOARD_FIXTURE`, `OC_BOARDS_FIXTURE`, `OC_CARD_FIXTURE`, `OC_CLAUDE_PROJECTS` e
+`OC_STATE_DIR` são portas de teste, como `OC_ISOLATED`: fora do smoke não há razão para tocá-las.
+
+`OC_THEME` é a exceção: também não tem botão na UI, mas não é porta de teste — é a única forma, por
+ora, de abrir o app numa combinação de cores que não a padrão. O botão vem no card que ensinar o app
+a lembrar da escolha.
+
+**Qual board o app abre não é configurável, e é de propósito**: a lista sai de uma pergunta ao
+GitHub — quais dos seus Projects rodam a esteira `gm-*` —, e não de variável de ambiente. Houve um
+par de variáveis que fixava a coordenada do board; elas foram removidas, e quem ainda as tiver
+exportadas no shell é **ignorado em silêncio** — melhor do que um app que não abre por causa de
+lixo de ambiente.
 
 ## Custo
 
@@ -113,12 +132,20 @@ chat — e agora **um clique num cartão já é um pedido**, porque a sessão da
 cartão aberto e esquecido não gasta nada enquanto ninguém fala com ele, mas dez cartões conversando
 são dez sessões disputando a mesma cota.
 
-**Dois dos três smokes sobem sessão real e consomem cota**: o da fatia vertical e o do cartão-chat,
-que é o mais caro dos dois — ele levanta uma sessão para conversar e outra ao provar que abrir um
-segundo cartão colapsa o primeiro. Os dois escapam do pior somando as mesmas duas coisas: `OC_MODEL`
-num modelo barato e `OC_ISOLATED=1` — este último é o que mais pesa, porque a maior parte daqueles
-20 centavos era carregamento de contexto. O do kanban não custa nada: lê uma fixture e nunca sobe
-sessão.
+**Quatro dos sete smokes sobem sessão real e consomem cota**: o da fatia vertical, o do cartão-chat,
+o da retomada e o das abas. O do cartão-chat é o mais caro — ele levanta uma sessão para conversar e
+outra ao provar que abrir um segundo cartão colapsa o primeiro —, o da retomada gasta dois turnos,
+um em cada ciclo de vida do app, e o das abas é o mais barato dos quatro: levanta duas sessões, uma
+por aba, e só uma delas chega a falar. Os quatro escapam do pior somando as mesmas duas coisas:
+`OC_MODEL` num modelo barato e `OC_ISOLATED=1` — este último é o que mais pesa, porque a maior parte
+daqueles 20 centavos era carregamento de contexto. Os outros três não custam nada: o do kanban, o do
+conteúdo do cartão e o do tema leem fixture e nunca sobem sessão.
+
+**E há um preço que não é de cota.** Cada cartão pode ser marcado para rodar _sem pedir permissão_:
+naquele chat as ferramentas do Claude Code executam sozinhas, e escrever no repo do cartão deixa de
+passar por um clique seu. É escolha explícita, por cartão, reversível no mesmo botão e sinalizada no
+kanban por um crachá vermelho — e **sobrevive a fechar o app**, que é a parte que surpreende: um
+cartão marcado ontem continua marcado hoje, antes de você clicar em coisa alguma.
 
 ## Como este projeto é desenvolvido
 

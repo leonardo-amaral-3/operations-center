@@ -176,6 +176,74 @@ export function pullRequestItem(
   }
 }
 
+export interface CardEnvelopeInput {
+  number?: number
+  /** `null` reproduz a issue que veio **sem** `body` — card sem corpo escrito, que é caso normal. */
+  body?: string | null
+  /**
+   * Os nós de `comments`, na ordem em que a API os devolve — que é a cronológica. Aceita
+   * `Record<string, unknown>` solto de propósito: o nó malformado do teste de descarte se escreve
+   * literalmente ali, e não atrás de uma opção do `commentNode`.
+   */
+  comments?: readonly Record<string, unknown>[]
+  /** Quantos comentários a issue tem ao todo. O default é "todos couberam"; `null` o omite. */
+  totalCount?: number | null
+  /** O que a resposta não traz: `'repository'` (repo inacessível) ou `'issue'` (card removido). */
+  missing?: 'repository' | 'issue'
+  /** O `CARD_QUERY` não tem alias duplo, logo não tem erro esperado: o default é **nenhum**. */
+  errors?: readonly GraphQLError[]
+}
+
+/**
+ * Uma resposta do `CARD_QUERY`, na forma em que a API a devolve.
+ *
+ * Sem o `errors` de brinde que o `envelope()` do board carrega, e a diferença é o assunto da regra
+ * 1 do `CardReader`: lá o `NOT_FOUND` do alias que não resolveu é esperado, aqui qualquer erro é
+ * fatal.
+ */
+export function cardEnvelope(input: CardEnvelopeInput = {}): GraphQLResponse {
+  const {
+    number = 13,
+    body = 'o corpo da issue',
+    comments = [],
+    totalCount,
+    missing,
+    errors,
+  } = input
+
+  const issue =
+    missing === 'issue'
+      ? null
+      : {
+          number,
+          ...(body === null ? {} : { body }),
+          comments: {
+            ...(totalCount === null ? {} : { totalCount: totalCount ?? comments.length }),
+            nodes: comments,
+          },
+        }
+
+  return {
+    data: { repository: missing === 'repository' ? null : { issue } },
+    ...(errors ? { errors } : {}),
+  }
+}
+
+export interface CommentNodeInput {
+  id: string
+  body: string
+  /** `null` é o que a API devolve para conta removida — e não `''`. */
+  author?: string | null
+  createdAt?: string
+}
+
+/** Um nó de `comments`, como o documento o pede. */
+export function commentNode(input: CommentNodeInput): Record<string, unknown> {
+  const { id, body, author = 'leonardo-amaral-3', createdAt = '2026-09-06T12:00:00Z' } = input
+
+  return { id, author: author === null ? null : { login: author }, createdAt, body }
+}
+
 /**
  * Os nós de `fieldValues`. O primeiro é sempre um nó vazio: o documento só pede o fragmento de
  * single-select, então todo campo de outro tipo (texto, número, data) chega assim na resposta real

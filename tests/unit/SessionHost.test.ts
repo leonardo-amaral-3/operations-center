@@ -2,8 +2,8 @@ import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_SETTING_SOURCES, SessionHost } from '../../src/core/session/SessionHost'
-import { INTERRUPTED_NOTICE } from '../../src/core/session/SessionHandle'
-import type { SessionHandle, TurnPulseCore } from '../../src/core/session/SessionHandle'
+import { INTERRUPTED_NOTICE, SessionHandle } from '../../src/core/session/SessionHandle'
+import type { TurnPulseCore } from '../../src/core/session/SessionHandle'
 import type { SessionState } from '../../src/core/session/state'
 import type { ChatMessage, ChatToolUse } from '../../src/shared/session'
 import {
@@ -62,6 +62,24 @@ function start(fake: FakeQuery, model?: string): SessionHandle {
   return new SessionHost({ query: fake.query, model }).start({ cwd: CWD })
 }
 
+/** A mesma sessão, nascida do cartão marcado: sem o portão do `canUseTool` desde o primeiro turno. */
+function startPerigoso(fake: FakeQuery): SessionHandle {
+  return new SessionHost({ query: fake.query }).start({ cwd: CWD, dangerous: true })
+}
+
+/**
+ * Uma sessão cujo `query()` **não** recebeu `allowDangerouslySkipPermissions` — a única forma de o
+ * SDK recusar a troca de modo (M-3).
+ *
+ * Montada à mão, sem passar pelo `SessionHost`, justamente porque o host manda a flag sempre: é
+ * essa garantia que o caso exercita do outro lado.
+ */
+function startSemFlag(fake: FakeQuery): SessionHandle {
+  return new SessionHandle('sessao-sem-flag', ({ prompt, canUseTool }) =>
+    fake.query({ prompt, options: { cwd: CWD, canUseTool } }),
+  )
+}
+
 /**
  * O turno que não termina sozinho: fica estacionado até a parada chegar, e então volta pelo
  * iterador como o `result` de erro com que o SDK relata um turno abortado.
@@ -69,6 +87,73 @@ function start(fake: FakeQuery, model?: string): SessionHandle {
 const turnoParado: FakeTurn = async (_text, tools) => {
   await tools.untilInterrupt()
   return [abortedResult()]
+}
+
+/** Grava tudo que o canal de estado publicar, na ordem — é assim que se prova o que **não** apareceu. */
+function gravarEstados(handle: SessionHandle): SessionState[] {
+  const vistos: SessionState[] = []
+  handle.on('state', (state) => vistos.push(state))
+  return vistos
+}
+
+/** Um pedido do roteiro concorrente. O `toolName` só importa onde o caso o inspeciona. */
+type PedidoConcorrente =
+  { tipo: 'permissao'; id: string; toolName?: string } | { tipo: 'pergunta'; id: string }
+
+/** O payload de uma pergunta simples — o mínimo que o `readQuestions` aceita desenhar. */
+function perguntaCrua(texto: string): unknown {
+  return [
+    {
+      question: texto,
+      header: 'Cor',
+      multiSelect: false,
+      options: [
+        { label: 'Azul', description: 'o céu' },
+        { label: 'Verde', description: 'o mato' },
+      ],
+    },
+  ]
+}
+
+interface Concorrentes {
+  readonly turn: FakeTurn
+  /** Resolve quando **todos** os pedidos já estão em voo: o ponto em que a fila já está formada. */
+  readonly asked: Promise<void>
+  /** O `behavior` que cada ferramenta recebeu, na ordem em que os pedidos foram disparados. */
+  readonly behaviors: string[]
+}
+
+/**
+ * O roteiro dos casos concorrentes: dispara os pedidos **sem `await` entre eles** e avisa por uma
+ * promise quando todos já estão em voo.
+ *
+ * Sem temporizador de propósito. `askPermission`/`askQuestion` chamam o `canUseTool` de forma
+ * síncrona antes do primeiro `await`, então quando `asked` resolve os pedidos já entraram na fila,
+ * na ordem em que foram disparados — que é justamente a ordem sob teste. Um `setTimeout` no lugar
+ * disso provaria o relógio da máquina, não a FIFO.
+ */
+function concorrentes(...pedidos: readonly PedidoConcorrente[]): Concorrentes {
+  const behaviors: string[] = []
+  let todosPedidos!: () => void
+  const asked = new Promise<void>((resolve) => {
+    todosPedidos = resolve
+  })
+
+  const turn: FakeTurn = async (text, tools) => {
+    const emVoo = pedidos.map((pedido) =>
+      pedido.tipo === 'permissao'
+        ? tools.askPermission({ toolName: pedido.toolName ?? 'Write', toolUseID: pedido.id })
+        : tools.askQuestion({
+            toolUseID: pedido.id,
+            questions: perguntaCrua(`Qual cor? ${pedido.id}`),
+          }),
+    )
+    todosPedidos()
+    behaviors.push(...(await Promise.all(emVoo)).map((resultado) => resultado.behavior))
+    return [assistantMessage(text), successResult()]
+  }
+
+  return { turn, asked, behaviors }
 }
 
 describe('SessionHost', () => {
@@ -82,6 +167,11 @@ describe('SessionHost', () => {
     expect(options?.permissionMode).toBe('default')
     expect(options?.includePartialMessages).toBe(false)
     expect(options?.canUseTool).toBeTypeOf('function')
+
+    // A flag vai **sempre**, inclusive na sessão que nasce com portão: medido que ela é inerte
+    // sozinha (M-4), e sem ela o `setPermissionMode` rejeita (M-3) — o modo deixaria de ser
+    // reversível numa sessão viva, só ligável em sessão nova.
+    expect(options?.allowDangerouslySkipPermissions).toBe(true)
 
     // `settingSources` explícito, e o default carrega as settings e os CLAUDE.md do usuário: uma
     // sessão isolada seria um Claude Code amputado, incapaz de rodar as skills que o app hospeda.
@@ -101,6 +191,60 @@ describe('SessionHost', () => {
     expect(fake.options?.settingSources).toEqual([])
   })
 
+  it('sem retomada, nada de resume: o cwd é o único endereço da conversa nova', () => {
+    const fake = createFakeQuery()
+    start(fake)
+
+    expect(fake.options?.resume).toBeUndefined()
+  })
+
+  it('retoma pelo session_id do Claude Code — e sem forkSession', () => {
+    const fake = createFakeQuery()
+    new SessionHost({ query: fake.query }).start({ cwd: CWD, resume: 'sessao-de-ontem' })
+
+    expect(fake.options?.resume).toBe('sessao-de-ontem')
+
+    // `forkSession` é o que faria o SDK abrir um transcript novo. Como o vínculo gravado é por
+    // `session_id`, um fork silencioso deixaria o registro apontando para uma conversa que parou —
+    // e todos os turnos seguintes se perderiam sem nenhum sinal na tela.
+    expect(fake.options?.forkSession).toBeUndefined()
+  })
+
+  it('o histórico restaurado já está na conversa antes do primeiro evento', async () => {
+    const fake = createFakeQuery({
+      turn: (text) => Promise.resolve([assistantMessage(`li: ${text}`), successResult()]),
+    })
+    const history: ChatMessage[] = [
+      { id: 'antes-1', role: 'user', text: 'o que eu disse ontem' },
+      { id: 'antes-2', role: 'assistant', text: 'o que foi respondido ontem' },
+    ]
+    const handle = new SessionHost({ query: fake.query }).start({
+      cwd: CWD,
+      resume: 'sessao-de-ontem',
+      history,
+    })
+
+    // Na mesma volta em que o `start` devolveu, antes de qualquer evento do SDK: é este retrato que
+    // a tela lê ao reabrir o cartão, e um `messages` vazio aqui o reabriria em branco mesmo com a
+    // retomada tendo funcionado do lado do modelo.
+    expect(handle.messages.map(textOf)).toEqual([
+      'o que eu disse ontem',
+      'o que foi respondido ontem',
+    ])
+
+    handle.send('e agora?')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // O turno novo entra **depois** do histórico, na ordem: o `resume` não reemite o que já
+    // aconteceu (medido), então o que veio do transcript e o que veio do stream não se duplicam.
+    expect(handle.messages.map(textOf)).toEqual([
+      'o que eu disse ontem',
+      'o que foi respondido ontem',
+      'e agora?',
+      'li: e agora?',
+    ])
+  })
+
   it('apresenta a sessão quando o init chega, e passa a trabalhar', async () => {
     const fake = createFakeQuery({ init: { model: 'fake-model', apiKeySource: 'none' } })
     const handle = start(fake)
@@ -115,6 +259,7 @@ describe('SessionHost', () => {
       model: 'fake-model',
       cwd: '/tmp/fake-cwd',
       apiKeySource: 'none',
+      permissionMode: 'default',
     })
     expect(await visto).toEqual(handle.init)
   })
@@ -203,6 +348,7 @@ describe('SessionHost', () => {
         displayName: 'Write file',
         description: undefined,
       },
+      queued: 0,
     })
     // O turno está parado: sem decisao humana, nada de resposta.
     expect(decisoes).toEqual([])
@@ -256,6 +402,242 @@ describe('SessionHost', () => {
     expect(handle.state).toEqual({ kind: 'closed' })
   })
 
+  it('dois pedidos de permissão concorrentes: o primeiro fica na frente, o segundo espera', async () => {
+    const { turn, asked } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'permissao', id: 'toolu_b' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('faça as duas coisas')
+    await asked
+
+    // Quem chegou primeiro fica na frente, e o segundo **espera** em vez de tomar o lugar dele —
+    // sobrescrever o incumbente é exatamente o travamento que este card conserta.
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_a' },
+      queued: 1,
+    })
+
+    await handle.close()
+  })
+
+  it('resolver a frente revela o de trás, e não devolve a vez', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'permissao', id: 'toolu_b' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('faça as duas coisas')
+    await asked
+
+    handle.respondPermission('toolu_a', 'allow')
+    // Lido logo em seguida, sem esperar canal nenhum: a republicação da frente é síncrona.
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_b' },
+      queued: 0,
+    })
+
+    handle.respondPermission('toolu_b', 'allow')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // As **duas** ferramentas receberam resposta: nenhuma ficou esperando o que não vinha.
+    expect(behaviors).toEqual(['allow', 'allow'])
+  })
+
+  it('duas perguntas concorrentes seguem a mesma fila', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'pergunta', id: 'toolu_a' },
+      { tipo: 'pergunta', id: 'toolu_b' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('pergunte duas vezes')
+    await asked
+
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_answer',
+      request: { id: 'toolu_a' },
+      queued: 1,
+    })
+
+    handle.answerQuestion('toolu_a', { 'Qual cor? toolu_a': 'Azul' })
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_answer',
+      request: { id: 'toolu_b' },
+      queued: 0,
+    })
+
+    handle.answerQuestion('toolu_b', { 'Qual cor? toolu_b': 'Verde' })
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(behaviors).toEqual(['allow', 'allow'])
+  })
+
+  it('o par misto: quem chegou primeiro fica na frente, seja permissão ou pergunta', async () => {
+    const permissaoNaFrente = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'pergunta', id: 'toolu_b' },
+    )
+    const primeiro = start(createFakeQuery({ turn: permissaoNaFrente.turn }))
+
+    primeiro.send('decida e pergunte')
+    await permissaoNaFrente.asked
+
+    expect(primeiro.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_a' },
+      queued: 1,
+    })
+
+    primeiro.respondPermission('toolu_a', 'allow')
+    // A fila é uma só, e a ordem entre os dois tipos é o que o par misto precisa preservar.
+    expect(primeiro.state).toMatchObject({
+      kind: 'awaiting_answer',
+      request: { id: 'toolu_b' },
+      queued: 0,
+    })
+
+    await primeiro.close()
+
+    // E o simétrico, com a pergunta chegando primeiro.
+    const perguntaNaFrente = concorrentes(
+      { tipo: 'pergunta', id: 'toolu_c' },
+      { tipo: 'permissao', id: 'toolu_d' },
+    )
+    const segundo = start(createFakeQuery({ turn: perguntaNaFrente.turn }))
+
+    segundo.send('pergunte e decida')
+    await perguntaNaFrente.asked
+
+    expect(segundo.state).toMatchObject({
+      kind: 'awaiting_answer',
+      request: { id: 'toolu_c' },
+      queued: 1,
+    })
+
+    segundo.answerQuestion('toolu_c', { 'Qual cor? toolu_c': 'Azul' })
+    expect(segundo.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_d' },
+      queued: 0,
+    })
+
+    await segundo.close()
+  })
+
+  it('a sessão só volta a trabalhar quando a fila esvazia', async () => {
+    const { turn, asked } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'pergunta', id: 'toolu_b' },
+      { tipo: 'permissao', id: 'toolu_c' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+    const vistos = gravarEstados(handle)
+
+    handle.send('faça as três coisas')
+    await asked
+
+    const antesDasRespostas = vistos.length
+    handle.respondPermission('toolu_a', 'allow')
+    handle.answerQuestion('toolu_b', { 'Qual cor? toolu_b': 'Azul' })
+
+    // O `working` no meio da fila é a mentira que este card mata: o cartão diria "trabalhando"
+    // enquanto ainda há gente esperando que alguém decida.
+    expect(vistos.slice(antesDasRespostas).map((estado) => estado.kind)).toEqual([
+      'awaiting_answer',
+      'awaiting_decision',
+    ])
+
+    handle.respondPermission('toolu_c', 'allow')
+    await untilState(handle, isKind('awaiting_input'))
+  })
+
+  it('responder um pedido que não está na frente não muda quem está', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'permissao', id: 'toolu_b' },
+      { tipo: 'permissao', id: 'toolu_c' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('faça as três coisas')
+    await asked
+
+    expect(handle.state).toMatchObject({ request: { id: 'toolu_a' }, queued: 2 })
+
+    // A guarda da tela desatualizada: ela responde por `requestId`, e o pedido do meio pode ser
+    // decidido sem que a frente tenha saído.
+    handle.respondPermission('toolu_b', 'allow')
+
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_a' },
+      queued: 1,
+    })
+
+    handle.respondPermission('toolu_a', 'allow')
+    handle.respondPermission('toolu_c', 'allow')
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(behaviors).toEqual(['allow', 'allow', 'allow'])
+  })
+
+  it('toolUseID repetido não substitui quem já esperava', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a', toolName: 'Write' },
+      { tipo: 'permissao', id: 'toolu_a', toolName: 'Read' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('faça a mesma coisa duas vezes')
+    await asked
+
+    // O incumbente segue na frente com a promise intacta, e o recém-chegado nem entra na fila:
+    // `Write`, e não `Read`, é o que prova que ninguém foi substituído.
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_a', toolName: 'Write' },
+      queued: 0,
+    })
+
+    handle.respondPermission('toolu_a', 'allow')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // O repetido foi negado na hora, em vez de passar em silêncio.
+    expect(behaviors).toEqual(['allow', 'deny'])
+  })
+
+  it('fechar com a fila cheia nega todos, e nenhum turno fica pendurado', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'pergunta', id: 'toolu_b' },
+      { tipo: 'permissao', id: 'toolu_c' },
+    )
+    const fake = createFakeQuery({ turn })
+    const handle = start(fake)
+    const vistos = gravarEstados(handle)
+
+    handle.send('faça as três coisas')
+    await asked
+
+    const antesDoFecho = vistos.length
+    await handle.close()
+
+    expect(behaviors).toEqual(['deny', 'deny', 'deny'])
+    expect(fake.finished).toBe(true)
+    expect(handle.state).toEqual({ kind: 'closed' })
+    // Negar a fila **não** publica: um `settled` no caminho pintaria "Trabalhando" numa sessão que
+    // está morrendo. O que aparece é o fim natural do turno, que os `deny` destravaram.
+    expect(vistos.slice(antesDoFecho).map((estado) => estado.kind)).toEqual([
+      'awaiting_input',
+      'closed',
+    ])
+  })
+
   it('um AskUserQuestion vira pergunta na tela, e a resposta volta ao SDK do jeito exato', async () => {
     const resultados: PermissionResult[] = []
     const fake = createFakeQuery({
@@ -300,6 +682,7 @@ describe('SessionHost', () => {
           },
         ],
       },
+      queued: 0,
     })
     // O turno está parado esperando a pessoa, como na permissão.
     expect(resultados).toEqual([])
@@ -466,6 +849,7 @@ describe('SessionHost', () => {
           },
         ],
       },
+      queued: 0,
     })
 
     await handle.close()
@@ -505,6 +889,7 @@ describe('SessionHost', () => {
           displayName: undefined,
           description: undefined,
         },
+        queued: 0,
       })
 
       handle.respondPermission(id, 'deny')
@@ -1054,5 +1439,191 @@ describe('SessionHost', () => {
 
     expect(handle.messages.map((message) => message.role)).toEqual(['user', 'tool'])
     expect(trilha(handle).map((entrada) => entrada.status)).toEqual(['done'])
+  })
+
+  it('o cartão marcado nasce sem portão, e o init do SDK reporta o modo', async () => {
+    const fake = createFakeQuery()
+    const handle = startPerigoso(fake)
+
+    expect(fake.options?.permissionMode).toBe('bypassPermissions')
+    expect(fake.options?.allowDangerouslySkipPermissions).toBe(true)
+    expect(handle.dangerous).toBe(true)
+
+    await untilState(handle, isKind('working'))
+
+    // A segunda fonte, a do próprio SDK: o modo é verdade lá dentro, e não um auto-allow nosso.
+    expect(handle.init?.permissionMode).toBe('bypassPermissions')
+  })
+
+  it('com o modo ligado, o turno usa a ferramenta sem parar em ninguém', async () => {
+    const decisoes: string[] = []
+    const fake = createFakeQuery({
+      turn: async (text, tools) => {
+        decisoes.push(
+          (await tools.askPermission({ toolName: 'Write', toolUseID: 'toolu_p1' })).behavior,
+        )
+        return [assistantMessage(`escrito: ${text}`), successResult()]
+      },
+    })
+    const handle = startPerigoso(fake)
+    const vistos = gravarEstados(handle)
+
+    handle.send('crie o arquivo')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // Ninguém chamou `respondPermission`, e mesmo assim a ferramenta rodou: em `bypassPermissions`
+    // o SDK nem consulta o `canUseTool` (M-1).
+    expect(decisoes).toEqual(['allow'])
+    expect(vistos.map((estado) => estado.kind)).not.toContain('awaiting_decision')
+  })
+
+  it('com o modo ligado, a pergunta continua parando a sessão', async () => {
+    const { turn, asked, behaviors } = concorrentes({ tipo: 'pergunta', id: 'toolu_q' })
+    const handle = startPerigoso(createFakeQuery({ turn }))
+
+    handle.send('pergunte')
+    await asked
+
+    // O `AskUserQuestion` chega ao `canUseTool` nos dois modos (M-2), e é essa medição que autoriza
+    // o modo do próprio SDK: o que ele tira é o clique em "Permitir", não a decisão de produto.
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_answer',
+      request: { id: 'toolu_q' },
+      queued: 0,
+    })
+
+    handle.answerQuestion('toolu_q', { 'Qual cor? toolu_q': 'Azul' })
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(behaviors).toEqual(['allow'])
+  })
+
+  it('desligar devolve o portão sem derrubar a sessão', async () => {
+    const decisoes: string[] = []
+    const fake = createFakeQuery({
+      turn: async (text, tools) => {
+        decisoes.push(
+          (await tools.askPermission({ toolName: 'Write', toolUseID: `toolu_${text}` })).behavior,
+        )
+        return [assistantMessage(`ok: ${text}`), successResult()]
+      },
+    })
+    const handle = startPerigoso(fake)
+
+    handle.send('a')
+    await untilState(handle, isKind('awaiting_input'))
+
+    const idAntes = handle.id
+    const mensagensAntes = [...handle.messages]
+    const kindAntes = handle.state.kind
+
+    expect(await handle.setDangerous(false)).toBe(false)
+    expect(fake.permissionModes).toEqual(['default'])
+
+    // A mesma sessão: mesmo id, mesmo histórico, mesmo estado. Desligar o modo não é encerrar e
+    // resubir — é o que separa "reversível" de "reiniciar a conversa para parar de clicar".
+    expect(handle.id).toBe(idAntes)
+    expect(handle.messages).toEqual(mensagensAntes)
+    expect(handle.state.kind).toBe(kindAntes)
+
+    handle.send('b')
+    expect(await untilState(handle, isKind('awaiting_decision'))).toMatchObject({
+      request: { id: 'toolu_b' },
+    })
+
+    handle.respondPermission('toolu_b', 'allow')
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(decisoes).toEqual(['allow', 'allow'])
+  })
+
+  it('ligar o modo com o turno travado libera as permissões que esperavam', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'permissao', id: 'toolu_b' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('faça as duas coisas')
+    await asked
+
+    expect(handle.state).toMatchObject({ kind: 'awaiting_decision', request: { id: 'toolu_a' } })
+
+    expect(await handle.setDangerous(true)).toBe(true)
+
+    // Lido logo em seguida, sem esperar canal nenhum: a fila esvaziou dentro do `#allowPending`,
+    // e o `settled` devolveu a sessão ao trabalho na mesma volta.
+    expect(handle.state).toEqual({ kind: 'working' })
+
+    await untilState(handle, isKind('awaiting_input'))
+    expect(behaviors).toEqual(['allow', 'allow'])
+  })
+
+  it('ligar o modo libera a permissão e deixa a pergunta na frente da fila', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'pergunta', id: 'toolu_b' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('decida e pergunte')
+    await asked
+
+    expect(await handle.setDangerous(true)).toBe(true)
+
+    // A permissão saiu sozinha; a pergunta continua esperando uma pessoa, agora na frente.
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_answer',
+      request: { id: 'toolu_b' },
+      queued: 0,
+    })
+
+    handle.answerQuestion('toolu_b', { 'Qual cor? toolu_b': 'Azul' })
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(behaviors).toEqual(['allow', 'allow'])
+  })
+
+  it('o SDK que recusa a troca não libera nada, e o modo continua o de antes', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'permissao', id: 'toolu_b' },
+    )
+    const handle = startSemFlag(createFakeQuery({ turn }))
+
+    handle.send('faça as duas coisas')
+    await asked
+
+    expect(await handle.setDangerous(true)).toBe(false)
+    expect(handle.dangerous).toBe(false)
+
+    // Uma recusa que ainda assim aprovasse os pendentes teria dado, por acidente, exatamente a
+    // permissão que o usuário pediu por outra via e não recebeu.
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_a' },
+      queued: 1,
+    })
+    expect(behaviors).toEqual([])
+
+    await handle.close()
+  })
+
+  it('um segundo pedido durante a troca é engolido, e vira um control request só', async () => {
+    const fake = createFakeQuery()
+    const handle = start(fake)
+
+    const ligando = handle.setDangerous(true)
+
+    // Disparado com a troca ainda em voo: o `#switching` está levantado, e este devolve o modo
+    // corrente sem escrever nada no transporte — o mesmo que o `#stopping` faz com o segundo
+    // clique em "Parar". Sem a bandeira, quem venceria seria quem resolvesse por último.
+    expect(await handle.setDangerous(false)).toBe(false)
+    expect(await ligando).toBe(true)
+    expect(fake.permissionModes).toEqual(['bypassPermissions'])
+
+    // E o valor repetido também não vira control request: não há troca a pedir.
+    expect(await handle.setDangerous(true)).toBe(true)
+    expect(fake.permissionModes).toEqual(['bypassPermissions'])
   })
 })

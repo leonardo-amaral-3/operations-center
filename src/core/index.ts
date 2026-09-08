@@ -11,19 +11,42 @@
  * sem tocar em quem consome.
  */
 
-export { BoardReader, MAX_PAGES } from './board/BoardReader'
-export { BOARD_QUERY, CARD_FIELDS, CONVERSABLE_STATIONS } from './board/query'
+export { BoardFinder, pickActive } from './board/BoardFinder'
+export { BoardReader } from './board/BoardReader'
+export { CardReader, MAX_COMMENTS } from './board/CardReader'
+export { MAX_PAGES } from './board/envelope'
+export {
+  BOARD_QUERY,
+  CARD_QUERY,
+  CARD_FIELDS,
+  CONVERSABLE_STATIONS,
+  ESTEIRA_STATIONS,
+  OWNERS_QUERY,
+  PROJECTS_QUERY,
+} from './board/query'
+export { runsEsteira } from './board/stations'
+export type { DiscoveredBoard, Discovery } from './board/BoardFinder'
 export type { BoardReaderDeps, ReadBoardInput } from './board/BoardReader'
+export type { CardReaderDeps, ReadCardInput } from './board/CardReader'
 export type { GraphQLFn, GraphQLResponse } from './board/types'
 export type { Board, BoardCard, BoardCardField, BoardColumn } from './board/types'
+export type { CardComment, CardContent } from './board/types'
 
 export { RepoIndex } from './repos/RepoIndex'
 export type { RepoIndexDeps, SessionFolder } from './repos/RepoIndex'
+
+export { ConversationIndex } from './session/ConversationIndex'
+export type { ConversationIndexDeps, Restoration } from './session/ConversationIndex'
+
+export { DangerIndex } from './session/DangerIndex'
+export type { DangerIndexDeps } from './session/DangerIndex'
 
 export { DEFAULT_SETTING_SOURCES, SessionHost } from './session/SessionHost'
 export type { QueryFn, SessionHostDeps, StartSessionInput } from './session/SessionHost'
 export type { SessionHandle } from './session/SessionHandle'
 export type { SessionState } from './session/state'
+export { replay } from './session/transcript'
+export type { TranscriptEntry } from './session/transcript'
 export type {
   ChatMessage,
   ChatText,

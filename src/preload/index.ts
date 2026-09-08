@@ -1,27 +1,33 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 
-import type { BoardSnapshot } from '../shared/board'
+import type { BoardsSnapshot } from '../shared/board'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type {
+  ActivateBoardRequest,
   AnswerQuestionRequest,
   ChooseFolderRequest,
   ChooseFolderResult,
   CloseRequest,
+  ConversationsSnapshot,
+  DangerousSnapshot,
   OcApi,
+  ReadCardRequest,
+  ReadCardResult,
   RespondPermissionRequest,
   Screen,
   SendRequest,
   SessionActivityEvent,
   SessionInitEvent,
   SessionMessageEvent,
-  SessionPermissionEvent,
-  SessionQuestionEvent,
   SessionStateEvent,
+  SetDangerousRequest,
   StartRequest,
   StartResult,
   StopRequest,
 } from '../shared/ipc'
+import { isTheme, THEME_DEFAULT, THEME_FLAG } from '../shared/theme'
+import type { Theme } from '../shared/theme'
 
 const SCREEN_FLAG = '--oc-screen='
 
@@ -35,6 +41,26 @@ function resolveScreen(): Screen {
   const arg = process.argv.find((value) => value.startsWith(SCREEN_FLAG))
 
   return arg?.slice(SCREEN_FLAG.length) === 'chat' ? 'chat' : 'kanban'
+}
+
+/**
+ * Lido de `process.argv` como a tela, e pela mesma razão: num preload sandboxado `process.env`
+ * depende de um polyfill que não é contrato.
+ *
+ * Cai no default quando a flag falta ou traz nome desconhecido — aqui, ao contrário do main, isso
+ * **não** é engano de quem digitou: o main já validou `OC_THEME` e lançou se fosse o caso. Uma flag
+ * estranha chegando até aqui seria bug nosso, e derrubar a janela por causa dele deixaria o app sem
+ * nenhuma cor em vez de com a cor errada.
+ *
+ * Chama-se `themeFromArgv` e **não** `resolveTheme` de propósito: já existe um `resolveTheme` no
+ * main, com a política de falha oposta, e dois nomes iguais para regras contrárias é como alguém
+ * "uniformiza" o errado.
+ */
+function themeFromArgv(): Theme {
+  const arg = process.argv.find((value) => value.startsWith(THEME_FLAG))
+  const valor = arg?.slice(THEME_FLAG.length)
+
+  return isTheme(valor) ? valor : THEME_DEFAULT
 }
 
 /**
@@ -62,6 +88,7 @@ const api: OcApi = {
   // Resolvido aqui, antes do `exposeInMainWorld`: o primeiro render já sabe o que desenhar, e não
   // há uma tela piscando enquanto uma promessa de configuração volta.
   screen: resolveScreen(),
+  theme: themeFromArgv(),
   start: (request?: StartRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.start, request) as Promise<StartResult>,
   send: (request: SendRequest) => ipcRenderer.invoke(IPC_INVOKE.send, request) as Promise<void>,
@@ -76,13 +103,21 @@ const api: OcApi = {
   onInit: (listener) => subscribe<SessionInitEvent>(IPC_EVENT.init, listener),
   onMessage: (listener) => subscribe<SessionMessageEvent>(IPC_EVENT.message, listener),
   onState: (listener) => subscribe<SessionStateEvent>(IPC_EVENT.state, listener),
-  onPermissionRequest: (listener) =>
-    subscribe<SessionPermissionEvent>(IPC_EVENT.permissionRequest, listener),
-  onQuestionRequest: (listener) =>
-    subscribe<SessionQuestionEvent>(IPC_EVENT.questionRequest, listener),
   onActivity: (listener) => subscribe<SessionActivityEvent>(IPC_EVENT.activity, listener),
-  readBoard: () => ipcRenderer.invoke(IPC_INVOKE.readBoard) as Promise<BoardSnapshot>,
-  onBoard: (listener) => subscribe<BoardSnapshot>(IPC_EVENT.board, listener),
+  readBoards: () => ipcRenderer.invoke(IPC_INVOKE.readBoards) as Promise<BoardsSnapshot>,
+  onBoards: (listener) => subscribe<BoardsSnapshot>(IPC_EVENT.boards, listener),
+  activateBoard: (request: ActivateBoardRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.activateBoard, request) as Promise<void>,
+  readCard: (request: ReadCardRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.readCard, request) as Promise<ReadCardResult>,
+  readConversations: () =>
+    ipcRenderer.invoke(IPC_INVOKE.readConversations) as Promise<ConversationsSnapshot>,
+  onConversations: (listener) =>
+    subscribe<ConversationsSnapshot>(IPC_EVENT.conversations, listener),
+  setDangerous: (request: SetDangerousRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.setDangerous, request) as Promise<void>,
+  readDangerous: () => ipcRenderer.invoke(IPC_INVOKE.readDangerous) as Promise<DangerousSnapshot>,
+  onDangerous: (listener) => subscribe<DangerousSnapshot>(IPC_EVENT.dangerous, listener),
 }
 
 contextBridge.exposeInMainWorld('oc', api)

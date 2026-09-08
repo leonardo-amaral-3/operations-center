@@ -18,7 +18,7 @@ interface StatusBarProps {
 export function StatusBar({ init }: StatusBarProps): JSX.Element {
   if (!init) {
     return (
-      <footer className="border-t border-neutral-800 px-4 py-2 text-[11px] text-neutral-500">
+      <footer className="border-t-2 border-border px-4 py-2 text-[11px] text-foreground/60">
         Conectando à sessão do Claude Code…
       </footer>
     )
@@ -28,19 +28,24 @@ export function StatusBar({ init }: StatusBarProps): JSX.Element {
     <footer
       data-testid="session-init"
       data-api-key-source={init.apiKeySource}
-      className="flex items-center gap-4 border-t border-neutral-800 px-4 py-2 text-[11px] text-neutral-500"
+      className="flex items-center gap-4 border-t-2 border-border px-4 py-2 text-[11px] text-foreground/60"
     >
+      {/* Etiqueta e valor deixam de ser dois cinzas e passam a ser peso mais opacidade: num tema
+          de uma cor de texto só, é esse o contraste que sobrevive. */}
       <span className="min-w-0 truncate" title={init.cwd}>
-        pasta <span className="text-neutral-300">{init.cwd}</span>
+        pasta <span className="font-heading text-foreground">{init.cwd}</span>
       </span>
       <span className="shrink-0">
-        modelo <span className="text-neutral-300">{init.model}</span>
+        modelo <span className="font-heading text-foreground">{init.model}</span>
       </span>
       <span className="shrink-0">
-        auth <span className="text-neutral-300">{init.apiKeySource}</span>
+        auth <span className="font-heading text-foreground">{init.apiKeySource}</span>
       </span>
       {/* O id é o que torna a sessão resumível pelo Claude Code depois de a janela fechar. */}
-      <span className="ml-auto shrink-0 font-mono" title={init.sessionId}>
+      <span
+        className="ml-auto shrink-0 font-mono font-heading text-foreground"
+        title={init.sessionId}
+      >
         {init.sessionId.slice(0, 8)}
       </span>
     </footer>

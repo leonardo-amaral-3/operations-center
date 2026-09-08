@@ -7,17 +7,16 @@
  * só os tipos de dado que o `core` publica.
  */
 
-import type { BoardSnapshot } from './board'
+import type { BoardsSnapshot, CardContent } from './board'
 import type {
   ChatMessage,
   PermissionDecision,
-  PermissionRequest,
   QuestionAnswers,
-  QuestionRequest,
   SessionInit,
   SessionState,
   TurnActivity,
 } from './session'
+import type { Theme } from './theme'
 
 /**
  * Qual tela o app desenha. Decidido no main por `OC_SCREEN` e entregue ao preload por argv — o
@@ -34,7 +33,22 @@ export const IPC_INVOKE = {
   stop: 'session:stop',
   close: 'session:close',
   chooseFolder: 'repo:choose-folder',
-  readBoard: 'board:read',
+  /**
+   * O plural é o nome ficando honesto sobre a carga: um `board:read` que devolve a lista de todos
+   * os boards descobertos é um nome que mente.
+   */
+  readBoards: 'boards:read',
+  /**
+   * Qual aba o humano ativou. **O prefixo `ui:` é de propósito**: este é o primeiro canal de
+   * *escrita* da ponte, e o que ele escreve é estado local do app — nunca o GitHub. Ficar fora de
+   * `boards:` e de `card:` é o que mantém a asserção "todo canal que toca o GitHub é de leitura"
+   * verdadeira **e** legível para quem chegar depois com a canária vermelha na mão.
+   */
+  activateBoard: 'ui:active-board',
+  readCard: 'card:read',
+  readConversations: 'conversations:read',
+  readDangerous: 'danger:read',
+  setDangerous: 'danger:set',
 } as const
 
 /** Main → renderer. Avisos de mão única, disparados pelo `core` quando a sessão se mexe. */
@@ -42,15 +56,25 @@ export const IPC_EVENT = {
   init: 'session:init',
   message: 'session:message',
   state: 'session:state',
-  permissionRequest: 'session:permission-request',
-  questionRequest: 'session:question-request',
   /**
    * O pulso do turno. Canal próprio, e não um campo do `state`: ele bate a cada ~1,3s enquanto o
    * modelo pensa, e o kanban assina o `state` para manter o crachá dos cartões fechados vivo. Quem
    * não quer o pulso não assina.
    */
   activity: 'session:activity',
-  board: 'board:changed',
+  boards: 'boards:changed',
+  /**
+   * Mudou o conjunto de cartões com conversa recuperável. Canal próprio, e não carona no board: o
+   * board tem throttle de 10s (`BOARD_REREAD_THROTTLE_MS`) e fala do GitHub; isto é estado do app e
+   * precisa aparecer na hora em que uma sessão nasce ou é encerrada.
+   */
+  conversations: 'conversations:changed',
+  /**
+   * Mudou o conjunto de cartões que rodam sem o portão. Canal próprio pelo mesmo motivo do de
+   * conversas: é estado do app, precisa aparecer na hora, e não tem nada a ver com o throttle de
+   * 10s do board.
+   */
+  dangerous: 'danger:changed',
 } as const
 
 /**
@@ -140,6 +164,29 @@ export interface ChooseFolderResult {
 }
 
 /**
+ * Qual aba o usuário ativou. **`key`, nunca coordenada**: para o renderer ela é string opaca, e quem
+ * a traduz em `owner`/`number` é o main — a mesma regra que já vale para `itemId`.
+ *
+ * `key` que o main não reconheça **não é erro**: o retrato pode ter mudado entre o desenho da barra
+ * e o clique, e derrubar o `invoke` por isso faria uma corrida normal virar exceção na tela.
+ */
+export interface ActivateBoardRequest {
+  key: string
+}
+
+/** De qual cartão. `itemId`, nunca `owner/name/number`: quem traduz cartão em coordenada é o main. */
+export interface ReadCardRequest {
+  itemId: string
+}
+
+/**
+ * Falha **não rejeita**, pelo mesmo motivo de `StartResult`: a tela precisa desenhar o erro dentro
+ * do cartão, e o motivo é texto de tela — o precedente é `BoardTab.error`, que já é a string
+ * que o kanban mostra.
+ */
+export type ReadCardResult = { ok: true; content: CardContent } | { ok: false; reason: string }
+
+/**
  * Todo evento diz de qual sessão veio. Hoje há uma só na tela; o `sessionId` é o que faz o kanban
  * do PRD ser depois um problema de roteamento no renderer, e não uma troca de contrato.
  */
@@ -158,16 +205,6 @@ export interface SessionStateEvent {
   state: SessionState
 }
 
-export interface SessionPermissionEvent {
-  sessionId: string
-  request: PermissionRequest
-}
-
-export interface SessionQuestionEvent {
-  sessionId: string
-  request: QuestionRequest
-}
-
 /**
  * O pulso do turno corrente, já com os dois carimbos de relógio que o main põe.
  *
@@ -177,6 +214,38 @@ export interface SessionQuestionEvent {
 export interface SessionActivityEvent {
   sessionId: string
   activity: TurnActivity
+}
+
+/**
+ * Quais cartões têm conversa a retomar. Vem inteiro a cada mudança, e o consumidor substitui — a
+ * mesma regra do `BoardsSnapshot` e do `TurnActivity`, e pelo mesmo motivo: evento perdido não deixa
+ * a tela num estado que nunca mais será corrigido.
+ *
+ * **Só `itemId`.** Nenhum `sessionId` e nenhuma pasta atravessam a ponte: o renderer não tem o que
+ * fazer com eles, e a canária do `ipc-no-path` existe para manter isso assim.
+ */
+export interface ConversationsSnapshot {
+  itemIds: readonly string[]
+}
+
+/**
+ * Qual cartão, e para qual lado. `dangerous: false` é desmarcar.
+ *
+ * **`itemId`, nunca pasta** — a mesma regra do `StartRequest`, e aqui ela vale ainda mais: o modo
+ * tira o portão de uma sessão que escreve em disco, e deixar o renderer dizer *onde* seria juntar
+ * as duas metades exatas do buraco que `contextIsolation` fecha.
+ */
+export interface SetDangerousRequest {
+  itemId: string
+  dangerous: boolean
+}
+
+/**
+ * Quais cartões rodam sem o portão. Inteiro a cada mudança, como o `ConversationsSnapshot` e pela
+ * mesma razão: evento perdido não deixa a tela num estado que nunca mais será corrigido.
+ */
+export interface DangerousSnapshot {
+  itemIds: readonly string[]
 }
 
 /**
@@ -192,6 +261,13 @@ export interface OcApi {
    * de expor a ponte, então o primeiro render já sabe o que desenhar e não há tela piscando.
    */
   readonly screen: Screen
+
+  /**
+   * Qual combinação de cores desenhar. Valor e não promessa, pela mesma razão de `screen`: o
+   * `main.tsx` põe o `data-theme` no `<html>` antes do primeiro render, e não há tela trocando de cor
+   * depois de aparecer.
+   */
+  readonly theme: Theme
 
   /**
    * Começa a sessão do cartão — ou a da fatia vertical, quando `start()` vem sem cartão nenhum.
@@ -215,15 +291,49 @@ export interface OcApi {
   onInit(listener: (event: SessionInitEvent) => void): () => void
   onMessage(listener: (event: SessionMessageEvent) => void): () => void
   onState(listener: (event: SessionStateEvent) => void): () => void
-  onPermissionRequest(listener: (event: SessionPermissionEvent) => void): () => void
-  onQuestionRequest(listener: (event: SessionQuestionEvent) => void): () => void
   /** O pulso do turno. Só quem mostra a conversa aberta assina — ver `IPC_EVENT.activity`. */
   onActivity(listener: (event: SessionActivityEvent) => void): () => void
 
-  /** O retrato atual do board. Pode voltar com `board: null` se a primeira leitura não terminou. */
-  readBoard(): Promise<BoardSnapshot>
-  /** Todo fim de leitura — com sucesso ou com falha — empurra um retrato novo. */
-  onBoard(listener: (snapshot: BoardSnapshot) => void): () => void
+  /**
+   * O retrato atual dos boards. Pode voltar com `boards: null` — a descoberta é assíncrona e a
+   * janela entre este pedido e o primeiro evento é a descoberta inteira, não uma leitura só.
+   */
+  readBoards(): Promise<BoardsSnapshot>
+  /** Todo fim de descoberta ou de leitura — com sucesso ou com falha — empurra um retrato novo. */
+  onBoards(listener: (snapshot: BoardsSnapshot) => void): () => void
+
+  /**
+   * Diz ao main que o humano trocou de aba. **O renderer avisa, não decide**: quem é dono do
+   * `activeKey` é o main, e a aba nova volta pelo mesmo retrato de sempre — uma fonte da verdade, e
+   * não duas se corrigindo.
+   *
+   * Resolve quando o main registrou a troca, e **não** quando ela chegou ao disco: a gravação da
+   * aba lembrada é enfileirada, porque a tela não pode esperar o disco e uma gravação que falhe
+   * custa uma aba lembrada, não uma tela travada.
+   */
+  activateBoard(request: ActivateBoardRequest): Promise<void>
+
+  /** Lê o que está escrito naquele card: o corpo e os comentários. Não toca sessão nenhuma. */
+  readCard(request: ReadCardRequest): Promise<ReadCardResult>
+
+  /** Os cartões com conversa recuperável. Pode voltar vazio se a verificação do boot não terminou. */
+  readConversations(): Promise<ConversationsSnapshot>
+  /** Toda mudança do conjunto — sessão que nasce, sessão encerrada, verificação do boot. */
+  onConversations(listener: (snapshot: ConversationsSnapshot) => void): () => void
+
+  /**
+   * Liga ou desliga o modo *dangerously* daquele cartão.
+   *
+   * **Sem retorno, e sem atualização otimista do lado da tela**: o crachá segue o retrato publicado
+   * por `onDangerous`, e só ele. Com sessão viva quem manda é o que o SDK aceitou, não o que a tela
+   * pediu — uma recusa deixa o conjunto como estava e a tela simplesmente não se move, que é a
+   * verdade.
+   */
+  setDangerous(request: SetDangerousRequest): Promise<void>
+  /** Os cartões marcados. Pode voltar vazio se a carga do boot ainda não terminou. */
+  readDangerous(): Promise<DangerousSnapshot>
+  /** Toda mudança do conjunto — a marca de um cartão, e o fim da carga do boot. */
+  onDangerous(listener: (snapshot: DangerousSnapshot) => void): () => void
 }
 
 declare global {

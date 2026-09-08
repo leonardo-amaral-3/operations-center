@@ -26,6 +26,9 @@
     "src/renderer/**/*.ts",
     "src/renderer/**/*.tsx",
     "src/shared/**/*.ts",
+    // Os dois, e não só `.tsx`: o teste de uma parte pura do renderer não renderiza nada e não tem
+    // por que fingir JSX para achar o próprio programa.
+    "tests/renderer/**/*.ts",
     "tests/renderer/**/*.tsx"
   ]
 }

@@ -13,12 +13,16 @@ interface ToolEntryProps {
  * é "terminou" contra "não relatou", e ela não pode depender de o olho comparar dois tons de
  * neutro. `aborted` **não** é vermelho de propósito — a ferramenta não falhou, o turno é que acabou
  * antes de ela contar o que aconteceu, e pintá-la de erro acusaria uma falha que não houve.
+ *
+ * Depois do card #8 os dois cinzas são duas opacidades do **mesmo** preto do tema, que é o que
+ * sobra num sistema de uma cor de texto só — e continuam sendo dois graus de "terminou", não duas
+ * cores. Só o `error` sai da escala, porque só ele é sinalização.
  */
 const MARKS: Record<ToolStatus, { glyph: string; label: string; className: string }> = {
-  running: { glyph: '▸', label: 'rodando', className: 'text-neutral-200' },
-  done: { glyph: '✓', label: 'concluída', className: 'text-neutral-500' },
-  error: { glyph: '✕', label: 'falhou', className: 'text-red-400' },
-  aborted: { glyph: '⊘', label: 'sem resposta', className: 'text-neutral-600' },
+  running: { glyph: '▸', label: 'rodando', className: 'text-foreground' },
+  done: { glyph: '✓', label: 'concluída', className: 'text-foreground/60' },
+  error: { glyph: '✕', label: 'falhou', className: 'text-danger' },
+  aborted: { glyph: '⊘', label: 'sem resposta', className: 'text-foreground/40' },
 }
 
 /**
@@ -49,17 +53,17 @@ export function ToolEntry({ entry }: ToolEntryProps): JSX.Element {
       // Vazio quando é de nível de cima, e não ausente: é o que deixa o teste afirmar "esta não é
       // de subagente" em vez de só não achar o atributo — o mesmo trato do `data-card-assignees`.
       data-parent={entry.parentId ?? ''}
-      className={nested ? 'ml-3 border-l border-neutral-800 pl-2.5 opacity-70' : ''}
+      className={nested ? 'ml-3 border-l-2 border-border pl-2.5 opacity-70' : ''}
     >
       <div className="flex items-baseline gap-1.5">
         <span title={mark.label} className={`shrink-0 text-[11px] ${mark.className}`}>
           {mark.glyph}
         </span>
-        <span className="shrink-0 font-mono text-[11px] text-neutral-300">{entry.name}</span>
+        <span className="shrink-0 font-mono text-[11px] text-foreground">{entry.name}</span>
         {/* O `title` cheio porque a linha corta duas vezes: o core já trouxe o argumento em 120
             caracteres, e a largura do cartão corta de novo o que couber. O hover é onde o
             argumento inteiro continua legível. */}
-        <span title={entry.detail} className="min-w-0 truncate text-[11px] text-neutral-500">
+        <span title={entry.detail} className="min-w-0 truncate text-[11px] text-foreground/60">
           {entry.detail}
         </span>
       </div>
@@ -67,7 +71,7 @@ export function ToolEntry({ entry }: ToolEntryProps): JSX.Element {
       {/* A frase que o próprio Claude Code escreveu, quando ele a mandou. Segunda linha e não a
           primeira: o nome da ferramenta é o que se procura ao varrer a trilha com o olho. */}
       {entry.headline ? (
-        <p className="mt-0.5 ml-4 truncate text-[10px] text-neutral-600">{entry.headline}</p>
+        <p className="mt-0.5 ml-4 truncate text-[10px] text-foreground/50">{entry.headline}</p>
       ) : null}
     </div>
   )

@@ -16,7 +16,17 @@ import { describe, expect, it } from 'vitest'
  * no dia em que deixar de estar.
  */
 
-const CONTRATO = fileURLToPath(new URL('../../src/shared/ipc.ts', import.meta.url))
+/**
+ * Os **dois** arquivos de contrato, e não só o dos canais.
+ *
+ * `src/shared/board.ts` entrou no dia em que o `BoardSnapshot` virou `BoardsSnapshot`, e o buraco
+ * que ele fecha existia desde antes: o retrato do board sempre atravessou a ponte, sempre foi carga
+ * de IPC, e nunca foi varrido. Um `path` acrescentado a um `BoardCard` teria passado por aqui sem
+ * uma linha de diff neste teste.
+ */
+const CONTRATO = ['../../src/shared/ipc.ts', '../../src/shared/board.ts'].map((relativo) =>
+  fileURLToPath(new URL(relativo, import.meta.url)),
+)
 
 /**
  * O vocabulário de caminho. São os nomes que um campo de sistema de arquivos teria de verdade —
@@ -45,7 +55,7 @@ interface Carga {
  * abaixo é o que impede a varredura de virar verde por ter deixado de casar.
  */
 function lerCargas(): Carga[] {
-  const fonte = readFileSync(CONTRATO, 'utf8')
+  const fonte = CONTRATO.map((caminho) => readFileSync(caminho, 'utf8')).join('\n')
   const cargas: Carga[] = []
 
   for (const bloco of fonte.matchAll(/export interface (?<nome>\w+)\s*\{(?<corpo>[^}]*)\}/g)) {
@@ -71,7 +81,9 @@ describe('nenhum caminho de disco atravessa a ponte', () => {
 
   it('a varredura encontrou as cargas que o contrato declara', () => {
     // Sanidade da própria canária: um contrato reformatado que deixasse a regex sem casar passaria
-    // verde provando nada. Estas são as cargas de ida e volta de cada `invoke` de hoje.
+    // verde provando nada. Estas são as cargas de ida e volta de cada `invoke` de hoje, mais as
+    // duas do retrato dos boards — que provam que o **segundo** arquivo também está sendo lido, e
+    // não só o dos canais.
     const nomes = cargas.map((carga) => carga.nome)
 
     expect(nomes).toEqual(
@@ -85,6 +97,10 @@ describe('nenhum caminho de disco atravessa a ponte', () => {
         'CloseRequest',
         'ChooseFolderRequest',
         'ChooseFolderResult',
+        'ActivateBoardRequest',
+        'ConversationsSnapshot',
+        'BoardTab',
+        'BoardsSnapshot',
       ]),
     )
     expect(cargas.every((carga) => carga.campos.length > 0)).toBe(true)

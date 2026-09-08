@@ -48,7 +48,11 @@ export interface BoardCard {
 }
 
 export interface Board {
-  /** Título do Project. Vai no cabeçalho da tela — e é o que vira rótulo de aba quando o RF-1 chegar. */
+  /**
+   * Título do Project. É a fonte **fresca** do rótulo da aba: a descoberta já dá um nome a ela antes
+   * da primeira leitura, e toda leitura bem-sucedida substitui aquele nome por este, que veio do
+   * board no instante em que ele foi lido.
+   */
   title: string
   columns: readonly BoardColumn[]
   /**
@@ -59,15 +63,77 @@ export interface Board {
   cards: readonly BoardCard[]
 }
 
+/** Um comentário da issue, já traduzido. */
+export interface CardComment {
+  id: string
+  /** Login de quem escreveu, ou `null`: a API devolve `author: null` para conta removida. */
+  author: string | null
+  /** ISO 8601, como a API devolve. Quem formata para a tela é a tela. */
+  createdAt: string
+  body: string
+  /**
+   * O `X` do marcador `<!-- gm:X -->` na primeira linha, ou `null`. É `string` solta e não uma
+   * união: a esteira ganha marcador novo sem pedir licença ao app, e um `'spec' | 'tasks'`
+   * transformaria um `gm:prd` futuro em comentário sem etiqueta **em silêncio**.
+   */
+  kind: string | null
+}
+
+/** O conteúdo de um card: o que está escrito nele, e não os metadados que o cartão já mostra. */
+export interface CardContent {
+  number: number
+  /** O corpo da issue. String vazia quando o card não tem corpo escrito. */
+  body: string
+  comments: readonly CardComment[]
+  /** `true` quando a issue tem mais comentários que `MAX_COMMENTS` — a tela precisa dizer isso. */
+  truncated: boolean
+}
+
 /**
- * O que a tela sabe do board. `board` e `error` coexistem de propósito: uma releitura que falha
- * não pode apagar cartões que estavam corretos.
+ * Uma aba: o board daquele Project mais o estado da última leitura dele.
+ *
+ * `board` e `error` coexistem de propósito: uma releitura que falha não pode apagar cartões que
+ * estavam corretos. E o par é **por aba** — uma aba que falha não afeta as outras.
  */
-export interface BoardSnapshot {
-  /** `null` só antes da primeira leitura bem-sucedida. */
+export interface BoardTab {
+  /**
+   * `owner/number`. Opaca para o renderer — ele a usa como chave de render e de estado por aba.
+   * Quem a traduz em coordenada é o main, que é o único lado que conhece o GitHub.
+   */
+  key: string
+  /**
+   * O rótulo da aba. Nasce do título que a descoberta devolveu — é o que faz a aba ter nome
+   * **antes** da primeira leitura — e é substituído pelo `title` do board a cada leitura
+   * bem-sucedida, que é o mais fresco que existe.
+   */
+  title: string
+  /** `null` só antes da primeira leitura bem-sucedida **desta aba**. */
   board: Board | null
-  /** Epoch ms da última leitura bem-sucedida. É o insumo do carimbo de frescor. */
+  /** Epoch ms da última leitura bem-sucedida desta aba. Insumo do carimbo de frescor. */
   readAt: number | null
-  /** Motivo da última falha, ou `null` se a última leitura deu certo. */
+  /** Motivo da última falha desta aba, ou `null`. */
   error: string | null
+}
+
+/**
+ * O que a tela sabe dos boards. Vem **inteiro** a cada mudança e o consumidor substitui — a mesma
+ * regra do `TurnActivity` e do `ConversationsSnapshot`, e pelo mesmo motivo: evento perdido não
+ * deixa a tela num estado que nunca mais será corrigido.
+ */
+export interface BoardsSnapshot {
+  /**
+   * **`null` enquanto a descoberta não terminou**; lista, possivelmente vazia, depois dela.
+   *
+   * O nulo é o discriminante, e ele existe porque sem ele "ainda estou descobrindo" e "descobri, e
+   * nenhum board seu roda a esteira" seriam a mesma lista vazia — e a tela teria de adivinhar qual
+   * das duas frases dizer. O main já tem o fato; achatá-lo na ponte seria jogá-lo fora.
+   */
+  boards: readonly BoardTab[] | null
+  /** A `key` da aba ativa, ou `null` quando não há aba nenhuma. Quem a decide é o main. */
+  activeKey: string | null
+  /**
+   * O que falhou na descoberta, ou `null`. **Pode vir preenchido junto com `boards`**: um dono que
+   * não respondeu não apaga os boards dos que responderam, mas também não some da tela.
+   */
+  discoveryError: string | null
 }

@@ -1,9 +1,14 @@
-import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
 import { STATUS_FIELD } from '../../src/core/board/query'
+import {
+  BOARDS_FIXTURE_PATH,
+  BOARD_FIXTURE_PATH,
+  FIRST_BOARD,
+  fixtureProject,
+} from './boards-fixture'
 
 /**
  * O smoke do kanban: o board da fixture desenhado na tela, de ponta a ponta.
@@ -25,21 +30,14 @@ import { STATUS_FIELD } from '../../src/core/board/query'
 // `package.json` não for `type: module`, e `import.meta` ali é erro de sintaxe.
 const REPO_ROOT = join(__dirname, '..', '..')
 
-/** **Absoluto**, e é o ponto: o processo do Electron não roda com a `cwd` do runner. */
-const FIXTURE_PATH = join(REPO_ROOT, 'tests', 'fixtures', 'board.json')
-
 /**
- * O envelope cru, do jeito que o `BoardReader` o recebe.
+ * O board do envelope cru, do jeito que o `BoardReader` o recebe.
  *
  * O `as` é o mesmo trato que `createFixtureGraphQL` faz com o mesmo arquivo: o que valida a forma de
  * verdade é o app rodando logo abaixo — se a fixture não tiver a forma que a API devolve, o kanban
  * sobe vazio e todas as asserções caem juntas. Os opcionais existem porque a resposta é heterogênea:
  * rascunho e pull request não têm número, e valor de campo que não é single-select chega como `{}`.
  */
-interface FixtureEnvelope {
-  data: { user: { projectV2: FixtureProject } }
-}
-
 interface FixtureProject {
   field: { options: readonly FixtureOption[] }
   items: { nodes: readonly FixtureNode[] }
@@ -55,6 +53,7 @@ interface FixtureNode {
   content: {
     __typename: string
     number?: number
+    title?: string
     closed?: boolean
     repository?: { nameWithOwner: string }
     assignees?: { nodes: readonly { login: string }[] }
@@ -70,6 +69,8 @@ interface FixtureFieldValue {
 /** O que a tela deve mostrar de um cartão — derivado, nunca digitado. */
 interface ExpectedCard {
   number: number
+  /** O que a tela desenha como titulo do cartao — e o que o CA-3 mede. */
+  title: string
   columnId: string
   closed: boolean
   /** `owner/name`. O kanban não o desenha; a guarda da fixture o usa para vigiar a quinta borda. */
@@ -77,8 +78,16 @@ interface ExpectedCard {
   assignees: readonly string[]
 }
 
-const PROJECT = (JSON.parse(readFileSync(FIXTURE_PATH, 'utf8')) as FixtureEnvelope).data.user
-  .projectV2
+/** O retângulo que o Playwright devolve, em pixels da viewport. */
+interface Caixa {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** O board que o app desenha: o primeiro da ordem da descoberta, derivado da fixture. */
+const PROJECT = fixtureProject(FIRST_BOARD.key) as FixtureProject
 
 /** As colunas esperadas, **na ordem em que o board as declara** — que é o CA-1. */
 const COLUMNS = PROJECT.field.options
@@ -108,17 +117,15 @@ test.beforeAll(async () => {
     cwd: REPO_ROOT,
     env: {
       ...inheritedEnv(),
-      // A porta que troca o GitHub por um arquivo. É ela que torna este smoke determinístico.
-      OC_BOARD_FIXTURE: FIXTURE_PATH,
+      // As portas que trocam o GitHub por arquivo. São elas que tornam este smoke determinístico.
+      OC_BOARD_FIXTURE: BOARD_FIXTURE_PATH,
+      OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell de quem roda abriria a tela
       // errada e o teste falharia por um motivo que não tem nada a ver com o kanban.
       OC_SCREEN: 'kanban',
-      // Inertes de propósito. A fixture ignora documento e variáveis, então estes valores não
-      // podem importar — e se um dia a fiação da fixture quebrar, o app tentará ler um board que
-      // não existe e o smoke fica vermelho na hora, em vez de passar em silêncio contra o board de
-      // verdade.
-      OC_PROJECT_OWNER: 'dono-que-a-fixture-ignora',
-      OC_PROJECT_NUMBER: '999',
+      // Fixado pelo mesmo argumento, e não herdado: o CA-2 aqui afirma cor, e um `OC_THEME`
+      // exportado no shell de quem roda mudaria em silêncio o que estas asserções medem.
+      OC_THEME: 'lavanda',
     },
   })
 
@@ -211,6 +218,62 @@ test('o cartão fechado entra, e o cartão sem dono diz que está sem dono', asy
   }
 })
 
+test('CA-2: a casca neobrutalista está na tela — borda de 2px, sombra dura e a paleta do tema', async () => {
+  const column = window.getByTestId('column').first()
+  const card = window.getByTestId('board-card').first()
+
+  // Nada de captura de tela: os três valores do CA-2 são numéricos e comparáveis, e é por isso que
+  // esta asserção não precisa de baseline nem envelhece quando alguém mexer num padding.
+  for (const [nome, superficie] of [
+    ['a coluna', column],
+    ['o cartão', card],
+  ] as const) {
+    await expect(superficie, `${nome} perdeu a borda de 2px`).toHaveCSS('border-top-width', '2px')
+    // A sombra **dura**: 4px de deslocamento, blur zero, spread zero. A regex e não a string
+    // inteira porque o Chromium serializa a cor junto, e é o desenho que o CA-2 cobra.
+    await expect(superficie, `${nome} perdeu a sombra dura`).toHaveCSS(
+      'box-shadow',
+      /oklch\(0 0 0\) 4px 4px 0px 0px/,
+    )
+  }
+
+  // Os três níveis da hierarquia visual. O canvas sai do `body` de propósito: é ele que o
+  // `index.css` pinta, e é a área que o overscroll do Chromium mostra além do conteúdo. A raia
+  // **não** entra na conta — ela é `bg-background` como o canvas, e quem a separa é a borda.
+  const canvas = await corDeFundo(window.locator('body'))
+  const cabecalho = await corDeFundo(column.locator('header'))
+  const face = await corDeFundo(card)
+
+  // Dois a dois, e não "são três valores": a lavanda do canvas, o violet da esteira e o branco da
+  // face de cartão têm de se distinguir aos pares, e um empate qualquer entre eles é o tema não
+  // tendo chegado à tela.
+  expect(canvas, 'o canvas e o cabeçalho da coluna têm o mesmo fundo').not.toBe(cabecalho)
+  expect(cabecalho, 'o cabeçalho da coluna e a face do cartão têm o mesmo fundo').not.toBe(face)
+  expect(canvas, 'o canvas e a face do cartão têm o mesmo fundo').not.toBe(face)
+})
+
+test('CA-3: o título de todo cartão continua dentro da coluna, com a borda ocupando espaço', async () => {
+  // **Todo** cartão, e não um escolhido a dedo: a largura útil caiu ~8px com a borda de 2px e a
+  // sombra de 4px, e o cartão que estoura é justamente o que ninguém escolheria para o teste.
+  for (const card of EXPECTED_CARDS) {
+    // Título vazio faria `getByTitle('')` casar com qualquer coisa, e a asserção abaixo mediria o
+    // elemento errado em silêncio.
+    expect(card.title, `o cartão #${card.number} está sem título na fixture`).not.toBe('')
+
+    const titulo = await caixaDe(
+      cardLocator(card.number).getByTitle(card.title, { exact: true }),
+      `o título do cartão #${card.number}`,
+    )
+    const raia = await caixaDe(columnLocator(card.columnId), `a coluna do cartão #${card.number}`)
+
+    expect(titulo.width, `o título do cartão #${card.number} não ocupa largura`).toBeGreaterThan(0)
+    expect(
+      titulo.x + titulo.width,
+      `o título do cartão #${card.number} vaza pela direita da coluna`,
+    ).toBeLessThanOrEqual(raia.x + raia.width)
+  }
+})
+
 test('CA-4: o carimbo de frescor sai preenchido e não acusa dado velho após a carga', async () => {
   const freshness = window.getByTestId('freshness')
 
@@ -234,12 +297,13 @@ function statusOptionId(node: FixtureNode): string | undefined {
  */
 function toExpectedCard(node: FixtureNode): ExpectedCard | null {
   const columnId = statusOptionId(node)
-  const { __typename, number, closed, repository, assignees } = node.content
+  const { __typename, number, title, closed, repository, assignees } = node.content
 
   if (__typename !== 'Issue' || number === undefined || columnId === undefined) return null
 
   return {
     number,
+    title: title ?? '',
     columnId,
     closed: closed === true,
     repository: repository?.nameWithOwner ?? '',
@@ -249,6 +313,35 @@ function toExpectedCard(node: FixtureNode): ExpectedCard | null {
 
 function cardsIn(columnId: string): readonly ExpectedCard[] {
   return EXPECTED_CARDS.filter((card) => card.columnId === columnId)
+}
+
+/**
+ * O `getComputedStyle` do navegador, declarado aqui e não importado de lugar nenhum.
+ *
+ * O `tsconfig.node.json` que compila os smokes **não** carrega a lib DOM, e não deve: `src/main`,
+ * `src/core` e `src/preload` são Node, e uma lib DOM ali deixaria um `document` solto passar
+ * despercebido numa revisão. O corpo do `evaluate` roda dentro do renderer, onde o global existe de
+ * verdade — o que falta é só o tipo, e só do pedaço que este arquivo lê.
+ */
+declare function getComputedStyle(element: unknown): { backgroundColor: string }
+
+/** O `background-color` computado, que é o que o CA-2 compara — três valores, nenhuma imagem. */
+async function corDeFundo(locator: Locator): Promise<string> {
+  return locator.evaluate((element) => getComputedStyle(element).backgroundColor)
+}
+
+/**
+ * A caixa do elemento, com o `null` virando vermelho **aqui** e nomeando quem sumiu.
+ *
+ * `boundingBox()` devolve `null` para elemento fora do layout — e é justamente o que o CA-3
+ * precisa distinguir: cartão fora da vista horizontal continua tendo caixa, porque o kanban rola e
+ * não desmonta. Deixar o `null` seguir daria um `TypeError` sobre `x` três linhas adiante.
+ */
+async function caixaDe(locator: Locator, oQue: string): Promise<Caixa> {
+  const caixa = await locator.boundingBox()
+  if (caixa === null) throw new Error(`${oQue}: sem caixa — fora do layout`)
+
+  return caixa
 }
 
 function cardSelector(number: number): string {

@@ -1,23 +1,14 @@
 import { useCallback, useEffect, useReducer, useState } from 'react'
 import type { JSX } from 'react'
 
-import type { BoardSnapshot } from '../../shared/board'
+import type { BoardTab } from '../../shared/board'
 import type { SessionState } from '../../shared/session'
+import { BoardTabs } from '../components/BoardTabs'
 import type { CardSession, CardSessions } from '../components/CardChat'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
-
-type BoardAction = { type: 'snapshot'; snapshot: BoardSnapshot }
-
-/** Antes de qualquer leitura a tela não sabe nada do board — e é isso que o retrato vazio diz. */
-const INITIAL_SNAPSHOT: BoardSnapshot = { board: null, readAt: null, error: null }
-
-function reduce(_snapshot: BoardSnapshot, action: BoardAction): BoardSnapshot {
-  // O retrato chega inteiro do main, que é quem decide o que sobrevive a uma falha. A tela não
-  // recompõe nada: se ela mesclasse `board` antigo com `error` novo, existiriam duas regras de
-  // preservação — uma aqui e outra lá — e um dia elas divergiriam.
-  return action.snapshot
-}
+import { Badge } from '../ui/badge'
+import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
 
 type SessionsAction =
   | { type: 'card'; itemId: string; session: CardSession }
@@ -64,25 +55,78 @@ function reduceSessions(sessions: CardSessions, action: SessionsAction): CardSes
  * vista, e o único encerramento é o do CA-6 — o botão do cartão, ou o desligamento do app.
  */
 export function KanbanScreen(): JSX.Element {
-  const [snapshot, dispatch] = useReducer(reduce, INITIAL_SNAPSHOT)
+  const [kanban, dispatch] = useReducer(reduceKanban, INITIAL_KANBAN)
+  // Aberto aqui em cima, e não junto do render, porque o `toggle` precisa da `activeKey` para saber
+  // de **qual** aba é o cartão que ele alterna.
+  const { snapshot, expanded } = kanban
+  const { boards, activeKey, discoveryError } = snapshot
   const [sessions, dispatchSession] = useReducer(reduceSessions, {})
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
+  /**
+   * Os cartões com conversa a retomar. Vazio até a verificação do boot terminar — e é assim que
+   * deve ser: um cartão sem conversa recuperável volta sem crachá (CA-3), e o vazio é a mesma
+   * resposta que ele daria depois.
+   */
+  const [conversations, setConversations] = useState<readonly string[]>([])
+  /**
+   * Os cartões que rodam sem o portão. Vazio até a leitura do disco voltar, e é o lado seguro: um
+   * cartão volta **com** portão até o contrário ser sabido, nunca o inverso.
+   */
+  const [dangerous, setDangerous] = useState<readonly string[]>([])
 
   useEffect(() => {
     // Assinar vem **antes** de pedir, como no `ChatScreen`: uma leitura que termine entre o pedido
     // e a assinatura chegaria a ninguém.
     let pushed = false
 
-    const unsubscribe = window.oc.onBoard((next) => {
+    const unsubscribe = window.oc.onBoards((next) => {
       pushed = true
       dispatch({ type: 'snapshot', snapshot: next })
     })
 
-    void window.oc.readBoard().then((next) => {
+    void window.oc.readBoards().then((next) => {
       // O retrato do `invoke` é o estado no instante em que o main atendeu; um evento publicado
       // enquanto a resposta voltava é mais novo que ele. Sem esta guarda, a resposta em trânsito
       // sobrescreveria uma leitura mais fresca — e a tela retrocederia no tempo.
+      //
+      // A guarda ficou **mais** importante com a descoberta assíncrona, não menos: a janela entre o
+      // pedido e o primeiro evento deixou de ser uma leitura em voo e passou a ser a descoberta
+      // inteira, e o retrato que volta daqui quase sempre é o `boards: null` de antes dela.
       if (!pushed) dispatch({ type: 'snapshot', snapshot: next })
+    })
+
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    // Assinar antes de pedir, e pela mesma razão do board logo acima.
+    let pushed = false
+
+    const unsubscribe = window.oc.onConversations((next) => {
+      pushed = true
+      setConversations(next.itemIds)
+    })
+
+    void window.oc.readConversations().then((next) => {
+      // A verificação do boot pode terminar enquanto esta resposta volta. Sem a guarda, o retrato
+      // antigo sobrescreveria o evento mais novo — a mesma corrida do `readBoards`.
+      if (!pushed) setConversations(next.itemIds)
+    })
+
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    // Espelha o efeito das conversas linha a linha — assinar antes de pedir, e a mesma guarda —
+    // porque é a mesma corrida: o `refresh` do boot pode publicar enquanto esta resposta volta.
+    let pushed = false
+
+    const unsubscribe = window.oc.onDangerous((next) => {
+      pushed = true
+      setDangerous(next.itemIds)
+    })
+
+    void window.oc.readDangerous().then((next) => {
+      if (!pushed) setDangerous(next.itemIds)
     })
 
     return unsubscribe
@@ -97,27 +141,74 @@ export function KanbanScreen(): JSX.Element {
     })
   }, [])
 
-  const toggle = useCallback((itemId: string) => {
-    // Um cartão aberto por vez (RF-6): abrir o segundo fecha o primeiro — e **não** encerra a sessão
-    // dele, que continua viva atrás do cartão fechado.
-    setExpandedItemId((current) => (current === itemId ? null : itemId))
-  }, [])
+  const toggle = useCallback(
+    (itemId: string) => {
+      // Inalcançável na prática — não há cartão na tela sem aba ativa —, e a guarda existe para
+      // dizer isso ao tipo em vez de a `key` virar `string | null` no vocabulário do reducer.
+      if (activeKey === null) return
+      // Um cartão aberto por aba (Decisão 12), e dentro da aba a regra do RF-6 não muda: abrir o
+      // segundo fecha o primeiro — sem **encerrar** a sessão dele, que continua viva atrás do cartão
+      // fechado. O cartão da outra aba não sente nada, e é isso que devolve a conversa onde ela
+      // estava ao voltar para lá.
+      dispatch({ type: 'toggle', key: activeKey, itemId })
+    },
+    [activeKey],
+  )
 
   const registerSession = useCallback((itemId: string, session: CardSession) => {
     dispatchSession({ type: 'card', itemId, session })
   }, [])
 
-  const { board, readAt, error } = snapshot
+  const activate = useCallback((key: string) => {
+    // Nada muda na tela aqui: a troca chega de volta no retrato, como toda mudança de board. A
+    // tela **não** adianta a escolha, e é de propósito — `key` desconhecida é ignorada no main, e
+    // uma aba pintada de ativa antes da confirmação mentiria por um instante em cima justamente do
+    // caso que o CA-4 descreve: o board lembrado que não está mais entre os descobertos.
+    void window.oc.activateBoard({ key })
+  }, [])
+
+  const toggleDangerous = useCallback((itemId: string, dangerous: boolean) => {
+    // Sem estado otimista: o crachá segue o retrato publicado. É o que faz uma recusa do SDK
+    // simplesmente não mover a tela, em vez de movê-la e ter de voltar atrás. E sem guarda de
+    // clique duplo aqui: quem a tem é o `#switching` do core, num lugar só.
+    void window.oc.setDangerous({ itemId, dangerous })
+  }, [])
+
+  // A aba ativa sai do `activeKey`, que é do main: a tela não escolhe aba, só desenha a escolhida.
+  const active = activeTab(snapshot)
+  // Guardado num `const` de propósito: a narrowing de `active.board` se perderia dentro do `map`
+  // abaixo, que é um callback, e a de um `const` não.
+  const board = active?.board ?? null
+  // O cartão aberto **desta** aba. As outras continuam guardando o delas em `expanded`, fora de
+  // cena — desmontadas, não fechadas.
+  const expandedItemId = (activeKey === null ? undefined : expanded[activeKey]) ?? null
 
   return (
-    <div className="flex h-full flex-col bg-neutral-950 text-neutral-100">
-      <header className="flex items-center justify-between gap-4 border-b border-neutral-800 px-4 py-3">
-        {/* O título do board, e não "Operations Center": é o que faz o app dizer **qual** board
-            está olhando — hoje isso vem de uma variável de ambiente invisível. */}
-        <h1 className="truncate text-sm font-semibold tracking-tight">
-          {board?.title ?? 'Operations Center'}
-        </h1>
-        <Freshness readAt={readAt} error={error} />
+    <div className="flex h-full flex-col bg-background font-base text-foreground">
+      <header className="flex items-center justify-between gap-4 border-b-2 border-border px-4 py-3">
+        {/* A barra ocupa o lugar do título, e não um espaço ao lado dele: o rótulo da aba ativa
+            já diz **qual** board você olha, e a altura poupada vai para o kanban, que é quem
+            disputa espaço com o cartão aberto. Antes de a descoberta terminar a lista é vazia — a
+            barra nasce com o primeiro retrato, e não antes. */}
+        <BoardTabs boards={boards ?? []} activeKey={activeKey} onActivate={activate} />
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Um dono que não respondeu não apaga os boards dos que responderam — e também não some
+              da tela. Fica ao lado do carimbo de frescor porque é a mesma frase: o que está aí é
+              verdade, só que incompleta. O motivo inteiro vai no `title`, como no carimbo. */}
+          {boards !== null && discoveryError !== null && (
+            <Badge
+              data-testid="discovery-warning"
+              variant="neutral"
+              className="bg-warning"
+              title={discoveryError}
+            >
+              descoberta parcial
+            </Badge>
+          )}
+          {/* Sem aba ativa não há leitura de que falar, e um carimbo dizendo "sem leitura" ali seria
+              o app respondendo uma pergunta que ninguém fez. */}
+          {active && <Freshness readAt={active.readAt} error={active.error} />}
+        </div>
       </header>
 
       {board ? (
@@ -131,25 +222,70 @@ export function KanbanScreen(): JSX.Element {
               cards={board.cards.filter((card) => card.columnId === column.id)}
               expandedItemId={expandedItemId}
               sessions={sessions}
+              conversations={conversations}
+              dangerous={dangerous}
               onToggle={toggle}
               onSession={registerSession}
+              onToggleDangerous={toggleDangerous}
             />
           ))}
         </main>
       ) : (
         <main className="flex min-h-0 flex-1 items-center justify-center p-8">
-          {error === null ? (
-            <p className="text-sm text-neutral-600">Lendo o board…</p>
-          ) : (
-            // O único caso em que o erro toma a tela: sem primeira leitura não há cartão a
-            // preservar, e um vazio silencioso pareceria um board sem cards.
-            <div className="max-w-lg text-center">
-              <p className="text-sm text-neutral-300">Não foi possível ler o board.</p>
-              <p className="mt-2 text-xs break-words text-neutral-500">{error}</p>
-            </div>
-          )}
+          <SemKanban boards={boards} discoveryError={discoveryError} active={active} />
         </main>
       )}
+    </div>
+  )
+}
+
+interface SemKanbanProps {
+  boards: readonly BoardTab[] | null
+  discoveryError: string | null
+  active: BoardTab | null
+}
+
+/**
+ * A área do kanban quando não há kanban a desenhar — quatro frases, e nenhuma delas é chute.
+ *
+ * O `null` de `boards` é o que separa "ainda estou descobrindo" de "descobri, e nenhum board seu
+ * roda a esteira": sem ele as duas seriam a mesma lista vazia e a tela teria de adivinhar qual
+ * dizer. O erro só toma a área quando **não há nada a preservar** — nem aba, nem primeira leitura
+ * daquela aba; nos demais casos os cartões ficam e quem acusa a idade é o carimbo.
+ */
+function SemKanban({ boards, discoveryError, active }: SemKanbanProps): JSX.Element {
+  if (boards === null) {
+    return discoveryError === null ? (
+      <p className="text-sm text-foreground/60">Descobrindo os boards…</p>
+    ) : (
+      <Motivo titulo="Não foi possível descobrir os boards." motivo={discoveryError} />
+    )
+  }
+
+  // Sem aba ativa depois da descoberta é a lista vazia: quem escolhe a ativa é o main, e ele só
+  // devolve `null` quando não sobrou board nenhum. A tela não reimplementa essa escolha para
+  // conferi-la — seria a segunda regra de preservação que este arquivo existe para não ter.
+  if (active === null) {
+    return (
+      <p className="text-sm text-foreground/60">
+        Nenhum board que você acessa roda a esteira <code>gm-*</code>.
+      </p>
+    )
+  }
+
+  return active.error === null ? (
+    <p className="text-sm text-foreground/60">Lendo o board…</p>
+  ) : (
+    <Motivo titulo="Não foi possível ler o board." motivo={active.error} />
+  )
+}
+
+/** O erro ocupando a área do kanban: o que falhou em cima, o motivo cru embaixo. */
+function Motivo({ titulo, motivo }: { titulo: string; motivo: string }): JSX.Element {
+  return (
+    <div className="max-w-lg text-center">
+      <p className="text-sm text-foreground">{titulo}</p>
+      <p className="mt-2 text-xs break-words text-foreground/60">{motivo}</p>
     </div>
   )
 }

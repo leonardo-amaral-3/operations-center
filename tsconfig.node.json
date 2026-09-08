@@ -39,5 +39,10 @@
     "src/renderer/session/sessionView.ts",
 
     "tests/**/*.ts"
-  ]
+  ],
+  // `tests/renderer/` pertence ao programa **web**, inteiro. Sem esta linha o glob acima o parte ao
+  // meio — os `.tsx` no web, um `.ts` aqui — e um teste puro do renderer não consegue importar o
+  // fonte que ele testa (`TS6307`, medido em 2026-09-08 com `kanbanState.test.ts`). A fronteira que
+  // sobra é dizível numa frase: `tests/renderer/` testa o renderer, `tests/unit/` testa o resto.
+  "exclude": ["tests/renderer/**"]
 }

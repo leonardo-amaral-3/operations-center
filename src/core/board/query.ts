@@ -1,8 +1,8 @@
 /**
- * O documento que o app manda ao GitHub — e o único.
+ * Os documentos que o app manda ao GitHub — e todos eles são de leitura.
  *
- * Está exportado, e não escondido dentro do `BoardReader`, porque o CA-2 precisa poder afirmar
- * coisas sobre ele: a canária de somente-leitura varre este diretório inteiro atrás de qualquer
+ * Estão exportados, e não escondidos dentro dos leitores, porque o CA-2 do #4 precisa poder afirmar
+ * coisas sobre eles: a canária de somente-leitura varre este diretório inteiro atrás de qualquer
  * documento de escrita. Por isso a palavra que ela procura não aparece nem em comentário aqui —
  * um falso positivo numa canária a transforma em ruído, e canária ruidosa é canária desligada.
  */
@@ -58,6 +58,80 @@ fragment BoardFields on ProjectV2 {
 }
 `
 
+/** Os donos a varrer: eu e as organizações a que pertenço. */
+export const OWNERS_QUERY = `
+query Owners($cursor: String) {
+  viewer {
+    login
+    organizations(first: 100, after: $cursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes { login }
+    }
+  }
+}
+`
+
+/**
+ * Os Projects de um dono, com o que basta para decidir se ele roda a esteira.
+ *
+ * **Os dois aliases, pela mesma razão do `BOARD_QUERY`**: o dono pode ser usuário ou organização, e
+ * a lista de donos não diz qual. O erro parcial do alias que não resolveu é esperado e tolerado por
+ * `selectByAlias`.
+ *
+ * `owner { login }` é pedido, e não assumido do parâmetro: a chave da aba é montada com o dono que
+ * o **nó** declara. Sem isso, um Project que aparecesse na lista de um dono sem pertencer a ele
+ * nasceria com uma chave que o `BoardReader.read` não consegue resolver — uma aba morta para sempre.
+ *
+ * O `id` do Project **não** é pedido: nada o usa. A chave da aba é `owner/number`, que é o que o
+ * `BoardReader.read` consome.
+ */
+export const PROJECTS_QUERY = `
+query Projects($owner: String!, $cursor: String) {
+  user(login: $owner)         { projectsV2(first: 100, after: $cursor) { ...ProjectList } }
+  organization(login: $owner) { projectsV2(first: 100, after: $cursor) { ...ProjectList } }
+}
+
+fragment ProjectList on ProjectV2Connection {
+  pageInfo { hasNextPage endCursor }
+  nodes {
+    number
+    title
+    closed
+    owner { ... on User { login } ... on Organization { login } }
+    field(name: "${STATUS_FIELD}") {
+      ... on ProjectV2SingleSelectField { options { name } }
+    }
+  }
+}
+`
+
+/**
+ * O conteúdo de **uma** issue, pedido sob demanda quando um cartão abre.
+ *
+ * Documento separado, e não campos a mais no `BOARD_QUERY`, porque o board relê a cada foco de
+ * janela: arrastar o corpo e os comentários de todos os cartões a cada alt-tab seria pagar o pior
+ * preço para mostrar o conteúdo de um só.
+ *
+ * **Sem alias duplo**, ao contrário do `BOARD_QUERY`: `repository(owner:, name:)` resolve igual para
+ * usuário e organização — a ambiguidade que obriga os dois aliases lá é do `projectV2`, não do repo.
+ * Logo este documento não tem erro esperado, e **qualquer** `errors` nele é fatal (regra 1 do
+ * `CardReader`).
+ */
+export const CARD_QUERY = `
+query Card($owner: String!, $name: String!, $number: Int!, $comments: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      number
+      body
+      comments(first: $comments) {
+        totalCount
+        nodes { id author { login } createdAt body }
+      }
+    }
+  }
+}
+`
+
 /**
  * Os campos single-select que viram etiqueta no cartão, na ordem em que aparecem.
  *
@@ -88,4 +162,25 @@ export const CONVERSABLE_STATIONS = [
   'Implementação',
   'Revisão',
   'Release',
+] as const
+
+/**
+ * As 8 estações da norma, na ordem da esteira. É a assinatura de "este board roda a esteira" e a
+ * única regra que decide se um Project vira aba.
+ *
+ * São as 8, e não as 6 conversáveis: as 6 admitiriam um board que vai de Triagem a Release sem ter
+ * Validação em Dev nem Produção — um board que não roda a esteira, e que ganharia aba assim mesmo.
+ *
+ * Casadas por **nome** pela mesma razão que as conversáveis: o nome pertence à norma e é idêntico
+ * nos dois boards reais; o `optionId` pertence ao board e é diferente em cada um.
+ */
+export const ESTEIRA_STATIONS = [
+  'Triagem',
+  'Backlog',
+  'Especificação',
+  'Implementação',
+  'Revisão',
+  'Validação em Dev',
+  'Release',
+  'Produção',
 ] as const

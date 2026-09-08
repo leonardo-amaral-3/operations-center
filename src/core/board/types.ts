@@ -9,7 +9,14 @@
  * envelope cru não atravessa a ponte: quem vê `data`/`errors` é este módulo, e mais ninguém.
  */
 
-export type { Board, BoardCard, BoardCardField, BoardColumn } from '../../shared/board'
+export type {
+  Board,
+  BoardCard,
+  BoardCardField,
+  BoardColumn,
+  CardComment,
+  CardContent,
+} from '../../shared/board'
 
 /** O envelope de uma resposta GraphQL. `errors` pode vir **junto** com `data` — ver `BoardReader`. */
 export interface GraphQLResponse {
