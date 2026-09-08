@@ -26,6 +26,9 @@ export type { RepoIndexDeps, SessionFolder } from './repos/RepoIndex'
 export { ConversationIndex } from './session/ConversationIndex'
 export type { ConversationIndexDeps, Restoration } from './session/ConversationIndex'
 
+export { DangerIndex } from './session/DangerIndex'
+export type { DangerIndexDeps } from './session/DangerIndex'
+
 export { DEFAULT_SETTING_SOURCES, SessionHost } from './session/SessionHost'
 export type { QueryFn, SessionHostDeps, StartSessionInput } from './session/SessionHost'
 export type { SessionHandle } from './session/SessionHandle'
