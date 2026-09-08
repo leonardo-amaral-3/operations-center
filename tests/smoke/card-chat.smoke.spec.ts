@@ -671,6 +671,64 @@ test('#10 CA-1 e CA-3: o cartão marcado roda sem portão, e desmarcar devolve o
 })
 
 /**
+ * O card #15 contra o modelo de verdade: a escrita de arquivo mostra o diff dentro da própria
+ * entrada da trilha, na conversa, sem painel nenhum ao lado.
+ *
+ * Os unitários já provam cada metade separada — que `diffOf` conta e numera o patch, que a entrada
+ * ao vivo troca `diff: null` pelo diff **antes** do `result` (o roteiro do fake termina no
+ * `tool_result`, de propósito) e o que o `ToolEntry` desenha. O que só existe aqui é o patch vir do
+ * SDK de verdade: nenhum `structuredPatch` deste passo foi escrito por nós.
+ *
+ * **Ele opera o `SECOND_CARD`, e fica no fim do arquivo** — a mesma amarra que o passo do #10
+ * documenta logo acima, e pelo mesmo motivo: dois testes lá em cima fixam a contagem de mensagens
+ * do `CHAT_CARD`, e um turno novo naquele cartão os quebraria por uma razão que não diz nada sobre
+ * diff.
+ *
+ * E ele manda **editar** um arquivo que já existe, em vez de criar um: criação não tem patch nenhum
+ * (é o CA-2, medido em 86 resultados de 86) e não produziria `diff-line` alguma.
+ */
+test('#15 CA-1: a escrita de arquivo mostra o diff na própria entrada da trilha', async () => {
+  const card = cardLocator(SECOND_CARD)
+  const input = card.getByTestId('card-chat-input')
+
+  // O arquivo que o passo do #10 deixou no repo-fantoche. O nome é repetido aqui, e não hasteado
+  // para constante compartilhada, porque o CA-6 desta feature se prova no diff da PR: o que este
+  // arquivo ganhou tem de ser só este passo.
+  const alvo = 'sem-portao.txt'
+
+  // "Leia … e depois edite" não é rodeio de prompt, é a mesma precaução do `THINKING_PROMPT`: a
+  // `Edit` do Claude Code recusa arquivo que a conversa ainda não leu, e sem o pedido explícito da
+  // ferramenta o modelo pode chegar ao mesmo fim por `Bash`, que escreve sem `structuredPatch`
+  // nenhum — o teste falharia por escolha dele, não por bug do app.
+  await input.fill(
+    `Leia o arquivo \`${alvo}\` e depois, com a ferramenta Edit, troque o texto OK por TUDO CERTO`,
+  )
+  await input.press('Enter')
+
+  // O portão voltou no fim do passo acima, e o smoke roda com `OC_ISOLATED=1`: toda ferramenta
+  // deste turno passa pelo `canUseTool`, inclusive a leitura.
+  await allowUntilAwaitingInput(SECOND_CARD)
+
+  // **A última**, e não a primeira: este cartão já carrega os diffs dos dois `Write` do passo
+  // acima, que são criações — `+N` e trecho nenhum (CA-2). A edição é a chamada mais recente, e é
+  // ela a única que tem trecho para mostrar.
+  const diff = card.getByTestId('tool-diff').last()
+
+  await expect(diff).toBeVisible({ timeout: DECISION_TIMEOUT })
+
+  // O total veio do patch, e não de um zero desenhado: `data-additions` maior que zero é o que
+  // separa "a área apareceu" de "a contagem aconteceu". Regex e não número exato pela mesma razão
+  // do `data-tokens` do #14 — quanto o modelo mexeu é escolha dele.
+  await expect(diff).toHaveAttribute('data-additions', /^[1-9]\d*$/)
+
+  // E o trecho, com a espécie que o core decidiu lendo o prefixo do patch. Uma linha basta: que
+  // exista linha nova marcada como nova é o que esta feature promete; quantas, não.
+  const linhasNovas = diff.locator('[data-testid="diff-line"][data-diff-kind="add"]')
+
+  await expect(linhasNovas.first()).toBeVisible()
+})
+
+/**
  * Permite o que a sessão pedir até ela devolver a vez.
  *
  * O passo da escrita pede um arquivo, mas quem decide quantas ferramentas usar para isso é o modelo
