@@ -40,6 +40,8 @@ export const IPC_INVOKE = {
   readBoards: 'boards:read',
   readCard: 'card:read',
   readConversations: 'conversations:read',
+  readDangerous: 'danger:read',
+  setDangerous: 'danger:set',
 } as const
 
 /** Main → renderer. Avisos de mão única, disparados pelo `core` quando a sessão se mexe. */
@@ -60,6 +62,12 @@ export const IPC_EVENT = {
    * precisa aparecer na hora em que uma sessão nasce ou é encerrada.
    */
   conversations: 'conversations:changed',
+  /**
+   * Mudou o conjunto de cartões que rodam sem o portão. Canal próprio pelo mesmo motivo do de
+   * conversas: é estado do app, precisa aparecer na hora, e não tem nada a ver com o throttle de
+   * 10s do board.
+   */
+  dangerous: 'danger:changed',
 } as const
 
 /**
@@ -203,6 +211,26 @@ export interface ConversationsSnapshot {
 }
 
 /**
+ * Qual cartão, e para qual lado. `dangerous: false` é desmarcar.
+ *
+ * **`itemId`, nunca pasta** — a mesma regra do `StartRequest`, e aqui ela vale ainda mais: o modo
+ * tira o portão de uma sessão que escreve em disco, e deixar o renderer dizer *onde* seria juntar
+ * as duas metades exatas do buraco que `contextIsolation` fecha.
+ */
+export interface SetDangerousRequest {
+  itemId: string
+  dangerous: boolean
+}
+
+/**
+ * Quais cartões rodam sem o portão. Inteiro a cada mudança, como o `ConversationsSnapshot` e pela
+ * mesma razão: evento perdido não deixa a tela num estado que nunca mais será corrigido.
+ */
+export interface DangerousSnapshot {
+  itemIds: readonly string[]
+}
+
+/**
  * A superfície inteira que o renderer enxerga, exposta como `window.oc` pelo preload. O que não
  * está aqui não existe do lado de lá — não há `ipcRenderer`, não há `require`, não há Node.
  *
@@ -263,6 +291,20 @@ export interface OcApi {
   readConversations(): Promise<ConversationsSnapshot>
   /** Toda mudança do conjunto — sessão que nasce, sessão encerrada, verificação do boot. */
   onConversations(listener: (snapshot: ConversationsSnapshot) => void): () => void
+
+  /**
+   * Liga ou desliga o modo *dangerously* daquele cartão.
+   *
+   * **Sem retorno, e sem atualização otimista do lado da tela**: o crachá segue o retrato publicado
+   * por `onDangerous`, e só ele. Com sessão viva quem manda é o que o SDK aceitou, não o que a tela
+   * pediu — uma recusa deixa o conjunto como estava e a tela simplesmente não se move, que é a
+   * verdade.
+   */
+  setDangerous(request: SetDangerousRequest): Promise<void>
+  /** Os cartões marcados. Pode voltar vazio se a carga do boot ainda não terminou. */
+  readDangerous(): Promise<DangerousSnapshot>
+  /** Toda mudança do conjunto — a marca de um cartão, e o fim da carga do boot. */
+  onDangerous(listener: (snapshot: DangerousSnapshot) => void): () => void
 }
 
 declare global {

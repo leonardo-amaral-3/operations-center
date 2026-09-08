@@ -9,6 +9,7 @@ import type {
   ChooseFolderResult,
   CloseRequest,
   ConversationsSnapshot,
+  DangerousSnapshot,
   OcApi,
   ReadCardRequest,
   ReadCardResult,
@@ -19,6 +20,7 @@ import type {
   SessionInitEvent,
   SessionMessageEvent,
   SessionStateEvent,
+  SetDangerousRequest,
   StartRequest,
   StartResult,
   StopRequest,
@@ -109,6 +111,10 @@ const api: OcApi = {
     ipcRenderer.invoke(IPC_INVOKE.readConversations) as Promise<ConversationsSnapshot>,
   onConversations: (listener) =>
     subscribe<ConversationsSnapshot>(IPC_EVENT.conversations, listener),
+  setDangerous: (request: SetDangerousRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.setDangerous, request) as Promise<void>,
+  readDangerous: () => ipcRenderer.invoke(IPC_INVOKE.readDangerous) as Promise<DangerousSnapshot>,
+  onDangerous: (listener) => subscribe<DangerousSnapshot>(IPC_EVENT.dangerous, listener),
 }
 
 contextBridge.exposeInMainWorld('oc', api)

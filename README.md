@@ -102,7 +102,7 @@ Sem banco e sem arquivo de config. Dez variáveis de ambiente, lidas no main:
 | `OC_BOARDS_FIXTURE`  | ausente: a descoberta não tem o que responder e **lança**                     | caminho de um JSON com as respostas da **descoberta** — os seus donos, e os Projects de cada dono. É o par de `OC_BOARD_FIXTURE` e só é consultada junto com ela; sem as duas, nenhum smoke desenha kanban                                                                                                                                                                      |
 | `OC_CARD_FIXTURE`    | ausente: nenhum cartão tem conteúdo de fixture                                | caminho de um JSON `número da issue → resposta da API` com o corpo e os comentários de cada card. Só é consultada quando `OC_BOARD_FIXTURE` existe, e é o par dela no **smoke do conteúdo do cartão**. Cartão sem entrada no mapa vira erro na tela, e não card vazio                                                                                                           |
 | `OC_CLAUDE_PROJECTS` | ausente: `CLAUDE_CONFIG_DIR` se houver, senão `~/.claude/projects`            | raiz dos transcripts do Claude Code, de onde sai o mapa `repo → pasta local` em que a sessão de um cartão roda. Existe **para o smoke do cartão-chat**, que aponta para uma raiz temporária e faz a descoberta rodar inteira sobre um repo descartável                                                                                                                          |
-| `OC_STATE_DIR`       | ausente: o `userData` do Electron — no Windows, `%APPDATA%\operations-center` | pasta em que o app grava o próprio estado: hoje só `conversations.json`, o vínculo `cartão → sessão do Claude Code` que faz a conversa voltar depois de fechar e reabrir. É diretório, e não arquivo, para que o próximo pedaço de estado não peça uma segunda variável. Existe **para o smoke da retomada**, que aponta para uma pasta temporária e lê de lá o vínculo gravado |
+| `OC_STATE_DIR`       | ausente: o `userData` do Electron — no Windows, `%APPDATA%\operations-center` | pasta em que o app grava o próprio estado, hoje em dois arquivos: `conversations.json`, o vínculo `cartão → sessão do Claude Code` que faz a conversa voltar depois de fechar e reabrir; e `dangerous.json`, a lista dos cartões marcados para rodar sem pedir permissão. Ser diretório, e não arquivo, é o que permitiu o segundo nascer sem uma segunda variável. Existe **para os smokes da retomada e do cartão-chat**, que apontam para uma pasta temporária em vez de sujar o estado real de quem os roda |
 
 `OC_SCREEN`, `OC_BOARD_FIXTURE`, `OC_BOARDS_FIXTURE`, `OC_CARD_FIXTURE`, `OC_CLAUDE_PROJECTS` e
 `OC_STATE_DIR` são portas de teste, como `OC_ISOLATED`: fora do smoke não há razão para tocá-las.
@@ -139,6 +139,12 @@ cada ciclo de vida do app. Os três escapam do pior somando as mesmas duas coisa
 modelo barato e `OC_ISOLATED=1` — este último é o que mais pesa, porque a maior parte daqueles 20
 centavos era carregamento de contexto. Os outros dois não custam nada: o do kanban e o do conteúdo
 do cartão leem fixture e nunca sobem sessão.
+
+**E há um preço que não é de cota.** Cada cartão pode ser marcado para rodar *sem pedir permissão*:
+naquele chat as ferramentas do Claude Code executam sozinhas, e escrever no repo do cartão deixa de
+passar por um clique seu. É escolha explícita, por cartão, reversível no mesmo botão e sinalizada no
+kanban por um crachá vermelho — e **sobrevive a fechar o app**, que é a parte que surpreende: um
+cartão marcado ontem continua marcado hoje, antes de você clicar em coisa alguma.
 
 ## Como este projeto é desenvolvido
 

@@ -9,6 +9,7 @@ import { CardChat } from './CardChat'
 import type { CardSession } from './CardChat'
 import { CardContent } from './CardContent'
 import { ConversationBadge } from './ConversationBadge'
+import { DangerBadge } from './DangerBadge'
 import { StateBadge } from './StateBadge'
 
 interface BoardCardViewProps {
@@ -25,8 +26,17 @@ interface BoardCardViewProps {
   session: CardSession | undefined
   /** Há conversa a retomar neste cartão — de uma execução anterior do app (CA-1). */
   dormant: boolean
+  /**
+   * Este cartão roda sem o portão de permissões (CA-2 do #10).
+   *
+   * É propriedade do **cartão**, e não da sessão: vale sem sessão nenhuma, e é por isso que ela não
+   * viaja no `SessionSnapshot`.
+   */
+  dangerous: boolean
   onToggle: (itemId: string) => void
   onSession: (itemId: string, session: CardSession) => void
+  /** Só de passagem para o `CardChat`, que é filho deste componente e não da `Column`. */
+  onToggleDangerous: (itemId: string, dangerous: boolean) => void
 }
 
 /**
@@ -46,8 +56,10 @@ export function BoardCardView({
   expanded,
   session,
   dormant,
+  dangerous,
   onToggle,
   onSession,
+  onToggleDangerous,
 }: BoardCardViewProps): JSX.Element {
   const open = useRef<HTMLElement>(null)
 
@@ -133,24 +145,40 @@ export function BoardCardView({
           )}
         </div>
 
-        {/* O sinal de sessão viva no cartão **fechado**, e é o mínimo para o CA-6 ser operável: sem
-            ele, uma conversa aberta atrás de um cartão colapsado é invisível e não há o que gerir.
-            Aberto, quem mostra o estado é o próprio `CardChat` — inclusive uma falha que aconteceu
-            antes de haver sessão. */}
-        {!expanded && live ? (
-          <div className="min-w-0">
-            <StateBadge state={live.state} />
-          </div>
-        ) : null}
+        {/* O grupo da direita: os três crachás em fila, e o do modo **antes** dos outros dois. */}
+        <div className="flex min-w-0 items-center gap-1.5">
+          {/* O sinal do CA-2 do #10, com duas diferenças em relação aos vizinhos abaixo.
 
-        {/* O sinal do CA-1: houve conversa aqui e ela volta ao clique. A sessão viva **vence** o
-            dormente — enquanto ela existe, o estado dela informa mais —, e por isso os dois crachás
-            nunca aparecem juntos. Expandido, quem conta a história é o próprio `CardChat`. */}
-        {!expanded && !live && dormant ? (
-          <div className="min-w-0">
-            <ConversationBadge />
-          </div>
-        ) : null}
+              **Aparece com o cartão aberto também**: os outros dois se calam ao expandir porque o
+              `CardChat` conta a mesma história melhor; este não tem substituto lá dentro — o botão
+              diz o que *fazer*, não o que *é* —, e a razão de ele existir é ser impossível de perder
+              de vista.
+
+              **E não depende de `live` nem de `dormant`**: é propriedade do cartão, não da sessão.
+              Um cartão marcado, sem sessão nenhuma e até com o repo desconhecido precisa mostrá-lo,
+              ou o CA-2 vira "visível às vezes". */}
+          {dangerous ? <DangerBadge /> : null}
+
+          {/* O sinal de sessão viva no cartão **fechado**, e é o mínimo para o CA-6 ser operável:
+              sem ele, uma conversa aberta atrás de um cartão colapsado é invisível e não há o que
+              gerir. Aberto, quem mostra o estado é o próprio `CardChat` — inclusive uma falha que
+              aconteceu antes de haver sessão. */}
+          {!expanded && live ? (
+            <div className="min-w-0">
+              <StateBadge state={live.state} />
+            </div>
+          ) : null}
+
+          {/* O sinal do CA-1: houve conversa aqui e ela volta ao clique. A sessão viva **vence** o
+              dormente — enquanto ela existe, o estado dela informa mais —, e por isso os dois
+              crachás nunca aparecem juntos. Expandido, quem conta a história é o próprio
+              `CardChat`. */}
+          {!expanded && !live && dormant ? (
+            <div className="min-w-0">
+              <ConversationBadge />
+            </div>
+          ) : null}
+        </div>
       </div>
     </>
   )
@@ -185,10 +213,12 @@ export function BoardCardView({
           {conversable || live || dormant ? (
             <CardChat
               itemId={card.itemId}
+              dangerous={dangerous}
               onCollapse={() => {
                 onToggle(card.itemId)
               }}
               onSession={onSession}
+              onToggleDangerous={onToggleDangerous}
             />
           ) : (
             // Sem skill, sem sessão e sem conversa guardada: o cartão abriu para ser lido, e a

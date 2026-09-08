@@ -14,15 +14,16 @@
  */
 
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { getSessionInfo, getSessionMessages } from '@anthropic-ai/claude-agent-sdk'
-import { app, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import type { WebContents } from 'electron'
 
 import type { ConversationIndex, TranscriptEntry } from '../core'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type { ConversationsSnapshot } from '../shared/ipc'
+import { escreverAtomico, stateDir } from './state'
 
 /**
  * A versão do formato, gravada desde a primeira linha que este app escreveu.
@@ -34,21 +35,6 @@ const VERSAO = 1
 
 /** O arquivo, dentro do `stateDir()`. O nome é detalhe interno — a porta de ambiente é a pasta. */
 const ARQUIVO = 'conversations.json'
-
-/**
- * Onde o app grava o estado dele.
- *
- * `OC_STATE_DIR` é a porta do smoke — o análogo de `OC_BOARD_FIXTURE` e `OC_CLAUDE_PROJECTS`. Sem
- * ela, `app.getPath('userData')`. É **diretório** e não arquivo de propósito: o nome do arquivo
- * vira detalhe interno, e o segundo pedaço de estado que o app vier a guardar não precisa de uma
- * segunda variável de ambiente.
- *
- * Resolvido **na hora do uso**, dentro do `load`/`save`, e nunca no topo do módulo:
- * `app.getPath('userData')` depende do app do Electron já montado.
- */
-export function stateDir(): string {
-  return process.env.OC_STATE_DIR || app.getPath('userData')
-}
 
 /**
  * O vínculo gravado, pronto para virar o `load` do `ConversationIndex`.
@@ -72,24 +58,17 @@ export async function loadConversations(): Promise<ReadonlyMap<string, string>> 
 /**
  * A gravação do vínculo, pronta para virar o `save` do `ConversationIndex`.
  *
- * **Atômica**: escreve num `.tmp` no mesmo diretório e renomeia por cima. Sem isso, um desligamento
- * no meio da escrita deixaria um JSON truncado — que a leitura tolerante trataria como vazio,
- * perdendo **todos** os vínculos de uma vez.
+ * **Atômica** — ver `escreverAtomico`, que é de onde a garantia vem: sem ela, um desligamento no
+ * meio da escrita deixaria um JSON truncado, que a leitura tolerante trataria como vazio, perdendo
+ * **todos** os vínculos de uma vez.
  *
  * Falha aqui **rejeita**, e é o `ConversationIndex` quem a absorve: `remember` e `forget` são
  * síncronos para quem chama, e a fila de gravação de lá é o único lugar com como capturá-la.
  */
 export async function saveConversations(entries: ReadonlyMap<string, string>): Promise<void> {
-  const diretorio = stateDir()
-  const destino = join(diretorio, ARQUIVO)
-  const temporario = `${destino}.tmp`
   const conteudo = JSON.stringify({ version: VERSAO, cards: Object.fromEntries(entries) }, null, 2)
 
-  // Antes da primeira escrita: `userData` existe, mas um `OC_STATE_DIR` apontado para uma pasta
-  // temporária do smoke pode não existir ainda.
-  await mkdir(diretorio, { recursive: true })
-  await writeFile(temporario, `${conteudo}\n`, 'utf8')
-  await rename(temporario, destino)
+  await escreverAtomico(join(stateDir(), ARQUIVO), conteudo)
 }
 
 /**
