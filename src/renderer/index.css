@@ -169,3 +169,55 @@ body,
 body {
   background-color: var(--background);
 }
+
+/*
+ * A barra de rolagem também é casca do app, e por isso também sai do tema.
+ *
+ * **O seletor não tem sujeito de propósito.** Sem sujeito ele vale por `*::-webkit-scrollbar` e
+ * alcança os oito contêineres que rolam hoje e o nono que ainda não existe — que é o que uma
+ * enumeração dos oito não faria. É a ausência de sujeito, e não a lista, que a canária guarda.
+ *
+ * **O polegar é `--main`, e é a troca de combinação que decide isso.** Das onze cores, só
+ * `--background` e `--main` variam entre as combinações; as outras nove são idênticas por
+ * construção. Um polegar preto de `--border` sobre trilho branco ficaria bonito, usaria token e
+ * **não mudaria um pixel** de lavanda para ametista — reprovaria o requisito em silêncio.
+ *
+ * **O trilho é transparente, não `--background`.** Nas cinco superfícies lavanda o resultado é pixel
+ * a pixel idêntico; nas outras três — as duas faces brancas de cartão e a bolha `--main` — pintar de
+ * `--background` deixaria uma tarja lavanda que não pertence a nenhuma das duas cores. Uma regra,
+ * zero exceção por contêiner. O canto existe pela mesma razão de ser transparente, e ele é real:
+ * `overflow-x: auto` faz o `overflow-y` computar `auto`, então o quadradinho entre as duas barras
+ * aparece nos contêineres "horizontais" e sem regra própria renderiza opaco, furando o desenho.
+ *
+ * **Nada de `scrollbar-width` nem `scrollbar-color`, aqui ou no renderer.** Declarada no mesmo
+ * elemento, a API padrão **vence e apaga este bloco inteiro** — medido: com `scrollbar-width: thin`
+ * junto, o gutter volta a 10px e a barra volta a ser a do Chromium, sem um teste vermelho em lugar
+ * nenhum. Quem guarda isso é `design-system.test.ts`, e ela varre a folha **com os comentários
+ * apagados** justamente porque este parágrafo contém as strings que ela proíbe: o comentário e as
+ * canárias são um par, e quem editar um sem o outro quebra o outro.
+ *
+ * Duas declarações que parecem ruído e não são. O `solid` é obrigatório porque o preflight do
+ * Tailwind v4 zera bordas em `*, ::after, ::before, ::backdrop, ::file-selector-button`, que não
+ * alcança `::-webkit-scrollbar-*`: sem ele a borda não desenharia, pelo default `none` do CSS e não
+ * pelo reset. E o `border-radius: 0` fica mesmo coincidindo com o default, porque **codifica uma
+ * decisão** — o canto reto foi escolhido contra os 5px de `--border-radius`, e esconder a escolha
+ * atrás de um default a tornaria invisível para quem for reabrir o assunto.
+ */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--main);
+  border: 2px solid var(--border);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
