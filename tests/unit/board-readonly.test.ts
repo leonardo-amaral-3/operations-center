@@ -70,6 +70,12 @@ describe('a superfície de board é somente-leitura', () => {
     // carga passou a ser a lista de todos os boards descobertos e um nome no singular mentiria
     // sobre ela. **Nenhum canal novo**: a renomeação é o diff inteiro, aqui e no `IPC_EVENT` logo
     // abaixo. Continua sendo leitura, e continua sendo a única do Project.
+    //
+    // **E a declaração do #32, que é a que esta canária mais cobra: `ui:active-board` é o primeiro
+    // canal de _escrita_ da ponte.** Ele grava a aba que o humano ativou no `preferences.json` do
+    // `OC_STATE_DIR` — disco local, e **nada** do GitHub: nenhum board é lido, movido ou tocado por
+    // ele. O prefixo é `ui:` e não `boards:` de propósito (Decisão 8 da spec), e é por isso que ele
+    // fica fora da lista da terceira asserção sem que ela precise abrir exceção para um nome.
     expect(IPC_INVOKE).toEqual({
       start: 'session:start',
       send: 'session:send',
@@ -79,6 +85,7 @@ describe('a superfície de board é somente-leitura', () => {
       close: 'session:close',
       chooseFolder: 'repo:choose-folder',
       readBoards: 'boards:read',
+      activateBoard: 'ui:active-board',
       readCard: 'card:read',
       readConversations: 'conversations:read',
     })
@@ -124,6 +131,11 @@ describe('a superfície de board é somente-leitura', () => {
     // `'boards:read'.startsWith('board:')` é `false`, então um filtro deixado em `board:` não
     // acusaria canal nenhum — ele simplesmente esvaziaria a lista e faria a asserção falhar por
     // omissão, que é o pior jeito de uma canária falhar.
+    //
+    // O canal de escrita do #32 não aparece aqui, e é essa ausência que é a afirmação: `ui:` foi
+    // escolhido justamente para que o filtro continue sendo "quem toca o GitHub" e não "quem lê" —
+    // um `boards:activate` obrigaria esta lista a ganhar uma exceção nominal, e uma canária com
+    // exceção nominal é uma canária a caminho de ser desligada.
     const canaisDoGitHub = [...Object.values(IPC_INVOKE), ...Object.values(IPC_EVENT)].filter(
       (canal) => canal.startsWith('boards:') || canal.startsWith('card:'),
     )

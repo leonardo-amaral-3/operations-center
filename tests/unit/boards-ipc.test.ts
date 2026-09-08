@@ -13,12 +13,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const { handlers } = vi.hoisted(() => ({
-  handlers: new Map<string, (event: unknown) => unknown>(),
+  handlers: new Map<string, (event: unknown, request?: unknown) => unknown>(),
 }))
 
 vi.mock('electron', () => ({
   ipcMain: {
-    handle(channel: string, handler: (event: unknown) => unknown): void {
+    handle(channel: string, handler: (event: unknown, request?: unknown) => unknown): void {
       handlers.set(channel, handler)
     },
   },
@@ -75,6 +75,14 @@ interface Bancada {
   loadActive?: () => Promise<string | null>
 }
 
+/** O canal pedido, com o vermelho **aqui** e nomeando quem falta, em vez de um `undefined` adiante. */
+function canal(nome: string): (event: unknown, request?: unknown) => unknown {
+  const handler = handlers.get(nome)
+  if (!handler) throw new Error(`canal não registrado: ${nome}`)
+
+  return handler
+}
+
 function montar(opcoes: Bancada = {}) {
   handlers.clear()
 
@@ -94,6 +102,13 @@ function montar(opcoes: Bancada = {}) {
     },
   } as unknown as WebContents
 
+  /**
+   * A ponta de escrita, sempre espiã: **quando** ela é chamada é metade do que esta suíte prova.
+   * A Decisão 14 é uma afirmação sobre chamada que não acontece — a descoberta não regrava —, e
+   * isso só se vê com o `vi.fn` ligado em todos os casos, não só nos que gravam.
+   */
+  const saveActive = vi.fn(() => Promise.resolve())
+
   // O `as unknown as` é o preço de `BoardsIpcDeps` tipar as classes concretas, que é o que se quer
   // em produção: o main não pode passar qualquer coisa com um `find`. Aqui a dupla só precisa
   // responder o que o observador pergunta.
@@ -101,7 +116,7 @@ function montar(opcoes: Bancada = {}) {
     finder: { find } as unknown as BoardFinder,
     reader: { read } as unknown as BoardReader,
     loadActive: opcoes.loadActive ?? (() => Promise.resolve(null)),
-    saveActive: () => Promise.resolve(),
+    saveActive,
   })
 
   /** Espera a n-ésima publicação atravessar a ponte. Sem timer: quem acorda o teste é o canal. */
@@ -121,18 +136,18 @@ function montar(opcoes: Bancada = {}) {
     ipc,
     find,
     read,
+    saveActive,
     isDestroyed,
     publicados,
     esperar,
     destruir: () => {
       destruido = true
     },
-    readBoards: (): Promise<BoardsSnapshot> => {
-      const handler = handlers.get(IPC_INVOKE.readBoards)
-      if (!handler) throw new Error(`canal não registrado: ${IPC_INVOKE.readBoards}`)
-
-      return Promise.resolve(handler({ sender }) as BoardsSnapshot)
-    },
+    readBoards: (): Promise<BoardsSnapshot> =>
+      Promise.resolve(canal(IPC_INVOKE.readBoards)({ sender }) as BoardsSnapshot),
+    /** O canal de escrita, chamado como o `ipcMain.handle` o chamaria: evento primeiro, carga depois. */
+    activateBoard: (key: string): Promise<void> =>
+      Promise.resolve(canal(IPC_INVOKE.activateBoard)({ sender }, { key }) as void),
   }
 }
 
@@ -301,6 +316,82 @@ describe('o observador dos boards', () => {
     expect(bancada.ipc.cardById(cartaoDe(B).itemId)?.itemId).toBe(cartaoDe(B).itemId)
     expect(bancada.ipc.cardById(cartaoDe(A).itemId)?.itemId).toBe(cartaoDe(A).itemId)
     expect(bancada.ipc.cardById('PVTI_de_ninguem')).toBeNull()
+  })
+
+  it('a aba lembrada nasce ativa quando ela está entre as descobertas', async () => {
+    const bancada = montar({ loadActive: () => Promise.resolve(B.key) })
+
+    void bancada.readBoards()
+
+    // O primeiro caso do `pickActive` que a Fase 0 deixou inalcançável: até aqui o main passava
+    // `() => null`, e um lembrado **válido** nunca chegava a ele. A ativa é a B, e não a primeira
+    // da ordem — que é toda a diferença entre lembrar e não lembrar.
+    expect((await bancada.esperar(1)).activeKey).toBe(B.key)
+  })
+
+  it('o lembrado que saiu da lista cai na primeira aba, e a preferência não é apagada', async () => {
+    const bancada = montar({ loadActive: () => Promise.resolve('ICSF-Solutions/999') })
+
+    void bancada.readBoards()
+    const retrato = await bancada.esperar(1)
+
+    // O segundo caso inalcançável, e o CA-4 inteiro: board arquivado, renumerado ou que deixou de
+    // declarar as 8 estações abre na primeira aba **sem erro nenhum na tela** — a ausência do
+    // lembrado não é falha de descoberta.
+    expect(retrato.activeKey).toBe(A.key)
+    expect(retrato.discoveryError).toBeNull()
+
+    // E a Decisão 14: a descoberta **não** regrava o arquivo. A ausência pode ser temporária — a
+    // org fora do ar, um token sem `read:org` naquele dia — e regravar apagaria uma preferência que
+    // ia voltar a valer. O caso já se resolve na leitura, de graça, e é por isso que corrigir o
+    // disco aqui seria destruir estado para não ganhar nada.
+    await assentar()
+    expect(bancada.saveActive).not.toHaveBeenCalled()
+  })
+
+  it('ativar uma aba publica na hora e enfileira a gravação', async () => {
+    const bancada = montar()
+
+    void bancada.readBoards()
+    await bancada.esperar(3)
+    expect(ultimo(bancada.publicados).activeKey).toBe(A.key)
+
+    const antes = bancada.publicados.length
+    const ativando = bancada.activateBoard(B.key)
+
+    // **Sem um `await` sequer**: o retrato novo já atravessou a ponte quando o handler retornou. É
+    // esta linha que prova a separação, e não um `expect` depois do `await` — que ficaria verde
+    // também numa implementação que gravasse primeiro e publicasse depois. Uma gravação que falhe
+    // custa uma aba lembrada; uma tela que espera o disco custa a troca de aba inteira.
+    expect(bancada.publicados).toHaveLength(antes + 1)
+    expect(ultimo(bancada.publicados).activeKey).toBe(B.key)
+
+    await ativando
+
+    // E a gravação veio depois, com a chave que o humano ativou — esta sim, a ação dele.
+    await assentar()
+    expect(bancada.saveActive.mock.calls).toEqual([[B.key]])
+  })
+
+  it('a key que não está entre as abas é ignorada, e não é erro', async () => {
+    const bancada = montar()
+
+    // Antes da descoberta não há aba nenhuma. Um clique que chegasse aqui — janela reaberta, evento
+    // atrasado — não pode derrubar o `invoke`.
+    await expect(bancada.activateBoard(B.key)).resolves.toBeUndefined()
+
+    void bancada.readBoards()
+    await bancada.esperar(3)
+    const antes = bancada.publicados.length
+
+    await expect(bancada.activateBoard('ninguem/999')).resolves.toBeUndefined()
+
+    // Nem publicação, nem gravação, nem exceção: o renderer pode estar clicando sobre um retrato que
+    // já mudou, e isso é corrida normal, não engano de quem chamou. A aba ativa fica onde estava.
+    expect(bancada.publicados).toHaveLength(antes)
+    expect(ultimo(bancada.publicados).activeKey).toBe(A.key)
+    await assentar()
+    expect(bancada.saveActive).not.toHaveBeenCalled()
   })
 
   it('o WebContents destruído sai do conjunto de assinantes', async () => {

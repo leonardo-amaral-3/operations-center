@@ -97,6 +97,7 @@ describe('nenhum caminho de disco atravessa a ponte', () => {
         'CloseRequest',
         'ChooseFolderRequest',
         'ChooseFolderResult',
+        'ActivateBoardRequest',
         'ConversationsSnapshot',
         'BoardTab',
         'BoardsSnapshot',
