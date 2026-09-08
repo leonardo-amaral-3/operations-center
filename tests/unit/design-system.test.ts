@@ -235,6 +235,10 @@ const ANCORA = /\b(data-[a-z-]+)['"]?\s*[=:]/g
 
 /** A lista congelada: o que a árvore tinha no momento em que a rede foi armada. */
 const ANCORAS = [
+  // As quatro do card #15, e elas entram em ordem alfabetica e nao no fim: a lista e
+  // comparada como array ordenado, entao um bloco novo no rodape ficaria vermelho por
+  // posicao e nao por conteudo. Tres delas ficam no bloco do diff e a quarta em cada linha.
+  'data-additions',
   'data-api-key-source',
   // Entrou com o card #32: a barra de abas nasceu depois desta rede, e o `data-board-key` é por
   // onde o smoke pergunta **qual** board cada aba abre sem escrever o título de nenhum.
@@ -255,6 +259,8 @@ const ANCORAS = [
   // `data-permission-mode` é a **segunda fonte**, a que o SDK reporta no `init`, e ela só é legível
   // depois de um turno ter rodado — é o par que a decisão 10 mantém visível em vez de auto-corrigir.
   'data-dangerous',
+  'data-deletions',
+  'data-diff-kind',
   'data-label',
   'data-parent',
   'data-permission-mode',
@@ -271,6 +277,7 @@ const ANCORAS = [
   'data-testid',
   'data-tokens',
   'data-tool',
+  'data-truncated',
 ]
 
 describe('as âncoras que os testes leem seguem onde estavam', () => {
