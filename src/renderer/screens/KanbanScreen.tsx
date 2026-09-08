@@ -1,27 +1,14 @@
 import { useCallback, useEffect, useReducer, useState } from 'react'
 import type { JSX } from 'react'
 
-import type { BoardTab, BoardsSnapshot } from '../../shared/board'
+import type { BoardTab } from '../../shared/board'
 import type { SessionState } from '../../shared/session'
+import { BoardTabs } from '../components/BoardTabs'
 import type { CardSession, CardSessions } from '../components/CardChat'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
 import { Badge } from '../ui/badge'
-
-type BoardAction = { type: 'snapshot'; snapshot: BoardsSnapshot }
-
-/**
- * Antes da descoberta a tela não sabe nem quantos boards existem — e `boards: null` é exatamente
- * isso, e não "descobri e não achei nenhum".
- */
-const INITIAL_SNAPSHOT: BoardsSnapshot = { boards: null, activeKey: null, discoveryError: null }
-
-function reduce(_snapshot: BoardsSnapshot, action: BoardAction): BoardsSnapshot {
-  // O retrato chega inteiro do main, que é quem decide o que sobrevive a uma falha. A tela não
-  // recompõe nada: se ela mesclasse `board` antigo com `error` novo, existiriam duas regras de
-  // preservação — uma aqui e outra lá — e um dia elas divergiriam.
-  return action.snapshot
-}
+import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
 
 type SessionsAction =
   | { type: 'card'; itemId: string; session: CardSession }
@@ -68,9 +55,12 @@ function reduceSessions(sessions: CardSessions, action: SessionsAction): CardSes
  * vista, e o único encerramento é o do CA-6 — o botão do cartão, ou o desligamento do app.
  */
 export function KanbanScreen(): JSX.Element {
-  const [snapshot, dispatch] = useReducer(reduce, INITIAL_SNAPSHOT)
+  const [kanban, dispatch] = useReducer(reduceKanban, INITIAL_KANBAN)
+  // Aberto aqui em cima, e não junto do render, porque o `toggle` precisa da `activeKey` para saber
+  // de **qual** aba é o cartão que ele alterna.
+  const { snapshot, expanded } = kanban
+  const { boards, activeKey, discoveryError } = snapshot
   const [sessions, dispatchSession] = useReducer(reduceSessions, {})
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
   /**
    * Os cartões com conversa a retomar. Vazio até a verificação do boot terminar — e é assim que
    * deve ser: um cartão sem conversa recuperável volta sem crachá (CA-3), e o vazio é a mesma
@@ -151,14 +141,30 @@ export function KanbanScreen(): JSX.Element {
     })
   }, [])
 
-  const toggle = useCallback((itemId: string) => {
-    // Um cartão aberto por vez (RF-6): abrir o segundo fecha o primeiro — e **não** encerra a sessão
-    // dele, que continua viva atrás do cartão fechado.
-    setExpandedItemId((current) => (current === itemId ? null : itemId))
-  }, [])
+  const toggle = useCallback(
+    (itemId: string) => {
+      // Inalcançável na prática — não há cartão na tela sem aba ativa —, e a guarda existe para
+      // dizer isso ao tipo em vez de a `key` virar `string | null` no vocabulário do reducer.
+      if (activeKey === null) return
+      // Um cartão aberto por aba (Decisão 12), e dentro da aba a regra do RF-6 não muda: abrir o
+      // segundo fecha o primeiro — sem **encerrar** a sessão dele, que continua viva atrás do cartão
+      // fechado. O cartão da outra aba não sente nada, e é isso que devolve a conversa onde ela
+      // estava ao voltar para lá.
+      dispatch({ type: 'toggle', key: activeKey, itemId })
+    },
+    [activeKey],
+  )
 
   const registerSession = useCallback((itemId: string, session: CardSession) => {
     dispatchSession({ type: 'card', itemId, session })
+  }, [])
+
+  const activate = useCallback((key: string) => {
+    // Nada muda na tela aqui: a troca chega de volta no retrato, como toda mudança de board. A
+    // tela **não** adianta a escolha, e é de propósito — `key` desconhecida é ignorada no main, e
+    // uma aba pintada de ativa antes da confirmação mentiria por um instante em cima justamente do
+    // caso que o CA-4 descreve: o board lembrado que não está mais entre os descobertos.
+    void window.oc.activateBoard({ key })
   }, [])
 
   const toggleDangerous = useCallback((itemId: string, dangerous: boolean) => {
@@ -168,28 +174,34 @@ export function KanbanScreen(): JSX.Element {
     void window.oc.setDangerous({ itemId, dangerous })
   }, [])
 
-  const { boards, activeKey, discoveryError } = snapshot
   // A aba ativa sai do `activeKey`, que é do main: a tela não escolhe aba, só desenha a escolhida.
-  // Na Fase 0 é sempre a primeira da ordem da descoberta, porque não há aba lembrada.
-  const active = boards?.find((tab) => tab.key === activeKey) ?? null
+  const active = activeTab(snapshot)
   // Guardado num `const` de propósito: a narrowing de `active.board` se perderia dentro do `map`
   // abaixo, que é um callback, e a de um `const` não.
   const board = active?.board ?? null
+  // O cartão aberto **desta** aba. As outras continuam guardando o delas em `expanded`, fora de
+  // cena — desmontadas, não fechadas.
+  const expandedItemId = (activeKey === null ? undefined : expanded[activeKey]) ?? null
 
   return (
     <div className="flex h-full flex-col bg-background font-base text-foreground">
       <header className="flex items-center justify-between gap-4 border-b-2 border-border px-4 py-3">
-        {/* O título do board, e não "Operations Center": é o que faz o app dizer **qual** board
-            está olhando. O nome do app só aparece quando não há board nenhum a nomear. */}
-        <h1 className="truncate text-sm font-heading tracking-tight">
-          {active?.title ?? 'Operations Center'}
-        </h1>
+        {/* A barra ocupa o lugar do título, e não um espaço ao lado dele: o rótulo da aba ativa
+            já diz **qual** board você olha, e a altura poupada vai para o kanban, que é quem
+            disputa espaço com o cartão aberto. Antes de a descoberta terminar a lista é vazia — a
+            barra nasce com o primeiro retrato, e não antes. */}
+        <BoardTabs boards={boards ?? []} activeKey={activeKey} onActivate={activate} />
         <div className="flex shrink-0 items-center gap-2">
           {/* Um dono que não respondeu não apaga os boards dos que responderam — e também não some
               da tela. Fica ao lado do carimbo de frescor porque é a mesma frase: o que está aí é
               verdade, só que incompleta. O motivo inteiro vai no `title`, como no carimbo. */}
           {boards !== null && discoveryError !== null && (
-            <Badge variant="neutral" className="bg-warning" title={discoveryError}>
+            <Badge
+              data-testid="discovery-warning"
+              variant="neutral"
+              className="bg-warning"
+              title={discoveryError}
+            >
               descoberta parcial
             </Badge>
           )}

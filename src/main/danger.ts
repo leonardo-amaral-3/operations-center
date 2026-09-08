@@ -16,15 +16,13 @@
  * versão do vínculo apagaria as marcas junto, por nada.
  */
 
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { ipcMain } from 'electron'
 import type { WebContents } from 'electron'
 
 import type { DangerIndex } from '../core'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type { DangerousSnapshot } from '../shared/ipc'
-import { escreverAtomico, stateDir } from './state'
+import { readState, writeState } from './store'
 
 /**
  * A versão do formato, gravada desde a primeira linha que este app escreveu — a mesma decisão do
@@ -40,34 +38,26 @@ const ARQUIVO = 'dangerous.json'
  * Os cartões marcados, prontos para virar o `load` do `DangerIndex`.
  *
  * Arquivo ausente, ilegível, JSON inválido ou versão desconhecida são todos **conjunto vazio, sem
- * erro**: para quem consome, as quatro dizem a mesma coisa — nenhum cartão roda sem portão.
+ * erro**: para quem consome, as quatro dizem a mesma coisa — nenhum cartão roda sem portão. As três
+ * primeiras o `readState` já resolve virando `null` — ausente é o estado de uma máquina que abriu o
+ * app pela primeira vez, e também o de quem nunca ligou o modo; a quarta é regra deste formato e
+ * mora no `interpretar`.
  */
 export async function loadDangerous(): Promise<ReadonlySet<string>> {
-  let conteudo: string
-  try {
-    conteudo = await readFile(join(stateDir(), ARQUIVO), 'utf8')
-  } catch {
-    // Ausente é o estado de uma máquina que abriu o app pela primeira vez — e também o de quem
-    // nunca ligou o modo. As duas viram "todo cartão com portão", que é o comportamento de sempre.
-    return new Set()
-  }
-
-  return interpretar(conteudo)
+  return interpretar(await readState(ARQUIVO))
 }
 
 /**
  * A gravação da marca, pronta para virar o `save` do `DangerIndex`.
  *
- * **Atômica** por `escreverAtomico`, que também cria o diretório: um `OC_STATE_DIR` recém-criado
- * pelo smoke pode ainda não existir na primeira escrita.
+ * A atomicidade é do `writeState`, que também cria o diretório: um `OC_STATE_DIR` recém-criado pelo
+ * smoke pode ainda não existir na primeira escrita.
  *
  * Falha **rejeita**, e é a fila de gravação do `DangerIndex` quem a absorve: `set` é síncrono para
  * quem chama, e aquela fila é o único lugar com como capturá-la.
  */
 export async function saveDangerous(itemIds: ReadonlySet<string>): Promise<void> {
-  const conteudo = JSON.stringify({ version: VERSAO, cards: [...itemIds] }, null, 2)
-
-  await escreverAtomico(join(stateDir(), ARQUIVO), conteudo)
+  await writeState(ARQUIVO, { version: VERSAO, cards: [...itemIds] })
 }
 
 export interface DangerIpc {
@@ -134,14 +124,7 @@ export function registerDangerIpc(index: DangerIndex): DangerIpc {
  * para array (`conversations.ts`, `!Array.isArray(value)`), e copiá-lo faria todo arquivo válido ser
  * lido como vazio, sem erro nenhum e sem nada na tela além de um portão que voltou sozinho.
  */
-function interpretar(conteudo: string): ReadonlySet<string> {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(conteudo)
-  } catch {
-    return new Set()
-  }
-
+function interpretar(parsed: unknown): ReadonlySet<string> {
   const raiz = asRecord(parsed)
   if (raiz === null || raiz['version'] !== VERSAO) return new Set()
 

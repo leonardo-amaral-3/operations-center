@@ -4,6 +4,7 @@ import type { IpcRendererEvent } from 'electron'
 import type { BoardsSnapshot } from '../shared/board'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type {
+  ActivateBoardRequest,
   AnswerQuestionRequest,
   ChooseFolderRequest,
   ChooseFolderResult,
@@ -105,6 +106,8 @@ const api: OcApi = {
   onActivity: (listener) => subscribe<SessionActivityEvent>(IPC_EVENT.activity, listener),
   readBoards: () => ipcRenderer.invoke(IPC_INVOKE.readBoards) as Promise<BoardsSnapshot>,
   onBoards: (listener) => subscribe<BoardsSnapshot>(IPC_EVENT.boards, listener),
+  activateBoard: (request: ActivateBoardRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.activateBoard, request) as Promise<void>,
   readCard: (request: ReadCardRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.readCard, request) as Promise<ReadCardResult>,
   readConversations: () =>

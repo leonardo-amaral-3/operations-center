@@ -2,6 +2,10 @@
  * O lado sujo da retomada: o arquivo de estado do app em disco e as duas leituras de transcript do
  * SDK.
  *
+ * O disco em si mora no `store.ts` desde que a aba lembrada virou um segundo arquivo de estado. O
+ * que ficou aqui é o que é **deste** arquivo: o nome dele, a versão do formato e a leitura guardada
+ * do conteúdo.
+ *
  * As quatro pontas de IO que o `ConversationIndex` recebe injetadas nascem aqui, pelo mesmo motivo
  * que as do `RepoIndex` nascem em `repos.ts` — o core não conhece disco nem SDK, e é isso que
  * mantém a regra do vínculo testável sem uma máquina de verdade por perto. O registro de IPC e a
@@ -14,8 +18,6 @@
  */
 
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { getSessionInfo, getSessionMessages } from '@anthropic-ai/claude-agent-sdk'
 import { ipcMain } from 'electron'
 import type { WebContents } from 'electron'
@@ -23,7 +25,7 @@ import type { WebContents } from 'electron'
 import type { ConversationIndex, TranscriptEntry } from '../core'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type { ConversationsSnapshot } from '../shared/ipc'
-import { escreverAtomico, stateDir } from './state'
+import { readState, writeState } from './store'
 
 /**
  * A versão do formato, gravada desde a primeira linha que este app escreveu.
@@ -40,35 +42,26 @@ const ARQUIVO = 'conversations.json'
  * O vínculo gravado, pronto para virar o `load` do `ConversationIndex`.
  *
  * Arquivo ausente, ilegível, JSON inválido ou versão desconhecida são todos **mapa vazio, sem
- * erro**: para quem consome, as quatro dizem a mesma coisa — não há vínculo a honrar.
+ * erro**: para quem consome, as quatro dizem a mesma coisa — não há vínculo a honrar. As três
+ * primeiras o `readState` já resolve virando `null`; a quarta é regra deste formato e mora no
+ * `interpretar`.
  */
 export async function loadConversations(): Promise<ReadonlyMap<string, string>> {
-  let conteudo: string
-  try {
-    conteudo = await readFile(join(stateDir(), ARQUIVO), 'utf8')
-  } catch {
-    // Ausente é o estado de uma máquina que abriu o app pela primeira vez, e é indistinguível de um
-    // arquivo sem permissão de leitura: as duas viram "nenhum cartão tem conversa a retomar".
-    return new Map()
-  }
-
-  return interpretar(conteudo)
+  return interpretar(await readState(ARQUIVO))
 }
 
 /**
  * A gravação do vínculo, pronta para virar o `save` do `ConversationIndex`.
  *
- * **Atômica** — ver `escreverAtomico`, que é de onde a garantia vem: sem ela, um desligamento no
- * meio da escrita deixaria um JSON truncado, que a leitura tolerante trataria como vazio, perdendo
- * **todos** os vínculos de uma vez.
+ * A atomicidade é do `writeState` — e é ela que impede um desligamento no meio da escrita de deixar
+ * um JSON truncado, que a leitura tolerante trataria como vazio, perdendo **todos** os vínculos de
+ * uma vez.
  *
  * Falha aqui **rejeita**, e é o `ConversationIndex` quem a absorve: `remember` e `forget` são
  * síncronos para quem chama, e a fila de gravação de lá é o único lugar com como capturá-la.
  */
 export async function saveConversations(entries: ReadonlyMap<string, string>): Promise<void> {
-  const conteudo = JSON.stringify({ version: VERSAO, cards: Object.fromEntries(entries) }, null, 2)
-
-  await escreverAtomico(join(stateDir(), ARQUIVO), conteudo)
+  await writeState(ARQUIVO, { version: VERSAO, cards: Object.fromEntries(entries) })
 }
 
 /**
@@ -176,16 +169,11 @@ export function registerConversationIpc(index: ConversationIndex): ConversationI
  * O conteúdo do arquivo virando mapa, com guarda em cada degrau.
  *
  * Dado de fora chega como `unknown` e passa por guarda explícita, como o `cwdOf` de `repos.ts`: o
- * arquivo é do app, mas quem escreveu foi outra execução — e talvez outra versão.
+ * arquivo é do app, mas quem escreveu foi outra execução — e talvez outra versão. É por isso que a
+ * interpretação ficou aqui quando o IO foi para o `store.ts`: o cofre sabe abrir a porta, mas o que
+ * `version` e `cards` significam é regra deste arquivo, não dele.
  */
-function interpretar(conteudo: string): ReadonlyMap<string, string> {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(conteudo)
-  } catch {
-    return new Map()
-  }
-
+function interpretar(parsed: unknown): ReadonlyMap<string, string> {
   const raiz = asRecord(parsed)
   if (raiz === null || raiz['version'] !== VERSAO) return new Map()
 

@@ -5,6 +5,7 @@ import { pickActive } from '../core'
 import type { BoardFinder, BoardReader, Discovery, ReadBoardInput } from '../core'
 import type { BoardCard, BoardTab, BoardsSnapshot } from '../shared/board'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
+import type { ActivateBoardRequest } from '../shared/ipc'
 
 export interface BoardsIpcDeps {
   finder: BoardFinder
@@ -13,8 +14,9 @@ export interface BoardsIpcDeps {
    * A aba lembrada, injetada como as quatro pontas de IO do `ConversationIndex` e pela mesma razão:
    * quem lê e escreve disco é o main, e a peça que decide fica testável sem ele.
    *
-   * **Inertes na Fase 0** — `loadActive` responde `null` e `saveActive` não faz nada. A costura fica
-   * pronta, e é a Fase 1 que liga o `preferences.json` nela.
+   * `loadActive` é consultada **uma vez**, no fim da descoberta, e o que ela devolve é uma chave
+   * opaca: quem tolera o lembrado que já não existe é o `pickActive`. `saveActive` só é chamada
+   * pela ação do humano (Decisão 14) — nunca pela descoberta.
    */
   loadActive: () => Promise<string | null>
   saveActive: (key: string) => Promise<void>
@@ -70,6 +72,13 @@ export function registerBoardsIpc(deps: BoardsIpcDeps): BoardsIpc {
   /** As duas guardas de hoje, agora **por aba**. */
   const reading = new Set<string>()
   const lastReadAt = new Map<string, number>()
+
+  /**
+   * A fila das gravações da aba lembrada. Uma promessa encadeada, e não um `void saveActive(...)`
+   * solto: dois cliques seguidos escreveriam o mesmo arquivo ao mesmo tempo, e quem venceria seria
+   * o sistema de arquivos — a mesma razão do `#gravando` do `ConversationIndex`.
+   */
+  let saving: Promise<void> = Promise.resolve()
 
   function snapshot(): BoardsSnapshot {
     return { boards: tabs, activeKey, discoveryError }
@@ -198,6 +207,28 @@ export function registerBoardsIpc(deps: BoardsIpcDeps): BoardsIpc {
     if (tabs === null) refresh()
 
     return snapshot()
+  })
+
+  /**
+   * O primeiro canal de **escrita** da ponte — e o que ele escreve é estado local do app, nunca o
+   * GitHub. Daí o prefixo `ui:`, e não `boards:`.
+   *
+   * O renderer avisa que o humano clicou; quem decide continua sendo o main. **Publicar e gravar
+   * são separados de propósito**, como no `ConversationIndex.remember`: a tela troca de aba no
+   * mesmo tique, e uma gravação que falhe custa uma aba lembrada — não uma tela travada.
+   */
+  ipcMain.handle(IPC_INVOKE.activateBoard, (_event, request: ActivateBoardRequest): void => {
+    // `key` desconhecida é **ignorada, e não erro**: o renderer pode estar clicando sobre um
+    // retrato que já mudou, e antes da descoberta `tabs` é `null` e não há aba nenhuma a ativar.
+    // Rejeitar transformaria uma corrida normal em exceção na tela.
+    if (!tabs?.some((tab) => tab.key === request.key)) return
+
+    activeKey = request.key
+    publish()
+
+    // O `catch` fecha cada elo da fila: uma gravação que falhou não pode deixá-la rejeitada e levar
+    // junto as seguintes. E ninguém tem como capturar a falha lá fora — o `invoke` já respondeu.
+    saving = saving.then(() => deps.saveActive(request.key)).catch(() => undefined)
   })
 
   return {

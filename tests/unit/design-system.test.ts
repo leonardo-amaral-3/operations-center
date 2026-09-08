@@ -236,6 +236,9 @@ const ANCORA = /\b(data-[a-z-]+)['"]?\s*[=:]/g
 /** A lista congelada: o que a árvore tinha no momento em que a rede foi armada. */
 const ANCORAS = [
   'data-api-key-source',
+  // Entrou com o card #32: a barra de abas nasceu depois desta rede, e o `data-board-key` é por
+  // onde o smoke pergunta **qual** board cada aba abre sem escrever o título de nenhum.
+  'data-board-key',
   'data-card-assignees',
   'data-card-closed',
   'data-card-column',

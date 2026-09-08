@@ -38,6 +38,13 @@ export const IPC_INVOKE = {
    * os boards descobertos é um nome que mente.
    */
   readBoards: 'boards:read',
+  /**
+   * Qual aba o humano ativou. **O prefixo `ui:` é de propósito**: este é o primeiro canal de
+   * *escrita* da ponte, e o que ele escreve é estado local do app — nunca o GitHub. Ficar fora de
+   * `boards:` e de `card:` é o que mantém a asserção "todo canal que toca o GitHub é de leitura"
+   * verdadeira **e** legível para quem chegar depois com a canária vermelha na mão.
+   */
+  activateBoard: 'ui:active-board',
   readCard: 'card:read',
   readConversations: 'conversations:read',
   readDangerous: 'danger:read',
@@ -154,6 +161,17 @@ export interface ChooseFolderRequest {
  */
 export interface ChooseFolderResult {
   chosen: boolean
+}
+
+/**
+ * Qual aba o usuário ativou. **`key`, nunca coordenada**: para o renderer ela é string opaca, e quem
+ * a traduz em `owner`/`number` é o main — a mesma regra que já vale para `itemId`.
+ *
+ * `key` que o main não reconheça **não é erro**: o retrato pode ter mudado entre o desenho da barra
+ * e o clique, e derrubar o `invoke` por isso faria uma corrida normal virar exceção na tela.
+ */
+export interface ActivateBoardRequest {
+  key: string
 }
 
 /** De qual cartão. `itemId`, nunca `owner/name/number`: quem traduz cartão em coordenada é o main. */
@@ -283,6 +301,17 @@ export interface OcApi {
   readBoards(): Promise<BoardsSnapshot>
   /** Todo fim de descoberta ou de leitura — com sucesso ou com falha — empurra um retrato novo. */
   onBoards(listener: (snapshot: BoardsSnapshot) => void): () => void
+
+  /**
+   * Diz ao main que o humano trocou de aba. **O renderer avisa, não decide**: quem é dono do
+   * `activeKey` é o main, e a aba nova volta pelo mesmo retrato de sempre — uma fonte da verdade, e
+   * não duas se corrigindo.
+   *
+   * Resolve quando o main registrou a troca, e **não** quando ela chegou ao disco: a gravação da
+   * aba lembrada é enfileirada, porque a tela não pode esperar o disco e uma gravação que falhe
+   * custa uma aba lembrada, não uma tela travada.
+   */
+  activateBoard(request: ActivateBoardRequest): Promise<void>
 
   /** Lê o que está escrito naquele card: o corpo e os comentários. Não toca sessão nenhuma. */
   readCard(request: ReadCardRequest): Promise<ReadCardResult>

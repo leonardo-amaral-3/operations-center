@@ -5,8 +5,8 @@
     "src/main/github/fixture.ts, que despacha por igualdade de documento: CARD_QUERY vem para cá,",
     "qualquer outro vai para tests/fixtures/board.json.",
     "",
-    "UMA ENTRADA POR ISSUE DE board.json QUE VIRA CARTÃO — 1, 2, 4, 901 e 903 —, e não só pelas que os",
-    "smokes de hoje abrem: quem escolhe o cartão é a derivação da fixture, e uma entrada faltando",
+    "UMA ENTRADA POR ISSUE DE board.json QUE VIRA CARTÃO — 1, 2, 4, 901, 903, 910, 911 e 920 —, e não só",
+    "pelas que os smokes de hoje abrem: quem escolhe o cartão é a derivação da fixture, e uma entrada faltando",
     "viraria vermelho na escolha, e não no que o teste quer provar. O 902 fica de fora porque não tem",
     "Status e portanto NÃO EXISTE como cartão (regra 4 do BoardReader) — não há clique possível nele.",
     "Número sem entrada aqui LANÇA, de propósito: fixture incompleta tem de aparecer como erro na tela",
@@ -16,7 +16,7 @@
     "leonardo-amaral-3/operations-center, salvos como a API devolveu — inclusive os comentários da",
     "esteira com o marcador `<!-- gm:X -->` na primeira linha, que são o insumo da etiqueta do CA-2.",
     "",
-    "SINTÉTICOS (2, escritos à mão, os mesmos dois números sintéticos de board.json):",
+    "SINTÉTICOS (5, escritos à mão, os mesmos números sintéticos de board.json):",
     "  · 901 — o cartão FECHADO em ✅ Produção, o que o smoke do conteúdo abre para provar o CA-3 (todo",
     "    cartão abre, conversável ou não). O corpo é longo E TEM TABELA LARGA E BLOCO DE CÓDIGO de",
     "    linha comprida de propósito: é o insumo do CA-4, e sem eles não haveria o que tentar estourar",
@@ -26,10 +26,14 @@
     "    repo não existe e nunca vai responder de verdade; a entrada existe porque ele É um cartão do",
     "    board, e a leitura do conteúdo não depende de a pasta local ser encontrada — só a sessão",
     "    depende. Sem ela, abrir aquele cartão morreria na fixture antes de chegar ao CA-5 do #6.",
+    "  · 910, 911 e 920 — os cartões dos DOIS OUTROS BOARDS da esteira, que board.json ganhou no card #25",
+    "    e que este arquivo só acompanhou na task 12. O 910 é o que a aba B abre no CA-3 de",
+    "    tests/smoke/abas.smoke.spec.ts; os outros dois não são abertos por smoke nenhum hoje, e estão",
+    "    aqui pela regra acima — o par é por CARTÃO de board.json, e não por clique que algum teste dá.",
     "",
     "MUDOU O CARD_QUERY? RECAPTURE. Uma fixture capturada com uma versão anterior da consulta fica",
     "verde contra dados que a API não devolve mais. Recapture com o documento que estiver em",
-    "src/core/board/query.ts e recoloque os dois sintéticos. Entrou ou saiu cartão de board.json?",
+    "src/core/board/query.ts e recoloque os cinco sintéticos. Entrou ou saiu cartão de board.json?",
     "Então entrou ou saiu entrada daqui — as duas fixtures são um par."
   ],
   "1": {
@@ -153,6 +157,48 @@
         "issue": {
           "number": 903,
           "body": "## Sintético: o card do repo forasteiro\n\nEste cartão vive em `leonardo-amaral-3/repo-forasteiro`, um repo que não existe nesta máquina nem\nno GitHub. Ele é a borda do CA-5 do card #6: a sessão dele não sabe onde rodar e precisa pedir a\npasta.\n\nO conteúdo, porém, **não depende disso** — ler a issue é uma pergunta à API, não uma pergunta ao\ndisco. Por isso a entrada existe aqui: sem ela, abrir este cartão morreria na fixture antes de o\nsmoke chegar ao que ele quer provar.",
+          "comments": {
+            "totalCount": 0,
+            "nodes": []
+          }
+        }
+      }
+    }
+  },
+  "910": {
+    "data": {
+      "repository": {
+        "issue": {
+          "number": 910,
+          "body": "## Sintético: o cartão da segunda aba\n\nEste cartão vive no board `Plataformas v2` (`ICSF-Solutions/19`), em 🎯 Especificação — uma\ncoluna que conversa. É o primeiro cartão conversável daquele board, e por isso é o que\n`tests/smoke/abas.smoke.spec.ts` abre na **aba B** para provar o CA-3: a conversa da aba A não\nvaza para cá, e a daqui continua aberta quando se volta para ela.\n\nO corpo é curto de propósito — nada aqui é lido por asserção nenhuma. O que este cartão precisa\nter é uma **entrada**: sem ela, abri-lo traria o erro da fixture para dentro do cartão, e a\ntroca de aba seria provada sobre uma tela com um vermelho no meio.",
+          "comments": {
+            "totalCount": 0,
+            "nodes": []
+          }
+        }
+      }
+    }
+  },
+  "911": {
+    "data": {
+      "repository": {
+        "issue": {
+          "number": 911,
+          "body": "## Sintético: o segundo cartão do `Plataformas v2`\n\nVive no mesmo board do 910, em 👀 Revisão. Nenhum smoke o abre hoje, e a entrada existe pela\nregra deste arquivo: uma por cartão de `board.json`, e não uma por clique que algum teste dá\nhoje. Quem escolhe o cartão é a derivação da fixture, e uma entrada faltando viraria vermelho\nna escolha, e não no que o teste quer provar.",
+          "comments": {
+            "totalCount": 0,
+            "nodes": []
+          }
+        }
+      }
+    }
+  },
+  "920": {
+    "data": {
+      "repository": {
+        "issue": {
+          "number": 920,
+          "body": "## Sintético: o cartão do 17º board\n\nVive no board sintético (`dono-sintetico/901`), em 📋 Backlog. Aquele board existe para que uma\nlista de abas escrita no código erre a **contagem**; este cartão existe para que ele tenha o\nque desenhar quando a aba dele for a ativa.\n\nNenhum smoke o abre hoje, e a entrada existe pela mesma regra que a do 911.",
           "comments": {
             "totalCount": 0,
             "nodes": []

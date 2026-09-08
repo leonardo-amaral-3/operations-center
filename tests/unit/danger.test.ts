@@ -3,13 +3,13 @@
  * **de verdade**.
  *
  * O `electron` é mockado como em `session-ipc.test.ts` — `src/main/danger.ts` só toca `ipcMain`, e
- * o `app` de `state.ts` nunca é chamado porque estes casos definem `OC_STATE_DIR`. Nada mais aqui é
+ * o `app` de `store.ts` nunca é chamado porque estes casos definem `OC_STATE_DIR`. Nada mais aqui é
  * de mentira: o `readFile`, o `mkdir`, o `writeFile` e o `rename` são os do sistema de arquivos.
  *
- * É por isso que este arquivo é mais do que o par de `DangerIndex.test.ts`: o `escreverAtomico` que
- * ele exercita saiu de `conversations.ts`, onde **nenhum unitário o importava** — o único exercício
- * real daquele caminho era o smoke da retomada, fora do CI. Esta é a primeira cobertura que a
- * escrita atômica do app ganha, e ela vale para os dois arquivos de estado.
+ * É por isso que este arquivo é mais do que o par de `DangerIndex.test.ts`: o `writeState` que ele
+ * exercita saiu de `conversations.ts`, onde **nenhum unitário o importava** — o único exercício real
+ * daquele caminho era o smoke da retomada, fora do CI. Aqui a escrita atômica do app é exercitada de
+ * ponta a ponta contra disco real, e ela vale para os três arquivos de estado.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -34,7 +34,7 @@ const VERSAO_ATUAL = 1
 /** Um por arquivo: os casos são sequenciais e cada um sobrescreve o `dangerous.json` do anterior. */
 const diretorio = mkdtempSync(join(tmpdir(), 'oc-danger-'))
 
-/** Onde `stateDir()` vai parar. Definido antes de qualquer caso — `state.ts` o lê a cada chamada. */
+/** Onde `stateDir()` vai parar. Definido antes de qualquer caso — `store.ts` o lê a cada chamada. */
 process.env['OC_STATE_DIR'] = diretorio
 
 /** O que está no disco agora, cru. É a única forma de afirmar o **formato**, e não só a ida e volta. */
@@ -62,7 +62,7 @@ describe('loadDangerous tolera tudo o que o disco pode devolver', () => {
   })
 
   it('JSON inválido é conjunto vazio, e não exceção', async () => {
-    // O truncado de um desligamento no meio da escrita, que é exatamente o que `escreverAtomico`
+    // O truncado de um desligamento no meio da escrita, que é exatamente o que o `writeState`
     // existe para evitar — mas a leitura não conta com isso.
     await escrever('{"version":1,"cards":["PVTI_')
 
@@ -129,7 +129,7 @@ describe('saveDangerous grava o formato que loadDangerous lê', () => {
   })
 
   it('termina o arquivo com quebra de linha e não deixa o `.tmp` para trás', async () => {
-    // As duas metades do `escreverAtomico`: o `\n` é do helper (a linha que um segundo `save*`
+    // As duas metades do `writeState`: o `\n` é do cofre (a linha que um segundo `save*`
     // esqueceria) e o `rename` é o que faz a escrita ser atômica em vez de um truncado possível.
     await saveDangerous(new Set([CARTAO]))
 

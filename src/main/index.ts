@@ -33,6 +33,7 @@ import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
 import { registerSessionIpc } from './ipc'
 import { judgeNavigation } from './navigation'
+import { loadActiveBoard, saveActiveBoard } from './preferences'
 import { gitOrigin, scanSessionFolders } from './repos'
 import { resolveTheme, windowBackground } from './theme'
 
@@ -192,9 +193,11 @@ const boardsIpc =
     ? registerBoardsIpc({
         finder: new BoardFinder({ graphql: createGraphQL() }),
         reader: new BoardReader({ graphql: createGraphQL() }),
-        // Inertes: a aba lembrada é da Fase 1, e é o `preferences.json` que entra nestas duas pontas.
-        loadActive: () => Promise.resolve(null),
-        saveActive: () => Promise.resolve(),
+        // A aba lembrada, no `preferences.json` do mesmo `OC_STATE_DIR` do `conversations.json`. As
+        // duas pontas de IO vêm do main pela mesma razão que as do `ConversationIndex`: quem lê e
+        // escreve disco é ele, e o observador fica testável sem tocar em arquivo nenhum.
+        loadActive: loadActiveBoard,
+        saveActive: saveActiveBoard,
       })
     : null
 
