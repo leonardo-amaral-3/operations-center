@@ -247,8 +247,14 @@ const ANCORAS = [
   'data-column-id',
   'data-column-name',
   'data-comment-kind',
+  // As duas do card #10, e elas são de naturezas diferentes de propósito. `data-dangerous` é a
+  // **nossa** marca no botão do cartão: ela diz para que lado o clique vai, e é imediata.
+  // `data-permission-mode` é a **segunda fonte**, a que o SDK reporta no `init`, e ela só é legível
+  // depois de um turno ter rodado — é o par que a decisão 10 mantém visível em vez de auto-corrigir.
+  'data-dangerous',
   'data-label',
   'data-parent',
+  'data-permission-mode',
   'data-question',
   'data-queued',
   'data-read-at',
