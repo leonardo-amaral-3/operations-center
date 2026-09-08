@@ -161,12 +161,29 @@ const CHAT_CARD = required(CONVERSABLE_CARDS[0], 'cartão nenhum em coluna conve
 /** O repo que o cenário faz existir nesta máquina. Sai da fixture, não de uma constante. */
 const HOME_REPO = CHAT_CARD.repository
 
-/** O segundo cartão do CA-1, **em outra coluna**: abrir este tem de colapsar aquele. */
+/**
+ * O segundo cartão do CA-1, **em outra coluna** — e é a coluna diferente que faz dele o par do
+ * RA-1 do card #45: desde ele, abrir este **não** colapsa mais aquele.
+ */
 const SECOND_CARD = required(
   CONVERSABLE_CARDS.find(
     (card) => card.repository === HOME_REPO && card.columnId !== CHAT_CARD.columnId,
   ),
   'um segundo cartão conversável do mesmo repo em outra coluna',
+)
+
+/**
+ * O par do RA-2 do card #45: um segundo cartão conversável na **mesma** coluna do `CHAT_CARD`.
+ *
+ * O board real não tem dois conversáveis juntos, então ele é sintético na fixture (o #904) — e de
+ * repo forasteiro de propósito, pela Decisão 5 daquela spec: em coluna conversável do repo-casa,
+ * abri-lo subiria uma sessão real só para provar que **outro** cartão colapsou.
+ */
+const SAME_COLUMN_CARD = required(
+  CONVERSABLE_CARDS.find(
+    (card) => card.columnId === CHAT_CARD.columnId && card.number !== CHAT_CARD.number,
+  ),
+  'um segundo cartão conversável na MESMA coluna do primeiro',
 )
 
 /**
@@ -190,6 +207,18 @@ const OUTSIDER_CARD = required(
 const INERT_CARD = required(
   CARDS.find((card) => !CONVERSABLE_COLUMN_IDS.has(card.columnId)),
   'um cartão em coluna não conversável (a borda do CA-3 do #13)',
+)
+
+/**
+ * A régua contra a qual se mede a coluna alargada do RA-1: uma coluna **sem cartão nenhum**.
+ *
+ * Sem cartão ela não tem como hospedar, hoje nem depois — e é isso que a torna régua. Escolher uma
+ * coluna qualquer "que por acaso está fechada" amarraria a medida à ordem em que os testes deste
+ * arquivo abrem e fecham cartão, que é justamente o que o `mode: 'serial'` já torna frágil demais.
+ */
+const IDLE_COLUMN = required(
+  COLUMNS.find((column) => !CARDS.some((card) => card.columnId === column.id)),
+  'uma coluna sem cartão nenhum (a régua da largura do RA-1)',
 )
 
 let app: ElectronApplication
@@ -429,13 +458,11 @@ test('CA-2: a permissão de escrita aparece no cartão e a decisão destrava o t
  * A reescrita deliberada do teste do CA-4 do #6.
  *
  * Aquele teste afirmava duas coisas: que o clique não abre chat, e que o cartão-chat **continua
- * aberto** atrás dele. A segunda deixou de ser verdade quando o #13 fez todo cartão abrir — um
- * cartão por vez (RF-6), e agora o inerte também é um cartão. A primeira sobrevive inteira, e é o
- * que o CA-3 do #13 herda: ali nenhuma sessão sobe.
+ * aberto** atrás dele. A segunda caiu quando o #13 fez todo cartão abrir — um cartão por vez
+ * (RF-6), e o inerte passou a ser um cartão. O #45 a devolve por outro caminho: a regra agora é um
+ * por **coluna**, e o inerte está numa coluna que não é a do `CHAT_CARD`, então ninguém colapsa.
  *
- * O passo de reabrir no fim não é zelo: sem ele o teste seguinte ("abrir o segundo cartão colapsa o
- * primeiro") passaria verde afirmando um colapso que já tinha acontecido aqui — degradação
- * silenciosa, que é pior que vermelho.
+ * A primeira metade nunca mudou, e é o que o CA-3 do #13 herda: ali nenhuma sessão sobe.
  */
 test('#13 CA-3: o cartão de coluna sem skill abre o conteúdo, e não sobe sessão', async () => {
   await cardLocator(INERT_CARD).click()
@@ -449,42 +476,112 @@ test('#13 CA-3: o cartão de coluna sem skill abre o conteúdo, e não sobe sess
   await expect(cardLocator(INERT_CARD).getByTestId('card-content')).toBeVisible()
   await expect(cardLocator(INERT_CARD).getByTestId('card-content-body')).toBeVisible()
 
-  // E nada de sessão: nem neste cartão, nem no kanban inteiro. Zero, e não "um" como antes — o
-  // cartão-chat colapsou, que é o RF-6 aplicado ao cartão que agora também abre.
-  await expect(window.getByTestId('card-chat')).toHaveCount(0)
-
-  // A sessão do outro cartão sobreviveu ao colapso. É o CA-6 do #6 ganhando uma prova a mais, no
-  // lugar da que a emenda tirou.
-  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
-
-  // Reabrir devolve **aquela** conversa, com o histórico: o `start` é idempotente por `itemId`, e
-  // nenhuma segunda sessão subiu enquanto o cartão esteve fechado.
-  await cardLocator(CHAT_CARD).click()
+  // E nada de sessão **aqui**. O cartão-chat do `CHAT_CARD`, esse continua na tela: outra coluna, e
+  // desde o #45 abrir um cartão só fecha os abertos da mesma coluna dele.
+  await expect(cardLocator(INERT_CARD).getByTestId('card-chat')).toHaveCount(0)
   await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
+
+  // Um no kanban inteiro, e não dois: o cartão inerte abriu sem subir sessão nenhuma. É a metade do
+  // critério que sobreviveu à emenda do #13, agora afirmada por contagem em vez de por colapso.
   await expect(window.getByTestId('card-chat')).toHaveCount(1)
+
+  // E aquela sessão segue viva, com a conversa onde estava — o clique noutra coluna não a tocou.
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
   await expect(userMessages(CHAT_CARD).first()).toContainText(FIRST_PROMPT)
 })
 
-test('CA-1 e CA-6: abrir o segundo cartão colapsa o primeiro, e a sessão dele continua viva', async () => {
+test('CA-1 e CA-6: o segundo cartão sobe em outra coluna, e a sessão do primeiro continua viva', async () => {
   await cardLocator(SECOND_CARD).click()
 
   await expect(cardLocator(SECOND_CARD).getByTestId('card-chat')).toBeVisible()
   await expect(columnLocator(SECOND_CARD.columnId).getByTestId('card-chat')).toHaveCount(1)
-  await expect(window.getByTestId('card-chat')).toHaveCount(1)
+  await expect(window.getByTestId('card-chat')).toHaveCount(2)
 
-  // Colapsado — e vivo. O sinal no cartão fechado é o que torna o CA-6 operável: uma conversa que
-  // continua atrás de um cartão fechado sem sinal nenhum é uma conversa que ninguém gere.
-  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toHaveCount(0)
+  // Aberto — e vivo. O #45 tirou o colapso daqui, mas não o que o CA-6 afirma: a sessão do vizinho
+  // atravessa o clique intacta, e o sinal de estado é onde isso apareceria primeiro. Quem prova o
+  // CA-6 com o cartão **fechado** é agora o teste do RA-2, logo abaixo.
+  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
 
-  // Reabrir devolve a conversa, e não uma sessão nova: as duas mensagens que este teste mandou
-  // continuam lá, na ordem em que foram ditas.
-  await cardLocator(CHAT_CARD).click()
-  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
-
+  // E é a mesma conversa, não uma sessão nova: as duas mensagens que o `CHAT_CARD` mandou continuam
+  // lá, na ordem em que foram ditas.
   const mine = userMessages(CHAT_CARD)
   await expect(mine).toHaveCount(2)
   await expect(mine.first()).toContainText(FIRST_PROMPT)
+})
+
+/**
+ * O RA-1 do card #45, de carona nos dois cartões que o teste acima deixou abertos — e **sem gastar
+ * um turno**: o que ele afirma é contagem e geometria, e as duas já estão na tela.
+ *
+ * A largura não é enfeite do critério. `hosting` é decidido dentro de cada `Column`, sobre os
+ * cartões dela, e é ele que troca `w-72` por `w-[34rem]`: duas colunas largas ao mesmo tempo é a
+ * prova de que o estado plural chegou ao **layout**, e não só ao reducer.
+ *
+ * "Ao mesmo tempo" é sobre estado, e não sobre caber na janela — duas colunas hospedeiras somam
+ * mais que a largura dela. É por isso que a medida é de caixa, e não de captura de tela.
+ */
+test('#45 RA-1: dois cartões de colunas diferentes ficam abertos, e as duas colunas alargam', async () => {
+  await expect(window.getByTestId('card-chat')).toHaveCount(2)
+  await expect(columnLocator(CHAT_CARD.columnId).getByTestId('card-chat')).toHaveCount(1)
+  await expect(columnLocator(SECOND_CARD.columnId).getByTestId('card-chat')).toHaveCount(1)
+
+  const primeira = await caixaDe(
+    columnLocator(CHAT_CARD.columnId),
+    `a coluna do cartão #${CHAT_CARD.number}`,
+  )
+  const segunda = await caixaDe(
+    columnLocator(SECOND_CARD.columnId),
+    `a coluna do cartão #${SECOND_CARD.number}`,
+  )
+  const regua = await caixaDe(columnLocator(IDLE_COLUMN.id), `a coluna ${IDLE_COLUMN.name}`)
+
+  expect(primeira.width, 'a coluna do primeiro cartão aberto não alargou').toBeGreaterThan(
+    regua.width,
+  )
+  expect(segunda.width, 'a coluna do segundo cartão aberto não alargou').toBeGreaterThan(
+    regua.width,
+  )
+})
+
+/**
+ * O RA-2 do card #45: dentro da coluna a regra antiga continua valendo — e vale **só** ali.
+ *
+ * O `SAME_COLUMN_CARD` é de repo forasteiro (Decisão 5): ele para no pedido da pasta e não sobe
+ * sessão nenhuma. É o bastante, e é a economia — o que o critério precisa provar é que o
+ * cartão-chat do vizinho **some** e o crachá dele **fica**, e nada disso pede uma segunda conversa.
+ *
+ * O clique do fim não é zelo, é a premissa do resto do arquivo: os testes abaixo escrevem no
+ * `CHAT_CARD`, e a caixa de escrever só existe com ele aberto. Reabri-lo é a mesma regra rodando na
+ * direção contrária — e, de quebra, a prova de que a conversa voltou inteira.
+ */
+test('#45 RA-2: o cartão da mesma coluna fecha o vizinho dela, e só ele', async () => {
+  await cardLocator(SAME_COLUMN_CARD).click()
+
+  // Abriu, e abriu inteiro: o pedido da pasta é o fim da linha para um repo que não existe aqui, e
+  // o corpo do conteúdo é o que pega envelope faltando em `cards.json` — sem ele o despacho lança e
+  // o cartão vira erro na tela em vez de cartão.
+  await expect(cardLocator(SAME_COLUMN_CARD).getByTestId('choose-folder')).toBeVisible()
+  await expect(cardLocator(SAME_COLUMN_CARD).getByTestId('card-content-body')).toBeVisible()
+
+  // O vizinho da **mesma** coluna colapsou — e a sessão dele não foi junto. O sinal no cartão
+  // fechado é o CA-6 do #6, e é ele que separa colapsar de encerrar.
+  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toHaveCount(0)
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
+
+  // E ninguém de fora se mexeu: o `SECOND_CARD` está noutra coluna e continua aberto, com a sessão
+  // dele à mostra. É esta linha que separa o RA-2 da regra antiga, que fechava o kanban inteiro.
+  await expect(cardLocator(SECOND_CARD).getByTestId('card-chat')).toBeVisible()
+  await expect(window.getByTestId('card-chat')).toHaveCount(1)
+
+  await cardLocator(CHAT_CARD).click()
+
+  // De volta, com a conversa de sempre — e o cartão da mesma coluna fechado pela mesma regra, agora
+  // do outro lado.
+  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
+  await expect(cardLocator(SAME_COLUMN_CARD).getByTestId('choose-folder')).toHaveCount(0)
+  await expect(userMessages(CHAT_CARD).first()).toContainText(FIRST_PROMPT)
+  await expect(window.getByTestId('card-chat')).toHaveCount(2)
 })
 
 test('#12: parar o turno corta a vez, deixa a nota e devolve a sessão viva', async () => {
@@ -600,17 +697,19 @@ test('CA-6: encerrar é ação minha — e o botão mata a sessão', async () =>
  * **Ele opera o `SECOND_CARD`, e fica no fim do arquivo.** As duas escolhas são obrigatórias, não
  * estéticas: este arquivo é `mode: 'serial'` e dois testes acima fixam a contagem de mensagens do
  * `CHAT_CARD` em 2 e em 3 — mandar prompt naquele cartão aqui os quebraria por um motivo que não
- * diz nada sobre o modo. O `SECOND_CARD` tem sessão viva desde o teste do colapso e ninguém conta
- * as mensagens dele.
+ * diz nada sobre o modo. O `SECOND_CARD` tem sessão viva — e continua **aberto**, desde o teste em
+ * que subiu — e ninguém conta as mensagens dele.
  *
  * A sessão dele nasceu **sem** a marca, e é o caso interessante: o que se exerce aqui é a troca em
  * voo (`setPermissionMode` numa sessão de pé), e não o nascimento já em bypass. É também a ordem em
- * que uma pessoa de verdade faz isso — abrir o cartão e clicar antes de escrever qualquer coisa.
+ * que uma pessoa de verdade faz isso — clicar na marca antes de escrever qualquer coisa.
  */
 test('#10 CA-1 e CA-3: o cartão marcado roda sem portão, e desmarcar devolve o portão', async () => {
   const card = cardLocator(SECOND_CARD)
 
-  await card.click()
+  // Sem clique nenhum aqui: ele está aberto desde o teste em que subiu, e pela regra por coluna do
+  // #45 nada do que os testes do `CHAT_CARD` fizeram desde então o tocou. Clicar **fecharia** o
+  // cartão, que é o oposto do que este teste precisa.
   await expect(card.getByTestId('card-chat')).toBeVisible()
   await expect(card.getByTestId('danger-badge')).toHaveCount(0)
 

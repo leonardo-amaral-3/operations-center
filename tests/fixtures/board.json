@@ -17,7 +17,7 @@
     "a regra 2 do BoardReader existe para tolerar. É o PRIMEIRO da ordem de descoberta, e portanto o",
     "board que os quatro smokes desenham.",
     "",
-    "SINTÉTICOS DELE (5, acrescentados à mão, sempre no fim de items.nodes, ids PVTI_sintetico_):",
+    "SINTÉTICOS DELE (6, acrescentados à mão, sempre no fim de items.nodes, ids PVTI_sintetico_):",
     "  · PVTI_sintetico_issue_fechada — issue FECHADA em ✅ Produção e SEM responsável. Prova que issue",
     "    fechada entra (sem ela a última coluna nasceria vazia, o sintoma que a regra existe para",
     "    evitar) e cobre o cartão sem dono. O board real hoje não tem nenhum dos dois.",
@@ -30,6 +30,11 @@
     "    conversável (🎯 Especificação). É a borda do CA-5 do card #6: sem ela todos os cartões",
     "    apontariam para o mesmo repo que o smoke resolve, e \"não sei onde este repo vive\" nunca",
     "    seria exercitado de ponta a ponta. O repo é forasteiro pelo NOME — nada a instalar.",
+    "  · PVTI_sintetico_mesma_coluna — SEGUNDA issue conversável na MESMA coluna do #1 (👀 Revisão),",
+    "    acrescentada no card #45. Sem ela não há como provar na tela que abrir um cartão fecha o",
+    "    outro da mesma coluna: o board real não tem duas conversáveis juntas. Também é de repo",
+    "    FORASTEIRO, e isso é a economia: em coluna conversável do repo-casa, abri-la subiria uma",
+    "    sessão real do Claude Code e gastaria cota só para provar que OUTRO cartão colapsou.",
     "",
     "=== ICSF-Solutions/19 e dono-sintetico/901 — INTEIRAMENTE SINTÉTICOS ===",
     "Os dois outros boards da esteira. Os itens são escritos à mão, e não capturados: arrastar os 37",
@@ -47,7 +52,7 @@
     "",
     "MUDOU O BOARD_QUERY? RECAPTURE a entrada do board 2. Uma fixture capturada com uma versão",
     "anterior da consulta fica verde contra dados que a API não devolve mais. Recapture com o",
-    "documento que estiver em src/core/board/query.ts e recoloque os cinco sintéticos no fim.",
+    "documento que estiver em src/core/board/query.ts e recoloque os seis sintéticos no fim.",
     "",
     "ESTA FIXTURE TEM PAR: tests/fixtures/cards.json guarda o conteúdo de cada issue daqui que vira",
     "cartão. Mudou o CARD_QUERY, ou entrou/saiu cartão desta lista? Recapture cards.json também — uma",
@@ -415,6 +420,52 @@
                       {
                         "optionId": "b003f501",
                         "name": "🎯 Especificação",
+                        "field": {
+                          "name": "Status"
+                        }
+                      },
+                      {
+                        "optionId": "b6b3a417",
+                        "name": "✨ Melhoria",
+                        "field": {
+                          "name": "Tipo"
+                        }
+                      },
+                      {
+                        "optionId": "432503f9",
+                        "name": "Comum",
+                        "field": {
+                          "name": "Módulo"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_sintetico_mesma_coluna",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 904,
+                    "title": "Sintético: segundo card conversável na mesma coluna do primeiro",
+                    "url": "https://github.com/leonardo-amaral-3/repo-forasteiro/issues/904",
+                    "closed": false,
+                    "repository": {
+                      "nameWithOwner": "leonardo-amaral-3/repo-forasteiro"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {
+                        "optionId": "b3680a66",
+                        "name": "👀 Revisão",
                         "field": {
                           "name": "Status"
                         }
