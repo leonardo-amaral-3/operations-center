@@ -10,7 +10,10 @@ interface ColumnProps {
   column: BoardColumn
   /** Já filtrados para esta coluna, **na ordem em que o board os devolveu**. */
   cards: readonly BoardCard[]
-  /** O cartão aberto do kanban inteiro — pode não estar nesta coluna, ou não existir. */
+  /**
+   * O cartão aberto **da aba ativa** — pode não estar nesta coluna, ou não existir. Cada aba guarda
+   * o seu (Decisão 12); a coluna só enxerga o da aba em cena, que é tudo de que ela precisa.
+   */
   expandedItemId: string | null
   sessions: CardSessions
   /** Os cartões com conversa a retomar — do kanban inteiro, não só desta coluna. */

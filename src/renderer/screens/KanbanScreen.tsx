@@ -1,27 +1,13 @@
 import { useCallback, useEffect, useReducer, useState } from 'react'
 import type { JSX } from 'react'
 
-import type { BoardTab, BoardsSnapshot } from '../../shared/board'
+import type { BoardTab } from '../../shared/board'
 import type { SessionState } from '../../shared/session'
 import type { CardSession, CardSessions } from '../components/CardChat'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
 import { Badge } from '../ui/badge'
-
-type BoardAction = { type: 'snapshot'; snapshot: BoardsSnapshot }
-
-/**
- * Antes da descoberta a tela não sabe nem quantos boards existem — e `boards: null` é exatamente
- * isso, e não "descobri e não achei nenhum".
- */
-const INITIAL_SNAPSHOT: BoardsSnapshot = { boards: null, activeKey: null, discoveryError: null }
-
-function reduce(_snapshot: BoardsSnapshot, action: BoardAction): BoardsSnapshot {
-  // O retrato chega inteiro do main, que é quem decide o que sobrevive a uma falha. A tela não
-  // recompõe nada: se ela mesclasse `board` antigo com `error` novo, existiriam duas regras de
-  // preservação — uma aqui e outra lá — e um dia elas divergiriam.
-  return action.snapshot
-}
+import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
 
 type SessionsAction =
   | { type: 'card'; itemId: string; session: CardSession }
@@ -68,9 +54,12 @@ function reduceSessions(sessions: CardSessions, action: SessionsAction): CardSes
  * vista, e o único encerramento é o do CA-6 — o botão do cartão, ou o desligamento do app.
  */
 export function KanbanScreen(): JSX.Element {
-  const [snapshot, dispatch] = useReducer(reduce, INITIAL_SNAPSHOT)
+  const [kanban, dispatch] = useReducer(reduceKanban, INITIAL_KANBAN)
+  // Aberto aqui em cima, e não junto do render, porque o `toggle` precisa da `activeKey` para saber
+  // de **qual** aba é o cartão que ele alterna.
+  const { snapshot, expanded } = kanban
+  const { boards, activeKey, discoveryError } = snapshot
   const [sessions, dispatchSession] = useReducer(reduceSessions, {})
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
   /**
    * Os cartões com conversa a retomar. Vazio até a verificação do boot terminar — e é assim que
    * deve ser: um cartão sem conversa recuperável volta sem crachá (CA-3), e o vazio é a mesma
@@ -129,23 +118,32 @@ export function KanbanScreen(): JSX.Element {
     })
   }, [])
 
-  const toggle = useCallback((itemId: string) => {
-    // Um cartão aberto por vez (RF-6): abrir o segundo fecha o primeiro — e **não** encerra a sessão
-    // dele, que continua viva atrás do cartão fechado.
-    setExpandedItemId((current) => (current === itemId ? null : itemId))
-  }, [])
+  const toggle = useCallback(
+    (itemId: string) => {
+      // Inalcançável na prática — não há cartão na tela sem aba ativa —, e a guarda existe para
+      // dizer isso ao tipo em vez de a `key` virar `string | null` no vocabulário do reducer.
+      if (activeKey === null) return
+      // Um cartão aberto por aba (Decisão 12), e dentro da aba a regra do RF-6 não muda: abrir o
+      // segundo fecha o primeiro — sem **encerrar** a sessão dele, que continua viva atrás do cartão
+      // fechado. O cartão da outra aba não sente nada, e é isso que devolve a conversa onde ela
+      // estava ao voltar para lá.
+      dispatch({ type: 'toggle', key: activeKey, itemId })
+    },
+    [activeKey],
+  )
 
   const registerSession = useCallback((itemId: string, session: CardSession) => {
     dispatchSession({ type: 'card', itemId, session })
   }, [])
 
-  const { boards, activeKey, discoveryError } = snapshot
   // A aba ativa sai do `activeKey`, que é do main: a tela não escolhe aba, só desenha a escolhida.
-  // Na Fase 0 é sempre a primeira da ordem da descoberta, porque não há aba lembrada.
-  const active = boards?.find((tab) => tab.key === activeKey) ?? null
+  const active = activeTab(snapshot)
   // Guardado num `const` de propósito: a narrowing de `active.board` se perderia dentro do `map`
   // abaixo, que é um callback, e a de um `const` não.
   const board = active?.board ?? null
+  // O cartão aberto **desta** aba. As outras continuam guardando o delas em `expanded`, fora de
+  // cena — desmontadas, não fechadas.
+  const expandedItemId = (activeKey === null ? undefined : expanded[activeKey]) ?? null
 
   return (
     <div className="flex h-full flex-col bg-background font-base text-foreground">
