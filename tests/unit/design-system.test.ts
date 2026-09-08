@@ -257,7 +257,14 @@ const ANCORAS = [
   'data-dangerous',
   'data-label',
   'data-parent',
+  // As três do card #41, e a ordem aqui é a do `sort()`, não a da leitura. `data-parent-number` é o
+  // crachá do épico, no cartão da fase; as duas de `phase` são a linha de cada fase, no cartão do
+  // épico — o número, e o `columnId` por onde o smoke afirma a estação sem escrever nome de coluna
+  // nenhum.
+  'data-parent-number',
   'data-permission-mode',
+  'data-phase-column',
+  'data-phase-number',
   'data-question',
   'data-queued',
   'data-read-at',
