@@ -44,7 +44,7 @@ export interface SessionIpc {
  * O relógio de uma sessão — o `TurnActivity` que atravessa a ponte mais o ordinal do turno.
  *
  * **O relógio mora no main, e não no core**, pelo mesmo motivo do `readAt` do board: o `core` conta
- * tokens e ordena fatos, a casca carimba tempo (`src/main/board.ts:79`). É o que mantém o `yarn
+ * tokens e ordena fatos, a casca carimba tempo (`src/main/boards.ts`). É o que mantém o `yarn
  * test` do core sem relógio.
  *
  * O `index` não sai daqui: ele é só como o main reconhece a fronteira entre turnos. A tela não tem

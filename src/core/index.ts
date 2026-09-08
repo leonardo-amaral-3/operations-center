@@ -11,9 +11,21 @@
  * sem tocar em quem consome.
  */
 
-export { BoardReader, MAX_PAGES } from './board/BoardReader'
+export { BoardFinder, pickActive } from './board/BoardFinder'
+export { BoardReader } from './board/BoardReader'
 export { CardReader, MAX_COMMENTS } from './board/CardReader'
-export { BOARD_QUERY, CARD_QUERY, CARD_FIELDS, CONVERSABLE_STATIONS } from './board/query'
+export { MAX_PAGES } from './board/envelope'
+export {
+  BOARD_QUERY,
+  CARD_QUERY,
+  CARD_FIELDS,
+  CONVERSABLE_STATIONS,
+  ESTEIRA_STATIONS,
+  OWNERS_QUERY,
+  PROJECTS_QUERY,
+} from './board/query'
+export { runsEsteira } from './board/stations'
+export type { DiscoveredBoard, Discovery } from './board/BoardFinder'
 export type { BoardReaderDeps, ReadBoardInput } from './board/BoardReader'
 export type { CardReaderDeps, ReadCardInput } from './board/CardReader'
 export type { GraphQLFn, GraphQLResponse } from './board/types'

@@ -64,7 +64,7 @@ export const CardContent = memo(function CardContent({
       if (!atual) return
 
       // Falha é estado, e não exceção: o motivo é texto de tela, desenhado dentro do cartão. O
-      // precedente é o `BoardSnapshot.error`, que já é a string que o kanban mostra.
+      // precedente é o `BoardTab.error`, que já é a string que o kanban mostra.
       setState(
         result.ok
           ? { kind: 'loaded', content: result.content }
