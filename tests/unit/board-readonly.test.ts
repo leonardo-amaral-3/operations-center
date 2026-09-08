@@ -65,6 +65,12 @@ describe('a superfície de board é somente-leitura', () => {
     // E a do canal do #22: `readConversations` responde quais cartões têm conversa a retomar. O que
     // ele carrega sai do registro do próprio app (`conversations.json` em `OC_STATE_DIR`) e da
     // leitura dos transcripts do Claude Code — **o board não é consultado**, nem para ler.
+    //
+    // E a dos dois canais do #10: `readDangerous` responde quais cartões rodam sem o portão de
+    // permissão, e `setDangerous` liga ou desliga a marca de um deles. `setDangerous` **escreve** —
+    // mas escreve no `dangerous.json` do próprio app, em `OC_STATE_DIR`, e é a única coisa que ele
+    // toca: nenhum dos dois consulta o board, nem para ler, e nenhum dos dois chega perto do
+    // GitHub. A carga é `{ itemId, dangerous }` — cartão e um booleano, **nunca** pasta.
     expect(IPC_INVOKE).toEqual({
       start: 'session:start',
       send: 'session:send',
@@ -76,6 +82,8 @@ describe('a superfície de board é somente-leitura', () => {
       readBoard: 'board:read',
       readCard: 'card:read',
       readConversations: 'conversations:read',
+      readDangerous: 'danger:read',
+      setDangerous: 'danger:set',
     })
   })
 
@@ -96,6 +104,11 @@ describe('a superfície de board é somente-leitura', () => {
     // apagava o primeiro da tela. O pedido em cartaz agora se deriva do `state`, que publica a
     // frente da fila. Apagar canal é tão relatável quanto acrescentar, e é esta igualdade exata
     // que obriga quem apagou a vir aqui declarar.
+    //
+    // E a do canal do #10: `dangerous` avisa que mudou o conjunto de cartões que rodam sem o
+    // portão. Canal próprio pela mesma razão do de conversas — é estado do app e não tem nada a ver
+    // com o throttle de 10s do board. **Não toca o board**, nem para ler: o conjunto sai do
+    // `DangerIndex`, que só conhece o `dangerous.json` em `OC_STATE_DIR`.
     expect(IPC_EVENT).toEqual({
       init: 'session:init',
       message: 'session:message',
@@ -103,6 +116,7 @@ describe('a superfície de board é somente-leitura', () => {
       activity: 'session:activity',
       board: 'board:changed',
       conversations: 'conversations:changed',
+      dangerous: 'danger:changed',
     })
   })
 
