@@ -81,9 +81,12 @@ const ORDEM = new Intl.Collator('pt-BR')
 export const DISCOVERED: readonly FixtureBoard[] = discover()
 
 /**
- * O board que o app desenha. Na Fase 0 é sempre o primeiro da ordem, porque não há aba lembrada — e
- * é por isso que os smokes o alimentam por `OC_PROJECT_OWNER`/`OC_PROJECT_NUMBER` enquanto essas
- * duas variáveis existem.
+ * O board que o app desenha. Na Fase 0 é sempre o primeiro da ordem, porque não há aba lembrada.
+ *
+ * Os smokes não o **escolhem** — nenhuma variável de ambiente alimenta mais a coordenada ao app.
+ * Eles preveem o que a descoberta vai escolher sozinha, e usam essa previsão só para pedir o
+ * envelope certo do mapa de `board.json`. Se a previsão errar, o app pede uma chave que a fixture
+ * não tem e o smoke morre alto, que é o que se quer.
  */
 export const FIRST_BOARD: FixtureBoard = required(
   DISCOVERED[0],

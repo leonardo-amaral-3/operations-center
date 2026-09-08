@@ -60,15 +60,25 @@ describe('README', () => {
       'OC_MODEL',
       'OC_ISOLATED',
       'OC_SCREEN',
-      'OC_PROJECT_OWNER',
-      'OC_PROJECT_NUMBER',
       'OC_BOARD_FIXTURE',
+      'OC_BOARDS_FIXTURE',
       'OC_CARD_FIXTURE',
       'OC_CLAUDE_PROJECTS',
       'OC_STATE_DIR',
     ]) {
       expect(readme).toContain(variavel)
     }
+  })
+
+  it('não documenta mais as variáveis de board que deixaram de existir', () => {
+    // O espelho do caso acima, e a metade que faltava: `toContain` prova que o documento diz o que
+    // precisa dizer, e nunca pegaria uma variável **morta** deixada na prosa. Uma porta de ambiente
+    // documentada que o main não lê mais é pior que uma não documentada — quem a exporta acha que
+    // configurou alguma coisa, o app a ignora em silêncio, e o README é a testemunha que mente.
+    //
+    // Qual board o app abre passou a vir da descoberta no GitHub, no card #25.
+    expect(readme).not.toContain('OC_PROJECT_OWNER')
+    expect(readme).not.toContain('OC_PROJECT_NUMBER')
   })
 
   it('explica a consequência de custo do login local', () => {

@@ -260,11 +260,6 @@ test.beforeAll(async () => {
       // de quebra, o que deixa o smoke barato.
       OC_ISOLATED: '1',
       OC_MODEL: SMOKE_MODEL,
-      // A coordenada sai da própria fixture, como no smoke do kanban: é o primeiro board da ordem
-      // da descoberta, o mesmo que o app escolherá sozinho quando a descoberta virar a fonte.
-      // ESTAS DUAS LINHAS MORREM NA TASK 5, junto com o `OC_PROJECT_*`.
-      OC_PROJECT_OWNER: FIRST_BOARD.owner,
-      OC_PROJECT_NUMBER: String(FIRST_BOARD.number),
     },
   })
 

@@ -123,11 +123,6 @@ test.beforeAll(async () => {
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell de quem roda abriria a tela
       // errada e o teste falharia por um motivo que não tem nada a ver com o kanban.
       OC_SCREEN: 'kanban',
-      // A coordenada sai da própria fixture, e não escrita à mão: é o primeiro board da ordem da
-      // descoberta, o mesmo que o app escolherá sozinho quando a descoberta virar a fonte.
-      // ESTAS DUAS LINHAS MORREM NA TASK 5, junto com o `OC_PROJECT_*`.
-      OC_PROJECT_OWNER: FIRST_BOARD.owner,
-      OC_PROJECT_NUMBER: String(FIRST_BOARD.number),
     },
   })
 
