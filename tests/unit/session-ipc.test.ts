@@ -1,5 +1,5 @@
 /**
- * O ponto em que a retomada se liga ao app: o `start` do main.
+ * O ponto em que a retomada e a marca do modo *dangerously* se ligam ao app: o `start` do main.
  *
  * O `electron` é mockado porque a única coisa que `src/main/ipc.ts` usa dele é o `ipcMain.handle` —
  * e guardar os handlers num mapa é o que permite exercitar os canais de verdade, com o `SessionHost`
@@ -27,7 +27,8 @@ vi.mock('electron', () => ({
 
 import type { WebContents } from 'electron'
 
-import { ConversationIndex, SessionHost } from '../../src/core'
+import { ConversationIndex, DangerIndex, SessionHost } from '../../src/core'
+import type { QueryFn } from '../../src/core/session/SessionHost'
 import { oneStartPerCard, registerSessionIpc } from '../../src/main/ipc'
 import { IPC_EVENT, IPC_INVOKE } from '../../src/shared/ipc'
 import type { SessionSnapshot, StartResult } from '../../src/shared/ipc'
@@ -71,6 +72,16 @@ function sessaoDe(result: StartResult): SessionSnapshot {
 
 interface Bancada {
   gravado?: ReadonlyMap<string, string>
+  /** Os cartões que estavam marcados no `dangerous.json` quando o app abriu. */
+  marcados?: readonly string[]
+  /**
+   * Arranca o `allowDangerouslySkipPermissions` do `query()`, e com ele a única forma de o SDK
+   * recusar a troca de modo (M-3) — o mesmo truque do `startSemFlag` de `SessionHost.test.ts`.
+   *
+   * Aqui ele é o **único** jeito de a resposta da sessão divergir do que a tela pediu, que é
+   * justamente a divergência que o handler tem de gravar do lado certo.
+   */
+  semFlag?: boolean
   inspect?: (sessionId: string) => Promise<{ cwd: string } | null>
   resolveCwd?: (itemId: string | undefined) => Promise<string | null>
 }
@@ -85,12 +96,21 @@ function montar(opcoes: Bancada = {}) {
     transcript: () => Promise.resolve([]),
   })
 
+  const danger = new DangerIndex({
+    load: () => Promise.resolve(new Set(opcoes.marcados ?? [])),
+    save: () => Promise.resolve(),
+  })
+
   const fake = createFakeQuery()
-  const host = new SessionHost({ query: fake.query })
+  const query: QueryFn = opcoes.semFlag
+    ? ({ prompt, options }) =>
+        fake.query({ prompt, options: { ...options, allowDangerouslySkipPermissions: undefined } })
+    : fake.query
+  const host = new SessionHost({ query })
   const criadas = vi.spyOn(host, 'start')
   const resolveCwd = vi.fn(opcoes.resolveCwd ?? (() => Promise.resolve(PASTA_DO_REPO)))
 
-  const ipc = registerSessionIpc(host, { resolveCwd, conversations })
+  const ipc = registerSessionIpc(host, { resolveCwd, conversations, danger })
 
   const recebidos: string[] = []
   const esperas = new Map<string, () => void>()
@@ -111,12 +131,15 @@ function montar(opcoes: Bancada = {}) {
 
   return {
     conversations,
+    danger,
     fake,
     criadas,
     resolveCwd,
     ipc,
     start: (itemId?: string) => invoke<StartResult>(IPC_INVOKE.start, { itemId }),
     close: (sessionId: string) => invoke<void>(IPC_INVOKE.close, { sessionId }),
+    marcar: (itemId: string, dangerous: boolean) =>
+      invoke<void>(IPC_INVOKE.setDangerous, { itemId, dangerous }),
     /** Espera um evento atravessar a ponte. Sem timer: quem acorda o teste é o próprio canal. */
     ate: (channel: string): Promise<void> =>
       recebidos.includes(channel)
@@ -256,5 +279,108 @@ describe('registerSessionIpc — a retomada', () => {
     await bancada.ate(IPC_EVENT.init)
 
     expect(bancada.conversations.recoverable()).toEqual([CARTAO])
+  })
+})
+
+describe('registerSessionIpc — a marca do modo dangerously', () => {
+  it('o cartão marcado sobe a sessão sem o portão', async () => {
+    const bancada = montar({ marcados: [CARTAO] })
+
+    await bancada.start(CARTAO)
+
+    expect(bancada.criadas).toHaveBeenCalledWith(expect.objectContaining({ dangerous: true }))
+    // A ponta do outro lado: o que o host traduziu e mandou ao SDK. É ela que faz o CA-1 valer já no
+    // primeiro turno, e não a partir de um `setPermissionMode` que chega depois dele.
+    expect(bancada.fake.options?.permissionMode).toBe('bypassPermissions')
+  })
+
+  it('a retomada carrega a marca junto: a conversa volta no modo em que estava', async () => {
+    const bancada = montar({ gravado: new Map([[CARTAO, 'sessao-de-ontem']]), marcados: [CARTAO] })
+
+    await bancada.start(CARTAO)
+
+    // O ramo em que esquecer a leitura passaria despercebido: a sessão sobe, a conversa volta, e só
+    // o portão reaparece — num cartão que o usuário marcou justamente para não vê-lo.
+    expect(bancada.criadas).toHaveBeenCalledWith(
+      expect.objectContaining({ resume: 'sessao-de-ontem', dangerous: true }),
+    )
+  })
+
+  it('o cartão sem marca nasce com o portão de sempre', async () => {
+    const bancada = montar()
+
+    await bancada.start(CARTAO)
+
+    expect(bancada.criadas).toHaveBeenCalledWith(expect.objectContaining({ dangerous: false }))
+    expect(bancada.fake.options?.permissionMode).toBe('default')
+  })
+
+  it('a tela de chat, sem cartão, não tem marca onde se apoiar', async () => {
+    const bancada = montar({ marcados: [CARTAO] })
+
+    await bancada.start()
+
+    // Decisão 13: sem `itemId` não há onde a marca ter sido gravada, e ela não pode vazar do cartão
+    // marcado ao lado.
+    expect(bancada.criadas).toHaveBeenCalledWith(expect.objectContaining({ dangerous: false }))
+  })
+
+  it('a marca vale sem sessão viva, e a próxima sessão daquele cartão nasce com ela', async () => {
+    const bancada = montar()
+
+    await bancada.marcar(CARTAO, true)
+
+    expect(bancada.danger.dangerous()).toEqual([CARTAO])
+
+    await bancada.start(CARTAO)
+
+    expect(bancada.criadas).toHaveBeenCalledWith(expect.objectContaining({ dangerous: true }))
+  })
+
+  it('com sessão viva, o que fica gravado é o que o SDK aceitou', async () => {
+    const bancada = montar()
+    await bancada.start(CARTAO)
+
+    await bancada.marcar(CARTAO, true)
+
+    expect(bancada.fake.permissionModes).toEqual(['bypassPermissions'])
+    expect(bancada.danger.dangerous()).toEqual([CARTAO])
+  })
+
+  it('a recusa do SDK deixa a marca por gravar — vale o efetivo, não o pedido', async () => {
+    const bancada = montar({ semFlag: true })
+    await bancada.start(CARTAO)
+
+    await bancada.marcar(CARTAO, true)
+
+    // O pedido saiu (é o `permissionModes`) e voltou recusado (M-3). Gravar o pedido faria o crachá
+    // prometer um cartão sem portão que o portão ainda guarda — e o CA-2 diz que o que se vê é o que
+    // vigora.
+    expect(bancada.fake.permissionModes).toEqual(['bypassPermissions'])
+    expect(bancada.danger.dangerous()).toEqual([])
+  })
+
+  it('encerrar a sessão esquece a conversa e **não** a marca', async () => {
+    const bancada = montar({ marcados: [CARTAO] })
+    const sessao = sessaoDe(await bancada.start(CARTAO))
+    await bancada.ate(IPC_EVENT.init)
+
+    await bancada.close(sessao.id)
+
+    // O irmão do teste do vínculo lá em cima, pelo avesso: encerrar é definitivo **para a conversa**
+    // (o CA-4 do #22), e a marca é uma decisão sobre o cartão. Revogá-la de carona seria o app
+    // decidindo por conta própria (decisão 14).
+    expect(bancada.conversations.recoverable()).toEqual([])
+    expect(bancada.danger.dangerous()).toEqual([CARTAO])
+  })
+
+  it('desligar o app também não apaga a marca', async () => {
+    const bancada = montar({ marcados: [CARTAO] })
+    await bancada.start(CARTAO)
+    await bancada.ate(IPC_EVENT.init)
+
+    await bancada.ipc.closeAll()
+
+    expect(bancada.danger.dangerous()).toEqual([CARTAO])
   })
 })

@@ -18,8 +18,11 @@ interface ColumnProps {
   sessions: CardSessions
   /** Os cartões com conversa a retomar — do kanban inteiro, não só desta coluna. */
   conversations: readonly string[]
+  /** Os cartões que rodam sem o portão — também do kanban inteiro (CA-2 do #10). */
+  dangerous: readonly string[]
   onToggle: (itemId: string) => void
   onSession: (itemId: string, session: CardSession) => void
+  onToggleDangerous: (itemId: string, dangerous: boolean) => void
 }
 
 /**
@@ -39,8 +42,10 @@ export function Column({
   expandedItemId,
   sessions,
   conversations,
+  dangerous,
   onToggle,
   onSession,
+  onToggleDangerous,
 }: ColumnProps): JSX.Element {
   const hosting = cards.some((card) => card.itemId === expandedItemId)
 
@@ -89,8 +94,12 @@ export function Column({
               // O conjunto vem inteiro e a coluna só pergunta por este cartão: a conversa é do
               // cartão, e ele pode ter andado de coluna desde que ela aconteceu.
               dormant={conversations.includes(card.itemId)}
+              // Pelo mesmo caminho e pela mesma razão do `dormant`: o conjunto vem inteiro e a
+              // coluna só pergunta por este cartão. A marca é do cartão, e ele anda de coluna.
+              dangerous={dangerous.includes(card.itemId)}
               onToggle={onToggle}
               onSession={onSession}
+              onToggleDangerous={onToggleDangerous}
             />
           ))}
         </div>

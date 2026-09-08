@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import type { WebContents } from 'electron'
 
-import type { ConversationIndex, SessionHandle, SessionHost } from '../core'
+import type { ConversationIndex, DangerIndex, SessionHandle, SessionHost } from '../core'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type {
   AnswerQuestionRequest,
@@ -9,6 +9,7 @@ import type {
   RespondPermissionRequest,
   SendRequest,
   SessionSnapshot,
+  SetDangerousRequest,
   StartRequest,
   StartResult,
   StopRequest,
@@ -26,6 +27,12 @@ export interface SessionIpcOptions {
   resolveCwd(itemId: string | undefined): Promise<string | null>
   /** O vínculo durável. Consultado antes de criar; alimentado pelo `init`; podado pelo `close`. */
   conversations: ConversationIndex
+  /**
+   * A marca do modo *dangerously*, por cartão. Lida no nascimento de toda sessão e escrita pelo
+   * handler `setDangerous` — e **nunca** pelo `close`/`closeAll`: a marca é decisão sobre o cartão,
+   * não sobre a conversa.
+   */
+  danger: DangerIndex
 }
 
 export interface SessionIpc {
@@ -139,6 +146,13 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
    * o mesmo cartão.
    */
   async function create(itemId: string | undefined, sender: WebContents): Promise<StartResult> {
+    // Uma leitura só, no topo, porque os dois ramos (retomada e sessão nova) precisam dela e
+    // esquecê-la num deles faria a marca valer só para metade dos cliques. Ela é aqui dentro, e não
+    // no handler, porque é aqui que o `gate` já protege: duas partidas concorrentes leriam a marca
+    // duas vezes e subiriam duas sessões. Sem cartão — a tela de chat da fatia vertical — não há
+    // onde a marca ter sido gravada, e o portão de sempre vale (decisão 13).
+    const dangerous = itemId === undefined ? false : await options.danger.isDangerous(itemId)
+
     if (itemId !== undefined) {
       // A retomada vem **antes** do `resolveCwd`, e essa ordem é a regra: a pasta de uma conversa
       // que existe é a pasta em que ela rodou, não a que o índice de repos apontaria agora. Um
@@ -150,6 +164,9 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
           cwd: restoration.cwd,
           resume: restoration.sessionId,
           history: restoration.history,
+          // A retomada carrega a marca junto: uma conversa que atravessou o restart volta no modo em
+          // que estava, que é o par natural do CA-2 com a retomada do #22.
+          dangerous,
         })
 
         return { started: true, session: begin(session, itemId, sender) }
@@ -161,7 +178,7 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     // pior que não subir —, então "não sei onde é" vira resposta, e o cartão pede a pasta (CA-5).
     if (cwd === null) return { started: false, reason: 'unknown-folder' }
 
-    return { started: true, session: begin(host.start({ cwd }), itemId, sender) }
+    return { started: true, session: begin(host.start({ cwd, dangerous }), itemId, sender) }
   }
 
   ipcMain.handle(
@@ -208,6 +225,27 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     sessions.get(request.sessionId)?.answerQuestion(request.requestId, request.answers)
   })
 
+  /**
+   * Liga ou desliga o portão daquele cartão. **Por cartão, e não por sessão**: é o que faz a marca
+   * existir num cartão que ainda não foi clicado.
+   *
+   * **Sem retorno**, e por isso sem estado otimista do outro lado (decisão 12): o crachá segue o
+   * retrato que o `onChange` do índice publica, e só ele. Uma recusa do SDK deixa `efetivo` igual ao
+   * que já vigorava, o `set` não publica, e a tela simplesmente não se move — que é a verdade.
+   */
+  ipcMain.handle(
+    IPC_INVOKE.setDangerous,
+    async (_event, request: SetDangerousRequest): Promise<void> => {
+      const session = livingSessionFor(request.itemId)
+      // Sem sessão viva, a marca é só o registro — e ela vale: a próxima sessão daquele cartão nasce
+      // com ela. Com sessão viva, quem manda é o que o SDK aceitou, não o que a tela pediu; gravar o
+      // pedido faria o crachá prometer um cartão sem portão que o portão ainda guarda.
+      const efetivo = session ? await session.setDangerous(request.dangerous) : request.dangerous
+
+      options.danger.set(request.itemId, efetivo)
+    },
+  )
+
   ipcMain.handle(IPC_INVOKE.close, async (_event, request: CloseRequest): Promise<void> => {
     const session = sessions.get(request.sessionId)
     if (!session) return
@@ -221,7 +259,11 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     for (const [itemId, sessionId] of byCard) {
       if (sessionId === request.sessionId) {
         // O CA-4: encerrar é definitivo. É o **único** lugar que esquece — `closeAll()` não esquece
-        // nada, e é justamente essa diferença que o card inteiro existe para criar.
+        // nada, e é justamente essa diferença que o card do #22 existe para criar.
+        //
+        // E esquece **só a conversa**: o `options.danger` não é tocado aqui de propósito (decisão
+        // 14 do #10). Encerrar a sessão encerra a conversa; a marca é uma decisão sobre o cartão, e
+        // revogá-la de carona seria o app decidindo por conta própria.
         options.conversations.forget(itemId)
         byCard.delete(itemId)
       }

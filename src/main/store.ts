@@ -3,7 +3,8 @@
  * dele repetiria palavra por palavra.
  *
  * Nasceu de `conversations.ts`, quando o segundo arquivo de estado — o `preferences.json` da aba
- * lembrada — ia copiar o `mkdir`/`writeFile`/`rename` e o `JSON.parse` defensivo inteiros. É
+ * lembrada — ia copiar o `mkdir`/`writeFile`/`rename` e o `JSON.parse` defensivo inteiros. Hoje
+ * serve três: `conversations.json`, `dangerous.json` e `preferences.json`. É
  * exatamente o que o comentário do `stateDir()` de lá antecipava: **a porta de ambiente é a pasta; o
  * nome do arquivo é detalhe interno**. Com a pasta compartilhada, o segundo arquivo custa um nome e
  * uma função de interpretação — não uma segunda variável de ambiente nem uma segunda escrita atômica.
@@ -11,6 +12,13 @@
  * O nome é `store` e não `state` porque `src/core/session/state.ts` já existe, com o seu
  * `tests/unit/state.test.ts`: dois módulos `state` no mesmo projeto seria confusão gratuita num nome
  * que aparece em todo import.
+ *
+ * **Este módulo absorveu o `src/main/state.ts` do #10.** As duas extrações nasceram em paralelo, da
+ * mesma pressão e do mesmo arquivo: o #10 tirou de `conversations.ts` o `stateDir` e um
+ * `escreverAtomico`, para o `dangerous.json`; o #32 tirou os mesmos e mais o `JSON.parse` defensivo,
+ * para o `preferences.json`. Mantê-los seria ter dois endereços para a mesma pasta. Ficou este por
+ * ser o superconjunto — o `readState` cobre a leitura tolerante, que o outro deixava em cada
+ * chamador — e porque `main/state.ts` era justamente o nome que o parágrafo acima recusa.
  *
  * O que **não** mora aqui é a interpretação do formato — versão, forma do conteúdo, guarda por
  * entrada. Isso é regra de cada arquivo e fica com o dono dele. O cofre entrega `unknown` e aceita

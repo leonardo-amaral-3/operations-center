@@ -194,10 +194,17 @@ const INERT_CARD = required(
 
 let app: ElectronApplication
 let window: Page
-/** A raiz descartável do cenário: dentro dela vivem o repo-fantoche e a raiz de transcripts. */
+/** A raiz descartável do cenário: dentro dela vivem o repo-fantoche, os transcripts e o estado. */
 let scenario: string
 /** O repo-fantoche — a pasta em que a sessão do cartão precisa aterrissar (CA-3). */
 let puppetRepo: string
+/**
+ * O `OC_STATE_DIR`: a pasta em que o app grava o próprio estado — aqui, a marca do modo do #10.
+ *
+ * `stateDir`, e não `state` como no smoke da retomada: ali não há um `const state` local a
+ * sombrear o nome, e aqui há (`allowUntilAwaitingInput`).
+ */
+let stateDir: string
 
 // Estes testes compartilham um app e uma conversa: o que um deixa na tela é a premissa do
 // seguinte. Serial é o que isso já é na prática — e o que faz uma falha parar a fila em vez de
@@ -210,10 +217,12 @@ test.beforeAll(async () => {
   // um vermelho sobre a forma da string, e não sobre a pasta em que a sessão subiu.
   scenario = realpathSync(mkdtempSync(join(tmpdir(), 'oc-card-chat-')))
   puppetRepo = join(scenario, 'repo-fantoche')
+  stateDir = join(scenario, 'state')
   const projects = join(scenario, 'projects')
   const transcripts = join(projects, 'sessao-fantoche')
 
   mkdirSync(puppetRepo)
+  mkdirSync(stateDir)
   mkdirSync(transcripts, { recursive: true })
 
   // O repo-fantoche: git de verdade, com o `origin` do repo do cartão que vai conversar. É contra
@@ -252,6 +261,15 @@ test.beforeAll(async () => {
       // A porta que troca `~/.claude/projects` pela raiz do cenário. É ela que torna a descoberta
       // determinística sem substituir nenhuma peça dela.
       OC_CLAUDE_PROJECTS: projects,
+      // A pasta de estado do próprio app, apontada para o cenário por duas razões independentes.
+      //
+      // A que o #10 obriga: a marca do modo é durável, e sem esta porta uma marca sobrevivente de
+      // uma rodada anterior faria o último teste deste arquivo começar com o modo já ligado — ele
+      // provaria que desligar funciona, e não que ligar funciona.
+      //
+      // E a que já valia antes dele: sem a variável, este smoke escreve o `conversations.json` no
+      // `userData` real da máquina de quem o roda. Um vazamento pequeno, mas que não tem defensor.
+      OC_STATE_DIR: stateDir,
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell abriria a tela errada e o
       // teste falharia por um motivo que não tem nada a ver com o cartão-chat.
       OC_SCREEN: 'kanban',
@@ -570,6 +588,89 @@ test('CA-6: encerrar é ação minha — e o botão mata a sessão', async () =>
 })
 
 /**
+ * O card #10 contra o SDK de verdade: o modo *dangerously* ligado, usado, e desligado — tudo na
+ * mesma sessão viva.
+ *
+ * É a única prova da entrega que lê o `permissionMode` **reportado** pelo SDK em vez do mandado
+ * pelo app. Os unitários fixam o contrato medido dentro do `fakeQuery` (ele recusa a troca sem
+ * `allowDangerouslySkipPermissions`, e não chama o `canUseTool` em bypass), mas um fake é uma
+ * afirmação nossa sobre o SDK; aqui quem responde é ele. E o fake emite `init` uma vez só, nunca a
+ * cada turno como o SDK real — então o modo reportado depois de uma troca só existe aqui.
+ *
+ * **Ele opera o `SECOND_CARD`, e fica no fim do arquivo.** As duas escolhas são obrigatórias, não
+ * estéticas: este arquivo é `mode: 'serial'` e dois testes acima fixam a contagem de mensagens do
+ * `CHAT_CARD` em 2 e em 3 — mandar prompt naquele cartão aqui os quebraria por um motivo que não
+ * diz nada sobre o modo. O `SECOND_CARD` tem sessão viva desde o teste do colapso e ninguém conta
+ * as mensagens dele.
+ *
+ * A sessão dele nasceu **sem** a marca, e é o caso interessante: o que se exerce aqui é a troca em
+ * voo (`setPermissionMode` numa sessão de pé), e não o nascimento já em bypass. É também a ordem em
+ * que uma pessoa de verdade faz isso — abrir o cartão e clicar antes de escrever qualquer coisa.
+ */
+test('#10 CA-1 e CA-3: o cartão marcado roda sem portão, e desmarcar devolve o portão', async () => {
+  const card = cardLocator(SECOND_CARD)
+
+  await card.click()
+  await expect(card.getByTestId('card-chat')).toBeVisible()
+  await expect(card.getByTestId('danger-badge')).toHaveCount(0)
+
+  await card.getByTestId('card-danger-toggle').click()
+
+  // O crachá é o retrato **publicado de volta** pelo main — o renderer não tem estado otimista.
+  // Vê-lo é ver o caminho inteiro ter acontecido: o SDK aceitou a troca de modo, o main gravou a
+  // marca e o evento voltou. E vê-lo **com o cartão aberto** é a metade do CA-2 que separa este
+  // crachá dos vizinhos, que se calam ao expandir.
+  await expect(card.getByTestId('danger-badge')).toBeVisible({ timeout: DECISION_TIMEOUT })
+
+  const input = card.getByTestId('card-chat-input')
+  const semPortao = 'sem-portao.txt'
+
+  await input.fill(`Crie um arquivo \`${semPortao}\` com o texto OK`)
+  await input.press('Enter')
+
+  await expectTurnWithoutGate(SECOND_CARD)
+
+  // A ferramenta **executou**, e não apenas o turno terminou depressa: um modelo que respondesse
+  // "claro, pode deixar" sem tocar em ferramenta nenhuma daria exatamente o mesmo verde acima. O
+  // CA-1 fala de ferramenta que roda sem perguntar, e é o arquivo em disco que diz isso.
+  expect(existsSync(join(puppetRepo, semPortao))).toBe(true)
+
+  // A segunda fonte, a do próprio SDK: o `init` do turno que acabou de rodar. Antes deste turno o
+  // valor em mãos ainda era o do nascimento da sessão (`default`), e é por isso que a leitura vem
+  // aqui e não logo depois do clique.
+  await expect(card.getByTestId('card-chat-cwd')).toHaveAttribute(
+    'data-permission-mode',
+    'bypassPermissions',
+  )
+
+  // Desligar — **sem encerrar nada**. A conversa acima continua na tela e a sessão é a mesma: é o
+  // CA-3 ("o comportamento volta a ser o de hoje") e a reversibilidade do CA-2 no mesmo caso.
+  await card.getByTestId('card-danger-toggle').click()
+  await expect(card.getByTestId('danger-badge')).toHaveCount(0, { timeout: DECISION_TIMEOUT })
+
+  // Alvo de nome **diferente** do passo anterior, e é o mesmo cuidado que o `THINKING_PROMPT`
+  // documenta: repetir o prompt daria ao modelo um arquivo que já existe, ele poderia responder
+  // "já está feito" sem pedir ferramenta nenhuma, e o portão não teria a chance de aparecer — o
+  // teste falharia por escolha dele, não por bug do app.
+  const comPortao = 'com-portao.txt'
+
+  await input.fill(`Crie um arquivo \`${comPortao}\` com o texto OK`)
+  await input.press('Enter')
+
+  await expect(card.getByTestId('permission-prompt')).toBeVisible({ timeout: TURN_TIMEOUT })
+  await expect(badge(SECOND_CARD)).toHaveAttribute('data-state', 'awaiting_decision')
+
+  await card.getByTestId('permission-allow').click()
+  await allowUntilAwaitingInput(SECOND_CARD)
+
+  expect(existsSync(join(puppetRepo, comPortao))).toBe(true)
+
+  // E o outro lado da segunda fonte. Lido só agora, com o turno encerrado: nenhum `init` novo virá
+  // depois dele, então o valor na tela é o do turno que acabou de rodar com o portão de volta.
+  await expect(card.getByTestId('card-chat-cwd')).toHaveAttribute('data-permission-mode', 'default')
+})
+
+/**
  * Permite o que a sessão pedir até ela devolver a vez.
  *
  * O passo da escrita pede um arquivo, mas quem decide quantas ferramentas usar para isso é o modelo
@@ -622,6 +723,42 @@ async function allowUntilAwaitingInput(card: FixtureCard): Promise<void> {
 
     // Poll deliberado: o que se observa aqui é o progresso de um agente externo, e o DOM não tem
     // evento nenhum para assinar enquanto ele pensa.
+    await window.waitForTimeout(POLL_INTERVAL)
+  }
+
+  throw new Error(`a sessão não devolveu a vez em ${TURN_TIMEOUT} ms`)
+}
+
+/**
+ * Espera a vez voltar **provando que ela voltou sozinha**: nenhum `permission-prompt` na tela e o
+ * cartão sem passar por `awaiting_decision` em leitura nenhuma. É o CA-1 do #10.
+ *
+ * O gêmeo negativo do `allowUntilAwaitingInput`, e o poll basta aqui — não é uma amostragem que
+ * possa perder o instante errado. **Nada resolve um pedido de permissão sem uma pessoa**: se o modo
+ * tivesse falhado, o cartão *ficaria* em `awaiting_decision` até o prazo estourar, e não passaria
+ * por ele num piscar entre duas leituras. É a ausência de saída automática que transforma um laço
+ * de 250 ms em prova.
+ */
+async function expectTurnWithoutGate(card: FixtureCard): Promise<void> {
+  const state = badge(card)
+  const prompt = cardLocator(card).getByTestId('permission-prompt')
+  const deadline = Date.now() + TURN_TIMEOUT
+
+  while (Date.now() < deadline) {
+    const kind = await state.getAttribute('data-state')
+
+    expect(kind, 'o cartão marcado parou para pedir permissão').not.toBe('awaiting_decision')
+    expect(await prompt.count(), 'o pedido de permissão apareceu no cartão marcado').toBe(0)
+
+    if (kind === 'awaiting_input') return
+    // Sessão morta não devolve vez nenhuma: esperar o prazo inteiro só trocaria o motivo real da
+    // falha por um timeout que não explica nada.
+    if (kind === 'closed' || kind === 'failed') {
+      throw new Error(`a sessão terminou em ${kind} antes de devolver a vez`)
+    }
+
+    // Poll deliberado, como no irmão acima: o que se observa é o progresso de um agente externo, e
+    // o DOM não tem evento nenhum para assinar enquanto ele pensa.
     await window.waitForTimeout(POLL_INTERVAL)
   }
 

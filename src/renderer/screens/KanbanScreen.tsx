@@ -67,6 +67,11 @@ export function KanbanScreen(): JSX.Element {
    * resposta que ele daria depois.
    */
   const [conversations, setConversations] = useState<readonly string[]>([])
+  /**
+   * Os cartões que rodam sem o portão. Vazio até a leitura do disco voltar, e é o lado seguro: um
+   * cartão volta **com** portão até o contrário ser sabido, nunca o inverso.
+   */
+  const [dangerous, setDangerous] = useState<readonly string[]>([])
 
   useEffect(() => {
     // Assinar vem **antes** de pedir, como no `ChatScreen`: uma leitura que termine entre o pedido
@@ -111,6 +116,23 @@ export function KanbanScreen(): JSX.Element {
   }, [])
 
   useEffect(() => {
+    // Espelha o efeito das conversas linha a linha — assinar antes de pedir, e a mesma guarda —
+    // porque é a mesma corrida: o `refresh` do boot pode publicar enquanto esta resposta volta.
+    let pushed = false
+
+    const unsubscribe = window.oc.onDangerous((next) => {
+      pushed = true
+      setDangerous(next.itemIds)
+    })
+
+    void window.oc.readDangerous().then((next) => {
+      if (!pushed) setDangerous(next.itemIds)
+    })
+
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
     // O kanban acompanha o estado das sessões por conta própria, e não só através do cartão aberto:
     // sem isto o sinal de um cartão fechado congelaria no instante em que ele fechou, e ele mostraria
     // "Trabalhando" para sempre depois de a sessão já ter pedido a vez de volta.
@@ -143,6 +165,13 @@ export function KanbanScreen(): JSX.Element {
     // uma aba pintada de ativa antes da confirmação mentiria por um instante em cima justamente do
     // caso que o CA-4 descreve: o board lembrado que não está mais entre os descobertos.
     void window.oc.activateBoard({ key })
+  }, [])
+
+  const toggleDangerous = useCallback((itemId: string, dangerous: boolean) => {
+    // Sem estado otimista: o crachá segue o retrato publicado. É o que faz uma recusa do SDK
+    // simplesmente não mover a tela, em vez de movê-la e ter de voltar atrás. E sem guarda de
+    // clique duplo aqui: quem a tem é o `#switching` do core, num lugar só.
+    void window.oc.setDangerous({ itemId, dangerous })
   }, [])
 
   // A aba ativa sai do `activeKey`, que é do main: a tela não escolhe aba, só desenha a escolhida.
@@ -194,8 +223,10 @@ export function KanbanScreen(): JSX.Element {
               expandedItemId={expandedItemId}
               sessions={sessions}
               conversations={conversations}
+              dangerous={dangerous}
               onToggle={toggle}
               onSession={registerSession}
+              onToggleDangerous={toggleDangerous}
             />
           ))}
         </main>

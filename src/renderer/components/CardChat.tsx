@@ -26,10 +26,14 @@ export type CardSessions = Readonly<Record<string, CardSession>>
 
 interface CardChatProps {
   itemId: string
+  /** Este cartão roda sem o portão de permissões (CA-2 do #10). */
+  dangerous: boolean
   /** Colapsar fecha a vista, não a conversa (CA-6) — quem encerra é o botão de encerrar. */
   onCollapse: () => void
   /** De quem é a sessão deste cartão, para o cartão fechado saber o que mostrar. */
   onSession: (itemId: string, session: CardSession) => void
+  /** Recebe o valor **final**, não um "alterne" — quem inverte é este componente. */
+  onToggleDangerous: (itemId: string, dangerous: boolean) => void
 }
 
 /**
@@ -42,7 +46,13 @@ interface CardChatProps {
  * O histórico tem scroll próprio e altura máxima porque o cartão vive dentro de uma coluna: sem o
  * teto, uma conversa longa empurraria a coluna para sempre e o kanban deixaria de ser um kanban.
  */
-export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.Element {
+export function CardChat({
+  itemId,
+  dangerous,
+  onCollapse,
+  onSession,
+  onToggleDangerous,
+}: CardChatProps): JSX.Element {
   const { view, send, decide, answer, stop, end, restart } = useSessionView({
     itemId,
     closeOnUnmount: false,
@@ -208,6 +218,12 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
       {view.init ? (
         <p
           data-testid="card-chat-cwd"
+          // Âncora de máquina, **sem sufixo visível**: M-7 mede que o `init` chega a cada turno,
+          // então entre ligar o modo e mandar o próximo prompt o valor em mãos ainda é o do
+          // nascimento da sessão — mostrá-lo seria mentir na única janela em que a divergência
+          // importa. O sinal humano é o crachá, que é imediato; este é a segunda fonte, a do SDK, e
+          // só é legível depois de um turno ter rodado no modo novo (que é quando o smoke a lê).
+          data-permission-mode={view.init.permissionMode}
           title={view.init.cwd}
           className="mt-2 truncate font-mono text-[10px] text-foreground/60"
         >
@@ -240,6 +256,30 @@ export function CardChat({ itemId, onCollapse, onSession }: CardChatProps): JSX.
               Parar
             </Button>
           ) : null}
+          {/* Depois da ação do turno e antes das ações da vista, que é a ordem que este rodapé já
+              enuncia.
+
+              **Sem cor**, ao contrário do "Parar" (`bg-warning`) e do "Encerrar" (`bg-danger`):
+              quem carrega a cor é o crachá, que é o sinal permanente. Repetir o `bg-danger` num
+              botão vizinho ao "Encerrar sessão" faria o destrutivo deixar de ler como destrutivo —
+              a separação que aqueles dois tokens existem para manter.
+
+              **E não é desabilitado por `dead`**, ao contrário do "Encerrar sessão": marcar um
+              cartão cuja sessão morreu é decisão sobre a **próxima** sessão dele, e é legítima. */}
+          <Button
+            type="button"
+            data-testid="card-danger-toggle"
+            data-dangerous={String(dangerous)}
+            variant="neutral"
+            size="xs"
+            onClick={() => {
+              // A inversão acontece **aqui**, e num lugar só: é este componente que tem o valor
+              // corrente na mão. Quem recebe o callback recebe o valor final, não um "alterne".
+              onToggleDangerous(itemId, !dangerous)
+            }}
+          >
+            {dangerous ? 'Voltar a pedir' : 'Rodar sem pedir permissão'}
+          </Button>
           <Button
             type="button"
             data-testid="card-collapse"

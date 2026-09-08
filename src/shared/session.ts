@@ -161,6 +161,16 @@ export interface SessionInit {
   model: string
   cwd: string
   apiKeySource: string
+  /**
+   * O modo de permissão que o **SDK** reporta — `'default'`, `'bypassPermissions'`, e o que mais
+   * ele vier a ter. `string` pela mesma razão do `apiKeySource`, logo acima.
+   *
+   * É a segunda fonte sobre o portão, e não a primeira: ele chega num `init` novo a cada turno,
+   * então entre ligar o modo e mandar o próximo prompt o valor em mãos ainda é o do nascimento.
+   * O sinal humano — imediato — é o crachá, que vem da marca do cartão; este aqui é âncora de
+   * máquina, legível depois de um turno ter rodado no modo novo.
+   */
+  permissionMode: string
 }
 
 /**
