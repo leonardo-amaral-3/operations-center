@@ -2,7 +2,14 @@ import { MAX_PAGES, selectByAlias } from './envelope'
 import { asArray, asNumber, asRecord, asString } from './narrow'
 import { BOARD_QUERY, CARD_FIELDS, STATUS_FIELD } from './query'
 import { CONVERSABLE, normalizeStation } from './stations'
-import type { Board, BoardCard, BoardCardField, BoardColumn, GraphQLFn } from './types'
+import type {
+  Board,
+  BoardCard,
+  BoardCardField,
+  BoardCardParent,
+  BoardColumn,
+  GraphQLFn,
+} from './types'
 
 /**
  * O teto de páginas mudou de casa — é regra de envelope, não de board —, mas continua visível
@@ -167,6 +174,35 @@ function toCard(node: unknown): BoardCard | null {
     assignees: readAssignees(content),
     columnId: status.optionId,
     fields,
+    parent: readParent(content),
+    // `phases` não sai daqui: um cartão sozinho não sabe quem são as filhas dele. Quem as descobre
+    // precisa do retrato inteiro — de todas as páginas —, e `toCard` só enxerga um nó por vez.
+    phases: [],
+  }
+}
+
+/**
+ * O épico de que este cartão é fase, ou `null`.
+ *
+ * `parent` **ausente** e `parent: null` caem os dois em `null` pelo `asRecord`, e é o que mantém a
+ * captura real de `tests/fixtures/board.json` valendo sem retoque: os nós de lá são de antes de o
+ * documento pedir o campo, e narram para o mesmo resultado que a API daria hoje.
+ *
+ * Pai **sem número** é descartado: sem ele não há o que desenhar no crachá nem por onde cruzar. Já
+ * `title` e `repository` tortos viram `''` em vez de matar o vínculo — a mesma escolha que
+ * `toCard` faz com o `repository` do próprio cartão.
+ */
+function readParent(content: Record<string, unknown>): BoardCardParent | null {
+  const parent = asRecord(content['parent'])
+  if (!parent) return null
+
+  const number = asNumber(parent['number'])
+  if (number === null) return null
+
+  return {
+    number,
+    title: asString(parent['title']) ?? '',
+    repository: asString(asRecord(parent['repository'])?.['nameWithOwner']) ?? '',
   }
 }
 

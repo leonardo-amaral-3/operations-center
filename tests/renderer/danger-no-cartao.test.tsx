@@ -33,6 +33,8 @@ const CARTAO: BoardCard = {
   assignees: ['leonardo-amaral-3'],
   columnId: 'da732a01',
   fields: [{ name: 'Tipo', value: '✨ Melhoria', optionId: 'b6b3a417' }],
+  parent: null,
+  phases: [],
 }
 
 const VIVA: CardSession = { id: 'sess_1', state: { kind: 'working' } }
