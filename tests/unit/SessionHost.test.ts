@@ -1194,6 +1194,7 @@ describe('SessionHost', () => {
         headline: '',
         parentId: null,
         status: 'done',
+        diff: null,
       },
     ])
     // Um fato só que muda de status: os dois degraus saíram pelo mesmo canal, com o mesmo id, e a
