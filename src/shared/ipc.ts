@@ -7,7 +7,7 @@
  * só os tipos de dado que o `core` publica.
  */
 
-import type { BoardSnapshot, CardContent } from './board'
+import type { BoardsSnapshot, CardContent } from './board'
 import type {
   ChatMessage,
   PermissionDecision,
@@ -33,7 +33,11 @@ export const IPC_INVOKE = {
   stop: 'session:stop',
   close: 'session:close',
   chooseFolder: 'repo:choose-folder',
-  readBoard: 'board:read',
+  /**
+   * O plural é o nome ficando honesto sobre a carga: um `board:read` que devolve a lista de todos
+   * os boards descobertos é um nome que mente.
+   */
+  readBoards: 'boards:read',
   readCard: 'card:read',
   readConversations: 'conversations:read',
 } as const
@@ -49,7 +53,7 @@ export const IPC_EVENT = {
    * não quer o pulso não assina.
    */
   activity: 'session:activity',
-  board: 'board:changed',
+  boards: 'boards:changed',
   /**
    * Mudou o conjunto de cartões com conversa recuperável. Canal próprio, e não carona no board: o
    * board tem throttle de 10s (`BOARD_REREAD_THROTTLE_MS`) e fala do GitHub; isto é estado do app e
@@ -151,7 +155,7 @@ export interface ReadCardRequest {
 
 /**
  * Falha **não rejeita**, pelo mesmo motivo de `StartResult`: a tela precisa desenhar o erro dentro
- * do cartão, e o motivo é texto de tela — o precedente é `BoardSnapshot.error`, que já é a string
+ * do cartão, e o motivo é texto de tela — o precedente é `BoardTab.error`, que já é a string
  * que o kanban mostra.
  */
 export type ReadCardResult = { ok: true; content: CardContent } | { ok: false; reason: string }
@@ -188,7 +192,7 @@ export interface SessionActivityEvent {
 
 /**
  * Quais cartões têm conversa a retomar. Vem inteiro a cada mudança, e o consumidor substitui — a
- * mesma regra do `BoardSnapshot` e do `TurnActivity`, e pelo mesmo motivo: evento perdido não deixa
+ * mesma regra do `BoardsSnapshot` e do `TurnActivity`, e pelo mesmo motivo: evento perdido não deixa
  * a tela num estado que nunca mais será corrigido.
  *
  * **Só `itemId`.** Nenhum `sessionId` e nenhuma pasta atravessam a ponte: o renderer não tem o que
@@ -244,10 +248,13 @@ export interface OcApi {
   /** O pulso do turno. Só quem mostra a conversa aberta assina — ver `IPC_EVENT.activity`. */
   onActivity(listener: (event: SessionActivityEvent) => void): () => void
 
-  /** O retrato atual do board. Pode voltar com `board: null` se a primeira leitura não terminou. */
-  readBoard(): Promise<BoardSnapshot>
-  /** Todo fim de leitura — com sucesso ou com falha — empurra um retrato novo. */
-  onBoard(listener: (snapshot: BoardSnapshot) => void): () => void
+  /**
+   * O retrato atual dos boards. Pode voltar com `boards: null` — a descoberta é assíncrona e a
+   * janela entre este pedido e o primeiro evento é a descoberta inteira, não uma leitura só.
+   */
+  readBoards(): Promise<BoardsSnapshot>
+  /** Todo fim de descoberta ou de leitura — com sucesso ou com falha — empurra um retrato novo. */
+  onBoards(listener: (snapshot: BoardsSnapshot) => void): () => void
 
   /** Lê o que está escrito naquele card: o corpo e os comentários. Não toca sessão nenhuma. */
   readCard(request: ReadCardRequest): Promise<ReadCardResult>

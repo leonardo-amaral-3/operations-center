@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 
-import type { BoardSnapshot } from '../shared/board'
+import type { BoardsSnapshot } from '../shared/board'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type {
   AnswerQuestionRequest,
@@ -101,8 +101,8 @@ const api: OcApi = {
   onMessage: (listener) => subscribe<SessionMessageEvent>(IPC_EVENT.message, listener),
   onState: (listener) => subscribe<SessionStateEvent>(IPC_EVENT.state, listener),
   onActivity: (listener) => subscribe<SessionActivityEvent>(IPC_EVENT.activity, listener),
-  readBoard: () => ipcRenderer.invoke(IPC_INVOKE.readBoard) as Promise<BoardSnapshot>,
-  onBoard: (listener) => subscribe<BoardSnapshot>(IPC_EVENT.board, listener),
+  readBoards: () => ipcRenderer.invoke(IPC_INVOKE.readBoards) as Promise<BoardsSnapshot>,
+  onBoards: (listener) => subscribe<BoardsSnapshot>(IPC_EVENT.boards, listener),
   readCard: (request: ReadCardRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.readCard, request) as Promise<ReadCardResult>,
   readConversations: () =>

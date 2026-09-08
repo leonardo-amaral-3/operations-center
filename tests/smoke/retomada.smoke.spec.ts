@@ -5,6 +5,13 @@ import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
+import {
+  BOARDS_FIXTURE_PATH,
+  BOARD_FIXTURE_PATH,
+  FIRST_BOARD,
+  fixtureProject,
+} from './boards-fixture'
+
 import { CONVERSABLE_STATIONS, STATUS_FIELD } from '../../src/core/board/query'
 
 /**
@@ -40,9 +47,6 @@ import { CONVERSABLE_STATIONS, STATUS_FIELD } from '../../src/core/board/query'
 // `__dirname` e não `import.meta.url`: o Playwright transpila os specs para CommonJS enquanto o
 // `package.json` não for `type: module`, e `import.meta` ali é erro de sintaxe.
 const REPO_ROOT = join(__dirname, '..', '..')
-
-/** **Absoluto**, e é o ponto: o processo do Electron não roda com a `cwd` do runner. */
-const FIXTURE_PATH = join(REPO_ROOT, 'tests', 'fixtures', 'board.json')
 
 /**
  * A outra metade da fixture: o conteúdo de cada card, como no `card-chat.smoke.spec.ts`.
@@ -117,10 +121,6 @@ const SESSAO_FANTASMA = '00000000-0000-4000-8000-000000000000'
  * rascunho e pull request não têm número nem repositório, e valor de campo que não é single-select
  * chega como `{}`.
  */
-interface FixtureEnvelope {
-  data: { user: { projectV2: FixtureProject } }
-}
-
 interface FixtureProject {
   field: { options: readonly FixtureOption[] }
   items: { nodes: readonly FixtureNode[] }
@@ -161,8 +161,8 @@ interface StateFile {
   cards: Record<string, string>
 }
 
-const PROJECT = (JSON.parse(readFileSync(FIXTURE_PATH, 'utf8')) as FixtureEnvelope).data.user
-  .projectV2
+/** O board que o app desenha: o primeiro da ordem da descoberta, derivado da fixture. */
+const PROJECT = fixtureProject(FIRST_BOARD.key) as FixtureProject
 
 const COLUMNS = PROJECT.field.options
 
@@ -379,8 +379,9 @@ async function launch(): Promise<void> {
       // O ambiente é herdado inteiro, e `ANTHROPIC_API_KEY` **não** é removida: é o mesmo trato dos
       // outros smokes, que já afirmam lá que a sessão não sobe em billing de API.
       ...inheritedEnv(),
-      // A porta que troca o GitHub por um arquivo: o board deste smoke não toca a rede.
-      OC_BOARD_FIXTURE: FIXTURE_PATH,
+      // As portas que trocam o GitHub por arquivo: o board deste smoke não toca a rede.
+      OC_BOARD_FIXTURE: BOARD_FIXTURE_PATH,
+      OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
       // E a do conteúdo do card, pelo mesmo motivo — ver o comentário da constante.
       OC_CARD_FIXTURE: CARD_FIXTURE_PATH,
       // A porta que troca `~/.claude/projects` pela raiz do cenário — só para a **varredura de
@@ -397,11 +398,6 @@ async function launch(): Promise<void> {
       // nenhuma influindo no que o modelo pode fazer.
       OC_ISOLATED: '1',
       OC_MODEL: SMOKE_MODEL,
-      // Inertes de propósito, como nos vizinhos: se a fiação da fixture quebrar, o app tenta ler um
-      // board que não existe e o smoke fica vermelho na hora, em vez de passar em silêncio contra o
-      // board de verdade.
-      OC_PROJECT_OWNER: 'dono-que-a-fixture-ignora',
-      OC_PROJECT_NUMBER: '999',
     },
   })
 

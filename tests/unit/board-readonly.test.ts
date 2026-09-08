@@ -65,6 +65,11 @@ describe('a superfície de board é somente-leitura', () => {
     // E a do canal do #22: `readConversations` responde quais cartões têm conversa a retomar. O que
     // ele carrega sai do registro do próprio app (`conversations.json` em `OC_STATE_DIR`) e da
     // leitura dos transcripts do Claude Code — **o board não é consultado**, nem para ler.
+    //
+    // E a declaração do #31: `board:read` virou `boards:read` — o mesmo canal, no plural, porque a
+    // carga passou a ser a lista de todos os boards descobertos e um nome no singular mentiria
+    // sobre ela. **Nenhum canal novo**: a renomeação é o diff inteiro, aqui e no `IPC_EVENT` logo
+    // abaixo. Continua sendo leitura, e continua sendo a única do Project.
     expect(IPC_INVOKE).toEqual({
       start: 'session:start',
       send: 'session:send',
@@ -73,7 +78,7 @@ describe('a superfície de board é somente-leitura', () => {
       stop: 'session:stop',
       close: 'session:close',
       chooseFolder: 'repo:choose-folder',
-      readBoard: 'board:read',
+      readBoards: 'boards:read',
       readCard: 'card:read',
       readConversations: 'conversations:read',
     })
@@ -101,7 +106,7 @@ describe('a superfície de board é somente-leitura', () => {
       message: 'session:message',
       state: 'session:state',
       activity: 'session:activity',
-      board: 'board:changed',
+      boards: 'boards:changed',
       conversations: 'conversations:changed',
     })
   })
@@ -112,14 +117,19 @@ describe('a superfície de board é somente-leitura', () => {
     // teste vermelho na mão.
     //
     // O alcance é o do CA-6 do #13: `card:read` lê a issue e não o Project, e mantê-lo fora do
-    // prefixo `board:` foi decisão consciente — em troca, a asserção deixa de falar de um prefixo e
+    // prefixo `boards:` foi decisão consciente — em troca, a asserção deixa de falar de um prefixo e
     // passa a afirmar a invariante inteira.
+    //
+    // **O prefixo mudou junto com os canais do #31**, e a consequência não é a intuitiva:
+    // `'boards:read'.startsWith('board:')` é `false`, então um filtro deixado em `board:` não
+    // acusaria canal nenhum — ele simplesmente esvaziaria a lista e faria a asserção falhar por
+    // omissão, que é o pior jeito de uma canária falhar.
     const canaisDoGitHub = [...Object.values(IPC_INVOKE), ...Object.values(IPC_EVENT)].filter(
-      (canal) => canal.startsWith('board:') || canal.startsWith('card:'),
+      (canal) => canal.startsWith('boards:') || canal.startsWith('card:'),
     )
 
     // A ordem é a de declaração dos mapas: os `invoke` primeiro, o evento depois.
-    expect(canaisDoGitHub).toEqual(['board:read', 'card:read', 'board:changed'])
+    expect(canaisDoGitHub).toEqual(['boards:read', 'card:read', 'boards:changed'])
   })
 
   it('nenhum arquivo que escreve ou envia GraphQL contém um documento de escrita', () => {

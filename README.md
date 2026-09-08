@@ -51,7 +51,7 @@ Build com `electron-vite` (Vite 7). Testes: Vitest nas unidades, Playwright + El
 
 - **Node ≥ 22.13** (ou 24.x) e **yarn 1.22**
 - **Claude Code instalado e logado** na máquina
-- **GitHub CLI (`gh`) instalado e logado** (`gh auth login`)
+- **GitHub CLI (`gh`) instalado e logado** (`gh auth login`), **com o escopo `read:org`**
 
 O piso do Node não é redondo porque é uma interseção, não uma escolha: `electron@44` exige
 `>= 22.12` e `eslint@10` exige `>= 22.13`. E a janela **pula os majors ímpares** — `vitest@5`
@@ -64,6 +64,11 @@ O `gh` também não: é dele que vem o token que lê o board. O app o pede por s
 (`gh auth token`) e **nunca persiste credencial** — o segredo continua no keyring do sistema, que é
 onde o `gh` já o guarda. Sem `gh` no PATH ou sem login, a janela abre e o kanban mostra o erro no
 lugar dos cartões.
+
+O escopo `read:org` não é detalhe de configuração: é ele que faz o app enxergar os boards das
+**organizações** de que você participa, e não só os seus. Sem ele o token continua válido, o login
+continua verde e a descoberta simplesmente volta com menos boards — a lista de organizações vem
+vazia e ninguém é avisado. Confira com `gh auth status`; se faltar, `gh auth refresh -s read:org`.
 
 ## Comandos
 
@@ -84,7 +89,7 @@ tem.
 
 ## Configuração
 
-Sem banco e sem arquivo de config. Onze variáveis de ambiente, lidas no main:
+Sem banco e sem arquivo de config. Dez variáveis de ambiente, lidas no main:
 
 | Variável             | Default                                                                       | Para quê                                                                                                                                                                                                                                                                                                                                                                        |
 | -------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -93,19 +98,24 @@ Sem banco e sem arquivo de config. Onze variáveis de ambiente, lidas no main:
 | `OC_ISOLATED`        | ausente                                                                       | `1` passa `settingSources: []` ao SDK, e a sessão deixa de carregar `CLAUDE.md`, settings e skills. Existe **para o smoke** — fora dele, uma sessão isolada é um Claude Code amputado                                                                                                                                                                                           |
 | `OC_SCREEN`          | ausente: o kanban                                                             | `chat` abre a tela da fatia vertical. Porta de ambiente sem botão na UI, que existe **para o smoke** daquela fatia                                                                                                                                                                                                                                                              |
 | `OC_THEME`           | ausente: `lavanda`, a combinação de sempre                                    | qual combinação de cores desenhar, entre as declaradas em `src/renderer/index.css`: hoje `lavanda` e `ametista`. Nome desconhecido **lança** — cair na lavanda em silêncio faria parecer que o tema não funciona                                                                                                                                                                |
-| `OC_PROJECT_OWNER`   | `leonardo-amaral-3`                                                           | dono do board a ler                                                                                                                                                                                                                                                                                                                                                             |
-| `OC_PROJECT_NUMBER`  | `2` — o board Operations Center                                               | número do Project. Valor inválido **lança**, em vez de cair no default: abrir o board 2 com toda a confiança do mundo quando pediram outro é o pior modo de falha que existe aqui                                                                                                                                                                                               |
-| `OC_BOARD_FIXTURE`   | ausente: lê o GitHub de verdade                                               | caminho de um JSON com a resposta da API, que substitui o GitHub inteiro. Existe **para o smoke do kanban**, que por causa dela não pede token nem toca a rede                                                                                                                                                                                                                  |
+| `OC_BOARD_FIXTURE`   | ausente: lê o GitHub de verdade                                               | caminho de um JSON `"dono/número" → resposta da API`, que substitui o GitHub inteiro. É ela sozinha que decide fixture-vs-GitHub. Existe **para os smokes**, que por causa dela não pedem token nem tocam a rede. Coordenada sem entrada no mapa **lança**: uma aba cujo board não está na fixture tem de aparecer como erro, e não como kanban vazio                           |
+| `OC_BOARDS_FIXTURE`  | ausente: a descoberta não tem o que responder e **lança**                     | caminho de um JSON com as respostas da **descoberta** — os seus donos, e os Projects de cada dono. É o par de `OC_BOARD_FIXTURE` e só é consultada junto com ela; sem as duas, nenhum smoke desenha kanban                                                                                                                                                                      |
 | `OC_CARD_FIXTURE`    | ausente: nenhum cartão tem conteúdo de fixture                                | caminho de um JSON `número da issue → resposta da API` com o corpo e os comentários de cada card. Só é consultada quando `OC_BOARD_FIXTURE` existe, e é o par dela no **smoke do conteúdo do cartão**. Cartão sem entrada no mapa vira erro na tela, e não card vazio                                                                                                           |
 | `OC_CLAUDE_PROJECTS` | ausente: `CLAUDE_CONFIG_DIR` se houver, senão `~/.claude/projects`            | raiz dos transcripts do Claude Code, de onde sai o mapa `repo → pasta local` em que a sessão de um cartão roda. Existe **para o smoke do cartão-chat**, que aponta para uma raiz temporária e faz a descoberta rodar inteira sobre um repo descartável                                                                                                                          |
 | `OC_STATE_DIR`       | ausente: o `userData` do Electron — no Windows, `%APPDATA%\operations-center` | pasta em que o app grava o próprio estado: hoje só `conversations.json`, o vínculo `cartão → sessão do Claude Code` que faz a conversa voltar depois de fechar e reabrir. É diretório, e não arquivo, para que o próximo pedaço de estado não peça uma segunda variável. Existe **para o smoke da retomada**, que aponta para uma pasta temporária e lê de lá o vínculo gravado |
 
-`OC_SCREEN`, `OC_BOARD_FIXTURE`, `OC_CARD_FIXTURE`, `OC_CLAUDE_PROJECTS` e `OC_STATE_DIR` são portas
-de teste, como `OC_ISOLATED`: fora do smoke não há razão para tocá-las.
+`OC_SCREEN`, `OC_BOARD_FIXTURE`, `OC_BOARDS_FIXTURE`, `OC_CARD_FIXTURE`, `OC_CLAUDE_PROJECTS` e
+`OC_STATE_DIR` são portas de teste, como `OC_ISOLATED`: fora do smoke não há razão para tocá-las.
 
 `OC_THEME` é a exceção: também não tem botão na UI, mas não é porta de teste — é a única forma, por
 ora, de abrir o app numa combinação de cores que não a padrão. O botão vem no card que ensinar o app
 a lembrar da escolha.
+
+**Qual board o app abre não é configurável, e é de propósito**: a lista sai de uma pergunta ao
+GitHub — quais dos seus Projects rodam a esteira `gm-*` —, e não de variável de ambiente. Houve um
+par de variáveis que fixava a coordenada do board; elas foram removidas, e quem ainda as tiver
+exportadas no shell é **ignorado em silêncio** — melhor do que um app que não abre por causa de
+lixo de ambiente.
 
 ## Custo
 

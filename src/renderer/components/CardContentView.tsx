@@ -10,7 +10,7 @@ import { Markdown } from './Markdown'
  * O que a tela sabe do conteúdo daquele card, e nada além disso.
  *
  * Falha é **estado**, e não exceção: o motivo precisa ser desenhado dentro do cartão, do mesmo jeito
- * que `BoardSnapshot.error` é a string que o kanban mostra no lugar dos cartões. Quem produz esta
+ * que `BoardTab.error` é a string que o kanban mostra no lugar dos cartões. Quem produz esta
  * união é o contêiner da task 5; aqui ela só é consumida.
  */
 export type ContentState =

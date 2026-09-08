@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useReducer, useState } from 'react'
 import type { JSX } from 'react'
 
-import type { BoardSnapshot } from '../../shared/board'
+import type { BoardTab, BoardsSnapshot } from '../../shared/board'
 import type { SessionState } from '../../shared/session'
 import type { CardSession, CardSessions } from '../components/CardChat'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
+import { Badge } from '../ui/badge'
 
-type BoardAction = { type: 'snapshot'; snapshot: BoardSnapshot }
+type BoardAction = { type: 'snapshot'; snapshot: BoardsSnapshot }
 
-/** Antes de qualquer leitura a tela não sabe nada do board — e é isso que o retrato vazio diz. */
-const INITIAL_SNAPSHOT: BoardSnapshot = { board: null, readAt: null, error: null }
+/**
+ * Antes da descoberta a tela não sabe nem quantos boards existem — e `boards: null` é exatamente
+ * isso, e não "descobri e não achei nenhum".
+ */
+const INITIAL_SNAPSHOT: BoardsSnapshot = { boards: null, activeKey: null, discoveryError: null }
 
-function reduce(_snapshot: BoardSnapshot, action: BoardAction): BoardSnapshot {
+function reduce(_snapshot: BoardsSnapshot, action: BoardAction): BoardsSnapshot {
   // O retrato chega inteiro do main, que é quem decide o que sobrevive a uma falha. A tela não
   // recompõe nada: se ela mesclasse `board` antigo com `error` novo, existiriam duas regras de
   // preservação — uma aqui e outra lá — e um dia elas divergiriam.
@@ -79,15 +83,19 @@ export function KanbanScreen(): JSX.Element {
     // e a assinatura chegaria a ninguém.
     let pushed = false
 
-    const unsubscribe = window.oc.onBoard((next) => {
+    const unsubscribe = window.oc.onBoards((next) => {
       pushed = true
       dispatch({ type: 'snapshot', snapshot: next })
     })
 
-    void window.oc.readBoard().then((next) => {
+    void window.oc.readBoards().then((next) => {
       // O retrato do `invoke` é o estado no instante em que o main atendeu; um evento publicado
       // enquanto a resposta voltava é mais novo que ele. Sem esta guarda, a resposta em trânsito
       // sobrescreveria uma leitura mais fresca — e a tela retrocederia no tempo.
+      //
+      // A guarda ficou **mais** importante com a descoberta assíncrona, não menos: a janela entre o
+      // pedido e o primeiro evento deixou de ser uma leitura em voo e passou a ser a descoberta
+      // inteira, e o retrato que volta daqui quase sempre é o `boards: null` de antes dela.
       if (!pushed) dispatch({ type: 'snapshot', snapshot: next })
     })
 
@@ -105,7 +113,7 @@ export function KanbanScreen(): JSX.Element {
 
     void window.oc.readConversations().then((next) => {
       // A verificação do boot pode terminar enquanto esta resposta volta. Sem a guarda, o retrato
-      // antigo sobrescreveria o evento mais novo — a mesma corrida do `readBoard`.
+      // antigo sobrescreveria o evento mais novo — a mesma corrida do `readBoards`.
       if (!pushed) setConversations(next.itemIds)
     })
 
@@ -131,17 +139,35 @@ export function KanbanScreen(): JSX.Element {
     dispatchSession({ type: 'card', itemId, session })
   }, [])
 
-  const { board, readAt, error } = snapshot
+  const { boards, activeKey, discoveryError } = snapshot
+  // A aba ativa sai do `activeKey`, que é do main: a tela não escolhe aba, só desenha a escolhida.
+  // Na Fase 0 é sempre a primeira da ordem da descoberta, porque não há aba lembrada.
+  const active = boards?.find((tab) => tab.key === activeKey) ?? null
+  // Guardado num `const` de propósito: a narrowing de `active.board` se perderia dentro do `map`
+  // abaixo, que é um callback, e a de um `const` não.
+  const board = active?.board ?? null
 
   return (
     <div className="flex h-full flex-col bg-background font-base text-foreground">
       <header className="flex items-center justify-between gap-4 border-b-2 border-border px-4 py-3">
         {/* O título do board, e não "Operations Center": é o que faz o app dizer **qual** board
-            está olhando — hoje isso vem de uma variável de ambiente invisível. */}
+            está olhando. O nome do app só aparece quando não há board nenhum a nomear. */}
         <h1 className="truncate text-sm font-heading tracking-tight">
-          {board?.title ?? 'Operations Center'}
+          {active?.title ?? 'Operations Center'}
         </h1>
-        <Freshness readAt={readAt} error={error} />
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Um dono que não respondeu não apaga os boards dos que responderam — e também não some
+              da tela. Fica ao lado do carimbo de frescor porque é a mesma frase: o que está aí é
+              verdade, só que incompleta. O motivo inteiro vai no `title`, como no carimbo. */}
+          {boards !== null && discoveryError !== null && (
+            <Badge variant="neutral" className="bg-warning" title={discoveryError}>
+              descoberta parcial
+            </Badge>
+          )}
+          {/* Sem aba ativa não há leitura de que falar, e um carimbo dizendo "sem leitura" ali seria
+              o app respondendo uma pergunta que ninguém fez. */}
+          {active && <Freshness readAt={active.readAt} error={active.error} />}
+        </div>
       </header>
 
       {board ? (
@@ -163,18 +189,60 @@ export function KanbanScreen(): JSX.Element {
         </main>
       ) : (
         <main className="flex min-h-0 flex-1 items-center justify-center p-8">
-          {error === null ? (
-            <p className="text-sm text-foreground/60">Lendo o board…</p>
-          ) : (
-            // O único caso em que o erro toma a tela: sem primeira leitura não há cartão a
-            // preservar, e um vazio silencioso pareceria um board sem cards.
-            <div className="max-w-lg text-center">
-              <p className="text-sm text-foreground">Não foi possível ler o board.</p>
-              <p className="mt-2 text-xs break-words text-foreground/60">{error}</p>
-            </div>
-          )}
+          <SemKanban boards={boards} discoveryError={discoveryError} active={active} />
         </main>
       )}
+    </div>
+  )
+}
+
+interface SemKanbanProps {
+  boards: readonly BoardTab[] | null
+  discoveryError: string | null
+  active: BoardTab | null
+}
+
+/**
+ * A área do kanban quando não há kanban a desenhar — quatro frases, e nenhuma delas é chute.
+ *
+ * O `null` de `boards` é o que separa "ainda estou descobrindo" de "descobri, e nenhum board seu
+ * roda a esteira": sem ele as duas seriam a mesma lista vazia e a tela teria de adivinhar qual
+ * dizer. O erro só toma a área quando **não há nada a preservar** — nem aba, nem primeira leitura
+ * daquela aba; nos demais casos os cartões ficam e quem acusa a idade é o carimbo.
+ */
+function SemKanban({ boards, discoveryError, active }: SemKanbanProps): JSX.Element {
+  if (boards === null) {
+    return discoveryError === null ? (
+      <p className="text-sm text-foreground/60">Descobrindo os boards…</p>
+    ) : (
+      <Motivo titulo="Não foi possível descobrir os boards." motivo={discoveryError} />
+    )
+  }
+
+  // Sem aba ativa depois da descoberta é a lista vazia: quem escolhe a ativa é o main, e ele só
+  // devolve `null` quando não sobrou board nenhum. A tela não reimplementa essa escolha para
+  // conferi-la — seria a segunda regra de preservação que este arquivo existe para não ter.
+  if (active === null) {
+    return (
+      <p className="text-sm text-foreground/60">
+        Nenhum board que você acessa roda a esteira <code>gm-*</code>.
+      </p>
+    )
+  }
+
+  return active.error === null ? (
+    <p className="text-sm text-foreground/60">Lendo o board…</p>
+  ) : (
+    <Motivo titulo="Não foi possível ler o board." motivo={active.error} />
+  )
+}
+
+/** O erro ocupando a área do kanban: o que falhou em cima, o motivo cru embaixo. */
+function Motivo({ titulo, motivo }: { titulo: string; motivo: string }): JSX.Element {
+  return (
+    <div className="max-w-lg text-center">
+      <p className="text-sm text-foreground">{titulo}</p>
+      <p className="mt-2 text-xs break-words text-foreground/60">{motivo}</p>
     </div>
   )
 }

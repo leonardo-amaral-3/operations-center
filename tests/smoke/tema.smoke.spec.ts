@@ -5,6 +5,7 @@ import type { Locator } from '@playwright/test'
 
 import { parseOklch, parseThemes } from '../../src/main/sheet'
 import type { Theme } from '../../src/shared/theme'
+import { BOARDS_FIXTURE_PATH, BOARD_FIXTURE_PATH } from './boards-fixture'
 
 /**
  * O smoke do tema: a combinação de cores escolhida é a que a tela desenha.
@@ -14,8 +15,9 @@ import type { Theme } from '../../src/shared/theme'
  * pintando três superfícies. Tudo antes disso o `yarn test` cobre; isto aqui exige um Chromium de
  * verdade, e por isso é smoke.
  *
- * **Não toca a rede, não pede token e não consome cota**: como o smoke do kanban, a única fonte de
- * dado é `tests/fixtures/board.json`. O que ele custa é o tempo de subir o Electron duas vezes.
+ * **Não toca a rede, não pede token e não consome cota**: como o smoke do kanban, as únicas fontes
+ * de dado são `tests/fixtures/boards.json` (a descoberta) e `tests/fixtures/board.json` (o board da
+ * aba). O que ele custa é o tempo de subir o Electron duas vezes.
  *
  * **Nenhum valor de cor é escrito à mão.** O que o teste sabe sobre as combinações sai de
  * `parseThemes` sobre a folha do disco — mesma disciplina que `kanban.smoke.spec.ts:15-18` declara
@@ -31,9 +33,6 @@ import type { Theme } from '../../src/shared/theme'
 // `__dirname` e não `import.meta.url`: o Playwright transpila os specs para CommonJS enquanto o
 // `package.json` não for `type: module`, e `import.meta` ali é erro de sintaxe.
 const REPO_ROOT = join(__dirname, '..', '..')
-
-/** **Absoluto**, e é o ponto: o processo do Electron não roda com a `cwd` do runner. */
-const FIXTURE_PATH = join(REPO_ROOT, 'tests', 'fixtures', 'board.json')
 
 /** A folha do design system, lida do disco — a mesma que o main importa como texto. */
 const FOLHA_PATH = join(REPO_ROOT, 'src', 'renderer', 'index.css')
@@ -147,16 +146,14 @@ async function medir(tema?: string): Promise<Medida> {
 function envDoLaunch(tema: string | undefined): Record<string, string> {
   const env: Record<string, string> = {
     ...inheritedEnv(),
-    // A porta que troca o GitHub por um arquivo. É ela que torna este smoke determinístico.
-    OC_BOARD_FIXTURE: FIXTURE_PATH,
+    // As portas que trocam o GitHub por arquivo. São elas que tornam este smoke determinístico, e
+    // são **duas**: sem `OC_BOARDS_FIXTURE` a descoberta não tem o que responder e lança, e o
+    // kanban não desenha cartão nenhum para este teste medir cor em cima.
+    OC_BOARD_FIXTURE: BOARD_FIXTURE_PATH,
+    OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
     // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell abriria a tela errada, e as três
     // superfícies que este teste mede só existem no kanban.
     OC_SCREEN: 'kanban',
-    // Inertes de propósito: a fixture ignora documento e variáveis, e se um dia a fiação dela
-    // quebrar o app tentará ler um board que não existe — vermelho na hora, em vez de um smoke
-    // passando em silêncio contra o board de verdade.
-    OC_PROJECT_OWNER: 'dono-que-a-fixture-ignora',
-    OC_PROJECT_NUMBER: '999',
   }
 
   delete env['OC_THEME']
