@@ -1,4 +1,5 @@
 import { MAX_PAGES, selectByAlias } from './envelope'
+import { SEM_FASES, linkPhases } from './epics'
 import { asArray, asNumber, asRecord, asString } from './narrow'
 import { BOARD_QUERY, CARD_FIELDS, STATUS_FIELD } from './query'
 import { CONVERSABLE, normalizeStation } from './stations'
@@ -82,7 +83,10 @@ export class BoardReader {
         if (card) cards.push(card)
       }
 
-      if (!items.hasNextPage) return { title, columns, cards }
+      // A inversão roda **aqui**, no retorno alcançado só quando não há mais página: com `cards` já
+      // acumulado de todas elas. Movê-la para dentro do corpo do laço produziria um épico com metade
+      // das fases — a fase na página 2, o épico na 1 — e sem erro nenhum.
+      if (!items.hasNextPage) return { title, columns, cards: linkPhases(cards, columns) }
       cursor = items.endCursor
     }
 
@@ -177,7 +181,7 @@ function toCard(node: unknown): BoardCard | null {
     parent: readParent(content),
     // `phases` não sai daqui: um cartão sozinho não sabe quem são as filhas dele. Quem as descobre
     // precisa do retrato inteiro — de todas as páginas —, e `toCard` só enxerga um nó por vez.
-    phases: [],
+    phases: SEM_FASES,
   }
 }
 
