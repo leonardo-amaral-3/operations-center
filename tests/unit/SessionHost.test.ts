@@ -2,8 +2,8 @@ import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_SETTING_SOURCES, SessionHost } from '../../src/core/session/SessionHost'
-import { INTERRUPTED_NOTICE } from '../../src/core/session/SessionHandle'
-import type { SessionHandle, TurnPulseCore } from '../../src/core/session/SessionHandle'
+import { INTERRUPTED_NOTICE, SessionHandle } from '../../src/core/session/SessionHandle'
+import type { TurnPulseCore } from '../../src/core/session/SessionHandle'
 import type { SessionState } from '../../src/core/session/state'
 import type { ChatMessage, ChatToolUse } from '../../src/shared/session'
 import {
@@ -60,6 +60,24 @@ function trilha(handle: SessionHandle): ChatToolUse[] {
 
 function start(fake: FakeQuery, model?: string): SessionHandle {
   return new SessionHost({ query: fake.query, model }).start({ cwd: CWD })
+}
+
+/** A mesma sessão, nascida do cartão marcado: sem o portão do `canUseTool` desde o primeiro turno. */
+function startPerigoso(fake: FakeQuery): SessionHandle {
+  return new SessionHost({ query: fake.query }).start({ cwd: CWD, dangerous: true })
+}
+
+/**
+ * Uma sessão cujo `query()` **não** recebeu `allowDangerouslySkipPermissions` — a única forma de o
+ * SDK recusar a troca de modo (M-3).
+ *
+ * Montada à mão, sem passar pelo `SessionHost`, justamente porque o host manda a flag sempre: é
+ * essa garantia que o caso exercita do outro lado.
+ */
+function startSemFlag(fake: FakeQuery): SessionHandle {
+  return new SessionHandle('sessao-sem-flag', ({ prompt, canUseTool }) =>
+    fake.query({ prompt, options: { cwd: CWD, canUseTool } }),
+  )
 }
 
 /**
@@ -150,6 +168,11 @@ describe('SessionHost', () => {
     expect(options?.includePartialMessages).toBe(false)
     expect(options?.canUseTool).toBeTypeOf('function')
 
+    // A flag vai **sempre**, inclusive na sessão que nasce com portão: medido que ela é inerte
+    // sozinha (M-4), e sem ela o `setPermissionMode` rejeita (M-3) — o modo deixaria de ser
+    // reversível numa sessão viva, só ligável em sessão nova.
+    expect(options?.allowDangerouslySkipPermissions).toBe(true)
+
     // `settingSources` explícito, e o default carrega as settings e os CLAUDE.md do usuário: uma
     // sessão isolada seria um Claude Code amputado, incapaz de rodar as skills que o app hospeda.
     expect(options?.settingSources).toEqual([...DEFAULT_SETTING_SOURCES])
@@ -236,6 +259,7 @@ describe('SessionHost', () => {
       model: 'fake-model',
       cwd: '/tmp/fake-cwd',
       apiKeySource: 'none',
+      permissionMode: 'default',
     })
     expect(await visto).toEqual(handle.init)
   })
@@ -1415,5 +1439,191 @@ describe('SessionHost', () => {
 
     expect(handle.messages.map((message) => message.role)).toEqual(['user', 'tool'])
     expect(trilha(handle).map((entrada) => entrada.status)).toEqual(['done'])
+  })
+
+  it('o cartão marcado nasce sem portão, e o init do SDK reporta o modo', async () => {
+    const fake = createFakeQuery()
+    const handle = startPerigoso(fake)
+
+    expect(fake.options?.permissionMode).toBe('bypassPermissions')
+    expect(fake.options?.allowDangerouslySkipPermissions).toBe(true)
+    expect(handle.dangerous).toBe(true)
+
+    await untilState(handle, isKind('working'))
+
+    // A segunda fonte, a do próprio SDK: o modo é verdade lá dentro, e não um auto-allow nosso.
+    expect(handle.init?.permissionMode).toBe('bypassPermissions')
+  })
+
+  it('com o modo ligado, o turno usa a ferramenta sem parar em ninguém', async () => {
+    const decisoes: string[] = []
+    const fake = createFakeQuery({
+      turn: async (text, tools) => {
+        decisoes.push(
+          (await tools.askPermission({ toolName: 'Write', toolUseID: 'toolu_p1' })).behavior,
+        )
+        return [assistantMessage(`escrito: ${text}`), successResult()]
+      },
+    })
+    const handle = startPerigoso(fake)
+    const vistos = gravarEstados(handle)
+
+    handle.send('crie o arquivo')
+    await untilState(handle, isKind('awaiting_input'))
+
+    // Ninguém chamou `respondPermission`, e mesmo assim a ferramenta rodou: em `bypassPermissions`
+    // o SDK nem consulta o `canUseTool` (M-1).
+    expect(decisoes).toEqual(['allow'])
+    expect(vistos.map((estado) => estado.kind)).not.toContain('awaiting_decision')
+  })
+
+  it('com o modo ligado, a pergunta continua parando a sessão', async () => {
+    const { turn, asked, behaviors } = concorrentes({ tipo: 'pergunta', id: 'toolu_q' })
+    const handle = startPerigoso(createFakeQuery({ turn }))
+
+    handle.send('pergunte')
+    await asked
+
+    // O `AskUserQuestion` chega ao `canUseTool` nos dois modos (M-2), e é essa medição que autoriza
+    // o modo do próprio SDK: o que ele tira é o clique em "Permitir", não a decisão de produto.
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_answer',
+      request: { id: 'toolu_q' },
+      queued: 0,
+    })
+
+    handle.answerQuestion('toolu_q', { 'Qual cor? toolu_q': 'Azul' })
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(behaviors).toEqual(['allow'])
+  })
+
+  it('desligar devolve o portão sem derrubar a sessão', async () => {
+    const decisoes: string[] = []
+    const fake = createFakeQuery({
+      turn: async (text, tools) => {
+        decisoes.push(
+          (await tools.askPermission({ toolName: 'Write', toolUseID: `toolu_${text}` })).behavior,
+        )
+        return [assistantMessage(`ok: ${text}`), successResult()]
+      },
+    })
+    const handle = startPerigoso(fake)
+
+    handle.send('a')
+    await untilState(handle, isKind('awaiting_input'))
+
+    const idAntes = handle.id
+    const mensagensAntes = [...handle.messages]
+    const kindAntes = handle.state.kind
+
+    expect(await handle.setDangerous(false)).toBe(false)
+    expect(fake.permissionModes).toEqual(['default'])
+
+    // A mesma sessão: mesmo id, mesmo histórico, mesmo estado. Desligar o modo não é encerrar e
+    // resubir — é o que separa "reversível" de "reiniciar a conversa para parar de clicar".
+    expect(handle.id).toBe(idAntes)
+    expect(handle.messages).toEqual(mensagensAntes)
+    expect(handle.state.kind).toBe(kindAntes)
+
+    handle.send('b')
+    expect(await untilState(handle, isKind('awaiting_decision'))).toMatchObject({
+      request: { id: 'toolu_b' },
+    })
+
+    handle.respondPermission('toolu_b', 'allow')
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(decisoes).toEqual(['allow', 'allow'])
+  })
+
+  it('ligar o modo com o turno travado libera as permissões que esperavam', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'permissao', id: 'toolu_b' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('faça as duas coisas')
+    await asked
+
+    expect(handle.state).toMatchObject({ kind: 'awaiting_decision', request: { id: 'toolu_a' } })
+
+    expect(await handle.setDangerous(true)).toBe(true)
+
+    // Lido logo em seguida, sem esperar canal nenhum: a fila esvaziou dentro do `#allowPending`,
+    // e o `settled` devolveu a sessão ao trabalho na mesma volta.
+    expect(handle.state).toEqual({ kind: 'working' })
+
+    await untilState(handle, isKind('awaiting_input'))
+    expect(behaviors).toEqual(['allow', 'allow'])
+  })
+
+  it('ligar o modo libera a permissão e deixa a pergunta na frente da fila', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'pergunta', id: 'toolu_b' },
+    )
+    const handle = start(createFakeQuery({ turn }))
+
+    handle.send('decida e pergunte')
+    await asked
+
+    expect(await handle.setDangerous(true)).toBe(true)
+
+    // A permissão saiu sozinha; a pergunta continua esperando uma pessoa, agora na frente.
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_answer',
+      request: { id: 'toolu_b' },
+      queued: 0,
+    })
+
+    handle.answerQuestion('toolu_b', { 'Qual cor? toolu_b': 'Azul' })
+    await untilState(handle, isKind('awaiting_input'))
+
+    expect(behaviors).toEqual(['allow', 'allow'])
+  })
+
+  it('o SDK que recusa a troca não libera nada, e o modo continua o de antes', async () => {
+    const { turn, asked, behaviors } = concorrentes(
+      { tipo: 'permissao', id: 'toolu_a' },
+      { tipo: 'permissao', id: 'toolu_b' },
+    )
+    const handle = startSemFlag(createFakeQuery({ turn }))
+
+    handle.send('faça as duas coisas')
+    await asked
+
+    expect(await handle.setDangerous(true)).toBe(false)
+    expect(handle.dangerous).toBe(false)
+
+    // Uma recusa que ainda assim aprovasse os pendentes teria dado, por acidente, exatamente a
+    // permissão que o usuário pediu por outra via e não recebeu.
+    expect(handle.state).toMatchObject({
+      kind: 'awaiting_decision',
+      request: { id: 'toolu_a' },
+      queued: 1,
+    })
+    expect(behaviors).toEqual([])
+
+    await handle.close()
+  })
+
+  it('um segundo pedido durante a troca é engolido, e vira um control request só', async () => {
+    const fake = createFakeQuery()
+    const handle = start(fake)
+
+    const ligando = handle.setDangerous(true)
+
+    // Disparado com a troca ainda em voo: o `#switching` está levantado, e este devolve o modo
+    // corrente sem escrever nada no transporte — o mesmo que o `#stopping` faz com o segundo
+    // clique em "Parar". Sem a bandeira, quem venceria seria quem resolvesse por último.
+    expect(await handle.setDangerous(false)).toBe(false)
+    expect(await ligando).toBe(true)
+    expect(fake.permissionModes).toEqual(['bypassPermissions'])
+
+    // E o valor repetido também não vira control request: não há troca a pedir.
+    expect(await handle.setDangerous(true)).toBe(true)
+    expect(fake.permissionModes).toEqual(['bypassPermissions'])
   })
 })

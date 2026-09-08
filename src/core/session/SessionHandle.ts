@@ -175,6 +175,10 @@ export class SessionHandle {
   #sentCount = 0
   /** Levantada entre o pedido de parada e o `result` que ele corta; é ela que vira `interrupted`. */
   #stopping = false
+  /** O portão está desligado? Nasce com o que a marca do cartão mandou; muda por `setDangerous`. */
+  #dangerous: boolean
+  /** Levantada entre o pedido de troca de modo e a resposta do SDK. Ver `setDangerous`. */
+  #switching = false
   /** Numera o id da nota de parada, como `#sentCount` numera o do envio. */
   #stopCount = 0
   #closing = false
@@ -192,8 +196,14 @@ export class SessionHandle {
    * `message` por mensagem restaurada seria ruído sobre um estado que a tela já vai receber inteiro
    * no retrato.
    */
-  constructor(id: string, startQuery: StartQuery, history: readonly ChatMessage[] = []) {
+  constructor(
+    id: string,
+    startQuery: StartQuery,
+    history: readonly ChatMessage[] = [],
+    dangerous = false,
+  ) {
     this.id = id
+    this.#dangerous = dangerous
     this.#messages.push(...history)
     this.#query = startQuery({
       prompt: this.#queue,
@@ -209,6 +219,11 @@ export class SessionHandle {
 
   get state(): SessionState {
     return this.#state
+  }
+
+  /** O modo que vigora nesta sessão agora. É ele que o main grava e a tela desenha. */
+  get dangerous(): boolean {
+    return this.#dangerous
   }
 
   get messages(): readonly ChatMessage[] {
@@ -298,6 +313,48 @@ export class SessionHandle {
   }
 
   /**
+   * Liga ou desliga o portão desta sessão. Devolve **o modo que de fato vigora depois da
+   * tentativa** — que é o que o main grava e a tela desenha.
+   *
+   * `async`, ao contrário de `send`/`stop`/`respondPermission`: aqui a confirmação não volta pelo
+   * canal de estado, ela é a resposta do control request. Persistir a marca antes dela seria a
+   * tela afirmar uma coisa que a sessão não faz.
+   *
+   * **Um pedido de cada vez.** Um segundo clique durante a troca é engolido e devolve o modo
+   * corrente, exatamente como o `#stopping` engole o segundo clique em "Parar" — e pela mesma
+   * razão: sem a bandeira, dois pedidos em voo comparariam os dois o `#dangerous` **antigo**, o
+   * SDK receberia dois control requests, e quem vence a gravação passa a ser quem resolver por
+   * último, não quem clicou por último.
+   *
+   * **Sem prazo, de propósito.** Um `setPermissionMode` chamado antes de o `init` chegar é escrito
+   * no transporte como qualquer control request; se ele rejeitar, o `catch` já responde. O caso
+   * não medido é ele nunca resolver — e ali a escolha é não inventar um timeout: um número chutado
+   * que reportasse sucesso sobre um modo que não mudou é pior do que um pedido que não assenta,
+   * cujo custo é a tela não se mexer e o próximo clique tentar de novo.
+   */
+  async setDangerous(next: boolean): Promise<boolean> {
+    if (this.#closing || this.#switching) return this.#dangerous
+    if (next === this.#dangerous) return this.#dangerous
+
+    this.#switching = true
+    try {
+      await this.#query.setPermissionMode(next ? 'bypassPermissions' : 'default')
+    } catch {
+      // O SDK recusou. O modo **não** mudou, e nada é liberado: uma recusa que ainda assim
+      // aprovasse os pendentes teria dado, por acidente, exatamente a permissão que o usuário
+      // pediu por outra via e não recebeu.
+      return this.#dangerous
+    } finally {
+      this.#switching = false
+    }
+
+    this.#dangerous = next
+    if (next) this.#allowPending()
+
+    return this.#dangerous
+  }
+
+  /**
    * Encerra a sessão e espera o `query()` terminar de verdade.
    *
    * A ordem importa: negar o que estava pendente destrava o turno corrente (uma permissão sem
@@ -330,6 +387,7 @@ export class SessionHandle {
           model: message.model,
           cwd: message.cwd,
           apiKeySource: message.apiKeySource,
+          permissionMode: message.permissionMode,
         }
         this.#emitter.emit('init', this.#init)
         this.#apply({ kind: 'init' })
@@ -486,6 +544,31 @@ export class SessionHandle {
         : { kind: 'question', request: head.request }
 
     this.#apply({ kind: 'awaiting', pending, queued: this.#pending.size - 1 })
+  }
+
+  /**
+   * Libera com `allow` tudo que já estava esperando decisão — e **só as permissões**.
+   *
+   * A pergunta fica: ela é a decisão de produto que o modo não toca, e um `allow` puro nela
+   * devolveria "The user did not answer the questions" (ver `answerQuestion`).
+   *
+   * Roda **depois** de o SDK confirmar a troca, e não antes — ver o `catch` do `setDangerous`. Foi
+   * medido (M-6) que o control request é atendido em 3ms mesmo com o turno parado dentro do
+   * `canUseTool`, então esperar por ele não trava nada. Um `close()` que tenha acontecido no meio
+   * já esvaziou o mapa pelo `#denyPending`, e este método vira no-op sozinho.
+   */
+  #allowPending(): void {
+    const liberadas = [...this.#pending.values()].filter((entry) => entry.kind === 'permission')
+    if (liberadas.length === 0) return
+
+    for (const entry of liberadas) {
+      this.#pending.delete(entry.request.id)
+      entry.resolve({ behavior: 'allow' })
+    }
+
+    // Um `#publish()` só, no fim: se sobrou pergunta ela vira a frente da fila, e se a fila
+    // esvaziou o `settled` devolve a sessão a `working`. É o mesmo caminho do `respondPermission`.
+    this.#publish()
   }
 
   /**
