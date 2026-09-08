@@ -123,6 +123,9 @@ test.beforeAll(async () => {
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell de quem roda abriria a tela
       // errada e o teste falharia por um motivo que não tem nada a ver com o kanban.
       OC_SCREEN: 'kanban',
+      // Fixado pelo mesmo argumento, e não herdado: o CA-2 aqui afirma cor, e um `OC_THEME`
+      // exportado no shell de quem roda mudaria em silêncio o que estas asserções medem.
+      OC_THEME: 'lavanda',
     },
   })
 

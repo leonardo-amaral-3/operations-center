@@ -16,6 +16,7 @@ import type {
   SessionState,
   TurnActivity,
 } from './session'
+import type { Theme } from './theme'
 
 /**
  * Qual tela o app desenha. Decidido no main por `OC_SCREEN` e entregue ao preload por argv — o
@@ -214,6 +215,13 @@ export interface OcApi {
    * de expor a ponte, então o primeiro render já sabe o que desenhar e não há tela piscando.
    */
   readonly screen: Screen
+
+  /**
+   * Qual combinação de cores desenhar. Valor e não promessa, pela mesma razão de `screen`: o
+   * `main.tsx` põe o `data-theme` no `<html>` antes do primeiro render, e não há tela trocando de cor
+   * depois de aparecer.
+   */
+  readonly theme: Theme
 
   /**
    * Começa a sessão do cartão — ou a da fatia vertical, quando `start()` vem sem cartão nenhum.

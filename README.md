@@ -89,7 +89,7 @@ tem.
 
 ## Configuração
 
-Sem banco e sem arquivo de config. Nove variáveis de ambiente, lidas no main:
+Sem banco e sem arquivo de config. Dez variáveis de ambiente, lidas no main:
 
 | Variável             | Default                                                                       | Para quê                                                                                                                                                                                                                                                                                                                                                                        |
 | -------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -97,6 +97,7 @@ Sem banco e sem arquivo de config. Nove variáveis de ambiente, lidas no main:
 | `OC_MODEL`           | ausente: herda o default do Claude Code                                       | modelo da sessão                                                                                                                                                                                                                                                                                                                                                                |
 | `OC_ISOLATED`        | ausente                                                                       | `1` passa `settingSources: []` ao SDK, e a sessão deixa de carregar `CLAUDE.md`, settings e skills. Existe **para o smoke** — fora dele, uma sessão isolada é um Claude Code amputado                                                                                                                                                                                           |
 | `OC_SCREEN`          | ausente: o kanban                                                             | `chat` abre a tela da fatia vertical. Porta de ambiente sem botão na UI, que existe **para o smoke** daquela fatia                                                                                                                                                                                                                                                              |
+| `OC_THEME`           | ausente: `lavanda`, a combinação de sempre                                    | qual combinação de cores desenhar, entre as declaradas em `src/renderer/index.css`: hoje `lavanda` e `ametista`. Nome desconhecido **lança** — cair na lavanda em silêncio faria parecer que o tema não funciona                                                                                                                                                                |
 | `OC_BOARD_FIXTURE`   | ausente: lê o GitHub de verdade                                               | caminho de um JSON `"dono/número" → resposta da API`, que substitui o GitHub inteiro. É ela sozinha que decide fixture-vs-GitHub. Existe **para os smokes**, que por causa dela não pedem token nem tocam a rede. Coordenada sem entrada no mapa **lança**: uma aba cujo board não está na fixture tem de aparecer como erro, e não como kanban vazio                           |
 | `OC_BOARDS_FIXTURE`  | ausente: a descoberta não tem o que responder e **lança**                     | caminho de um JSON com as respostas da **descoberta** — os seus donos, e os Projects de cada dono. É o par de `OC_BOARD_FIXTURE` e só é consultada junto com ela; sem as duas, nenhum smoke desenha kanban                                                                                                                                                                      |
 | `OC_CARD_FIXTURE`    | ausente: nenhum cartão tem conteúdo de fixture                                | caminho de um JSON `número da issue → resposta da API` com o corpo e os comentários de cada card. Só é consultada quando `OC_BOARD_FIXTURE` existe, e é o par dela no **smoke do conteúdo do cartão**. Cartão sem entrada no mapa vira erro na tela, e não card vazio                                                                                                           |
@@ -105,6 +106,10 @@ Sem banco e sem arquivo de config. Nove variáveis de ambiente, lidas no main:
 
 `OC_SCREEN`, `OC_BOARD_FIXTURE`, `OC_BOARDS_FIXTURE`, `OC_CARD_FIXTURE`, `OC_CLAUDE_PROJECTS` e
 `OC_STATE_DIR` são portas de teste, como `OC_ISOLATED`: fora do smoke não há razão para tocá-las.
+
+`OC_THEME` é a exceção: também não tem botão na UI, mas não é porta de teste — é a única forma, por
+ora, de abrir o app numa combinação de cores que não a padrão. O botão vem no card que ensinar o app
+a lembrar da escolha.
 
 **Qual board o app abre não é configurável, e é de propósito**: a lista sai de uma pergunta ao
 GitHub — quais dos seus Projects rodam a esteira `gm-*` —, e não de variável de ambiente. Houve um

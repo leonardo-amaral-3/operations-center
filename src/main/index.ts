@@ -16,6 +16,7 @@ import {
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen } from '../shared/ipc'
+import { THEME_FLAG } from '../shared/theme'
 import { registerBoardsIpc } from './boards'
 import { registerCardIpc } from './card'
 import {
@@ -31,6 +32,7 @@ import { createGhTokenSource } from './github/token'
 import { registerSessionIpc } from './ipc'
 import { judgeNavigation } from './navigation'
 import { gitOrigin, scanSessionFolders } from './repos'
+import { resolveTheme, windowBackground } from './theme'
 
 /**
  * A pasta de trabalho da sessão **sem cartão** — a da fatia vertical. Sem `OC_CWD`, é a raiz do repo:
@@ -91,22 +93,31 @@ function createGraphQL(): GraphQLFn {
 }
 
 const screen = resolveScreen()
+const theme = resolveTheme(process.env.OC_THEME)
+// A cor calculada **no topo do módulo**, e não dentro de `createWindow`: aquela função roda dentro
+// do `void app.whenReady().then(...)` lá embaixo, e o `void` é justamente o que faria um `throw`
+// dali virar rejeição não tratada em vez de derrubar a subida. Aqui, folha malformada ou combinação
+// sem `--background` param o app antes de existir janela — que é a hora certa de reclamar.
+const windowColor = windowBackground(theme)
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1100,
     height: 760,
-    // A cor do tema (`--background`, oklch(93.88% 0.033 300.19)) em sRGB. Sem isto o Chromium pinta a
-    // janela com o branco default antes do primeiro paint do renderer, e a abertura pisca.
-    backgroundColor: '#eee6fe',
+    // A cor da janela sai da folha do design system, convertida para sRGB — nunca escrita aqui. Sem
+    // ela o Chromium pinta a janela de branco antes do primeiro paint do renderer e a abertura
+    // pisca; com um hex à mão, ela pisca no dia em que a folha mudar e ninguém lembrar deste
+    // arquivo.
+    backgroundColor: windowColor,
     show: false,
     autoHideMenuBar: true,
     title: 'Operations Center',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      // Como o preload sabe qual tela desenhar. É o mecanismo documentado do Electron para passar
-      // dados ao preload e funciona com `sandbox: true` — ler `process.env` lá dentro não.
-      additionalArguments: [`--oc-screen=${screen}`],
+      // Como o preload sabe qual tela desenhar e qual combinação de cores vale. É o mecanismo
+      // documentado do Electron para passar dados ao preload e funciona com `sandbox: true` — ler
+      // `process.env` lá dentro não.
+      additionalArguments: [`--oc-screen=${screen}`, `${THEME_FLAG}${theme}`],
       // O renderer nunca vê Node. Toda capacidade dele passa pelo contrato do preload.
       nodeIntegration: false,
       contextIsolation: true,

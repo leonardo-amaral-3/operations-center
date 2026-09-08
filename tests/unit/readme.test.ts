@@ -60,6 +60,7 @@ describe('README', () => {
       'OC_MODEL',
       'OC_ISOLATED',
       'OC_SCREEN',
+      'OC_THEME',
       'OC_BOARD_FIXTURE',
       'OC_BOARDS_FIXTURE',
       'OC_CARD_FIXTURE',
