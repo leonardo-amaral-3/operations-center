@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 
 import type { BoardTab } from '../../shared/board'
 import type { SessionState } from '../../shared/session'
+import { BoardTabs } from '../components/BoardTabs'
 import type { CardSession, CardSessions } from '../components/CardChat'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
@@ -136,6 +137,14 @@ export function KanbanScreen(): JSX.Element {
     dispatchSession({ type: 'card', itemId, session })
   }, [])
 
+  const activate = useCallback((key: string) => {
+    // Nada muda na tela aqui: a troca chega de volta no retrato, como toda mudança de board. A
+    // tela **não** adianta a escolha, e é de propósito — `key` desconhecida é ignorada no main, e
+    // uma aba pintada de ativa antes da confirmação mentiria por um instante em cima justamente do
+    // caso que o CA-4 descreve: o board lembrado que não está mais entre os descobertos.
+    void window.oc.activateBoard({ key })
+  }, [])
+
   // A aba ativa sai do `activeKey`, que é do main: a tela não escolhe aba, só desenha a escolhida.
   const active = activeTab(snapshot)
   // Guardado num `const` de propósito: a narrowing de `active.board` se perderia dentro do `map`
@@ -148,17 +157,22 @@ export function KanbanScreen(): JSX.Element {
   return (
     <div className="flex h-full flex-col bg-background font-base text-foreground">
       <header className="flex items-center justify-between gap-4 border-b-2 border-border px-4 py-3">
-        {/* O título do board, e não "Operations Center": é o que faz o app dizer **qual** board
-            está olhando. O nome do app só aparece quando não há board nenhum a nomear. */}
-        <h1 className="truncate text-sm font-heading tracking-tight">
-          {active?.title ?? 'Operations Center'}
-        </h1>
+        {/* A barra ocupa o lugar do título, e não um espaço ao lado dele: o rótulo da aba ativa
+            já diz **qual** board você olha, e a altura poupada vai para o kanban, que é quem
+            disputa espaço com o cartão aberto. Antes de a descoberta terminar a lista é vazia — a
+            barra nasce com o primeiro retrato, e não antes. */}
+        <BoardTabs boards={boards ?? []} activeKey={activeKey} onActivate={activate} />
         <div className="flex shrink-0 items-center gap-2">
           {/* Um dono que não respondeu não apaga os boards dos que responderam — e também não some
               da tela. Fica ao lado do carimbo de frescor porque é a mesma frase: o que está aí é
               verdade, só que incompleta. O motivo inteiro vai no `title`, como no carimbo. */}
           {boards !== null && discoveryError !== null && (
-            <Badge variant="neutral" className="bg-warning" title={discoveryError}>
+            <Badge
+              data-testid="discovery-warning"
+              variant="neutral"
+              className="bg-warning"
+              title={discoveryError}
+            >
               descoberta parcial
             </Badge>
           )}
