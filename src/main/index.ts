@@ -5,7 +5,14 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
 import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron'
 
-import { BoardReader, CardReader, ConversationIndex, RepoIndex, SessionHost } from '../core'
+import {
+  BoardReader,
+  CardReader,
+  ConversationIndex,
+  DangerIndex,
+  RepoIndex,
+  SessionHost,
+} from '../core'
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen } from '../shared/ipc'
@@ -20,6 +27,7 @@ import {
   registerConversationIpc,
   saveConversations,
 } from './conversations'
+import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
 import { createFixtureGraphQL } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
@@ -237,8 +245,32 @@ function publicarConversas(): void {
   conversationIpc?.publish()
 }
 
+// O segundo dado durável do app, em arquivo próprio — ver `src/main/danger.ts` para o porquê de não
+// ser mais uma chave no `conversations.json`. As duas pontas de IO são do main pela mesma razão das
+// do `ConversationIndex`: o core não lê disco.
+const danger = new DangerIndex({
+  load: loadDangerous,
+  save: saveDangerous,
+  // Referência para a frente, como a de `publicarConversas`: o índice não conhece Electron.
+  onChange: publicarPerigo,
+})
+
+// **Só no kanban**, pela mesma razão do de conversas: a tela de chat não tem cartão, e é ela quem
+// mantém o portão de hoje sem exceção (decisão 13). Sem este registro, o canal de leitura da marca
+// simplesmente não existe lá.
+const dangerIpc = screen === 'kanban' ? registerDangerIpc(danger) : null
+
+// Em paralelo à janela, como a primeira leitura do board: o disco é lido antes de o renderer pedir o
+// primeiro retrato, e o `onChange` corrige a tela quando ele responder.
+dangerIpc?.refresh()
+
+function publicarPerigo(): void {
+  dangerIpc?.publish()
+}
+
 const sessionIpc = registerSessionIpc(host, {
   conversations,
+  danger,
   resolveCwd: async (itemId) => {
     if (itemId === undefined) return resolveCwd()
 
