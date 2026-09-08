@@ -45,6 +45,12 @@ interface Medida {
   readonly canvas: string
   readonly cabecalho: string
   readonly face: string
+  /** A cor do polegar da barra de rolagem — o que muda de uma combinação para a outra. */
+  readonly barra: string
+  /** A largura que a regra declara: `12px` com o bloco na folha, `auto` sem ele. */
+  readonly barraLargura: string
+  /** O espaço que o contêiner nº 1 reserva de fato — a barra observada, não a regra lida. */
+  readonly gutter: number
 }
 
 test('a combinação escolhida é a que a tela desenha', async () => {
@@ -95,6 +101,22 @@ test('a combinação escolhida é a que a tela desenha', async () => {
   expect(lavanda.cabecalho, 'o cabeçalho de coluna não está no matiz da lavanda').toMatch(
     matizDoAcento('lavanda'),
   )
+
+  // A barra de rolagem, e a largura vem primeiro porque é a única das três que fala da **regra**:
+  // medido, sem o bloco no fim da folha o Chromium devolve `auto` aqui e `rgba(0, 0, 0, 0)` no
+  // polegar — as outras duas ficariam vermelhas sem dizer que o que sumiu foi o bloco inteiro. Mesma
+  // ordem que `design-system.test.ts` pratica: a existência antes do que depende dela.
+  expect(lavanda.barraLargura, 'a regra `::-webkit-scrollbar` não chegou ao app').toBe('12px')
+
+  // A leitura não depende da combinação, e por isso é afirmada **uma** vez: repeti-la sob a ametista
+  // seria pagar duas vezes pela mesma prova, a disciplina que o topo deste arquivo já declara.
+  // O que a combinação decide é o polegar — e sem o bloco as duas empatariam em transparente.
+  expect(ametista.barra, 'o polegar da barra é o mesmo nas duas combinações').not.toBe(lavanda.barra)
+
+  // E o contêiner nº 1 reservando espaço de verdade, que é o que a regra sozinha não prova. Doze
+  // contra os quinze da barra nativa deste Chromium: a geometria afrouxa em 3px, e é daí que sai o
+  // "nada que não clipa hoje passa a clipar".
+  expect(lavanda.gutter, 'o `<main>` do kanban não reserva os 12px da barra vestida').toBe(12)
 })
 
 /**
@@ -117,6 +139,10 @@ async function medir(tema?: string): Promise<Medida> {
     const janela = await app.firstWindow()
     const coluna = janela.getByTestId('column').first()
     const cartao = janela.getByTestId('board-card').first()
+    // O contêiner que rola na horizontal, por tag e sem `data-testid` novo: sob `OC_SCREEN=kanban`
+    // este `<main>` é único — o outro do app é o de `Chat.tsx`, e `ChatScreen` não monta aqui.
+    // Locator por tag já tem precedente logo abaixo, no `header` da coluna.
+    const principal = janela.locator('main')
 
     // Esperar o board desenhar antes de medir: sem cartão na tela, `face` mediria um elemento que
     // ainda não existe e o vermelho falaria de timeout, não de cor.
@@ -130,6 +156,9 @@ async function medir(tema?: string): Promise<Medida> {
       canvas: await corDeFundo(janela.locator('body')),
       cabecalho: await corDeFundo(coluna.locator('header')),
       face: await corDeFundo(cartao),
+      barra: await corDoPolegar(principal),
+      barraLargura: await larguraDaBarra(principal),
+      gutter: await gutterReservado(principal),
     }
   } finally {
     await app.close()
@@ -190,12 +219,66 @@ function matizDoAcento(theme: Theme): RegExp {
  * junto de uma mudança de tema. O `tsconfig.node.json` que compila os smokes **não** carrega a lib
  * DOM, e não deve: `src/main`, `src/core` e `src/preload` são Node, e uma lib DOM ali deixaria um
  * `document` solto passar despercebido numa revisão.
+ *
+ * **O `pseudo?` e o `width` são deste card, e são gate de CI**: sem eles,
+ * `getComputedStyle(el, '::-webkit-scrollbar-thumb')` é TS2554 e `.width` é TS2339, e o
+ * `yarn typecheck` reprova o PR — este arquivo compila no programa do Node, que não carrega a lib
+ * DOM. A cópia gêmea em `kanban.smoke.spec.ts` **não** cresce junto: cada arquivo declara o que
+ * usa, que é o outro lado da cópia deliberada.
  */
-declare function getComputedStyle(element: unknown): { backgroundColor: string }
+declare function getComputedStyle(
+  element: unknown,
+  pseudo?: string,
+): { backgroundColor: string; width: string }
 
 /** O `background-color` computado — a mesma cópia, pela mesma razão. */
 async function corDeFundo(locator: Locator): Promise<string> {
   return locator.evaluate((element) => getComputedStyle(element).backgroundColor)
+}
+
+/**
+ * A cor do polegar da barra — uma helper por leitura, pela mesma razão de cópia declarada acima.
+ *
+ * **Não há fallback do pseudo-elemento para o elemento**, e é isso que torna a asserção de diferença
+ * honesta: medido com o bloco ausente, isto devolve `rgba(0, 0, 0, 0)` e não a cor do próprio
+ * contêiner — logo, apagar a folha empata as duas combinações em vez de disfarçar.
+ */
+async function corDoPolegar(locator: Locator): Promise<string> {
+  return locator.evaluate(
+    (element) => getComputedStyle(element, '::-webkit-scrollbar-thumb').backgroundColor,
+  )
+}
+
+/** A largura que a regra declara — `auto` quando o bloco não está na folha. */
+async function larguraDaBarra(locator: Locator): Promise<string> {
+  return locator.evaluate((element) => getComputedStyle(element, '::-webkit-scrollbar').width)
+}
+
+/**
+ * As duas alturas de que o gutter é a diferença, declaradas aqui pela mesma razão que o
+ * `getComputedStyle` acima: sem a lib DOM, o tipo que o Playwright dá ao parâmetro do `evaluate` não
+ * resolve, e ler `.offsetHeight` dele é acesso a membro de tipo desconhecido — o `eslint` reprova
+ * (`no-unsafe-member-access`) mesmo com o `tsc` verde. Nomear as duas propriedades que o corpo usa é
+ * o remendo mínimo, e não mais que ele.
+ */
+interface CaixaMedida {
+  readonly offsetHeight: number
+  readonly clientHeight: number
+}
+
+/**
+ * O gutter que o contêiner reserva de fato, que é medida e não regra.
+ *
+ * É a **altura** que some porque a barra horizontal a ocupa: o `<main>` do kanban é
+ * `overflow-x-auto` e transborda por construção — oito colunas de 288px com `gap-3` e `p-3` numa
+ * janela de 1100px.
+ */
+async function gutterReservado(locator: Locator): Promise<number> {
+  return locator.evaluate((element) => {
+    const caixa = element as CaixaMedida
+
+    return caixa.offsetHeight - caixa.clientHeight
+  })
 }
 
 /**
