@@ -10,9 +10,11 @@ import {
   envelope,
   issueItem,
   notFound,
+  parentNode,
   pullRequestItem,
 } from '../fakes/fakeGraphQL'
 import type { FakeGraphQL } from '../fakes/fakeGraphQL'
+import fixture from '../fixtures/board.json'
 
 const INPUT = { owner: 'dono', number: 2 }
 
@@ -174,6 +176,8 @@ describe('BoardReader — regras 4 e 5: quem vira cartão, e com quais etiquetas
       assignees: ['leonardo-amaral-3'],
       columnId: BACKLOG,
       fields: [],
+      parent: null,
+      phases: [],
     })
   })
 
@@ -350,5 +354,145 @@ describe('BoardReader — regra 7: a resposta é dado externo', () => {
     expect(board.cards[0]?.repository).toBe('')
     expect(board.cards[0]?.assignees).toEqual([])
     expect(board.cards[0]?.closed).toBe(false)
+  })
+})
+
+describe('BoardReader — o documento pede o pai (CA-3)', () => {
+  it('`BOARD_QUERY` seleciona `parent` com número, título e repositório', () => {
+    // A **única** asserção desta suíte que olha o texto do documento, e ela existe porque nada mais
+    // o olha: o fake devolve o envelope roteirizado sem ler a consulta, e a fixture dos smokes
+    // despacha por **identidade** de documento (`src/main/github/fixture.ts`), nunca por conteúdo.
+    //
+    // Medido em 2026-09-08, apagando esta linha de `query.ts`: 30 arquivos, 466 testes, `tsc` e
+    // `eslint` **todos verdes** — e um app que, contra o GitHub de verdade, não desenha crachá
+    // nenhum. É o modo de falha mais caro que este card tem, porque ele passa por toda porta
+    // automática e só aparece na verificação pós-deploy, na mão.
+    //
+    // O espaço é normalizado para que reindentar o documento não fique vermelho; os três subcampos
+    // continuam presos, porque é deles que `readParent` vive.
+    expect(BOARD_QUERY.replace(/\s+/g, ' ')).toContain(
+      'parent { number title repository { nameWithOwner } }',
+    )
+  })
+})
+
+describe('BoardReader — o pai que a issue declara (CA-1)', () => {
+  it('traduz o pai bem formado, e o repositório vem de dentro dele — não do cartão', async () => {
+    const board = await readPages(
+      envelope({
+        items: [
+          issueItem({
+            id: 'PVTI_fase',
+            number: 32,
+            repository: 'dono/repo',
+            parent: parentNode(25, 'Operar o board pela esteira', 'leonardo-amaral-3/operations-center'),
+            fields: { Status: ['🔨 Implementação', IMPLEMENTACAO] },
+          }),
+        ],
+      }),
+    )
+
+    // O repo do cartão é `dono/repo` e o do pai é outro, de propósito: um `readParent` que lesse o
+    // `repository` do nível de cima passaria por um pai do mesmo repo e penduraria a fase sob o
+    // épico errado no dia em que o board hospedasse dois repos — que é o caso que a fixture já tem.
+    expect(board.cards[0]?.parent).toEqual({
+      number: 25,
+      title: 'Operar o board pela esteira',
+      repository: 'leonardo-amaral-3/operations-center',
+    })
+  })
+
+  it('`parent` ausente e `parent: null` narram os dois para `null`', async () => {
+    const board = await readPages(
+      envelope({
+        items: [
+          issueItem({ id: 'PVTI_sem_chave', number: 1, fields: { Status: ['📋 Backlog', BACKLOG] } }),
+          issueItem({
+            id: 'PVTI_nulo',
+            number: 2,
+            parent: null,
+            fields: { Status: ['📋 Backlog', BACKLOG] },
+          }),
+        ],
+      }),
+    )
+
+    // As duas formas existem de verdade e vêm de origens diferentes: a chave ausente é a captura
+    // feita antes de o documento pedir o campo, e o `null` é o que a API devolve para issue órfã.
+    expect(board.cards.map((card) => card.parent)).toEqual([null, null])
+  })
+
+  it('pai sem número é descartado: sem ele não há crachá nem por onde cruzar', async () => {
+    const board = await readPages(
+      envelope({
+        items: [
+          issueItem({
+            id: 'PVTI_pai_sem_numero',
+            number: 7,
+            parent: { title: 'um épico sem número', repository: { nameWithOwner: 'dono/repo' } },
+            fields: { Status: ['📋 Backlog', BACKLOG] },
+          }),
+          issueItem({
+            id: 'PVTI_pai_com_numero_torto',
+            number: 8,
+            parent: { number: '25', title: 'número que veio string' },
+            fields: { Status: ['📋 Backlog', BACKLOG] },
+          }),
+        ],
+      }),
+    )
+
+    expect(board.cards.map((card) => card.parent)).toEqual([null, null])
+  })
+
+  it('título e repositório ausentes viram string vazia — o vínculo sobrevive ao campo que faltou', async () => {
+    const board = await readPages(
+      envelope({
+        items: [
+          issueItem({
+            id: 'PVTI_pai_pelado',
+            number: 9,
+            parent: { number: 25 },
+            fields: { Status: ['📋 Backlog', BACKLOG] },
+          }),
+        ],
+      }),
+    )
+
+    // `''` e não `null`: é o número que faz o crachá existir, e o título só alimenta o `title` do
+    // hover. Matar o vínculo por causa dele seria perder o fato por causa do enfeite.
+    expect(board.cards[0]?.parent).toEqual({ number: 25, title: '', repository: '' })
+  })
+})
+
+/** Os três cartões do board 2 que vieram da captura de 2026-09-05 — os sintéticos têm id próprio. */
+const CAPTURA_REAL = [1, 2, 4]
+
+describe('BoardReader — a captura real da fixture continua intocada (CA-3)', () => {
+  it('os nós sem a chave `parent` produzem `parent: null` e nenhuma fase', async () => {
+    const envelopeDoBoard2 = fixture.boards['leonardo-amaral-3/2'] as GraphQLResponse
+
+    // A premissa, afirmada e não suposta: a decisão 11 da spec é que a captura **não** é retocada
+    // para caber no campo novo. Se uma recaptura futura trouxer `parent` de verdade, é aqui que
+    // alguém descobre — e não num smoke, três dias depois.
+    const nodes = (
+      envelopeDoBoard2.data as {
+        user: { projectV2: { items: { nodes: readonly { content?: Record<string, unknown> }[] } } }
+      }
+    ).user.projectV2.items.nodes
+    const crus = nodes.filter((no) => CAPTURA_REAL.includes(Number(no.content?.['number'])))
+
+    expect(crus).toHaveLength(CAPTURA_REAL.length)
+    expect(crus.every((no) => no.content !== undefined && !('parent' in no.content))).toBe(true)
+
+    // E a conclusão: `asRecord(undefined)` é `null`, o mesmo que `parent: null` daria.
+    const board = await read(createFakeGraphQL(envelopeDoBoard2))
+    const reais = board.cards.filter((card) => CAPTURA_REAL.includes(card.number))
+
+    // O `toEqual` do filtro antes do `every`: sem ele, um filtro que não achasse ninguém deixaria
+    // as duas linhas abaixo verdes por vacuidade.
+    expect(reais.map((card) => card.number)).toEqual(CAPTURA_REAL)
+    expect(reais.every((card) => card.parent === null)).toBe(true)
+    expect(reais.every((card) => card.phases.length === 0)).toBe(true)
   })
 })
