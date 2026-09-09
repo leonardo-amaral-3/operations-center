@@ -317,6 +317,17 @@ const sessionIpc = registerSessionIpc(host, {
     // pedir a pasta do que mandar o Claude Code para um caminho que não existe mais.
     return path !== null && existsSync(path) ? path : null
   },
+  onTurnEnd: (scope) => {
+    // Sem kanban não há aba a reler, e a tela de chat (`scope === undefined`) não tem board nenhum
+    // por trás: os dois caem no mesmo no-op, e é por isso que a decisão mora aqui e não no `ipc.ts`.
+    if (!boardsIpc || scope === undefined) return
+
+    // A triagem já **é** de uma aba; o cartão precisa que alguém diga de qual. Um `itemId` que o
+    // retrato não conhece — cartão de board que sumiu, aba ainda não lida — não relê nada, em vez
+    // de relerem-se todas por precaução.
+    const key = scope.kind === 'triage' ? scope.boardKey : boardsIpc.tabKeyOf(scope.itemId)
+    if (key !== null) boardsIpc.readNow(key)
+  },
 })
 
 /**

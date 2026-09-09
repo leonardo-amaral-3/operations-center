@@ -34,6 +34,18 @@ export interface SessionIpcOptions {
    * não sobre a conversa.
    */
   danger: DangerIndex
+  /**
+   * Chamado quando uma sessão devolve a vez (`awaiting_input`). O main usa para reler a aba daquela
+   * sessão.
+   *
+   * Vive aqui, e não no core, porque quem conhece board é a casca — e é injetado, e não chamado
+   * direto, porque este registro não sabe que board existe: ele sabe que um turno acabou.
+   *
+   * Propriedade de função, e não método como o `resolveCwd` acima: este é o único do contrato que
+   * **viaja** — vai como valor até o `forwardEvents` de cada sessão —, e o `unbound-method` do
+   * ESLint reprova a referência solta a um método, com razão.
+   */
+  onTurnEnd: (scope: SessionScope | undefined) => void
 }
 
 export interface SessionIpc {
@@ -141,7 +153,7 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     sessions.set(session.id, session)
     if (scope !== undefined) owners.set(scopeKey(scope), { sessionId: session.id, scope })
     // Os eventos vão para a janela que pediu a sessão, não para todas: é ela quem a está mostrando.
-    forwardEvents(session, sender, pulses, scope, options.conversations)
+    forwardEvents(session, sender, pulses, scope, options.conversations, options.onTurnEnd)
 
     return snapshot(session, scope, activityOf(session.id))
   }
@@ -373,6 +385,7 @@ function forwardEvents(
   pulses: Map<string, Pulse>,
   scope: SessionScope | undefined,
   conversations: ConversationIndex,
+  onTurnEnd: (scope: SessionScope | undefined) => void,
 ): void {
   const emit = (channel: string, payload: unknown): void => {
     // A janela pode morrer com um turno em andamento; mandar para um `WebContents` destruído joga.
@@ -434,6 +447,15 @@ function forwardEvents(
     }
 
     emit(IPC_EVENT.state, { sessionId: session.id, state })
+
+    // O fim do turno é a única transição que significa "a vez voltou para você" (`state.ts`), e é o
+    // gatilho de releitura do board: o card que a skill acabou de criar (ou de mover) aparece sem
+    // alt-tab. Permissão e pergunta **não** contam — ali o turno continua em curso, e reler a cada
+    // prompt de `gh` seria uma leitura do GitHub por clique de permissão.
+    //
+    // Vale para **qualquer** sessão, e não só para a da triagem: um turno de cartão que moveu o
+    // próprio card acabou de mudar o board do mesmo jeito.
+    if (state.kind === 'awaiting_input') onTurnEnd(scope)
 
     publish()
   })

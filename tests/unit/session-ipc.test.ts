@@ -31,8 +31,15 @@ import { ConversationIndex, DangerIndex, SessionHost } from '../../src/core'
 import type { QueryFn } from '../../src/core/session/SessionHost'
 import { oneStartPerScope, registerSessionIpc } from '../../src/main/ipc'
 import { IPC_EVENT, IPC_INVOKE } from '../../src/shared/ipc'
-import type { SessionScope, SessionSnapshot, StartResult } from '../../src/shared/ipc'
-import { createFakeQuery } from '../fakes/fakeQuery'
+import type {
+  SessionScope,
+  SessionSnapshot,
+  SessionStateEvent,
+  StartResult,
+} from '../../src/shared/ipc'
+import type { QuestionAnswers, SessionState } from '../../src/shared/session'
+import { assistantMessage, createFakeQuery, successResult } from '../fakes/fakeQuery'
+import type { FakeScript } from '../fakes/fakeQuery'
 
 const CARTAO = 'PVTI_cartao'
 
@@ -91,6 +98,12 @@ interface Bancada {
   semFlag?: boolean
   inspect?: (sessionId: string) => Promise<{ cwd: string } | null>
   resolveCwd?: (scope: SessionScope | undefined) => Promise<string | null>
+  /**
+   * O roteiro do turno, como o fake o receberia. É o que permite parar a sessão em cada um dos
+   * estados de espera — a única forma de provar *quais* transições relêem o board sem inventar um
+   * `SessionHandle` de mentira no lugar do de verdade.
+   */
+  roteiro?: FakeScript
 }
 
 function montar(opcoes: Bancada = {}) {
@@ -114,7 +127,7 @@ function montar(opcoes: Bancada = {}) {
   const restaurar = vi.spyOn(conversations, 'restore')
   const esquecer = vi.spyOn(conversations, 'forget')
 
-  const fake = createFakeQuery()
+  const fake = createFakeQuery(opcoes.roteiro)
   const query: QueryFn = opcoes.semFlag
     ? ({ prompt, options }) =>
         fake.query({ prompt, options: { ...options, allowDangerouslySkipPermissions: undefined } })
@@ -123,14 +136,30 @@ function montar(opcoes: Bancada = {}) {
   const criadas = vi.spyOn(host, 'start')
   const resolveCwd = vi.fn(opcoes.resolveCwd ?? (() => Promise.resolve(PASTA_DO_REPO)))
 
-  const ipc = registerSessionIpc(host, { resolveCwd, conversations, danger })
+  /**
+   * A ponta da releitura, sempre espiã: **quando** ela é chamada é o que o CA-3 afirma. Metade do
+   * requisito é sobre chamada que não acontece — permissão e pergunta não relêem —, e isso só se vê
+   * com o `vi.fn` ligado em todos os casos.
+   */
+  const onTurnEnd = vi.fn()
+
+  const ipc = registerSessionIpc(host, { resolveCwd, conversations, danger, onTurnEnd })
 
   const recebidos: string[] = []
+  const estados: SessionState[] = []
   const esperas = new Map<string, () => void>()
+  /** Quem espera um estado. Um conjunto, e não um mapa por `kind`: o mesmo estado se repete. */
+  const porEstado = new Set<() => void>()
   const sender = {
     isDestroyed: () => false,
-    send(channel: string): void {
+    send(channel: string, payload: unknown): void {
       recebidos.push(channel)
+
+      if (channel === IPC_EVENT.state) {
+        estados.push((payload as SessionStateEvent).state)
+        for (const acordar of [...porEstado]) acordar()
+      }
+
       esperas.get(channel)?.()
     },
   } as unknown as WebContents
@@ -151,10 +180,35 @@ function montar(opcoes: Bancada = {}) {
     restaurar,
     esquecer,
     ipc,
+    onTurnEnd,
+    estados,
     start: (scope?: SessionScope) => invoke<StartResult>(IPC_INVOKE.start, { scope }),
     close: (sessionId: string) => invoke<void>(IPC_INVOKE.close, { sessionId }),
+    enviar: (sessionId: string, text: string) =>
+      invoke<void>(IPC_INVOKE.send, { sessionId, text }),
+    responder: (sessionId: string, requestId: string) =>
+      invoke<void>(IPC_INVOKE.respondPermission, { sessionId, requestId, decision: 'allow' }),
+    responderPergunta: (sessionId: string, requestId: string, answers: QuestionAnswers) =>
+      invoke<void>(IPC_INVOKE.answerQuestion, { sessionId, requestId, answers }),
     marcar: (scope: SessionScope, dangerous: boolean) =>
       invoke<void>(IPC_INVOKE.setDangerous, { scope, dangerous }),
+    /**
+     * Espera a sessão passar por aquele estado. Sem timer, como o `ate`: quem acorda o teste é o
+     * próprio canal, e é o que faz os três pontos de espera do turno serem observáveis sem relógio.
+     */
+    ateEstado: (kind: SessionState['kind']): Promise<void> =>
+      new Promise<void>((resolve) => {
+        const tentar = (): void => {
+          if (!estados.some((estado) => estado.kind === kind)) return
+
+          porEstado.delete(tentar)
+          resolve()
+        }
+
+        porEstado.add(tentar)
+        // Uma vez agora: o estado esperado pode já ter passado antes de alguém pedi-lo.
+        tentar()
+      }),
     /** Espera um evento atravessar a ponte. Sem timer: quem acorda o teste é o próprio canal. */
     ate: (channel: string): Promise<void> =>
       recebidos.includes(channel)
@@ -477,5 +531,85 @@ describe('registerSessionIpc — o escopo da triagem', () => {
 
     expect(await bancada.start(TRIAGEM)).toEqual({ started: false, reason: 'unknown-folder' })
     expect(bancada.criadas).not.toHaveBeenCalled()
+  })
+})
+
+describe('registerSessionIpc — a releitura no fim do turno', () => {
+  /** A pergunta do roteiro, no formato em que o `AskUserQuestion` a manda. */
+  const PERGUNTA = 'Qual a severidade?'
+
+  it('só `awaiting_input` relê o board: trabalho, permissão e pergunta não contam', async () => {
+    const bancada = montar({
+      roteiro: {
+        turn: async (texto, tools) => {
+          await tools.askPermission({ toolName: 'Bash', toolUseID: 'toolu_01' })
+          await tools.askQuestion({
+            toolUseID: 'toolu_02',
+            questions: [
+              {
+                question: PERGUNTA,
+                header: 'Severidade',
+                multiSelect: false,
+                options: [
+                  { label: 'S2', description: 'atrapalha' },
+                  { label: 'S3', description: 'incomoda' },
+                ],
+              },
+            ],
+          })
+
+          return [assistantMessage(`eco: ${texto}`), successResult()]
+        },
+      },
+    })
+
+    const sessao = sessaoDe(await bancada.start(ESCOPO))
+
+    // O `init` põe a sessão em `working`: o turno **começando** não é o turno acabando, e reler
+    // aqui seria uma leitura do GitHub por abertura de cartão.
+    await bancada.ateEstado('working')
+    expect(bancada.onTurnEnd).not.toHaveBeenCalled()
+
+    await bancada.enviar(sessao.id, '/gm-triage')
+
+    // As duas esperas do meio do turno. É aqui que uma régua de "parou de trabalhar" em vez de
+    // "devolveu a vez" custaria caro: a `/gm-triage` roda `gh` dezenas de vezes, e cada prompt de
+    // permissão viraria uma leitura do board.
+    await bancada.ateEstado('awaiting_decision')
+    expect(bancada.onTurnEnd).not.toHaveBeenCalled()
+    await bancada.responder(sessao.id, 'toolu_01')
+
+    await bancada.ateEstado('awaiting_answer')
+    expect(bancada.onTurnEnd).not.toHaveBeenCalled()
+    await bancada.responderPergunta(sessao.id, 'toolu_02', { [PERGUNTA]: 'S2' })
+
+    await bancada.ateEstado('awaiting_input')
+
+    // A vez voltou. **Uma** releitura, e com o escopo daquela sessão — é ele que o main traduz na
+    // aba a reler.
+    expect(bancada.onTurnEnd.mock.calls).toEqual([[ESCOPO]])
+
+    // E a prova de que os três estados que não relêem de fato aconteceram: sem esta linha, um
+    // roteiro que nunca chegasse a parar deixaria as asserções de cima verdes por omissão.
+    expect(bancada.estados.map((estado) => estado.kind)).toEqual([
+      'working',
+      'awaiting_decision',
+      'working',
+      'awaiting_answer',
+      'working',
+      'awaiting_input',
+    ])
+  })
+
+  it('a releitura vale para a triagem também, com a aba dela no lugar do cartão', async () => {
+    const bancada = montar()
+    const sessao = sessaoDe(await bancada.start(TRIAGEM))
+
+    await bancada.enviar(sessao.id, '/gm-triage')
+    await bancada.ateEstado('awaiting_input')
+
+    // O escopo atravessa inteiro, e não um `itemId` que a triagem não tem: quem sabe traduzir
+    // `boardKey` em aba é o main, e ele precisa do discriminante para escolher o ramo.
+    expect(bancada.onTurnEnd.mock.calls).toEqual([[TRIAGEM]])
   })
 })

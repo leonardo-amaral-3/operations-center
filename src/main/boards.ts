@@ -48,6 +48,17 @@ export interface BoardsIpc {
    * régua do `normalizeRepository` do `RepoIndex`. Devolve o `repository` como o board o escreveu.
    */
   repoOfBoard(key: string): string | null
+  /** De qual aba é aquele cartão, ou `null`. É o que liga um fim de turno à aba a reler. */
+  tabKeyOf(itemId: string): string | null
+  /**
+   * Relê aquela aba **agora**, furando o throttle.
+   *
+   * É o que faz o card recém-criado pela `/gm-triage` aparecer sem alt-tab: o fim do turno é uma
+   * notícia de que o GitHub mudou, e não mais um gatilho de rotina como o foco da janela. As outras
+   * duas guardas do `read` **continuam valendo** — leitura em voo e coordenada ausente não são
+   * economia de trabalho, são ausência de trabalho a fazer.
+   */
+  readNow(key: string): void
 }
 
 /**
@@ -167,7 +178,15 @@ export function registerBoardsIpc(deps: BoardsIpcDeps): BoardsIpc {
     for (const tab of tabs ?? []) read(tab.key)
   }
 
-  function read(key: string): void {
+  /**
+   * `force` pula **só a guarda de throttle**, e essa fronteira é a regra.
+   *
+   * O throttle existe para não repetir trabalho à toa quando o gatilho é de rotina; um fim de turno
+   * não é rotina, é a notícia de que alguém acabou de mexer no board. As outras duas guardas não
+   * são economia — com leitura em voo não há nada a mais a saber, e sem coordenada não há a quem
+   * perguntar —, então furá-las não adiantaria o retrato em nada.
+   */
+  function read(key: string, { force = false }: { force?: boolean } = {}): void {
     // Gatilho que chega com leitura em voo é **descartado, não enfileirado**: a leitura em voo
     // começou há no máximo o throttle e vai publicar dado fresco de qualquer forma. As duas guardas
     // são por aba porque uma leitura presa numa aba não pode impedir a releitura da outra — trocar
@@ -175,7 +194,7 @@ export function registerBoardsIpc(deps: BoardsIpcDeps): BoardsIpc {
     if (reading.has(key)) return
 
     const last = lastReadAt.get(key) ?? 0
-    if (last !== 0 && Date.now() - last < BOARD_REREAD_THROTTLE_MS) return
+    if (!force && last !== 0 && Date.now() - last < BOARD_REREAD_THROTTLE_MS) return
 
     const coordinate = coordinates.get(key)
     if (coordinate === undefined) return
@@ -273,6 +292,20 @@ export function registerBoardsIpc(deps: BoardsIpcDeps): BoardsIpc {
       // `RepoIndex`, que normaliza de novo por conta própria, e a caixa canônica do GitHub é a que
       // aparece se algum dia isto for parar numa tela.
       return unanime ? primeiro.repository : null
+    },
+    tabKeyOf(itemId: string): string | null {
+      // **Todas** as abas, como o `cardById` e pela mesma razão: entre o começo do turno e o fim
+      // dele o humano pode ter trocado de aba, e o cartão cuja sessão acabou de devolver a vez
+      // continua sendo o mesmo cartão — na aba dele, que não é necessariamente a que está na tela.
+      for (const tab of tabs ?? []) {
+        const cards = tab.board?.cards ?? []
+        if (cards.some((card) => card.itemId === itemId)) return tab.key
+      }
+
+      return null
+    },
+    readNow(key: string): void {
+      read(key, { force: true })
     },
   }
 }
