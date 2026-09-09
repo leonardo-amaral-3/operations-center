@@ -187,6 +187,23 @@ export function KanbanScreen(): JSX.Element {
     void window.oc.activateBoard({ key })
   }, [])
 
+  const startTriage = useCallback(() => {
+    // Inalcançável sem aba ativa, como o `toggle`: a guarda existe para dizer isso ao tipo em vez de
+    // a `key` virar `string | null` no vocabulário do reducer.
+    if (activeKey === null) return
+    dispatch({ type: 'abrir-triagem', key: activeKey })
+  }, [activeKey])
+
+  const endTriage = useCallback(() => {
+    dispatch({ type: 'fechar-triagem' })
+  }, [])
+
+  const toggleTriageDangerous = useCallback((boardKey: string, next: boolean) => {
+    // Sem estado otimista, como o do cartão: o crachá segue o retrato publicado. A marca é da aba e
+    // morre com o app — quem a guarda em memória é o main (CA-4).
+    void window.oc.setDangerous({ scope: { kind: 'triage', boardKey }, dangerous: next })
+  }, [])
+
   const toggleDangerous = useCallback((itemId: string, dangerous: boolean) => {
     // Sem estado otimista: o crachá segue o retrato publicado. É o que faz uma recusa do SDK
     // simplesmente não mover a tela, em vez de movê-la e ter de voltar atrás. E sem guarda de
@@ -202,6 +219,12 @@ export function KanbanScreen(): JSX.Element {
   // Os cartões abertos **desta** aba. As outras continuam guardando os delas em `expanded`, fora de
   // cena — desmontadas, não fechadas.
   const expandedItemIds = (activeKey === null ? undefined : expanded[activeKey]) ?? VAZIO
+  // Num `const` local, e não lido de `kanban` dentro do `map`: é o que faz o TypeScript carregar o
+  // `!== null` para dentro do callback e dispensa a asserção não-nula na `key` do escopo.
+  //
+  // `!== null` já implica `=== activeKey`: o reducer zera na troca de aba, então uma triagem aberta
+  // é sempre a da aba que está na tela.
+  const triagem = kanban.triagem
 
   return (
     <div className="flex h-full flex-col bg-background font-base text-foreground">
@@ -244,6 +267,21 @@ export function KanbanScreen(): JSX.Element {
               sessions={sessions}
               conversations={conversations}
               dangerous={dangerous.itemIds}
+              // A coluna não decide se há triagem: o core diz **qual** coluna a oferece
+              // (`column.triage`) e o estado diz se ela está aberta. Aqui os dois se encontram.
+              triage={
+                column.triage && triagem !== null
+                  ? {
+                      boardKey: triagem,
+                      dangerous: dangerous.boardKeys.includes(triagem),
+                      onEnd: endTriage,
+                      onToggleDangerous: (next: boolean) => {
+                        toggleTriageDangerous(triagem, next)
+                      },
+                    }
+                  : undefined
+              }
+              onStartTriage={column.triage && triagem === null ? startTriage : undefined}
               onToggle={toggle}
               onSession={registerSession}
               onToggleDangerous={toggleDangerous}
