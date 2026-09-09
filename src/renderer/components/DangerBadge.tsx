@@ -12,7 +12,7 @@ import { Badge } from '../ui/badge'
  *
  * **Vermelho, ao contrário do `ConversationBadge`**, e o argumento é o oposto do dele: uma conversa
  * dormente não quer nada de você e por isso é neutra; um chat sem portão é a coisa que se quer ver
- * antes de tudo. `bg-danger` é o token que o `StateBadge` já usa para `failed` e o `CardChat` para
+ * antes de tudo. `bg-danger` é o token que o `StateBadge` já usa para `failed` e o `Chat` para
  * "Encerrar sessão" — nos três casos ele marca a mesma família.
  *
  * A casca — canto, borda de 2px, sombra — vem da primitiva `Badge`; nada dela é redesenhado aqui.
@@ -23,7 +23,7 @@ export function DangerBadge(): JSX.Element {
       variant="neutral"
       data-testid="danger-badge"
       title="Este cartão roda sem pedir permissão: as ferramentas da sessão executam sozinhas até você desligar o modo"
-      className="bg-danger"
+      className="bg-danger text-danger-foreground"
     >
       Dangerously
     </Badge>

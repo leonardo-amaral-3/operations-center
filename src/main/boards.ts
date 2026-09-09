@@ -33,6 +33,32 @@ export interface BoardsIpc {
    * registro já mantém — não relê board nenhum, porque um clique não pode depender da rede.
    */
   cardById(itemId: string): BoardCard | null
+  /**
+   * O repo daquela aba, ou `null` quando ela não tem **um** repo.
+   *
+   * Unanimidade, e não moda: contagem de cards não tem relação nenhuma com onde o `CLAUDE.md`
+   * daquele board mora, e um board que ganhasse dez cards de outro repo mudaria a pasta da triagem
+   * sozinho e em silêncio. Sem unanimidade a resposta é "não sei", que o painel já sabe tratar
+   * pedindo a pasta.
+   *
+   * **Todos** os cartões, inclusive os fechados: a coluna ✅ Produção é do mesmo board e do mesmo
+   * repo, e filtrar por estado faria o repo da aba mudar conforme os cards fossem fechando.
+   *
+   * Comparação case-insensitive porque o GitHub não distingue caixa em `owner/name` — a mesma
+   * régua do `normalizeRepository` do `RepoIndex`. Devolve o `repository` como o board o escreveu.
+   */
+  repoOfBoard(key: string): string | null
+  /** De qual aba é aquele cartão, ou `null`. É o que liga um fim de turno à aba a reler. */
+  tabKeyOf(itemId: string): string | null
+  /**
+   * Relê aquela aba **agora**, furando o throttle.
+   *
+   * É o que faz o card recém-criado pela `/gm-triage` aparecer sem alt-tab: o fim do turno é uma
+   * notícia de que o GitHub mudou, e não mais um gatilho de rotina como o foco da janela. As outras
+   * duas guardas do `read` **continuam valendo** — leitura em voo e coordenada ausente não são
+   * economia de trabalho, são ausência de trabalho a fazer.
+   */
+  readNow(key: string): void
 }
 
 /**
@@ -152,7 +178,15 @@ export function registerBoardsIpc(deps: BoardsIpcDeps): BoardsIpc {
     for (const tab of tabs ?? []) read(tab.key)
   }
 
-  function read(key: string): void {
+  /**
+   * `force` pula **só a guarda de throttle**, e essa fronteira é a regra.
+   *
+   * O throttle existe para não repetir trabalho à toa quando o gatilho é de rotina; um fim de turno
+   * não é rotina, é a notícia de que alguém acabou de mexer no board. As outras duas guardas não
+   * são economia — com leitura em voo não há nada a mais a saber, e sem coordenada não há a quem
+   * perguntar —, então furá-las não adiantaria o retrato em nada.
+   */
+  function read(key: string, { force = false }: { force?: boolean } = {}): void {
     // Gatilho que chega com leitura em voo é **descartado, não enfileirado**: a leitura em voo
     // começou há no máximo o throttle e vai publicar dado fresco de qualquer forma. As duas guardas
     // são por aba porque uma leitura presa numa aba não pode impedir a releitura da outra — trocar
@@ -160,7 +194,7 @@ export function registerBoardsIpc(deps: BoardsIpcDeps): BoardsIpc {
     if (reading.has(key)) return
 
     const last = lastReadAt.get(key) ?? 0
-    if (last !== 0 && Date.now() - last < BOARD_REREAD_THROTTLE_MS) return
+    if (!force && last !== 0 && Date.now() - last < BOARD_REREAD_THROTTLE_MS) return
 
     const coordinate = coordinates.get(key)
     if (coordinate === undefined) return
@@ -243,6 +277,36 @@ export function registerBoardsIpc(deps: BoardsIpcDeps): BoardsIpc {
 
       return null
     },
+    repoOfBoard(key: string): string | null {
+      // Antes da primeira leitura daquela aba, `board` é `null` e a resposta é "não sei" — o mesmo
+      // "não sei" da aba ambígua, e de propósito: quem pergunta é o painel, e o que ele faz com a
+      // resposta é o mesmo nos dois casos. Aba que não está no retrato cai aqui também.
+      const cards = tabs?.find((tab) => tab.key === key)?.board?.cards ?? []
+      const [primeiro] = cards
+      if (primeiro === undefined) return null
+
+      const chave = normalizeRepository(primeiro.repository)
+      const unanime = cards.every((card) => normalizeRepository(card.repository) === chave)
+
+      // O `repository` como o **board** o escreveu, e não a chave normalizada: quem recebe isto é o
+      // `RepoIndex`, que normaliza de novo por conta própria, e a caixa canônica do GitHub é a que
+      // aparece se algum dia isto for parar numa tela.
+      return unanime ? primeiro.repository : null
+    },
+    tabKeyOf(itemId: string): string | null {
+      // **Todas** as abas, como o `cardById` e pela mesma razão: entre o começo do turno e o fim
+      // dele o humano pode ter trocado de aba, e o cartão cuja sessão acabou de devolver a vez
+      // continua sendo o mesmo cartão — na aba dele, que não é necessariamente a que está na tela.
+      for (const tab of tabs ?? []) {
+        const cards = tab.board?.cards ?? []
+        if (cards.some((card) => card.itemId === itemId)) return tab.key
+      }
+
+      return null
+    },
+    readNow(key: string): void {
+      read(key, { force: true })
+    },
   }
 }
 
@@ -257,6 +321,17 @@ function motivoDosDonos(failed: Discovery['failed']): string | null {
   if (failed.length === 0) return null
 
   return failed.map((owner) => `${owner.owner}: ${owner.reason}`).join(' · ')
+}
+
+/**
+ * A régua de igualdade entre repos, a mesma do `RepoIndex`: o GitHub não distingue caixa em
+ * `owner/name`, e o board devolve o `nameWithOwner` na caixa canônica.
+ *
+ * Repetida e não importada porque a do índice é detalhe interno dele — exportá-la faria uma função
+ * de duas linhas virar contrato do core só para poupar duas linhas aqui.
+ */
+function normalizeRepository(repository: string): string {
+  return repository.trim().toLowerCase()
 }
 
 function motivo(error: unknown): string {

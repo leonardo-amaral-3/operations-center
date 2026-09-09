@@ -2,11 +2,13 @@ import { useCallback, useEffect, useReducer, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardTab } from '../../shared/board'
+import type { DangerousSnapshot } from '../../shared/ipc'
 import type { SessionState } from '../../shared/session'
 import { BoardTabs } from '../components/BoardTabs'
-import type { CardSession, CardSessions } from '../components/CardChat'
+import type { CardSession, CardSessions } from '../components/Chat'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
+import { ThemePicker } from '../components/ThemePicker'
 import { Badge } from '../ui/badge'
 import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
 
@@ -18,6 +20,15 @@ import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
  */
 const VAZIO: readonly string[] = []
 
+/**
+ * O retrato antes de o disco responder — as duas listas vazias, pelo mesmo motivo de sempre: um
+ * cartão volta **com** portão até o contrário ser sabido, nunca o inverso.
+ *
+ * Constante de módulo pela mesma razão do `VAZIO`, e por uma a mais: é o valor inicial de um
+ * `useState`, e um literal ali seria um objeto novo montado a cada render para ser descartado.
+ */
+const SEM_MARCA: DangerousSnapshot = { itemIds: [], boardKeys: [] }
+
 type SessionsAction =
   | { type: 'card'; itemId: string; session: CardSession }
   | { type: 'state'; sessionId: string; state: SessionState }
@@ -26,13 +37,13 @@ type SessionsAction =
  * O registro de sessões por cartão.
  *
  * Ele existe para o cartão **fechado**: enquanto o chat está na tela, quem sabe da sessão é o
- * próprio `CardChat`. Fechado o cartão, a sessão continua viva (CA-6) e este registro é a única
+ * próprio `Chat`. Fechado o cartão, a sessão continua viva (CA-6) e este registro é a única
  * coisa que ainda a enxerga.
  */
 function reduceSessions(sessions: CardSessions, action: SessionsAction): CardSessions {
   if (action.type === 'card') {
     const known = sessions[action.itemId]
-    // Devolver o **mesmo** registro quando nada mudou não é micro-otimização: o `CardChat` relata a
+    // Devolver o **mesmo** registro quando nada mudou não é micro-otimização: o `Chat` relata a
     // sessão de dentro de um efeito, e um registro novo a cada relato redesenharia o board em laço
     // sem a sessão ter mexido um dedo.
     if (known && known.id === action.session.id && known.state === action.session.state) {
@@ -43,7 +54,7 @@ function reduceSessions(sessions: CardSessions, action: SessionsAction): CardSes
   }
 
   // O evento vem por `sessionId` e o registro é por cartão; quem casa os dois é o relato do
-  // `CardChat`, feito assim que o retrato da sessão voltou. Evento de sessão que este kanban não
+  // `Chat`, feito assim que o retrato da sessão voltou. Evento de sessão que este kanban não
   // conhece simplesmente não tem onde entrar.
   const owner = Object.entries(sessions).find(([, session]) => session.id === action.sessionId)
   if (!owner) return sessions
@@ -76,10 +87,12 @@ export function KanbanScreen(): JSX.Element {
    */
   const [conversations, setConversations] = useState<readonly string[]>([])
   /**
-   * Os cartões que rodam sem o portão. Vazio até a leitura do disco voltar, e é o lado seguro: um
-   * cartão volta **com** portão até o contrário ser sabido, nunca o inverso.
+   * O que roda sem o portão: os cartões marcados em disco e as triagens marcadas nesta execução.
+   *
+   * O retrato **inteiro**, e não só os `itemIds`, porque as duas listas chegam no mesmo evento e
+   * separá-las aqui obrigaria dois estados a serem atualizados em par a cada publicação.
    */
-  const [dangerous, setDangerous] = useState<readonly string[]>([])
+  const [dangerous, setDangerous] = useState<DangerousSnapshot>(SEM_MARCA)
 
   useEffect(() => {
     // Assinar vem **antes** de pedir, como no `ChatScreen`: uma leitura que termine entre o pedido
@@ -130,11 +143,11 @@ export function KanbanScreen(): JSX.Element {
 
     const unsubscribe = window.oc.onDangerous((next) => {
       pushed = true
-      setDangerous(next.itemIds)
+      setDangerous(next)
     })
 
     void window.oc.readDangerous().then((next) => {
-      if (!pushed) setDangerous(next.itemIds)
+      if (!pushed) setDangerous(next)
     })
 
     return unsubscribe
@@ -175,11 +188,28 @@ export function KanbanScreen(): JSX.Element {
     void window.oc.activateBoard({ key })
   }, [])
 
+  const startTriage = useCallback(() => {
+    // Inalcançável sem aba ativa, como o `toggle`: a guarda existe para dizer isso ao tipo em vez de
+    // a `key` virar `string | null` no vocabulário do reducer.
+    if (activeKey === null) return
+    dispatch({ type: 'abrir-triagem', key: activeKey })
+  }, [activeKey])
+
+  const endTriage = useCallback(() => {
+    dispatch({ type: 'fechar-triagem' })
+  }, [])
+
+  const toggleTriageDangerous = useCallback((boardKey: string, next: boolean) => {
+    // Sem estado otimista, como o do cartão: o crachá segue o retrato publicado. A marca é da aba e
+    // morre com o app — quem a guarda em memória é o main (CA-4).
+    void window.oc.setDangerous({ scope: { kind: 'triage', boardKey }, dangerous: next })
+  }, [])
+
   const toggleDangerous = useCallback((itemId: string, dangerous: boolean) => {
     // Sem estado otimista: o crachá segue o retrato publicado. É o que faz uma recusa do SDK
     // simplesmente não mover a tela, em vez de movê-la e ter de voltar atrás. E sem guarda de
     // clique duplo aqui: quem a tem é o `#switching` do core, num lugar só.
-    void window.oc.setDangerous({ itemId, dangerous })
+    void window.oc.setDangerous({ scope: { kind: 'card', itemId }, dangerous })
   }, [])
 
   // A aba ativa sai do `activeKey`, que é do main: a tela não escolhe aba, só desenha a escolhida.
@@ -190,6 +220,12 @@ export function KanbanScreen(): JSX.Element {
   // Os cartões abertos **desta** aba. As outras continuam guardando os delas em `expanded`, fora de
   // cena — desmontadas, não fechadas.
   const expandedItemIds = (activeKey === null ? undefined : expanded[activeKey]) ?? VAZIO
+  // Num `const` local, e não lido de `kanban` dentro do `map`: é o que faz o TypeScript carregar o
+  // `!== null` para dentro do callback e dispensa a asserção não-nula na `key` do escopo.
+  //
+  // `!== null` já implica `=== activeKey`: o reducer zera na troca de aba, então uma triagem aberta
+  // é sempre a da aba que está na tela.
+  const triagem = kanban.triagem
 
   return (
     <div className="flex h-full flex-col bg-background font-base text-foreground">
@@ -200,6 +236,10 @@ export function KanbanScreen(): JSX.Element {
             barra nasce com o primeiro retrato, e não antes. */}
         <BoardTabs boards={boards ?? []} activeKey={activeKey} onActivate={activate} />
         <div className="flex shrink-0 items-center gap-2">
+          {/* Primeiro do agrupamento da direita: o carimbo de frescor continua no extremo, onde
+              está desde o #12, e o seletor entra antes dele em vez de empurrá-lo. Ele não recebe
+              nem devolve nada — cuida da própria combinação, e a tela não ganha estado por isso. */}
+          <ThemePicker />
           {/* Um dono que não respondeu não apaga os boards dos que responderam — e também não some
               da tela. Fica ao lado do carimbo de frescor porque é a mesma frase: o que está aí é
               verdade, só que incompleta. O motivo inteiro vai no `title`, como no carimbo. */}
@@ -207,7 +247,7 @@ export function KanbanScreen(): JSX.Element {
             <Badge
               data-testid="discovery-warning"
               variant="neutral"
-              className="bg-warning"
+              className="bg-warning text-warning-foreground"
               title={discoveryError}
             >
               descoberta parcial
@@ -231,7 +271,22 @@ export function KanbanScreen(): JSX.Element {
               expandedItemIds={expandedItemIds}
               sessions={sessions}
               conversations={conversations}
-              dangerous={dangerous}
+              dangerous={dangerous.itemIds}
+              // A coluna não decide se há triagem: o core diz **qual** coluna a oferece
+              // (`column.triage`) e o estado diz se ela está aberta. Aqui os dois se encontram.
+              triage={
+                column.triage && triagem !== null
+                  ? {
+                      boardKey: triagem,
+                      dangerous: dangerous.boardKeys.includes(triagem),
+                      onEnd: endTriage,
+                      onToggleDangerous: (next: boolean) => {
+                        toggleTriageDangerous(triagem, next)
+                      },
+                    }
+                  : undefined
+              }
+              onStartTriage={column.triage && triagem === null ? startTriage : undefined}
               onToggle={toggle}
               onSession={registerSession}
               onToggleDangerous={toggleDangerous}

@@ -211,6 +211,11 @@ test.beforeAll(async () => {
       OC_BOARD_FIXTURE: boardFixtureCopy,
       OC_BOARDS_FIXTURE: boardsFixtureCopy,
       OC_CARD_FIXTURE: cardFixtureCopy,
+      // Descartável, e **não** o `userData` real: sem isto o app lê o `preferences.json` da máquina
+      // de quem roda e `pickActive` abre a aba lembrada de uso de verdade — enquanto tudo o que este
+      // arquivo espera sai do `FIRST_BOARD`. O vermelho vem como "Expected: 6, Received: 2", que
+      // acusa o board errado sem dizer o nome dele.
+      OC_STATE_DIR: scenario,
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell de quem roda abriria a tela
       // errada e o teste falharia por um motivo que não tem nada a ver com o conteúdo do card.
       OC_SCREEN: 'kanban',

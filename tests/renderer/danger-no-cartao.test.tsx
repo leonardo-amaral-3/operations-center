@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { BoardCardView } from '../../src/renderer/components/BoardCardView'
-import type { CardSession } from '../../src/renderer/components/CardChat'
+import type { CardSession } from '../../src/renderer/components/Chat'
 import type { BoardCard } from '../../src/shared/board'
 
 /**
@@ -17,8 +17,8 @@ import type { BoardCard } from '../../src/shared/board'
  * clique a dar nem `useEffect` a rodar, então o critério do botão é *"o rótulo e o `data-dangerous`
  * são os da prop"*, nunca *"clicar chama o callback"*. Quem prova o clique é o smoke.
  *
- * O corolário é o que faz o cartão **aberto** caber neste aparato: `CardChat` e `CardContent` só
- * tocam o `window.oc` de dentro de efeitos, e SSR não roda efeito. Daí o `CardChat` render com o
+ * O corolário é o que faz o cartão **aberto** caber neste aparato: `Chat` e `CardContent` só
+ * tocam o `window.oc` de dentro de efeitos, e SSR não roda efeito. Daí o `Chat` render com o
  * `INITIAL_VIEW` — sem `init`, e por isso sem a linha do `cwd`, que é onde o `data-permission-mode`
  * mora. Aquela âncora se prova no smoke, que é o único lugar em que existe um `init` de verdade.
  */
@@ -83,7 +83,7 @@ describe('CA-2 — o crachá do modo é do cartão, e não da sessão', () => {
 
   it('aparece **também com o cartão aberto**', () => {
     // A primeira das duas diferenças em relação aos vizinhos do rodapé: eles se calam ao expandir
-    // porque o `CardChat` conta a mesma história melhor; este não tem substituto lá dentro.
+    // porque o `Chat` conta a mesma história melhor; este não tem substituto lá dentro.
     expect(cartao({ expanded: true, dangerous: true })).toContain('data-testid="danger-badge"')
   })
 
@@ -92,7 +92,7 @@ describe('CA-2 — o crachá do modo é do cartão, e não da sessão', () => {
     // pode ter ido embora junto com a reindentação.
     //
     // O recorte é obrigatório e não zelo: com o cartão aberto **existe** um `state-badge` na saída
-    // — o do próprio `CardChat`, que desenha o estado da sessão dele. Quem se cala é o crachá do
+    // — o do próprio `Chat`, que desenha o estado da sessão dele. Quem se cala é o crachá do
     // **rodapé do cartão**, e ele é tudo o que vem antes do chat.
     const html = cartao({ expanded: true, session: VIVA, dangerous: true })
     const rodape = html.slice(0, html.indexOf('data-testid="card-chat"'))

@@ -50,8 +50,8 @@ function board(titulo: string, posicoes: Readonly<Record<string, string>> = POSI
   return {
     title: titulo,
     columns: [
-      { id: OPT_TRI, name: '📥 Triagem', conversable: true },
-      { id: OPT_IMP, name: '🔨 Implementação', conversable: true },
+      { id: OPT_TRI, name: '📥 Triagem', conversable: true, triage: true },
+      { id: OPT_IMP, name: '🔨 Implementação', conversable: true, triage: false },
     ],
     cards: Object.entries(posicoes).map(([itemId, columnId]) => card(itemId, columnId)),
   }
@@ -272,5 +272,75 @@ describe('reduceKanban', () => {
     // O retrato de rotina chega a cada foco da janela. Um objeto novo a cada um deles redesenharia
     // toda `Column` sem nada ter mudado.
     expect(depois.expanded).toBe(antes.expanded)
+  })
+})
+
+/**
+ * A triagem aberta (#27), e a diferença dela para `expanded` em uma frase: **ela não atravessa a
+ * troca de aba.** Cartão aberto sobrevive à releitura e à ida e volta entre abas; triagem, não —
+ * trocar de aba a encerra, porque o painel desmontado leva a sessão junto (`closeOnUnmount`).
+ */
+describe('reduceKanban — a triagem da aba', () => {
+  it('abre gravando a `key`, e fechar zera', () => {
+    const aberta = apply(
+      { type: 'snapshot', snapshot: retrato(A.key) },
+      { type: 'abrir-triagem', key: A.key },
+    )
+
+    expect(aberta.triagem).toBe(A.key)
+    expect(reduceKanban(aberta, { type: 'fechar-triagem' }).triagem).toBeNull()
+    // A `key`, e não um booleano: é ela que compõe o escopo da sessão do painel.
+    expect(INITIAL_KANBAN.triagem).toBeNull()
+  })
+
+  it('a releitura da **mesma** aba preserva a triagem', () => {
+    const aberta = apply(
+      { type: 'snapshot', snapshot: retrato(A.key) },
+      { type: 'abrir-triagem', key: A.key },
+    )
+    // O retrato de rotina chega a cada foco da janela. Se ele derrubasse a triagem, a conversa
+    // morreria sozinha ao alt-tabbar — que é exatamente o evento que este app existe para acompanhar.
+    const relida = reduceKanban(aberta, { type: 'snapshot', snapshot: retrato(A.key) })
+
+    expect(relida.triagem).toBe(A.key)
+  })
+
+  it('trocar de aba zera a triagem — e é isso que impede o painel de renascer', () => {
+    const aberta = apply(
+      { type: 'snapshot', snapshot: retrato(A.key) },
+      { type: 'abrir-triagem', key: A.key },
+    )
+    const naB = reduceKanban(aberta, { type: 'snapshot', snapshot: retrato(B.key) })
+
+    expect(naB.triagem).toBeNull()
+
+    // E voltar para a A **não** a traz de volta: sem esta linha, o painel renasceria com uma sessão
+    // nova e a conversa anterior perdida — o pior dos dois mundos.
+    expect(reduceKanban(naB, { type: 'snapshot', snapshot: retrato(A.key) }).triagem).toBeNull()
+
+    // O contraste com `expanded`, na mesma ida e volta: o cartão aberto atravessa, a triagem não.
+    const comCartao = apply(
+      { type: 'snapshot', snapshot: retrato(A.key) },
+      { type: 'toggle', key: A.key, itemId: 'PVTI_A1' },
+      { type: 'abrir-triagem', key: A.key },
+      { type: 'snapshot', snapshot: retrato(B.key) },
+      { type: 'snapshot', snapshot: retrato(A.key) },
+    )
+
+    expect(comCartao.expanded).toEqual({ [A.key]: ['PVTI_A1'] })
+    expect(comCartao.triagem).toBeNull()
+  })
+
+  it('a aba que sumiu do retrato cai junto, sem regra própria', () => {
+    const aberta = apply(
+      { type: 'snapshot', snapshot: retrato(A.key) },
+      { type: 'abrir-triagem', key: A.key },
+    )
+    // Sem `activeKey` — a descoberta não achou board nenhum, ou o dono sumiu — a triagem não tem em
+    // que aba existir. A mesma linha do `snapshot` resolve os dois casos, porque `activeKey` muda
+    // junto.
+    const semAba = reduceKanban(aberta, { type: 'snapshot', snapshot: retrato(null, [B]) })
+
+    expect(semAba.triagem).toBeNull()
   })
 })

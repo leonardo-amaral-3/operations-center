@@ -64,7 +64,7 @@ export function TurnPulse({ activity, somethingRunning }: TurnPulseProps): JSX.E
       // `data-stale` do `Freshness`.
       data-tokens={String(activity.thinkingTokens)}
       data-silent={silent ? 'true' : 'false'}
-      // `my-2` e não `mt-2`: em `CardChat` a margem de baixo colapsa com a da caixa de texto, e na
+      // `my-2` e não `mt-2`: em `Chat` a margem de baixo colapsa com a da caixa de texto, e na
       // tela de chat ela é o único respiro entre a linha e a caixa.
       className="my-2 flex items-center gap-2 text-[11px] text-foreground/60"
     >
@@ -85,7 +85,10 @@ export function TurnPulse({ activity, somethingRunning }: TurnPulseProps): JSX.E
           texto sobre a face branca da conversa ele cai para perto de 1.6:1 e some. É o mesmo trato
           que o `Freshness` dá ao dado envelhecido, e é a mesma frase: pare e olhe. */}
       {silent ? (
-        <Badge variant="neutral" className="bg-warning px-1.5 py-0 text-[11px] font-normal">
+        <Badge
+          variant="neutral"
+          className="bg-warning text-warning-foreground px-1.5 py-0 text-[11px] font-normal"
+        >
           sem sinal há mais de 1 min
         </Badge>
       ) : null}

@@ -16,8 +16,10 @@ import {
 } from '../core'
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
-import type { ChooseFolderRequest, ChooseFolderResult, Screen } from '../shared/ipc'
-import { THEME_FLAG } from '../shared/theme'
+import type { ChooseFolderRequest, ChooseFolderResult, Screen, SessionScope } from '../shared/ipc'
+import { THEME_DEFAULT, THEME_FLAG, THEMES } from '../shared/theme'
+import type { Theme } from '../shared/theme'
+import { registerThemeIpc } from './appearance'
 import { registerBoardsIpc } from './boards'
 import { registerCardIpc } from './card'
 import {
@@ -28,14 +30,15 @@ import {
   saveConversations,
 } from './conversations'
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
+import type { DangerGate } from './danger'
 import { createFixtureGraphQL } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
 import { registerSessionIpc } from './ipc'
 import { judgeNavigation } from './navigation'
-import { loadActiveBoard, saveActiveBoard } from './preferences'
+import { loadActiveBoard, loadTheme, saveActiveBoard } from './preferences'
 import { gitOrigin, scanSessionFolders } from './repos'
-import { resolveTheme, windowBackground } from './theme'
+import { resolveThemeEnv, windowBackground } from './theme'
 
 /**
  * A pasta de trabalho da sessão **sem cartão** — a da fatia vertical. Sem `OC_CWD`, é a raiz do repo:
@@ -96,22 +99,34 @@ function createGraphQL(): GraphQLFn {
 }
 
 const screen = resolveScreen()
-const theme = resolveTheme(process.env.OC_THEME)
-// A cor calculada **no topo do módulo**, e não dentro de `createWindow`: aquela função roda dentro
-// do `void app.whenReady().then(...)` lá embaixo, e o `void` é justamente o que faria um `throw`
-// dali virar rejeição não tratada em vez de derrubar a subida. Aqui, folha malformada ou combinação
-// sem `--background` param o app antes de existir janela — que é a hora certa de reclamar.
-const windowColor = windowBackground(theme)
 
-function createWindow(): BrowserWindow {
+// O ambiente é validado **no topo do módulo**, síncrono: `OC_THEME=xpto` tem de derrubar a subida, e
+// lá dentro do `void app.whenReady().then(...)` ele viraria rejeição não tratada — o app abriria na
+// combinação errada, calado. O que desce para o `whenReady` é a *escolha*, que depende do disco;
+// **não** a *validação*, que não depende de nada.
+const THEME_DO_AMBIENTE = resolveThemeEnv(process.env.OC_THEME)
+
+// **Todas** as combinações convertidas aqui, e não só a que vai valer. Enquanto a escolha era do
+// ambiente, converter a escolhida bastava; agora ela depende do cofre, e o cofre só responde lá
+// dentro — converter só a dela devolveria ao `whenReady` exatamente o `throw` que a linha acima
+// existe para tirar de lá. Convertendo as três, folha malformada ou combinação sem `--background`
+// continuam parando o app antes de existir janela, que é a hora certa de reclamar.
+const CORES_DE_JANELA = new Map(THEMES.map((theme) => [theme, windowBackground(theme)]))
+
+function createWindow(theme: Theme): BrowserWindow {
   const window = new BrowserWindow({
     width: 1100,
     height: 760,
     // A cor da janela sai da folha do design system, convertida para sRGB — nunca escrita aqui. Sem
     // ela o Chromium pinta a janela de branco antes do primeiro paint do renderer e a abertura
     // pisca; com um hex à mão, ela pisca no dia em que a folha mudar e ninguém lembrar deste
-    // arquivo.
-    backgroundColor: windowColor,
+    // arquivo. E é da **combinação que vai valer** que ela sai: com a lembrada no cofre, uma cor
+    // fixa aqui faria a moldura abrir clara e o canvas escurecer no primeiro paint (CA-4).
+    //
+    // O `??` é formalidade de tipo e não caminho vivo: o mapa é construído sobre `THEMES` e `Theme`
+    // é a união desses mesmos nomes, então a chave sempre existe. A reserva é a default, e não um
+    // `throw`, porque daqui para baixo já se roda dentro do `whenReady`.
+    backgroundColor: CORES_DE_JANELA.get(theme) ?? windowBackground(THEME_DEFAULT),
     show: false,
     autoHideMenuBar: true,
     title: 'Operations Center',
@@ -222,6 +237,16 @@ const repos = new RepoIndex({ scan: scanSessionFolders(), origin: gitOrigin })
 // varredura ali seria um `git` por pasta de sessão da máquina para ninguém.
 if (screen === 'kanban') void repos.refresh()
 
+/**
+ * A pasta escolhida à mão para a triagem de cada aba. Em memória e nunca em disco, como o
+ * `#declared` do `RepoIndex`: a escolha explícita vence a descoberta enquanto o app viver, e a
+ * varredura da próxima abertura acha a pasta sozinha depois que uma sessão tiver rodado lá.
+ *
+ * Por aba, e **não** por repo: a aba que precisa desta escolha é justamente a que não tem um repo
+ * unânime, e não há repo a que atribuí-la.
+ */
+const triageFolders = new Map<string, string>()
+
 // O único dado durável do app. As quatro pontas de IO são do main pela mesma razão das do
 // `RepoIndex`: o core não lê disco nem chama o SDK.
 const conversations = new ConversationIndex({
@@ -269,28 +294,72 @@ function publicarPerigo(): void {
   dangerIpc?.publish()
 }
 
+/**
+ * O portão visto por escopo. Existe para o `registerSessionIpc` não ter de saber que a marca do
+ * cartão mora em disco e a da triagem em memória — a diferença é de durabilidade, não de regra.
+ *
+ * Fora do kanban (`OC_SCREEN=chat`) não há `dangerIpc` e não há triagem: a marca responde `false` e
+ * o `set` é no-op — que é a decisão 13 do #10, a tela de chat mantém o portão sem exceção.
+ */
+const dangerGate: DangerGate = {
+  isDangerous: async (scope) =>
+    scope.kind === 'card'
+      ? danger.isDangerous(scope.itemId)
+      : (dangerIpc?.isDangerous(scope.boardKey) ?? false),
+  set: (scope, dangerous) => {
+    if (scope.kind === 'card') danger.set(scope.itemId, dangerous)
+    else dangerIpc?.setTriage(scope.boardKey, dangerous)
+  },
+}
+
 const sessionIpc = registerSessionIpc(host, {
   conversations,
-  danger,
-  resolveCwd: async (itemId) => {
-    if (itemId === undefined) return resolveCwd()
+  danger: dangerGate,
+  resolveCwd: async (scope) => {
+    if (scope === undefined) return resolveCwd()
 
-    const card = boardsIpc?.cardById(itemId)
-    if (!card) return null
+    if (scope.kind === 'triage') {
+      // A escolha do humano vence a descoberta, como o `#declared` do `RepoIndex` — e por isso vem
+      // antes do repo unânime, não depois.
+      const escolhida = triageFolders.get(scope.boardKey)
+      // A pasta pode ter sido movida entre a escolha e o clique. Cair no CA-5 é melhor que mandar o
+      // Claude Code para um caminho que não existe mais — a mesma regra do fim desta função.
+      if (escolhida !== undefined) return existsSync(escolhida) ? escolhida : null
+    }
 
-    let path = repos.pathFor(card.repository)
+    // As duas origens do repo, e a única diferença entre os dois escopos daqui para baixo: o do
+    // cartão sai do cartão; o da triagem, do repo unânime da aba. Sem repo, a resposta é a mesma
+    // dos dois lados — "não sei", e o painel pede a pasta.
+    const repository =
+      scope.kind === 'card'
+        ? (boardsIpc?.cardById(scope.itemId)?.repository ?? null)
+        : (boardsIpc?.repoOfBoard(scope.boardKey) ?? null)
+    if (repository === null) return null
+
+    let path = repos.pathFor(repository)
 
     if (path === null) {
       // Segunda chance antes de desistir: um repo clonado com o app aberto, ou uma sessão criada
       // depois da varredura inicial, é achado sem incomodar ninguém. O `refresh()` tem guarda de
       // concorrência, então um segundo clique durante a varredura pega carona nela.
       await repos.refresh()
-      path = repos.pathFor(card.repository)
+      path = repos.pathFor(repository)
     }
 
     // A pasta pode ter sido movida ou apagada entre a varredura e o clique. Melhor cair no CA-5 e
     // pedir a pasta do que mandar o Claude Code para um caminho que não existe mais.
     return path !== null && existsSync(path) ? path : null
+  },
+  onTurnEnd: (scope) => {
+    // Sem kanban não há aba a reler, e a tela de chat (`scope === undefined`) não tem board nenhum
+    // por trás: os dois caem no mesmo no-op, e é por isso que a decisão mora aqui e não no `ipc.ts`.
+    if (!boardsIpc || scope === undefined) return
+
+    // A triagem já **é** de uma aba; o cartão precisa que alguém diga de qual. Um `itemId` que o
+    // retrato não conhece — cartão de board que sumiu, aba ainda não lida — não relê nada, em vez
+    // de relerem-se todas por precaução.
+    const key = scope.kind === 'triage' ? scope.boardKey : boardsIpc.tabKeyOf(scope.itemId)
+    if (key !== null) boardsIpc.readNow(key)
   },
 })
 
@@ -299,13 +368,15 @@ const sessionIpc = registerSessionIpc(host, {
  *
  * Mora no main — e não no `registerSessionIpc` — porque a peça que ele opera é o índice de repos, e
  * porque `dialog` é Electron puro. O caminho escolhido **não volta ao renderer**: fica no índice, e
- * o `start({ itemId })` seguinte já o encontra.
+ * o `start({ scope })` seguinte já o encontra.
  */
 ipcMain.handle(
   IPC_INVOKE.chooseFolder,
   async (event, request: ChooseFolderRequest): Promise<ChooseFolderResult> => {
-    const card = boardsIpc?.cardById(request.itemId)
-    if (!card) return { chosen: false }
+    // O destino é resolvido **antes** do diálogo: perguntar a pasta para descobrir depois que não há
+    // onde guardá-la faria o humano navegar o disco à toa.
+    const guardar = destinoDaEscolha(request.scope)
+    if (guardar === null) return { chosen: false }
 
     // Preso à janela que perguntou: o seletor é modal dela, e não uma caixa solta que se perde atrás
     // do app enquanto o cartão espera uma resposta que ninguém vê como dar.
@@ -317,16 +388,83 @@ ipcMain.handle(
 
     if (result.canceled || path === undefined) return { chosen: false }
 
-    // Só em memória, nunca em disco: assim que a sessão subir ali, o Claude Code escreve o
-    // transcript e a varredura da próxima abertura acha a pasta sozinha.
-    repos.declare(card.repository, path)
+    guardar(path)
 
     return { chosen: true }
   },
 )
 
-void app.whenReady().then(() => {
-  const window = createWindow()
+/**
+ * A janela do app, ou `null` antes de ela existir. Só o `pintarJanela` a consome.
+ *
+ * Existe porque `registerThemeIpc` roda **antes** de `createWindow` — e tem de rodar: o canal
+ * precisa estar de pé antes de o renderer poder pedir o primeiro retrato.
+ */
+let janelaViva: BrowserWindow | null = null
+
+/**
+ * Repinta a moldura quando o humano troca de combinação.
+ *
+ * Necessário porque o `backgroundColor` de uma `BrowserWindow` é fixado na construção: sem isto, um
+ * app que trocou para a obsidiana mostraria a lavanda na faixa que o Chromium ainda não pintou ao
+ * ser redimensionado.
+ *
+ * Referência para a frente, como `publicarConversas` e `publicarPerigo`, e pela mesma razão: quem
+ * registra o canal não conhece a janela. O `?.` não é caminho vivo — a janela nasce duas linhas
+ * depois do registro, e a primeira troca é um clique humano, muito depois das duas.
+ *
+ * O `??` é a mesma formalidade de tipo do `createWindow`: `CORES_DE_JANELA` é construído sobre
+ * `THEMES`, e `Theme` é a união desses mesmos nomes.
+ */
+function pintarJanela(theme: Theme): void {
+  janelaViva?.setBackgroundColor(CORES_DE_JANELA.get(theme) ?? windowBackground(THEME_DEFAULT))
+}
+
+/**
+ * Onde a pasta escolhida vai parar — ou `null` quando não há onde, e então o diálogo nem abre:
+ * cartão que sumiu do retrato, ou triagem fora do kanban, onde não existe aba nenhuma.
+ *
+ * Os dois destinos são diferentes de propósito. A do cartão vai para o índice de repos, que é por
+ * repo. A da triagem vai para o mapa da aba e **não** passa por `repos.declare`: a pasta escolhida
+ * para uma aba ambígua não é a pasta de repo nenhum, e declará-la envenenaria o índice para todos os
+ * cartões daquele repo.
+ */
+function destinoDaEscolha(scope: SessionScope): ((path: string) => void) | null {
+  if (scope.kind === 'triage') {
+    if (!boardsIpc) return null
+
+    return (path) => {
+      triageFolders.set(scope.boardKey, path)
+    }
+  }
+
+  const card = boardsIpc?.cardById(scope.itemId)
+  if (!card) return null
+
+  // Só em memória, nunca em disco: assim que a sessão subir ali, o Claude Code escreve o transcript
+  // e a varredura da próxima abertura acha a pasta sozinha.
+  return (path) => {
+    repos.declare(card.repository, path)
+  }
+}
+
+void app.whenReady().then(async () => {
+  // A precedência do CA-4, e ela é lida da esquerda para a direita: `OC_THEME` vence o cofre
+  // (Decisão 7 — quem exporta a variável está testando, não usando), o cofre vence a default, e a
+  // default é o que sobra para quem nunca escolheu (CA-5).
+  //
+  // **Antes de `createWindow`, e é esta ordem que é o CA-4 inteiro.** O `await` atrasa a janela por
+  // uma leitura de arquivo pequeno; é o preço de ela nascer já na cor certa, porque a janela nasce
+  // com **uma** cor e não há como corrigi-la depois sem o usuário ver a errada primeiro.
+  const theme = THEME_DO_AMBIENTE ?? (await loadTheme()) ?? THEME_DEFAULT
+
+  // **Antes de `createWindow`**: o renderer pede o primeiro retrato assim que monta, e um canal
+  // registrado depois da janela seria uma corrida contra o próprio boot.
+  registerThemeIpc(theme, pintarJanela)
+
+  const window = createWindow(theme)
+  janelaViva = window
+
   if (!boardsIpc) return
 
   // Em paralelo à criação da janela: a leitura começa antes de o renderer pedir.

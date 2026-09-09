@@ -20,6 +20,11 @@ export interface BoardColumn {
    * deles envelhece.
    */
   conversable: boolean
+  /**
+   * Se é a estação de entrada, e portanto oferece a nova triagem (RF-9). Chega decidido do core pela
+   * mesma razão do `conversable`: a régua de nome de estação mora num lugar só.
+   */
+  triage: boolean
 }
 
 /** Um campo single-select do card exibido como etiqueta no cartão. */

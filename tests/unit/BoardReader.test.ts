@@ -131,6 +131,38 @@ describe('BoardReader — conversabilidade: a coluna sabe se conversa (CA-4)', (
   })
 })
 
+describe('BoardReader — a régua da triagem: a coluna sabe se é a de entrada (CA-1)', () => {
+  it('marca `triage` na 📥 Triagem e em nenhuma das outras sete', async () => {
+    // O contrário do `conversable`, e de propósito: lá são seis contra duas, aqui é **uma** contra
+    // sete. É a coluna que ganhará a ação de nova triagem, e duas colunas marcadas dariam dois
+    // botões no mesmo board.
+    const board = await readPages(envelope())
+
+    expect(board.columns.filter((column) => column.triage).map((column) => column.name)).toEqual([
+      '📥 Triagem',
+    ])
+    expect(board.columns).toHaveLength(8)
+  })
+
+  it('conclui `triage` do nome, em qualquer decoração, e nunca do optionId', async () => {
+    // Os ids são inventados aqui de propósito: se a régua olhasse `optionId`, ela erraria os três
+    // primeiros — que é exatamente o que aconteceria ao apontar o app para outro board.
+    const board = await readPages(
+      envelope({
+        options: [
+          { id: 'zzz', name: '📥 Triagem' },
+          { id: 'yyy', name: 'Triagem' },
+          { id: 'xxx', name: 'triagem' },
+          { id: 'opt-triagem', name: 'Pré-triagem' },
+          { id: 'www', name: '📋 Backlog' },
+        ],
+      }),
+    )
+
+    expect(board.columns.map((column) => column.triage)).toEqual([true, true, true, false, false])
+  })
+})
+
 describe('BoardReader — regras 4 e 5: quem vira cartão, e com quais etiquetas', () => {
   it('põe o cartão na coluna do seu optionId, nunca pelo nome da estação', async () => {
     const board = await readPages(

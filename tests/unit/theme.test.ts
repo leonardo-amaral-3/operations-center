@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { contrastRatio, oklabDistance, oklchToSrgb, toHex } from '../../src/main/color'
 import { parseOklch, parseThemes } from '../../src/main/sheet'
-import { resolveTheme, windowBackground } from '../../src/main/theme'
+import { resolveTheme, resolveThemeEnv, windowBackground } from '../../src/main/theme'
 
 /**
  * A matemática de cor do card #29 e a leitura da folha, pinadas nos números que o #8 publicou.
@@ -84,13 +84,16 @@ const CAMINHO_DA_FOLHA = fileURLToPath(new URL('../../src/renderer/index.css', i
 describe('`parseThemes` lê a folha do disco', () => {
   const combinacoes = parseThemes(readFileSync(CAMINHO_DA_FOLHA, 'utf8'))
 
-  it('acha as duas combinações declaradas', () => {
-    expect([...combinacoes.keys()]).toEqual(['lavanda', 'ametista'])
+  it('acha as três combinações declaradas', () => {
+    expect([...combinacoes.keys()]).toEqual(['lavanda', 'ametista', 'obsidiana'])
   })
 
-  it.each(['lavanda', 'ametista'] as const)('a %s traz os vinte e cinco tokens', (nome) => {
-    expect(combinacoes.get(nome)?.size).toBe(25)
-  })
+  it.each(['lavanda', 'ametista', 'obsidiana'] as const)(
+    'a %s traz os vinte e nove tokens',
+    (nome) => {
+      expect(combinacoes.get(nome)?.size).toBe(29)
+    },
+  )
 
   it('o valor chega inteiro e sem o `\\r` do CRLF grudado no fim', () => {
     // Este é o ponto em que um parser escrito no Linux passa e aqui falha: sem o `.trim()`, o valor
@@ -181,12 +184,64 @@ describe('`resolveTheme` lê `OC_THEME`', () => {
   })
 })
 
+/**
+ * A irmã de `resolveTheme` com o terceiro estado, e o que este bloco protege é a **diferença** entre
+ * as duas — não o caminho feliz, que as duas percorrem igual.
+ *
+ * O par de cima é o que importa: onde `resolveTheme` devolve `lavanda`, esta devolve `null`. É essa
+ * distinção que a precedência de `index.ts` consome para decidir se o cofre é consultado; se um dia
+ * alguém "simplificar" as duas numa só, é aqui que o vermelho aparece — e não numa combinação
+ * lembrada que o app silenciosamente parou de honrar.
+ */
+describe('`resolveThemeEnv` distingue "o ambiente não pediu nada" de "pediu a default"', () => {
+  it.each([
+    { nome: 'ausente', raw: undefined },
+    { nome: 'vazia', raw: '' },
+    // A variável exportada e esvaziada — `OC_THEME=` no shell — chega como string de espaços, e é
+    // ausência: quem a esvaziou estava desligando a porta, não pedindo uma combinação chamada `' '`.
+    { nome: 'só espaço', raw: '  ' },
+  ])('devolve `null` com a variável $nome, e **não** a default', ({ raw }) => {
+    expect(resolveThemeEnv(raw)).toBeNull()
+  })
+
+  it('e é justamente aí que ela difere da irmã, que devolve a lavanda', () => {
+    // As duas leituras do mesmo `undefined`, lado a lado: é o contraste que dá sentido ao bloco
+    // acima, e o que impede alguém de trocar uma pela outra num `??` sem nada ficar vermelho.
+    expect(resolveTheme(undefined)).toBe('lavanda')
+    expect(resolveThemeEnv(undefined)).toBeNull()
+  })
+
+  it.each([{ raw: 'obsidiana' }, { raw: ' obsidiana ' }])(
+    'devolve a combinação com `$raw`',
+    ({ raw }) => {
+      expect(resolveThemeEnv(raw)).toBe('obsidiana')
+    },
+  )
+
+  /**
+   * A política do valor presente é a da irmã, e é a chamada por dentro que a mantém assim: o valor
+   * inválido lança com a **mesma** mensagem, e o valor cru continua na mensagem em vez do aparado.
+   */
+  it.each([
+    { nome: 'a combinação que não existe', raw: 'roxo' },
+    { nome: 'a maiúscula, que é engano de digitação', raw: 'Obsidiana' },
+  ])('lança em $nome, com a mensagem de sempre', ({ raw }) => {
+    expect(() => resolveThemeEnv(raw)).toThrow(`OC_THEME inválido: ${raw}`)
+  })
+})
+
 describe('`windowBackground` tira a cor da janela da folha', () => {
   it.each([
     // O hex que estava escrito à mão em `src/main/index.ts` antes deste card: é ele que prova que
     // trocar o literal pela folha é no-op para o tema de hoje.
     { theme: 'lavanda', esperado: '#eee6fe' },
     { theme: 'ametista', esperado: '#e6eafc' },
+    // A metade "sem piscar" do CA-4: é **este** hex que a `BrowserWindow` recebe quando o cofre
+    // lembra a obsidiana, e é ele que separa a moldura certa de um flash claro no primeiro paint.
+    // A outra metade do critério — a **ordem**, o disco lido antes de a janela existir — não cabe
+    // num unitário e é conferida na revisão de `src/main/index.ts`, como o `## Plano de testes`
+    // registra.
+    { theme: 'obsidiana', esperado: '#44404c' },
   ] as const)('a janela da $theme abre em $esperado', ({ theme, esperado }) => {
     expect(windowBackground(theme)).toBe(esperado)
   })

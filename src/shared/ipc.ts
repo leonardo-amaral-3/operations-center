@@ -49,6 +49,14 @@ export const IPC_INVOKE = {
   readConversations: 'conversations:read',
   readDangerous: 'danger:read',
   setDangerous: 'danger:set',
+  readTheme: 'theme:read',
+  /**
+   * Qual combinação de cores o humano escolheu. **É escrita**, como `activateBoard` — e como ela,
+   * escreve estado local do app, nunca o GitHub. O prefixo é o da própria família (`theme:`) e não
+   * `ui:`: aquele nasceu para tirar uma escrita solta de dentro de `boards:`, e aqui não há de que
+   * escapar — `theme:` já não colide com prefixo nenhum que fale com a rede.
+   */
+  setTheme: 'theme:set',
 } as const
 
 /** Main → renderer. Avisos de mão única, disparados pelo `core` quando a sessão se mexe. */
@@ -75,7 +83,36 @@ export const IPC_EVENT = {
    * 10s do board.
    */
   dangerous: 'danger:changed',
+  /**
+   * Trocou a combinação de cores. Canal próprio pela mesma razão dos dois acima — é estado do app e
+   * nada tem a ver com o throttle de 10s do board —, e de mão única porque quem troca é sempre o
+   * humano nesta janela: o retrato volta a todos os assinantes, inclusive a quem pediu.
+   */
+  theme: 'theme:changed',
 } as const
+
+/**
+ * De quem é a sessão. É a RN-1 do PRD escrita no tipo: não há chat sem card, com a exceção da nova
+ * triagem — que existe justamente para criar um.
+ *
+ * Ausente (o `scope` opcional do `StartRequest`) continua sendo a tela de chat da fatia vertical,
+ * que roda em `OC_CWD` e não conhece board nenhum.
+ */
+export type SessionScope =
+  | { kind: 'card'; itemId: string }
+  /** A triagem daquela aba. `boardKey` é a `key` opaca da aba, como no `ui:active-board`. */
+  | { kind: 'triage'; boardKey: string }
+
+/**
+ * A chave única de um escopo, e o **único** lugar que a compõe.
+ *
+ * O main indexa sessões vivas e partidas em voo por esta string; o renderer a usa como dependência
+ * de efeito. Compor `card:` e `triage:` em dois lugares faria os espaços de chave se cruzarem no dia
+ * em que um dos dois mudasse de prefixo.
+ */
+export function scopeKey(scope: SessionScope): string {
+  return scope.kind === 'card' ? `card:${scope.itemId}` : `triage:${scope.boardKey}`
+}
 
 /**
  * O retrato da sessão no instante em que ela nasce.
@@ -87,11 +124,11 @@ export const IPC_EVENT = {
 export interface SessionSnapshot {
   id: string
   /**
-   * De qual cartão é esta sessão, ou `undefined` na tela de chat da fatia vertical. Volta no retrato
-   * porque o kanban mantém várias sessões vivas ao mesmo tempo: sem ele, uma resposta que chega
-   * fora de ordem não teria como ser casada com o cartão que a pediu.
+   * De quem é esta sessão, ou `undefined` na tela de chat da fatia vertical. Volta no retrato porque
+   * o kanban mantém várias sessões vivas ao mesmo tempo: sem ele, uma resposta que chega fora de
+   * ordem não teria como ser casada com quem a pediu.
    */
-  itemId: string | undefined
+  scope: SessionScope | undefined
   init: SessionInit | undefined
   state: SessionState
   messages: readonly ChatMessage[]
@@ -103,12 +140,13 @@ export interface SessionSnapshot {
 }
 
 /**
- * De qual cartão é a sessão. Ausente = a tela de chat da fatia vertical, que roda em `OC_CWD`.
+ * De quem é a sessão. Ausente = a tela de chat da fatia vertical, que roda em `OC_CWD`.
  *
- * Continua sendo o main quem traduz `itemId` em pasta: o renderer manda o cartão, nunca o caminho.
+ * Continua sendo o main quem traduz escopo em pasta: o renderer manda o cartão ou a aba, nunca o
+ * caminho.
  */
 export interface StartRequest {
-  itemId?: string
+  scope?: SessionScope
 }
 
 /**
@@ -148,9 +186,9 @@ export interface CloseRequest {
   sessionId: string
 }
 
-/** Abre o seletor de diretório para o repo daquele cartão (CA-5). */
+/** Abre o seletor de diretório para a pasta em que aquele escopo rodaria (CA-5). */
 export interface ChooseFolderRequest {
-  itemId: string
+  scope: SessionScope
 }
 
 /**
@@ -229,23 +267,52 @@ export interface ConversationsSnapshot {
 }
 
 /**
- * Qual cartão, e para qual lado. `dangerous: false` é desmarcar.
+ * De quem é a marca, e para qual lado. `dangerous: false` é desmarcar.
  *
- * **`itemId`, nunca pasta** — a mesma regra do `StartRequest`, e aqui ela vale ainda mais: o modo
+ * **Escopo, nunca pasta** — a mesma regra do `StartRequest`, e aqui ela vale ainda mais: o modo
  * tira o portão de uma sessão que escreve em disco, e deixar o renderer dizer *onde* seria juntar
  * as duas metades exatas do buraco que `contextIsolation` fecha.
  */
 export interface SetDangerousRequest {
-  itemId: string
+  scope: SessionScope
   dangerous: boolean
 }
 
 /**
- * Quais cartões rodam sem o portão. Inteiro a cada mudança, como o `ConversationsSnapshot` e pela
- * mesma razão: evento perdido não deixa a tela num estado que nunca mais será corrigido.
+ * O que roda sem o portão. Inteiro a cada mudança, como o `ConversationsSnapshot` e pela mesma
+ * razão: evento perdido não deixa a tela num estado que nunca mais será corrigido.
  */
 export interface DangerousSnapshot {
+  /** Os cartões marcados. Sobrevivem ao desligamento: vêm do `dangerous.json`. */
   itemIds: readonly string[]
+  /**
+   * As triagens sem portão, por `key` de aba. Lista separada e não misturada com `itemIds` porque as
+   * duas têm durabilidade oposta — a do cartão sobrevive ao desligamento, a da triagem morre com ele.
+   */
+  boardKeys: readonly string[]
+}
+
+/**
+ * Qual combinação de cores vale **agora**.
+ *
+ * Um campo só, e mesmo assim um objeto: é a mesma forma dos outros três retratos, e é ela que deixa
+ * um segundo campo — um "escolhida pelo humano ou herdada do ambiente?", por exemplo — nascer sem
+ * quebrar o contrato de quem já assina.
+ */
+export interface ThemeSnapshot {
+  theme: Theme
+}
+
+/**
+ * Para qual combinação trocar.
+ *
+ * `Theme` e não `string`, ao contrário da `key` de `ActivateBoardRequest`: o conjunto legítimo é
+ * fechado e os dois lados o conhecem (`THEMES`), então o compilador já barra o nome inventado. O
+ * main **revalida com `isTheme` mesmo assim** — o tipo governa quem compila junto, não quem chega
+ * pela ponte em tempo de execução.
+ */
+export interface SetThemeRequest {
+  theme: Theme
 }
 
 /**
@@ -263,21 +330,33 @@ export interface OcApi {
   readonly screen: Screen
 
   /**
-   * Qual combinação de cores desenhar. Valor e não promessa, pela mesma razão de `screen`: o
-   * `main.tsx` põe o `data-theme` no `<html>` antes do primeiro render, e não há tela trocando de cor
-   * depois de aparecer.
+   * A **semente do primeiro paint** — e não *a* combinação corrente.
+   *
+   * Valor e não promessa, pela mesma razão de `screen`: o `main.tsx` põe o `data-theme` no `<html>`
+   * antes do primeiro render, e não há tela trocando de cor depois de aparecer. Ela vale por um
+   * instante — o que separa o boot da primeira resposta de `readTheme`.
+   *
+   * **A verdade corrente é o retrato** (`readTheme`/`onTheme`). Esta aqui é congelada no
+   * `process.argv` quando a janela nasce e nunca mais muda: depois da primeira troca ela está
+   * desatualizada, de propósito, e quem a ler achando que é a de agora desenha a cor de antes.
+   *
+   * As duas coexistem porque cada uma responde num instante em que a outra não tem resposta — e é
+   * essa distinção que precisa estar escrita: sem ela alguém "simplifica" removendo uma das duas e
+   * reintroduz exatamente o flash que o CA-4 proíbe. Removida a semente, o primeiro paint acontece
+   * antes de o retrato chegar e a janela pisca na cor errada; removido o retrato, a troca ao vivo
+   * do CA-3 não tem por onde chegar.
    */
   readonly theme: Theme
 
   /**
-   * Começa a sessão do cartão — ou a da fatia vertical, quando `start()` vem sem cartão nenhum.
+   * Começa a sessão daquele escopo — ou a da fatia vertical, quando `start()` vem sem escopo nenhum.
    *
-   * O único parâmetro é o `itemId`: a pasta de trabalho e o modelo continuam sendo resolvidos no
+   * O único parâmetro é o escopo: a pasta de trabalho e o modelo continuam sendo resolvidos no
    * main (`OC_CWD`, `OC_MODEL`, e o índice de repos do RF-10). Deixar o renderer escolher a `cwd`
    * seria dar a uma tela sandboxada o poder de apontar uma sessão do Claude Code para qualquer lugar
    * do disco.
    *
-   * Idempotente por cartão: com sessão viva para aquele `itemId`, devolve o retrato dela em vez de
+   * Idempotente por escopo: com sessão viva para aquele escopo, devolve o retrato dela em vez de
    * subir uma segunda — é o que faz colapsar e reabrir manter a conversa.
    */
   start(request?: StartRequest): Promise<StartResult>
@@ -286,7 +365,7 @@ export interface OcApi {
   respondPermission(request: RespondPermissionRequest): Promise<void>
   answerQuestion(request: AnswerQuestionRequest): Promise<void>
   close(request: CloseRequest): Promise<void>
-  /** Pergunta ao humano onde o repo daquele cartão está. A escolha fica no main (CA-5). */
+  /** Pergunta ao humano em que pasta aquele escopo roda. A escolha fica no main (CA-5). */
   chooseFolder(request: ChooseFolderRequest): Promise<ChooseFolderResult>
   onInit(listener: (event: SessionInitEvent) => void): () => void
   onMessage(listener: (event: SessionMessageEvent) => void): () => void
@@ -322,7 +401,7 @@ export interface OcApi {
   onConversations(listener: (snapshot: ConversationsSnapshot) => void): () => void
 
   /**
-   * Liga ou desliga o modo *dangerously* daquele cartão.
+   * Liga ou desliga o modo *dangerously* daquele escopo.
    *
    * **Sem retorno, e sem atualização otimista do lado da tela**: o crachá segue o retrato publicado
    * por `onDangerous`, e só ele. Com sessão viva quem manda é o que o SDK aceitou, não o que a tela
@@ -334,6 +413,23 @@ export interface OcApi {
   readDangerous(): Promise<DangerousSnapshot>
   /** Toda mudança do conjunto — a marca de um cartão, e o fim da carga do boot. */
   onDangerous(listener: (snapshot: DangerousSnapshot) => void): () => void
+
+  /**
+   * A combinação que vale agora. **Nunca volta vazia**: o main a resolveu antes de a janela existir,
+   * porque é dela que sai a cor com que a janela nasce (CA-4).
+   */
+  readTheme(): Promise<ThemeSnapshot>
+  /**
+   * Troca a combinação. **Sem retorno e sem atualização otimista**, como `setDangerous`: quem move a
+   * tela é o retrato que volta por `onTheme`, e não o que o clique pediu — uma fonte da verdade, e
+   * não duas se corrigindo.
+   *
+   * Resolve quando o main registrou a troca, e **não** quando ela chegou ao disco: a gravação é
+   * melhor esforço, e a cor não espera o arquivo.
+   */
+  setTheme(request: SetThemeRequest): Promise<void>
+  /** Toda troca de combinação, inclusive a que esta janela pediu. */
+  onTheme(listener: (snapshot: ThemeSnapshot) => void): () => void
 }
 
 declare global {

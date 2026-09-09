@@ -5,8 +5,8 @@ import type { BoardCard } from '../../shared/board'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Card } from '../ui/card'
-import { CardChat } from './CardChat'
-import type { CardSession } from './CardChat'
+import { Chat } from './Chat'
+import type { CardSession } from './Chat'
 import { CardContent } from './CardContent'
 import { ConversationBadge } from './ConversationBadge'
 import { DangerBadge } from './DangerBadge'
@@ -36,7 +36,7 @@ interface BoardCardViewProps {
   dangerous: boolean
   onToggle: (itemId: string) => void
   onSession: (itemId: string, session: CardSession) => void
-  /** Só de passagem para o `CardChat`, que é filho deste componente e não da `Column`. */
+  /** Só de passagem para o `Chat`, que é filho deste componente e não da `Column`. */
   onToggleDangerous: (itemId: string, dangerous: boolean) => void
 }
 
@@ -48,7 +48,7 @@ interface BoardCardViewProps {
  * em voo. É o caso da coluna ✅ Produção, que tende a crescer para sempre.
  *
  * Aberto, ele **continua sendo aquele card**: o cabeçalho segue desenhado em cima do conteúdo e do
- * `CardChat`, e não é substituído por eles. É o que dá sentido a ler e conversar aqui, e não num
+ * `Chat`, e não é substituído por eles. É o que dá sentido a ler e conversar aqui, e não num
  * modal — a posição na esteira é parte do assunto.
  */
 export function BoardCardView({
@@ -194,7 +194,7 @@ export function BoardCardView({
           {/* O sinal do CA-2 do #10, com duas diferenças em relação aos vizinhos abaixo.
 
               **Aparece com o cartão aberto também**: os outros dois se calam ao expandir porque o
-              `CardChat` conta a mesma história melhor; este não tem substituto lá dentro — o botão
+              `Chat` conta a mesma história melhor; este não tem substituto lá dentro — o botão
               diz o que *fazer*, não o que *é* —, e a razão de ele existir é ser impossível de perder
               de vista.
 
@@ -205,7 +205,7 @@ export function BoardCardView({
 
           {/* O sinal de sessão viva no cartão **fechado**, e é o mínimo para o CA-6 ser operável:
               sem ele, uma conversa aberta atrás de um cartão colapsado é invisível e não há o que
-              gerir. Aberto, quem mostra o estado é o próprio `CardChat` — inclusive uma falha que
+              gerir. Aberto, quem mostra o estado é o próprio `Chat` — inclusive uma falha que
               aconteceu antes de haver sessão. */}
           {!expanded && live ? (
             <div className="min-w-0">
@@ -216,7 +216,7 @@ export function BoardCardView({
           {/* O sinal do CA-1: houve conversa aqui e ela volta ao clique. A sessão viva **vence** o
               dormente — enquanto ela existe, o estado dela informa mais —, e por isso os dois
               crachás nunca aparecem juntos. Expandido, quem conta a história é o próprio
-              `CardChat`. */}
+              `Chat`. */}
           {!expanded && !live && dormant ? (
             <div className="min-w-0">
               <ConversationBadge />
@@ -255,18 +255,29 @@ export function BoardCardView({
           <CardContent itemId={card.itemId} hasSession={live !== null || dormant} />
 
           {conversable || live || dormant ? (
-            <CardChat
-              itemId={card.itemId}
+            <Chat
+              // O escopo montado aqui é objeto novo a cada render, e é seguro: quem depende dele é
+              // o `useSessionView`, e ele depende da **chave**, não da referência.
+              scope={{ kind: 'card', itemId: card.itemId }}
+              // O CA-6 do #6 em uma linha: colapsar fecha a vista, não a conversa.
+              closeOnUnmount={false}
               dangerous={dangerous}
+              semPasta="Não sei em que pasta deste computador o repo deste card vive. Aponte-a e a sessão sobe lá."
               onCollapse={() => {
                 onToggle(card.itemId)
               }}
-              onSession={onSession}
-              onToggleDangerous={onToggleDangerous}
+              // O `itemId` entra aqui, e não lá dentro: o `Chat` sabe de escopo, e é este componente
+              // que sabe que este escopo é um cartão do kanban.
+              onSession={(sessao) => {
+                onSession(card.itemId, sessao)
+              }}
+              onToggleDangerous={(sem) => {
+                onToggleDangerous(card.itemId, sem)
+              }}
             />
           ) : (
             // Sem skill, sem sessão e sem conversa guardada: o cartão abriu para ser lido, e a
-            // única ação que ele oferece é fechar. A âncora `card-collapse` é a mesma do `CardChat`
+            // única ação que ele oferece é fechar. A âncora `card-collapse` é a mesma do `Chat`
             // de propósito — fechar um cartão é fechar um cartão, e o smoke não deve precisar saber
             // qual ramo desenhou o botão.
             <div className="mt-3 flex justify-end border-t-2 border-border pt-3">

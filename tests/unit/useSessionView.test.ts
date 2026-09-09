@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { INITIAL_VIEW, isSilent, reduce, SILENCIO_MS } from '../../src/renderer/session/sessionView'
 import type { SessionAction, SessionView } from '../../src/renderer/session/sessionView'
+import { scopeKey } from '../../src/shared/ipc'
 import type { SessionSnapshot } from '../../src/shared/ipc'
 import { IDLE_ACTIVITY } from '../../src/shared/session'
 import type {
@@ -58,7 +59,7 @@ function retrato(
 ): SessionSnapshot {
   return {
     id: 'sess_01',
-    itemId: 'card_14',
+    scope: { kind: 'card', itemId: 'card_14' },
     init: undefined,
     state,
     messages,
@@ -273,5 +274,26 @@ describe('o pedido em cartaz sai do estado (#11)', () => {
 
     expect(proximo.permission?.id).toBe('toolu_b')
     expect(proximo.queued).toBe(0)
+  })
+})
+
+describe('a chave do escopo, que é a dependência do efeito', () => {
+  it('a chave de uma triagem é a da aba; a de um cartão é a do item', () => {
+    expect(scopeKey({ kind: 'triage', boardKey: 'leonardo-amaral-3/2' })).toBe(
+      'triage:leonardo-amaral-3/2',
+    )
+    expect(scopeKey({ kind: 'card', itemId: 'PVTI_alpha' })).toBe('card:PVTI_alpha')
+  })
+
+  it('escopo novo com o mesmo conteúdo dá a mesma chave — e por isso não reinicia a sessão', () => {
+    // O `useSessionView` depende da **chave**, não do objeto: o escopo é montado no JSX e chega
+    // novo a cada render, e uma dependência por referência derrubaria e recriaria a sessão a cada
+    // quadro. Esta igualdade é a metade pura da garantia; a outra metade — que o efeito depende
+    // mesmo da chave — só é observável com o app de pé, e é o smoke que a prende.
+    const aba = 'leonardo-amaral-3/2'
+
+    expect(scopeKey({ kind: 'triage', boardKey: aba })).toBe(
+      scopeKey({ kind: 'triage', boardKey: aba }),
+    )
   })
 })
