@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatToolUse, ToolStatus } from './types'
+import type { ChatMessage, ChatToolUse, DiffHunk, DiffLine, FileDiff, ToolStatus } from './types'
 
 /**
  * A tradução de uma conversa do Claude Code para o que a tela consome — e é **uma só**, servindo o
@@ -28,6 +28,19 @@ const DETAIL_FIELDS = ['command', 'file_path', 'pattern', 'url', 'query', 'descr
 
 /** O teto de uma linha de trilha. O corte é aqui, e não na tela: ver `ChatToolUse.detail`. */
 const DETAIL_MAX = 120
+
+/**
+ * O teto de linhas de trecho que atravessa a ponte.
+ *
+ * 40 é o p90 medido nos transcripts deste workspace: 90,6% dos patches cabem inteiros, e o corte só
+ * alcança a cauda (p95 = 56, p99 = 255, máximo 863). Subir para 60 compraria 5 pontos de cobertura
+ * ao custo de 50% mais tráfego no pior caso e de um diff que sozinho passa duas vezes a altura da
+ * caixa do cartão. O corte é aqui, e não na tela, pela mesma razão do `DETAIL_MAX`.
+ *
+ * **Exportado**, ao contrário do `DETAIL_MAX`: o caso de teste do corte precisa construir um patch
+ * maior que o teto, e um `40` repetido à mão no teste é um acoplamento que ninguém atualiza junto.
+ */
+export const DIFF_MAX_LINES = 40
 
 /**
  * A nota que uma interrupção deixa na conversa.
@@ -226,6 +239,7 @@ export function toolUses(payload: unknown, parentId: string | null): ChatToolUse
       headline: '',
       parentId,
       status: 'running',
+      diff: null,
     })
   }
 
@@ -280,6 +294,152 @@ export function detailOf(input: unknown): string {
 }
 
 /**
+ * O que uma chamada escreveu num arquivo, lido do `tool_use_result` — ou `null` quando ela não
+ * escreveu nada que valha mostrar.
+ *
+ * **Decide por forma, nunca por nome de ferramenta.** Nunca pergunta se a chamada foi `Edit` ou
+ * `Write`: pergunta se o resultado *tem a forma* de uma escrita. Mesma razão de o `DETAIL_FIELDS`
+ * ser lista ordenada e não tabela por ferramenta — uma tabela por nome vira dívida no primeiro
+ * release do CLI com ferramenta nova, e qualquer ferramenta futura que devolva `structuredPatch` já
+ * entra desenhada.
+ *
+ * As contagens são **calculadas** a partir dos prefixos, e não lidas: o `gitDiff` que o tipo do SDK
+ * promete nunca chegou populado nesta instalação (0 em 287 resultados no disco, 0 em 3 de uma sonda
+ * ao vivo), e uma implementação escrita sobre ele mostraria `+0 −0` sempre.
+ *
+ * Mora aqui, e não no `SessionHandle`, mesmo sendo hoje usada só pelo caminho ao vivo: este módulo
+ * é onde a tradução de bloco de ferramenta vive, e o `replay` já a chamaria se um dia o SDK passar
+ * a devolver o campo no histórico.
+ */
+export function diffOf(result: unknown): FileDiff | null {
+  const record = asRecord(result)
+  if (!record) return null
+
+  // Os trechos que sobreviveram à leitura, e só eles: um trecho descartado não emite linha e
+  // **não conta** para os totais. Contar linhas de um trecho que não vai aparecer produziria um
+  // `+37` ao lado de zero trecho — indistinguível de arquivo novo na tela.
+  const aproveitados: DiffLine[][] = []
+  let additions = 0
+  let deletions = 0
+
+  for (const raw of asArray(record['structuredPatch'])) {
+    const hunk = asRecord(raw)
+    if (!hunk) continue
+
+    // Sem número de partida não há numeração possível, e numerar a partir de um chute faria a tela
+    // apontar linhas que não são as do arquivo.
+    const novo = asNumber(hunk['newStart'])
+    const velho = asNumber(hunk['oldStart'])
+    if (novo === null || velho === null) continue
+
+    const lines = hunkLines(asArray(hunk['lines']), novo, velho)
+    if (lines.length === 0) continue
+
+    for (const line of lines) {
+      if (line.kind === 'add') additions += 1
+      else if (line.kind === 'remove') deletions += 1
+    }
+
+    aproveitados.push(lines)
+  }
+
+  if (aproveitados.length > 0) return capped(aproveitados, additions, deletions)
+
+  // Arquivo novo: sem patch aproveitável, o tamanho é o que há para dizer. Medido: o `Write` de
+  // criação vem com `structuredPatch` vazio em 86 de 86 casos, e com `content` sempre string.
+  const content = record['type'] === 'create' ? asString(record['content']) : null
+  if (content !== null && content !== '') {
+    return { additions: countLines(content), deletions: 0, hunks: [], truncated: 0 }
+  }
+
+  // O `null` daqui é o guarda do `+0 −0`, e ele cobre três coisas de uma vez: a ferramenta que não
+  // escreve arquivo (`Bash`, `Read`, `Grep`); a escrita cujo patch veio vazio sem ser criação — que
+  // a doc do SDK diz acontecer quando nada mudou, quando o diff estourou tempo ou quando o conteúdo
+  // anterior era grande demais para diferenciar; e o `structuredPatch: [{}]`, cujo único trecho o
+  // laço acima descartou. Sem ele esse último caso viraria um `FileDiff` zerado, que ocupa uma
+  // linha da tela para não dizer nada.
+  return null
+}
+
+/**
+ * As linhas de um trecho, numeradas pelos dois lados ao mesmo tempo.
+ *
+ * O alfabeto é fechado e foi medido: 5.456 linhas de patch deram `+` (2.515), espaço (2.019) e `-`
+ * (922), e nada mais. **A linha de prefixo desconhecido é pulada, e não tratada como contexto** — o
+ * único quarto caso plausível é o marcador `\ No newline at end of file` que a biblioteca `diff`
+ * emite, e contá-lo como contexto deslocaria em um a numeração de todas as linhas seguintes do
+ * trecho, transformando um detalhe cosmético num erro de dado.
+ */
+function hunkLines(raws: readonly unknown[], novoStart: number, velhoStart: number): DiffLine[] {
+  const lines: DiffLine[] = []
+  let novo = novoStart
+  let velho = velhoStart
+
+  for (const raw of raws) {
+    const line = asString(raw)
+    if (line === null || line === '') continue
+
+    const text = line.slice(1)
+    if (line.startsWith('+')) {
+      lines.push({ kind: 'add', number: novo, text })
+      novo += 1
+    } else if (line.startsWith('-')) {
+      // O lado velho é o único número que uma linha removida tem: ela não existe no arquivo novo.
+      lines.push({ kind: 'remove', number: velho, text })
+      velho += 1
+    } else if (line.startsWith(' ')) {
+      lines.push({ kind: 'context', number: novo, text })
+      novo += 1
+      velho += 1
+    }
+  }
+
+  return lines
+}
+
+/**
+ * Os trechos cortados no teto, com os totais intactos.
+ *
+ * **O corte pode cair no meio de um trecho**, e nesse caso ele é emitido parcialmente: descartar o
+ * trecho inteiro por não caber jogaria fora linhas que cabiam. Os totais são os do patch **inteiro**
+ * — o número que informa é o tamanho da mudança, não o do pedaço que coube.
+ */
+function capped(
+  aproveitados: readonly DiffLine[][],
+  additions: number,
+  deletions: number,
+): FileDiff {
+  const total = aproveitados.reduce((soma, lines) => soma + lines.length, 0)
+  const hunks: DiffHunk[] = []
+  let emitidas = 0
+
+  for (const lines of aproveitados) {
+    // Trecho que ficaria com zero linha não é emitido: uma fronteira sem conteúdo é só um
+    // separador solto na tela.
+    const cabem = DIFF_MAX_LINES - emitidas
+    if (cabem === 0) break
+
+    const fatia = lines.length <= cabem ? lines : lines.slice(0, cabem)
+    hunks.push({ lines: fatia })
+    emitidas += fatia.length
+  }
+
+  return { additions, deletions, hunks, truncated: total - emitidas }
+}
+
+/**
+ * Quantas linhas um arquivo novo nasceu tendo.
+ *
+ * Tira **uma** quebra final antes de dividir, porque ela fecha a última linha em vez de abrir uma
+ * vazia: `"a\nb\n"` são duas linhas, `"\n"` é uma (vazia) e `"a"` é uma.
+ */
+function countLines(content: string): number {
+  const corpo = content.endsWith('\n') ? content.slice(0, -1) : content
+
+  return corpo.split('\n').length
+}
+
+/**
  * O texto de uma nota, quando o que está escrito como fala do usuário não é fala dele. `null`
  * quando é.
  *
@@ -320,4 +480,15 @@ export function asArray(value: unknown): readonly unknown[] {
 
 export function asString(value: unknown): string | null {
   return typeof value === 'string' ? value : null
+}
+
+/**
+ * `NaN` e `Infinity` não são número de linha; `typeof` sozinho os deixaria passar.
+ *
+ * Local, e não importado de `board/narrow.ts`, que tem o gêmeo dele: o `core` mantém os dois
+ * namespaces separados, e um fio de `session/` para `board/` por causa de um guarda de três linhas
+ * seria o primeiro entre duas metades que hoje não se conhecem.
+ */
+function asNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }

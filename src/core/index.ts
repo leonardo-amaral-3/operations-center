@@ -29,7 +29,14 @@ export type { DiscoveredBoard, Discovery } from './board/BoardFinder'
 export type { BoardReaderDeps, ReadBoardInput } from './board/BoardReader'
 export type { CardReaderDeps, ReadCardInput } from './board/CardReader'
 export type { GraphQLFn, GraphQLResponse } from './board/types'
-export type { Board, BoardCard, BoardCardField, BoardColumn } from './board/types'
+export type {
+  Board,
+  BoardCard,
+  BoardCardField,
+  BoardCardParent,
+  BoardColumn,
+  BoardPhase,
+} from './board/types'
 export type { CardComment, CardContent } from './board/types'
 
 export { RepoIndex } from './repos/RepoIndex'
@@ -51,6 +58,9 @@ export type {
   ChatMessage,
   ChatText,
   ChatToolUse,
+  DiffHunk,
+  DiffLine,
+  FileDiff,
   PermissionDecision,
   PermissionRequest,
   Question,

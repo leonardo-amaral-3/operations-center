@@ -11,10 +11,12 @@ interface ColumnProps {
   /** Já filtrados para esta coluna, **na ordem em que o board os devolveu**. */
   cards: readonly BoardCard[]
   /**
-   * O cartão aberto **da aba ativa** — pode não estar nesta coluna, ou não existir. Cada aba guarda
-   * o seu (Decisão 12); a coluna só enxerga o da aba em cena, que é tudo de que ela precisa.
+   * Os cartões abertos **da aba ativa** — do kanban inteiro, não só desta coluna, e possivelmente
+   * nenhum. A regra é um por coluna (#45), mas quem a aplica é o reducer, no clique: aqui o
+   * conjunto chega inteiro e a coluna só pergunta pelo cartão que ela desenha, exatamente como já
+   * faz com `conversations` e `dangerous`.
    */
-  expandedItemId: string | null
+  expandedItemIds: readonly string[]
   sessions: CardSessions
   /** Os cartões com conversa a retomar — do kanban inteiro, não só desta coluna. */
   conversations: readonly string[]
@@ -39,7 +41,7 @@ interface ColumnProps {
 export function Column({
   column,
   cards,
-  expandedItemId,
+  expandedItemIds,
   sessions,
   conversations,
   dangerous,
@@ -47,7 +49,7 @@ export function Column({
   onSession,
   onToggleDangerous,
 }: ColumnProps): JSX.Element {
-  const hosting = cards.some((card) => card.itemId === expandedItemId)
+  const hosting = cards.some((card) => expandedItemIds.includes(card.itemId))
 
   return (
     // A raia não se separa do canvas pela cor — as duas são `bg-background`, que é o que a `Card` já
@@ -55,7 +57,7 @@ export function Column({
     //
     // `overflow-hidden` para o `border-b-2` do cabeçalho encostar nos cantos arredondados: sem ele o
     // separador atravessa o raio e sobra um bico preto em cada ponta.
-    <Card asChild className={`${hosting ? 'w-[34rem]' : 'w-72'} shrink-0 overflow-hidden`}>
+    <Card asChild className={`${hosting ? 'w-[36rem]' : 'w-90'} shrink-0 overflow-hidden`}>
       <section
         data-testid="column"
         data-column-id={column.id}
@@ -89,7 +91,7 @@ export function Column({
               // A conversabilidade é da coluna e vem decidida do core — a tela não reimplementa a
               // regra, só a repassa ao cartão que está dentro dela.
               conversable={column.conversable}
-              expanded={card.itemId === expandedItemId}
+              expanded={expandedItemIds.includes(card.itemId)}
               session={sessions[card.itemId]}
               // O conjunto vem inteiro e a coluna só pergunta por este cartão: a conversa é do
               // cartão, e ele pode ter andado de coluna desde que ela aconteceu.

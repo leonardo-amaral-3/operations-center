@@ -31,12 +31,23 @@
     "src/core/**/*.ts",
     "src/shared/**/*.ts",
 
-    // A exceção nominal do renderer, e ela é nominal de propósito: `src/renderer/**` inteiro não
-    // cabe neste programa (não há `lib: DOM` aqui), mas o estado da sessão e a regra que o move são
-    // puros e precisam ser legíveis pelo teste, que roda no programa do Node. Mesmo arranjo do
-    // `src/shared/`: listado nos dois, e por isso um só. Se a lista crescer, o sinal é que a parte
-    // pura virou pasta — e aí ela vira glob, não uma segunda linha.
+    // As exceções nominais do renderer, e elas são nominais de propósito: `src/renderer/**` inteiro
+    // não cabe neste programa (não há `lib: DOM` aqui), mas há parte do renderer que é pura e
+    // precisa ser legível pelo teste, que roda no programa do Node. Mesmo arranjo do `src/shared/`:
+    // listado nos dois, e por isso um só.
+    //
+    // **Nominal e não glob** — e agora que são duas, a razão deixou de ser "ainda é uma" e passou a
+    // ser uma que se sustenta: as duas puras moram em pastas que **não** são puras. `session/`
+    // guarda o hook que fala com `window.oc`; `components/` é quase todo `.tsx`. Nenhum glob de
+    // pasta separa a parte pura do que quebraria este programa, e `src/renderer/**/*.ts` levaria
+    // junto o `useSessionView.ts`. Enquanto a lista couber num olhar, ela é a fronteira mais barata
+    // que existe; o dia em que a parte pura virar pasta de verdade é o dia de trocá-la por um glob.
     "src/renderer/session/sessionView.ts",
+    // O mapa de aparência das etiquetas de campo (#44), e ele é puro **por causa deste teste**: o
+    // CA-5 afirma que valor que o board não conhece sai neutro, e afirmá-lo sem montar DOM exige
+    // importar o mapa de `tests/unit/design-system.test.ts`. Sem esta linha, `tsc --build` reprova
+    // o import com `TS6307` enquanto o `yarn test` passa verde — o vermelho chega pelo lado errado.
+    "src/renderer/components/fieldLook.ts",
 
     "tests/**/*.ts"
   ],

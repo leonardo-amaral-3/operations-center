@@ -43,6 +43,50 @@ export interface ChatText {
 export type ToolStatus = 'running' | 'done' | 'error' | 'aborted'
 
 /**
+ * Uma linha do diff, já classificada e já sem o prefixo.
+ *
+ * A tela **não interpreta prefixo**: quem lê `+`, `-` e o espaço é o core, uma vez, e o que
+ * atravessa a ponte já vem decidido. É a mesma postura do `detail`, que o core trunca em vez de
+ * mandar inteiro para a tela cortar.
+ */
+export interface DiffLine {
+  kind: 'add' | 'remove' | 'context'
+  /**
+   * O número da linha no arquivo: o do lado **novo** para `add` e `context`, o do lado **velho**
+   * para `remove` — que é o único número que uma linha removida tem.
+   */
+  number: number
+  text: string
+}
+
+/**
+ * Um trecho contíguo do arquivo.
+ *
+ * Trecho e não lista achatada: entre dois trechos há um salto no arquivo, e sem a fronteira a tela
+ * teria de inferi-la comparando números de linha — inferência frágil que o dado já traz de graça.
+ */
+export interface DiffHunk {
+  lines: readonly DiffLine[]
+}
+
+/**
+ * O que uma chamada escreveu num arquivo.
+ *
+ * **Sem campo de caminho, de propósito**: o arquivo já está no `detail` da entrada, que o
+ * `DETAIL_FIELDS` preenche com `file_path` tanto no `Edit` quanto no `Write`. Repeti-lo aqui seria
+ * mandar o mesmo dado duas vezes pela ponte para desenhá-lo uma.
+ */
+export interface FileDiff {
+  /** Linhas adicionadas no patch **inteiro**, e não no pedaço que coube — ver CA-3. */
+  additions: number
+  deletions: number
+  /** Vazio quando o arquivo é novo: um `create` não tem trecho, só tamanho. */
+  hunks: readonly DiffHunk[]
+  /** Quantas linhas o teto cortou. `0` quando o diff coube inteiro. */
+  truncated: number
+}
+
+/**
  * Uma ferramenta que a sessão usou. É **um fato só que muda de status**, e não dois eventos: por
  * isso o `id` é o `tool_use_id` do bloco — a mesma chave que o `tool_result` referencia.
  */
@@ -66,6 +110,15 @@ export interface ChatToolUse {
   /** `tool_use_id` do `Agent` que gerou esta chamada, ou `null` no nível de cima. */
   parentId: string | null
   status: ToolStatus
+  /**
+   * O que a chamada escreveu, quando ela escreveu. `null` para toda ferramenta que não mexe em
+   * arquivo — e também para a escrita que não mudou nada, porque `+0 −0` ocupa uma linha para não
+   * dizer nada.
+   *
+   * `null` e não opcional, pelo mesmo motivo do `parentId`: campo sempre presente é campo que o
+   * consumidor não precisa lembrar de checar por ausência antes de checar por valor.
+   */
+  diff: FileDiff | null
 }
 
 /**

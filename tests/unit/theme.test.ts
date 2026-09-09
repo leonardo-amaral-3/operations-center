@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { contrastRatio, oklchToSrgb, toHex } from '../../src/main/color'
+import { contrastRatio, oklabDistance, oklchToSrgb, toHex } from '../../src/main/color'
 import { parseOklch, parseThemes } from '../../src/main/sheet'
 import { resolveTheme, windowBackground } from '../../src/main/theme'
 
@@ -88,8 +88,8 @@ describe('`parseThemes` lê a folha do disco', () => {
     expect([...combinacoes.keys()]).toEqual(['lavanda', 'ametista'])
   })
 
-  it.each(['lavanda', 'ametista'] as const)('a %s traz os onze tokens', (nome) => {
-    expect(combinacoes.get(nome)?.size).toBe(11)
+  it.each(['lavanda', 'ametista'] as const)('a %s traz os vinte e cinco tokens', (nome) => {
+    expect(combinacoes.get(nome)?.size).toBe(25)
   })
 
   it('o valor chega inteiro e sem o `\\r` do CRLF grudado no fim', () => {
@@ -189,5 +189,71 @@ describe('`windowBackground` tira a cor da janela da folha', () => {
     { theme: 'ametista', esperado: '#e6eafc' },
   ] as const)('a janela da $theme abre em $esperado', ({ theme, esperado }) => {
     expect(windowBackground(theme)).toBe(esperado)
+  })
+})
+
+/**
+ * A régua do CA-1 do #44, ancorada nos dois números que a spec daquele card publicou.
+ *
+ * Mesma disciplina do resto do arquivo: o esperado é **citação de documento aprovado**, e não um
+ * número que este teste tenha calculado para si mesmo. Os dois casos foram escolhidos porque são os
+ * que a spec usou para justificar decisões — o primeiro é a folga contra o limiar de 0.05, o segundo
+ * é a prova de que a banda calma não encosta nos crachás de sessão. Se a fórmula divergir, é aqui
+ * que se descobre, e não numa paleta que passou verde medindo errado.
+ */
+describe('a distância em OKLab reproduz os dois números que o #44 publicou', () => {
+  const DISTANCIAS = [
+    {
+      nome: 'o pior par dentro de um campo, `--tipo-debito` contra `--tipo-melhoria`',
+      a: [87, 0.06, 85],
+      b: [87, 0.06, 145],
+      esperado: 0.06,
+    },
+    {
+      nome: 'a menor distância contra um estado, `--rota-hotfix` contra `--question`',
+      a: [74, 0.06, 187],
+      b: [78, 0.13, 230],
+      esperado: 0.1034,
+    },
+  ] as const
+
+  it.each(DISTANCIAS)('$nome dá $esperado', ({ a, b, esperado }) => {
+    // Quatro casas, que é a precisão em que a spec do #44 publicou os dois números.
+    expect(Number(oklabDistance(a, b).toFixed(4))).toBe(esperado)
+  })
+
+  it('e ela é simétrica, senão "o par X-Y" e "o par Y-X" seriam perguntas diferentes', () => {
+    expect(oklabDistance([87, 0.06, 85], [87, 0.06, 145])).toBe(
+      oklabDistance([87, 0.06, 145], [87, 0.06, 85]),
+    )
+  })
+})
+
+/**
+ * A regressão da descoberta #306: nome de token com dígito.
+ *
+ * **Medido antes do conserto**, e é o que torna este caso carga viva: alimentado com
+ * `--severidade-1`, o parser de então não casava **nada**. O token sumia de `parseThemes` e, com
+ * ele, das canárias de completude, gamut e contraste — enquanto a folha o declarava e a tela
+ * pintava com ele. Uma canária verde por não ter enxergado é o pior resultado que ela pode dar.
+ *
+ * O caso é **sintético de propósito**: os nomes que a folha usa hoje não têm dígito
+ * (`--severidade-alta`, e não `--severidade-1`), então nada na árvore exercita este caminho. Ele
+ * guarda o parser para o próximo nome, não para os de agora.
+ */
+describe('o parser da folha enxerga token com dígito no nome', () => {
+  const FOLHA = `[data-theme='lavanda'] {
+  --severidade-1: oklch(70% 0 0);
+  --main: oklch(70.28% 0.1753 295.36);
+}`
+
+  it('o token com dígito entra no mapa da combinação', () => {
+    expect(parseThemes(FOLHA).get('lavanda')?.get('--severidade-1')).toBe('oklch(70% 0 0)')
+  })
+
+  it('e o vizinho sem dígito continua entrando', () => {
+    // Sem este caso, um alargamento que passasse a casar **só** nomes com dígito ficaria verde
+    // acima e levaria a folha inteira junto.
+    expect(parseThemes(FOLHA).get('lavanda')?.get('--main')).toBe('oklch(70.28% 0.1753 295.36)')
   })
 })

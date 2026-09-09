@@ -10,6 +10,14 @@ import { Freshness } from '../components/Freshness'
 import { Badge } from '../ui/badge'
 import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
 
+/**
+ * Nenhum cartão aberto naquela aba.
+ *
+ * Constante de módulo, e não `[]` inline no render: um literal novo a cada render daria referência
+ * nova a **toda** `Column` sem nenhum ganho.
+ */
+const VAZIO: readonly string[] = []
+
 type SessionsAction =
   | { type: 'card'; itemId: string; session: CardSession }
   | { type: 'state'; sessionId: string; state: SessionState }
@@ -146,10 +154,10 @@ export function KanbanScreen(): JSX.Element {
       // Inalcançável na prática — não há cartão na tela sem aba ativa —, e a guarda existe para
       // dizer isso ao tipo em vez de a `key` virar `string | null` no vocabulário do reducer.
       if (activeKey === null) return
-      // Um cartão aberto por aba (Decisão 12), e dentro da aba a regra do RF-6 não muda: abrir o
-      // segundo fecha o primeiro — sem **encerrar** a sessão dele, que continua viva atrás do cartão
-      // fechado. O cartão da outra aba não sente nada, e é isso que devolve a conversa onde ela
-      // estava ao voltar para lá.
+      // Um cartão aberto **por coluna** (#45): abrir o segundo da mesma coluna fecha o primeiro —
+      // sem **encerrar** a sessão dele, que continua viva atrás do cartão fechado. Cartão de outra
+      // coluna, como o de outra aba, não sente nada. Quem resolve a coluna é o reducer, pelo
+      // retrato que ele já guarda; por isso a assinatura daqui é só o `itemId`.
       dispatch({ type: 'toggle', key: activeKey, itemId })
     },
     [activeKey],
@@ -179,9 +187,9 @@ export function KanbanScreen(): JSX.Element {
   // Guardado num `const` de propósito: a narrowing de `active.board` se perderia dentro do `map`
   // abaixo, que é um callback, e a de um `const` não.
   const board = active?.board ?? null
-  // O cartão aberto **desta** aba. As outras continuam guardando o delas em `expanded`, fora de
+  // Os cartões abertos **desta** aba. As outras continuam guardando os delas em `expanded`, fora de
   // cena — desmontadas, não fechadas.
-  const expandedItemId = (activeKey === null ? undefined : expanded[activeKey]) ?? null
+  const expandedItemIds = (activeKey === null ? undefined : expanded[activeKey]) ?? VAZIO
 
   return (
     <div className="flex h-full flex-col bg-background font-base text-foreground">
@@ -220,7 +228,7 @@ export function KanbanScreen(): JSX.Element {
               // Filtra por `columnId`, nunca pelo nome — renomear a estação no board não pode
               // reposicionar cartão nenhum —, e `filter` preserva a ordem que o board devolveu.
               cards={board.cards.filter((card) => card.columnId === column.id)}
-              expandedItemId={expandedItemId}
+              expandedItemIds={expandedItemIds}
               sessions={sessions}
               conversations={conversations}
               dangerous={dangerous}

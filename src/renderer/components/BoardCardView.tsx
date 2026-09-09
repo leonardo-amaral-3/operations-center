@@ -10,6 +10,7 @@ import type { CardSession } from './CardChat'
 import { CardContent } from './CardContent'
 import { ConversationBadge } from './ConversationBadge'
 import { DangerBadge } from './DangerBadge'
+import { FieldBadge } from './FieldBadge'
 import { StateBadge } from './StateBadge'
 
 interface BoardCardViewProps {
@@ -113,17 +114,30 @@ export function BoardCardView({
     <>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="font-mono text-[11px] text-foreground/70">#{card.number}</span>
+
+        {/* O parentesco é mais um fato do cartão, e por isso veste a mesma casca das etiquetas de
+            campo vizinhas em vez de casca própria. `variant="neutral"` pela razão que o
+            `ConversationBadge` já enuncia: os tokens de estado marcam *o que a sessão quer de
+            você*, e um parentesco não quer nada.
+
+            Vale mesmo com o épico **fora do board** — número e título vêm do `parent` da API, e não
+            da varredura do retrato. */}
+        {card.parent ? (
+          <Badge
+            variant="neutral"
+            data-testid="card-parent"
+            data-parent-number={String(card.parent.number)}
+            title={`Fase de #${card.parent.number} — ${card.parent.title}`}
+            className="rounded-base px-1.5 py-0 text-[10px] font-normal"
+          >
+            ⤴ #{card.parent.number}
+          </Badge>
+        ) : null}
+
         {card.fields.map((field) => (
           // A chave é o nome do campo, não o `optionId`: um card tem no máximo uma opção por campo,
           // e o nome é o que continua único mesmo se duas opções compartilharem rótulo.
-          <Badge
-            key={field.name}
-            variant="neutral"
-            title={`${field.name}: ${field.value}`}
-            className="rounded-base px-1.5 py-0 text-[10px] font-normal"
-          >
-            {field.value}
-          </Badge>
+          <FieldBadge key={field.name} field={field} />
         ))}
       </div>
 
@@ -132,6 +146,36 @@ export function BoardCardView({
       <div title={card.title} className="mt-1.5 line-clamp-3 text-sm leading-snug">
         {card.title}
       </div>
+
+      {/* As fases deste épico que estão neste board, uma linha cada, sem teto (decisão 9).
+
+          **Inerte**, e `div` em vez de `ul`/`li`, pelas mesmas duas razões: navegar o board por
+          épico está fora do escopo, e o corpo colapsado inteiro vive dentro de um `button`, que só
+          admite frase — é o precedente que este arquivo já enuncia em cima do `body`. Um `ul`
+          custaria validade sem comprar semântica: `button` torna os descendentes *presentational*
+          na ARIA, então `list`/`listitem` sairiam da árvore de acessibilidade de qualquer jeito.
+
+          A ordem chega pronta na prop — quem ordena por número crescente é a inversão, no core. */}
+      {card.phases.length > 0 ? (
+        <div data-testid="card-phases" className="mt-1.5 space-y-0.5">
+          {card.phases.map((phase) => (
+            <div
+              key={phase.itemId}
+              data-testid="card-phase"
+              data-phase-number={String(phase.number)}
+              data-phase-column={phase.columnId}
+              title={phase.title}
+              className="flex items-center gap-1.5 truncate text-[10px] text-foreground/70"
+            >
+              <span className="font-mono">#{phase.number}</span>
+              {/* Vazio quando o board não declara a opção, e nenhum rótulo de recuo: escrever
+                  "desconhecida" seria o app afirmar algo que ele não sabe. Sobra a linha com o
+                  número sozinho, que é a informação que existe. */}
+              <span className="truncate">{phase.columnName}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <div className="min-w-0 truncate text-[11px] text-foreground/70">
