@@ -50,7 +50,7 @@ export function Freshness({ readAt, error }: FreshnessProps): JSX.Element {
       // O motivo inteiro fica no `title`: ele pode ser uma frase longa da API, e o cabeçalho é
       // estreito. O que a linha precisa dizer sem hover é que o dado parou no tempo.
       title={error ?? undefined}
-      className={stale ? 'bg-warning' : undefined}
+      className={stale ? 'bg-warning text-warning-foreground' : undefined}
     >
       {stale ? `desatualizado · ${age(readAt)}` : age(readAt)}
     </Badge>

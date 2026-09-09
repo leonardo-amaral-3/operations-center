@@ -33,7 +33,10 @@ export function PermissionPrompt({
     //
     // `flex-row` derruba o `flex-col` da primitiva pelo `twMerge` (conflito de `flex-direction`): a
     // casca empilha por padrão, e este painel é o texto de um lado e as duas saídas do outro.
-    <Card asChild className="flex-row items-start gap-4 bg-warning px-4 py-3">
+    <Card
+      asChild
+      className="flex-row items-start gap-4 bg-warning text-warning-foreground px-4 py-3"
+    >
       {/* `data-request` não é enfeite de teste: com a fila, dois pedidos seguidos deixam o
           `data-state` do crachá parado em `awaiting_decision`, e esta âncora é a única forma de um
           observador de fora distinguir "o pedido mudou" de "nada aconteceu". É dela que o laço dos

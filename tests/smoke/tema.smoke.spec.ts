@@ -17,7 +17,7 @@ import { BOARDS_FIXTURE_PATH, BOARD_FIXTURE_PATH } from './boards-fixture'
  *
  * **Não toca a rede, não pede token e não consome cota**: como o smoke do kanban, as únicas fontes
  * de dado são `tests/fixtures/boards.json` (a descoberta) e `tests/fixtures/board.json` (o board da
- * aba). O que ele custa é o tempo de subir o Electron duas vezes.
+ * aba). O que ele custa é o tempo de subir o Electron três vezes.
  *
  * **Nenhum valor de cor é escrito à mão.** O que o teste sabe sobre as combinações sai de
  * `parseThemes` sobre a folha do disco — mesma disciplina que `kanban.smoke.spec.ts:15-18` declara
@@ -51,16 +51,24 @@ interface Medida {
   readonly barraLargura: string
   /** O espaço que o contêiner nº 1 reserva de fato — a barra observada, não a regra lida. */
   readonly gutter: number
+  /** A `color` computada do `<h2>` do cabeçalho de coluna — a tinta do acento, e não a do canvas. */
+  readonly tintaDoTitulo: string
+  /** A `color` computada da face de cartão, que é `--foreground`. É dela que a do `<h2>` se separa. */
+  readonly tintaDaFace: string
 }
 
 test('a combinação escolhida é a que a tela desenha', async () => {
-  // A ametista primeiro, a default depois: a segunda medição é a que precisa do ambiente limpo, e
-  // deixá-la por último é o que garante que nada da primeira sobrou pendurado.
+  // As duas com `OC_THEME` primeiro, a default por último: é ela que precisa do ambiente limpo, e
+  // deixá-la no fim é o que garante que nada das outras sobrou pendurado.
   const ametista = await medir('ametista')
+  const obsidiana = await medir('obsidiana')
   const lavanda = await medir()
 
   expect(ametista.theme, 'com `OC_THEME=ametista`, o `<html>` não carrega a ametista').toBe(
     'ametista',
+  )
+  expect(obsidiana.theme, 'com `OC_THEME=obsidiana`, o `<html>` não carrega a obsidiana').toBe(
+    'obsidiana',
   )
   expect(lavanda.theme, 'sem `OC_THEME`, o `<html>` não carrega a lavanda').toBe('lavanda')
 
@@ -92,6 +100,57 @@ test('a combinação escolhida é a que a tela desenha', async () => {
     ametista.face,
   )
 
+  // A obsidiana contra a lavanda, e aqui a **face** entra na conta — ao contrário do par da ametista
+  // logo acima. É o que separa esta combinação das duas claras: a decisão #161 mantém
+  // `--secondary-background` branco em toda combinação clara, e é essa igualdade que a obsidiana
+  // existe para romper. Um bloco que esquecesse a face desenharia cartão branco sobre canvas escuro.
+  expect(obsidiana.canvas, 'o canvas é o mesmo na obsidiana e na lavanda').not.toBe(lavanda.canvas)
+  expect(obsidiana.face, 'a face de cartão é a mesma na obsidiana e na lavanda').not.toBe(
+    lavanda.face,
+  )
+
+  // E o cabeçalho é **igual**, que é guarda e não desistência — a mesma figura que a face da ametista
+  // acima. A folha declara `--main` idêntico nas duas (`index.css:155` e `:295`): a obsidiana é a
+  // lavanda apagada, e um acento próprio gastaria uma quinta família de matiz num orçamento que o #8
+  // fechou. Ver a Emenda 2026-09-09 do CA-1 na spec. Afirmá-lo aqui é o que faz alguém que reafine o
+  // acento da escura ver vermelho em vez de silêncio.
+  expect(
+    obsidiana.cabecalho,
+    'o cabeçalho de coluna deixou de ser o mesmo acento na obsidiana e na lavanda',
+  ).toBe(lavanda.cabecalho)
+
+  // E os três níveis de hierarquia se distinguindo **sob a obsidiana**, pela mesma razão que o bloco
+  // da ametista declara: sem isto, uma obsidiana de fundo chapado passaria verde acima e desenharia
+  // um kanban de um nível só. É a metade medida do CA-1 — o recorte contra a borda preta está
+  // declarado em `## Technical Decisions` da spec, e não é aferido aqui.
+  expect(obsidiana.canvas, 'sob a obsidiana, o canvas e o cabeçalho de coluna empatam').not.toBe(
+    obsidiana.cabecalho,
+  )
+  expect(obsidiana.cabecalho, 'sob a obsidiana, o cabeçalho e a face de cartão empatam').not.toBe(
+    obsidiana.face,
+  )
+  expect(obsidiana.canvas, 'sob a obsidiana, o canvas e a face de cartão empatam').not.toBe(
+    obsidiana.face,
+  )
+
+  // O CA-6, e ele mede **separação**, não um valor: sob a obsidiana `--foreground` é claro e
+  // `--main-foreground` é preto, então o `<h2>` que herdasse a tinta do corpo — como fazia até este
+  // card — cairia branco sobre o violeta claro do cabeçalho, a 2.5:1. Afirmar a diferença em vez do
+  // hex é a mesma disciplina que o topo do arquivo declara: nenhum valor de cor escrito à mão.
+  expect(
+    obsidiana.tintaDoTitulo,
+    'sob a obsidiana, o `<h2>` do cabeçalho de coluna herdou a tinta do corpo em vez da do acento',
+  ).not.toBe(obsidiana.tintaDaFace)
+
+  // E a guarda que impede a asserção acima de virar falso-verde: nas claras as duas tintas **são** o
+  // mesmo preto, e é por isso que este buraco atravessou o #29 sem nada ficar vermelho. Ela é o que
+  // prova que a diferença medida em cima é de **cor** e não de grafia — as duas leituras saem de
+  // tokens `oklch`, e sob a lavanda casam caractere por caractere.
+  expect(
+    lavanda.tintaDoTitulo,
+    'na lavanda o `<h2>` e a face de cartão deixaram de compartilhar a tinta — a asserção da obsidiana perdeu o sentido',
+  ).toBe(lavanda.tintaDaFace)
+
   // E o cabeçalho traz o matiz **daquela** combinação, não de uma qualquer: o Chromium serializa cor
   // computada no espaço de origem, então o oklch chega inteiro e o `h` é o que diz "esta é a
   // ametista". Mesma técnica que `kanban.smoke.spec.ts:238-241` usa para a sombra dura.
@@ -111,7 +170,9 @@ test('a combinação escolhida é a que a tela desenha', async () => {
   // A leitura não depende da combinação, e por isso é afirmada **uma** vez: repeti-la sob a ametista
   // seria pagar duas vezes pela mesma prova, a disciplina que o topo deste arquivo já declara.
   // O que a combinação decide é o polegar — e sem o bloco as duas empatariam em transparente.
-  expect(ametista.barra, 'o polegar da barra é o mesmo nas duas combinações').not.toBe(lavanda.barra)
+  expect(ametista.barra, 'o polegar da barra é o mesmo nas duas combinações').not.toBe(
+    lavanda.barra,
+  )
 
   // E o contêiner nº 1 reservando espaço de verdade, que é o que a regra sozinha não prova. Doze
   // contra os quinze da barra nativa deste Chromium: a geometria afrouxa em 3px, e é daí que sai o
@@ -123,8 +184,8 @@ test('a combinação escolhida é a que a tela desenha', async () => {
  * Sobe o app com o ambiente pedido, mede as três superfícies e o atributo, e **fecha**.
  *
  * Não é o `beforeAll` do kanban smoke, que sobe **uma** instância para o arquivo inteiro: aqui são
- * dois ambientes diferentes, e duas instâncias do Electron não podem coexistir. O `close()` no
- * `finally` é o que impede um Electron pendurado de travar a segunda subida quando a primeira falha.
+ * três ambientes diferentes, e duas instâncias do Electron não podem coexistir. O `close()` no
+ * `finally` é o que impede um Electron pendurado de travar a subida seguinte quando uma delas falha.
  */
 async function medir(tema?: string): Promise<Medida> {
   const app = await electron.launch({
@@ -159,6 +220,15 @@ async function medir(tema?: string): Promise<Medida> {
       barra: await corDoPolegar(principal),
       barraLargura: await larguraDaBarra(principal),
       gutter: await gutterReservado(principal),
+      // O `<h2>` dentro do `header` que já foi medido acima, e não um `data-testid` novo: é o mesmo
+      // elemento cuja superfície o `cabecalho` traz, e o CA-6 é sobre a tinta **daquele** título.
+      tintaDoTitulo: await corDaTinta(coluna.locator('header h2')),
+      // A face de cartão, e **não** o `body`: a referência tem de ser uma superfície que declare
+      // `text-foreground`, e a `Card` a declara na base (`card.tsx:29`) enquanto o `body` só declara
+      // `background-color`. Medido: a `color` do `body` é o preto default do UA, que o Chromium
+      // serializa `rgb(0, 0, 0)` — compará-la com o `oklch(0 0 0)` do `<h2>` daria uma diferença de
+      // **grafia** e um CA-6 verde por engano, com as duas tintas pretas na tela.
+      tintaDaFace: await corDaTinta(cartao),
     }
   } finally {
     await app.close()
@@ -220,20 +290,29 @@ function matizDoAcento(theme: Theme): RegExp {
  * DOM, e não deve: `src/main`, `src/core` e `src/preload` são Node, e uma lib DOM ali deixaria um
  * `document` solto passar despercebido numa revisão.
  *
- * **O `pseudo?` e o `width` são deste card, e são gate de CI**: sem eles,
- * `getComputedStyle(el, '::-webkit-scrollbar-thumb')` é TS2554 e `.width` é TS2339, e o
- * `yarn typecheck` reprova o PR — este arquivo compila no programa do Node, que não carrega a lib
- * DOM. A cópia gêmea em `kanban.smoke.spec.ts` **não** cresce junto: cada arquivo declara o que
- * usa, que é o outro lado da cópia deliberada.
+ * **O `pseudo?` e o `width` vieram do card das barras de rolagem, e o `color` é deste; os três são
+ * gate de CI**: sem eles, `getComputedStyle(el, '::-webkit-scrollbar-thumb')` é TS2554 e `.width` e
+ * `.color` são TS2339, e o `yarn typecheck` reprova o PR — este arquivo compila no programa do Node,
+ * que não carrega a lib DOM. A cópia gêmea em `kanban.smoke.spec.ts` **não** cresce junto: cada
+ * arquivo declara o que usa, que é o outro lado da cópia deliberada.
  */
 declare function getComputedStyle(
   element: unknown,
   pseudo?: string,
-): { backgroundColor: string; width: string }
+): { backgroundColor: string; color: string; width: string }
 
 /** O `background-color` computado — a mesma cópia, pela mesma razão. */
 async function corDeFundo(locator: Locator): Promise<string> {
   return locator.evaluate((element) => getComputedStyle(element).backgroundColor)
+}
+
+/**
+ * A `color` computada — e **computada** é a palavra que faz esta helper valer o CA-6: o `<h2>` não
+ * declarava classe de cor nenhuma, então o que se mede aqui é o que a cascata entregou, herança
+ * inclusive. Ler o `className` do elemento provaria só que alguém escreveu a classe.
+ */
+async function corDaTinta(locator: Locator): Promise<string> {
+  return locator.evaluate((element) => getComputedStyle(element).color)
 }
 
 /**

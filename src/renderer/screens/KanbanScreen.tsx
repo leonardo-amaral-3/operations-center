@@ -207,7 +207,7 @@ export function KanbanScreen(): JSX.Element {
             <Badge
               data-testid="discovery-warning"
               variant="neutral"
-              className="bg-warning"
+              className="bg-warning text-warning-foreground"
               title={discoveryError}
             >
               descoberta parcial

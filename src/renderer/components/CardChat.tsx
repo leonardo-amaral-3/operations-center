@@ -250,7 +250,7 @@ export function CardChat({
               data-testid="card-stop-turn"
               variant="neutral"
               size="xs"
-              className="bg-warning"
+              className="bg-warning text-warning-foreground"
               onClick={stop}
             >
               Parar
@@ -297,7 +297,7 @@ export function CardChat({
             data-testid="card-end-session"
             variant="neutral"
             size="xs"
-            className="bg-danger"
+            className="bg-danger text-danger-foreground"
             disabled={dead || view.id === null}
             onClick={end}
           >
