@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import type { ChatToolUse, ToolStatus } from '../../shared/session'
+import type { ChatToolUse, DiffLine, FileDiff, ToolStatus } from '../../shared/session'
 
 interface ToolEntryProps {
   entry: ChatToolUse
@@ -23,6 +23,46 @@ const MARKS: Record<ToolStatus, { glyph: string; label: string; className: strin
   done: { glyph: '✓', label: 'concluída', className: 'text-foreground/60' },
   error: { glyph: '✕', label: 'falhou', className: 'text-danger' },
   aborted: { glyph: '⊘', label: 'sem resposta', className: 'text-foreground/40' },
+}
+
+/**
+ * O glifo de cada espécie de linha — **tabela explícita**, e não o prefixo de volta do texto.
+ *
+ * Quem leu `+`, `-` e o espaço foi o core, uma vez, e o que atravessou a ponte já veio decidido: a
+ * tela reencontrar o prefixo seria reimplementar a leitura do patch do lado errado da ponte. O `−`
+ * daqui nem é o `-` que veio no arquivo — é o traço tipográfico (U+2212), o mesmo da linha de
+ * totais, para os dois sinais terem a mesma largura e o mesmo peso.
+ */
+const DIFF_GLYPHS: Record<DiffLine['kind'], string> = {
+  add: '+',
+  remove: '−',
+  context: ' ',
+}
+
+/**
+ * A cor da linha é **fundo**, não tinta, e isso não é preferência: o design system afere contraste
+ * de `--foreground` *sobre* `--attention` e *sobre* `--danger` e publica `bg-*` na allowlist — os
+ * dois tokens são fundo por construção. Como `--foreground` é preto puro nos dois temas, o
+ * contraste é monotônico na luminância, e toda mistura entre dois fundos que já passam AAA passa
+ * também; é por isso que o `/30` não pede par novo na tabela de contraste.
+ */
+const DIFF_BACKGROUNDS: Record<DiffLine['kind'], string> = {
+  add: 'bg-attention/30',
+  remove: 'bg-danger/30',
+  context: '',
+}
+
+/**
+ * A linha de totais: `+N` e `−M`, com o `−M` **omitido** quando nada foi removido.
+ *
+ * Uma string só, montada aqui, e não dois pedaços concatenados no JSX: `+0 −0` num arquivo que
+ * acabou de nascer diria que algo foi removido de um arquivo que não existia.
+ *
+ * Os números são os do patch **inteiro**, e não os do pedaço que coube na tela — o que informa é o
+ * tamanho da mudança, não o do trecho exibido.
+ */
+function totaisDe(diff: FileDiff): string {
+  return diff.deletions > 0 ? `+${diff.additions} −${diff.deletions}` : `+${diff.additions}`
 }
 
 /**
@@ -72,6 +112,66 @@ export function ToolEntry({ entry }: ToolEntryProps): JSX.Element {
           primeira: o nome da ferramenta é o que se procura ao varrer a trilha com o olho. */}
       {entry.headline ? (
         <p className="mt-0.5 ml-4 truncate text-[10px] text-foreground/50">{entry.headline}</p>
+      ) : null}
+
+      {/* O que a chamada escreveu, enquanto ela escreve. Dentro da mesma entrada e depois do
+          `headline`, e não num painel ao lado: o diff é a terceira linha do mesmo fato, e é isso
+          que faz as duas telas que já montam a trilha ganharem-no sem tocar em nenhuma delas.
+
+          Nada quando `entry.diff` é `null` — o que cobre toda ferramenta que não mexe em arquivo,
+          a escrita que não mudou nada, e a conversa restaurada do disco, onde o SDK não devolve o
+          campo. */}
+      {entry.diff !== null ? (
+        <div
+          data-testid="tool-diff"
+          data-additions={entry.diff.additions}
+          data-deletions={entry.diff.deletions}
+          // Sempre presente, inclusive valendo `0` — mesmo trato do `data-parent` acima. Sem ele,
+          // "quantas linhas ficaram de fora" só poderia ser afirmado lendo a prosa do corte.
+          data-truncated={entry.diff.truncated}
+          className="mt-1 ml-4 font-mono text-[10px]"
+        >
+          <p className="text-foreground/60">{totaisDe(entry.diff)}</p>
+
+          {entry.diff.hunks.map((hunk, indiceDoTrecho) => (
+            <div
+              key={indiceDoTrecho}
+              // A fronteira entre dois trechos é um salto no arquivo. Enfeite de fronteira, e por
+              // isso ele **não** conta para o teto de linhas, que é contagem de linha de diff.
+              className={indiceDoTrecho > 0 ? 'mt-0.5 border-t border-border pt-0.5' : ''}
+            >
+              {hunk.lines.map((linha, indiceDaLinha) => (
+                <div
+                  key={indiceDaLinha}
+                  data-testid="diff-line"
+                  data-diff-kind={linha.kind}
+                  className={`flex items-baseline gap-1 ${DIFF_BACKGROUNDS[linha.kind]}`}
+                >
+                  {/* `w-10` fixo para caber quatro dígitos: sem largura fixa, a coluna se
+                      realinharia entre um trecho e outro do mesmo diff. */}
+                  <span className="w-10 shrink-0 text-right text-foreground/40">
+                    {linha.number}
+                  </span>
+                  {/* `whitespace-pre` por causa do `context`, cujo glifo é um espaço — sem isso o
+                      HTML o colapsaria e a coluna de texto andaria um caractere para a esquerda. */}
+                  <span className="shrink-0 whitespace-pre text-foreground/40">
+                    {DIFF_GLYPHS[linha.kind]}
+                  </span>
+                  {/* Corta, não quebra, e com o texto inteiro no `title` — como o `detail` já faz.
+                      Quebrar destruiria o alinhamento da coluna de número, e rolagem horizontal
+                      aqui dentro é exatamente o painel que esta feature não é. */}
+                  <span title={linha.text} className="min-w-0 truncate text-foreground">
+                    {linha.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+
+          {entry.diff.truncated > 0 ? (
+            <p className="text-foreground/40">{`… mais ${entry.diff.truncated} linhas`}</p>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )

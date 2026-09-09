@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { INTERRUPTED_NOTICE, commandOf, replay } from '../../src/core/session/transcript'
+import {
+  DIFF_MAX_LINES,
+  INTERRUPTED_NOTICE,
+  commandOf,
+  diffOf,
+  replay,
+} from '../../src/core/session/transcript'
 import type { TranscriptEntry } from '../../src/core/session/transcript'
 import type { ChatMessage, ChatToolUse } from '../../src/shared/session'
 
@@ -170,6 +176,32 @@ describe('replay de um transcript', () => {
     })
   })
 
+  describe('CA-5 — a conversa restaurada não regride', () => {
+    it('o Edit relido volta com o status certo e sem diff', () => {
+      // O diff é **ao vivo só**, e não por escolha de conveniência: `getSessionMessages()` devolve
+      // `SessionMessage`, que não tem `tool_use_result` — nem no tipo (`sdk.d.ts`) nem medido (0 de
+      // 43 mensagens numa sessão real). O `replay` nem chega a chamar o `diffOf`; a entrada nasce
+      // com `diff: null` pelo `toolUses` e assim fica.
+      const messages = replay([
+        assistente('a1', chamada('toolu_edit', 'Edit', { file_path: '/repo/src/app.ts' })),
+        resultado('u1', 'toolu_edit'),
+      ])
+
+      expect(ferramentas(messages)).toEqual([
+        {
+          id: 'toolu_edit',
+          role: 'tool',
+          name: 'Edit',
+          detail: '/repo/src/app.ts',
+          headline: '',
+          parentId: null,
+          status: 'done',
+          diff: null,
+        },
+      ])
+    })
+  })
+
   it('devolve a conversa na ordem em que ela aconteceu', () => {
     const messages = replay([
       fala('u1', 'roda os testes'),
@@ -189,8 +221,178 @@ describe('replay de um transcript', () => {
         headline: '',
         parentId: null,
         status: 'done',
+        diff: null,
       },
       { id: 'a2', role: 'assistant', text: 'tudo verde' },
     ])
+  })
+})
+
+/** Um trecho do `structuredPatch`, com os dois lados de partida separados de propósito. */
+function trecho(newStart: number, oldStart: number, lines: readonly unknown[]): unknown {
+  return { newStart, oldStart, lines }
+}
+
+/** `n` linhas com o mesmo prefixo — o jeito de construir um patch maior que o teto sem escrevê-lo. */
+function repetir(prefixo: string, n: number, rotulo = 'linha'): string[] {
+  return Array.from({ length: n }, (_, i) => `${prefixo}${rotulo} ${i + 1}`)
+}
+
+/** O par `kind`/`number` de cada linha emitida, achatado — o que quase toda asserção olha. */
+function linhas(diff: ReturnType<typeof diffOf>): Array<{ kind: string; number: number }> {
+  return (diff?.hunks ?? []).flatMap((hunk) =>
+    hunk.lines.map(({ kind, number }) => ({ kind, number })),
+  )
+}
+
+/** Quantas linhas de trecho o diff emitiu ao todo, somando os trechos. */
+function emitidas(diff: ReturnType<typeof diffOf>): number {
+  return (diff?.hunks ?? []).reduce((soma, hunk) => soma + hunk.lines.length, 0)
+}
+
+describe('diffOf', () => {
+  describe('CA-1 — o patch vira linhas numeradas', () => {
+    it('conta pelos prefixos e entrega cada linha sem o dela', () => {
+      const diff = diffOf({
+        type: 'update',
+        structuredPatch: [
+          trecho(10, 10, [' const a = 1', '-const b = 2', '+const b = 3', '+const c = 4', ' fim']),
+        ],
+      })
+
+      // As contagens são **calculadas**: o `gitDiff` que traria `additions`/`deletions` prontos
+      // nunca chegou populado nesta instalação, e lê-lo daria `+0 −0` em todo caso real.
+      expect(diff).toEqual({
+        additions: 2,
+        deletions: 1,
+        truncated: 0,
+        hunks: [
+          {
+            lines: [
+              { kind: 'context', number: 10, text: 'const a = 1' },
+              { kind: 'remove', number: 11, text: 'const b = 2' },
+              { kind: 'add', number: 11, text: 'const b = 3' },
+              { kind: 'add', number: 12, text: 'const c = 4' },
+              { kind: 'context', number: 13, text: 'fim' },
+            ],
+          },
+        ],
+      })
+    })
+
+    it('os dois lados andam sozinhos: add e context pelo novo, remove pelo velho', () => {
+      // `oldStart` diferente de `newStart` é o que separa uma numeração de verdade de um contador
+      // só: com os dois iguais, uma implementação que numerasse tudo pelo lado novo passaria.
+      const diff = diffOf({
+        structuredPatch: [trecho(12, 5, [' mantida', '-saiu', '+entrou', ' fim'])],
+      })
+
+      expect(linhas(diff)).toEqual([
+        { kind: 'context', number: 12 },
+        { kind: 'remove', number: 6 },
+        { kind: 'add', number: 13 },
+        { kind: 'context', number: 14 },
+      ])
+    })
+  })
+
+  describe('CA-2 — arquivo novo tem tamanho, não trecho', () => {
+    it('a criação conta as linhas do content e não emite trecho nenhum', () => {
+      const diff = diffOf({
+        type: 'create',
+        structuredPatch: [],
+        content: repetir('', 95).join('\n'),
+      })
+
+      expect(diff).toEqual({ additions: 95, deletions: 0, hunks: [], truncated: 0 })
+    })
+
+    it('a quebra final fecha a última linha, e não abre uma vazia', () => {
+      const conta = (content: string): number | undefined =>
+        diffOf({ type: 'create', structuredPatch: [], content })?.additions
+
+      expect(conta('a\nb\n')).toBe(2)
+      expect(conta('\n')).toBe(1)
+      expect(conta('a')).toBe(1)
+    })
+  })
+
+  describe('CA-3 — diff longo não engole a conversa', () => {
+    it('corta no meio do trecho, e os totais continuam sendo os do patch inteiro', () => {
+      const adicoes = DIFF_MAX_LINES + 20
+      const remocoes = DIFF_MAX_LINES
+      const diff = diffOf({
+        structuredPatch: [
+          trecho(1, 1, [...repetir('+', adicoes, 'nova'), ...repetir('-', remocoes, 'velha')]),
+        ],
+      })
+
+      // O número que informa é o tamanho da mudança, não o do pedaço que coube.
+      expect(diff?.additions).toBe(adicoes)
+      expect(diff?.deletions).toBe(remocoes)
+      expect(emitidas(diff)).toBe(DIFF_MAX_LINES)
+      expect(diff?.truncated).toBe(adicoes + remocoes - DIFF_MAX_LINES)
+      // Um trecho só, emitido pela metade — e não descartado por não caber inteiro.
+      expect(diff?.hunks).toHaveLength(1)
+    })
+
+    it('na fronteira exata, o trecho seguinte não vira um trecho vazio', () => {
+      const sobra = 5
+      const diff = diffOf({
+        structuredPatch: [
+          trecho(1, 1, repetir('+', DIFF_MAX_LINES)),
+          trecho(200, 200, repetir('+', sobra)),
+        ],
+      })
+
+      expect(emitidas(diff)).toBe(DIFF_MAX_LINES)
+      expect(diff?.truncated).toBe(sobra)
+      // O segundo trecho não coube, e não coube **inteiro**: nada de `{ lines: [] }` no array.
+      expect(diff?.hunks).toHaveLength(1)
+    })
+  })
+
+  describe('CA-4 — só escrita de arquivo ganha diff', () => {
+    it('o que não tem forma de escrita devolve null', () => {
+      expect(diffOf({ stdout: 'ok', stderr: '' })).toBeNull()
+      // Patch vazio **sem** ser criação: é o que o SDK devolve quando nada mudou.
+      expect(diffOf({ type: 'update', structuredPatch: [] })).toBeNull()
+      // Arquivo de zero byte não tem o que mostrar, e `+0` seria a mesma mentira que o `+0 −0`.
+      expect(diffOf({ type: 'create', structuredPatch: [], content: '' })).toBeNull()
+    })
+
+    it('carga ilegível devolve null sem lançar', () => {
+      expect(diffOf(undefined)).toBeNull()
+      expect(diffOf(null)).toBeNull()
+      expect(diffOf('nem objeto é')).toBeNull()
+      expect(diffOf([1, 2, 3])).toBeNull()
+      expect(diffOf({ structuredPatch: 'nem array é' })).toBeNull()
+    })
+
+    it('o trecho descartado devolve null, e não um FileDiff zerado', () => {
+      // Este é o caso que o guarda final existe para pegar: o trecho sem `newStart` é descartado,
+      // e sem o guarda o retorno seria `+0 −0` com zero linha — indistinguível de arquivo novo.
+      expect(diffOf({ structuredPatch: [{}] })).toBeNull()
+      expect(diffOf({ structuredPatch: [trecho(1, 1, [])] })).toBeNull()
+      expect(
+        diffOf({ structuredPatch: [{ newStart: 1, oldStart: 1, lines: 'nem array' }] }),
+      ).toBeNull()
+      // `NaN` não é número de linha, e um `typeof` sozinho o deixaria passar.
+      expect(diffOf({ structuredPatch: [trecho(Number.NaN, 1, [' a'])] })).toBeNull()
+    })
+
+    it('a linha ilegível é pulada sem deslocar a numeração das seguintes', () => {
+      // Se qualquer uma das três fosse tratada como contexto, o `+dois` sairia numerado 3, 4 ou 5 —
+      // um detalhe cosmético virando erro de dado, que é o motivo de a linha desconhecida ser pulada.
+      const diff = diffOf({
+        structuredPatch: [trecho(1, 1, [' um', 42, '', '\\ No newline at end of file', '+dois'])],
+      })
+
+      expect(linhas(diff)).toEqual([
+        { kind: 'context', number: 1 },
+        { kind: 'add', number: 2 },
+      ])
+      expect(diff?.additions).toBe(1)
+    })
   })
 })

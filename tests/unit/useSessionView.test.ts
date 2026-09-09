@@ -38,6 +38,7 @@ function ferramenta(status: ToolStatus, id = 'toolu_01'): ChatToolUse {
     headline: '',
     parentId: null,
     status,
+    diff: null,
   }
 }
 

@@ -235,6 +235,10 @@ const ANCORA = /\b(data-[a-z-]+)['"]?\s*[=:]/g
 
 /** A lista congelada: o que a árvore tinha no momento em que a rede foi armada. */
 const ANCORAS = [
+  // As quatro do card #15, e elas entram em ordem alfabetica e nao no fim: a lista e
+  // comparada como array ordenado, entao um bloco novo no rodape ficaria vermelho por
+  // posicao e nao por conteudo. Tres delas ficam no bloco do diff e a quarta em cada linha.
+  'data-additions',
   'data-api-key-source',
   // Entrou com o card #32: a barra de abas nasceu depois desta rede, e o `data-board-key` é por
   // onde o smoke pergunta **qual** board cada aba abre sem escrever o título de nenhum.
@@ -255,6 +259,8 @@ const ANCORAS = [
   // `data-permission-mode` é a **segunda fonte**, a que o SDK reporta no `init`, e ela só é legível
   // depois de um turno ter rodado — é o par que a decisão 10 mantém visível em vez de auto-corrigir.
   'data-dangerous',
+  'data-deletions',
+  'data-diff-kind',
   'data-label',
   'data-parent',
   // As três do card #41, e a ordem aqui é a do `sort()`, não a da leitura. `data-parent-number` é o
@@ -278,6 +284,7 @@ const ANCORAS = [
   'data-testid',
   'data-tokens',
   'data-tool',
+  'data-truncated',
 ]
 
 describe('as âncoras que os testes leem seguem onde estavam', () => {
@@ -541,6 +548,171 @@ describe('nenhum arquivo de `src/` escreve cor literal', () => {
     )
 
     expect(ocorrencias).toEqual([])
+  })
+})
+
+/**
+ * A barra de rolagem do design system, em três canárias — e as três varrem a folha **com os
+ * comentários apagados**.
+ *
+ * A razão não é elegância. O comentário de registro do bloco em `index.css` tem de explicar a
+ * precedência da API padrão e a ausência de sujeito no seletor, e explicar isso exige **escrever** as
+ * strings que duas destas canárias proíbem; uma varredura ingênua ficaria vermelha numa folha
+ * correta. É a mesma colisão que este repo já resolveu duas vezes: `board-readonly.test.ts:26-30`
+ * mantém a palavra `mutation` fora de todo comentário de propósito, e a Proibição 4 aqui exclui
+ * `oklch(` da varredura de literais para o parser não tropeçar na própria canária. O comentário da
+ * folha e estas três são **um par** — quem editar um sem o outro quebra o outro.
+ *
+ * O idioma do apagamento é copiado de `src/main/sheet.ts:20`, e a cópia é deliberada: o `COMENTARIO`
+ * de lá não é exportado, e exportá-lo faria a leitura que o main usa para pintar a janela carregar
+ * uma necessidade do teste.
+ */
+const COMENTARIO = /\/\*[\s\S]*?\*\//g
+
+/**
+ * Uma regra CSS de topo: o seletor inteiro e o corpo.
+ *
+ * `[^{}]+` no seletor é o que a mantém honesta — ela casa o seletor **desde o `}` anterior**, e não
+ * só o pedaço adjacente ao `::`. É essa diferença que faz `.coluna ::-webkit-scrollbar` ser pego
+ * junto com `main::-webkit-scrollbar`: escopar por descendência escopa do mesmo jeito, e uma canária
+ * que só olhasse o caractere anterior deixaria o espaço passar.
+ */
+const REGRA = /(?<seletor>[^{}]+)\{(?<corpo>[^{}]*)\}/g
+
+/** O pseudo-elemento da barra, com o sufixo opcional (`-track`, `-thumb`, `-corner`). */
+const PSEUDO_DA_BARRA = /::-webkit-scrollbar[a-z-]*/
+
+/**
+ * A folha com todo comentário apagado — e apagado **preservando as quebras de linha**, para que o
+ * número de linha que uma canária reporta seja o do arquivo de verdade. Um `replace(COMENTARIO, '')`
+ * seco colapsaria as linhas e mandaria quem encontrasse o vermelho para o lugar errado da folha.
+ */
+function lerFolhaSemComentarios(): string {
+  return readFileSync(CAMINHO_DO_TEMA, 'utf8').replace(COMENTARIO, (comentario) =>
+    comentario.replace(/[^\n]/g, ''),
+  )
+}
+
+/** As regras da barra na folha sem comentários: o seletor já sem espaço em volta, e o corpo cru. */
+function lerRegrasDaBarra(): { seletor: string; corpo: string }[] {
+  return [...lerFolhaSemComentarios().matchAll(REGRA)]
+    .map((regra) => ({
+      seletor: (regra.groups?.['seletor'] ?? '').trim(),
+      corpo: regra.groups?.['corpo'] ?? '',
+    }))
+    .filter(({ seletor }) => PSEUDO_DA_BARRA.test(seletor))
+}
+
+describe('a barra de rolagem é a do design system, e não a do Chromium', () => {
+  it('as regras `::-webkit-scrollbar` existem e nenhuma delas vem precedida de sujeito', () => {
+    const regras = lerRegrasDaBarra()
+
+    // A existência primeiro, e separada da asserção que depende dela — o mesmo motivo pelo qual o
+    // `@theme inline` tem teste próprio antes dos cinco que o leem. Sem esta linha, apagar o bloco e
+    // deixar o comentário passaria **verde contra o vazio**: uma folha sem barra nenhuma não tem
+    // regra escopada para reclamar, e um rollback pela metade sairia impune.
+    expect(regras.map(({ seletor }) => seletor)).not.toEqual([])
+
+    // O seletor sem sujeito é o mecanismo, e é ele que se guarda — não a lista dos contêineres que
+    // rolam. Sem sujeito, `::-webkit-scrollbar` vale por `*::-webkit-scrollbar` e alcança o
+    // contêiner que ainda não existe; congelar a enumeração seria o carimbo em vez da rede contra o
+    // qual `board-readonly.test.ts:29` argumenta.
+    //
+    // Falha pelo seletor encontrado, e não por contagem: quem vier ler este vermelho precisa ver
+    // qual regra foi escopada para saber onde tirar o sujeito.
+    const escopadas = regras
+      .map(({ seletor }) => seletor)
+      .filter((seletor) => seletor !== PSEUDO_DA_BARRA.exec(seletor)?.[0])
+
+    expect(escopadas).toEqual([])
+  })
+})
+
+/**
+ * A armadilha medida, e a única das três que pega uma falha **invisível**.
+ *
+ * Com `scrollbar-width` ou `scrollbar-color` declarados no mesmo elemento, a API padrão vence e o
+ * Chromium ignora o bloco `::-webkit-` inteiro: o gutter medido caiu para 10px e a barra voltou a ser
+ * a nativa. O modo de falha é o pior possível — nada quebra, nada fica vermelho, e a feature
+ * simplesmente não está lá. É o mesmo argumento da Proibição 3 ("apagar `--color-attention` não
+ * quebra o build").
+ *
+ * **Duas raízes, porque há dois caminhos para a mesma queda.** A folha é a óbvia; o renderer é a que
+ * escapa, porque o Tailwind v4 aceita propriedade arbitrária e `className="[scrollbar-width:thin]"`
+ * ou `style={{ scrollbarWidth: 'thin' }}` reintroduziriam exatamente o mesmo silêncio sem tocar em
+ * `index.css`. Por isso a varredura cobre as duas grafias, a do CSS e a do React.
+ *
+ * Que a raiz do renderer tenha o que varrer é a guarda de `## as varreduras têm o que varrer` que
+ * garante — `RAIZ_DA_VARREDURA` já está em `RAIZES_VARRIDAS`.
+ */
+const API_PADRAO = /scrollbar-width|scrollbar-color|scrollbarWidth|scrollbarColor/g
+
+/** Arquivo, linha e o achado — o formato que a Proibição 1 já usa, pela mesma razão. */
+function ocorrenciasDaApiPadrao(rotulo: string, conteudo: string): string[] {
+  return conteudo
+    .split('\n')
+    .flatMap((linha, indice) =>
+      [...linha.matchAll(API_PADRAO)].map((achado) => `${rotulo}:${indice + 1} — ${achado[0]}`),
+    )
+}
+
+describe('a barra não devolve o controle à API padrão', () => {
+  it('nem a folha nem o renderer declaram `scrollbar-width` ou `scrollbar-color`', () => {
+    const naFolha = ocorrenciasDaApiPadrao('src/renderer/index.css', lerFolhaSemComentarios())
+    const noRenderer = lerArquivos(RAIZ_DA_VARREDURA).flatMap(({ caminho, conteudo }) =>
+      ocorrenciasDaApiPadrao(caminho, conteudo),
+    )
+
+    expect([...naFolha, ...noRenderer]).toEqual([])
+  })
+})
+
+/**
+ * A segunda metade do CA-2: a barra não decide cor, o tema decide.
+ *
+ * Só `--background` e `--main` variam entre as combinações — as outras nove são idênticas por
+ * construção —, então "usa token" não basta: um polegar preto de `--border` passaria por uma
+ * varredura de literais e continuaria imóvel na troca de combinação. Quem pega isso é o smoke, que
+ * afirma **diferença** entre lavanda e ametista. O que esta canária pega é o outro lado, o que o CI
+ * consegue ver: nenhuma cor escrita à mão dentro do bloco.
+ *
+ * **Whitelist, e restrita às declarações que carregam cor.** A alternativa — listar os 148 nomes de
+ * cor do CSS — é comprida e ainda deixa passar `#fff` e `rgb(0 0 0)`; dentro de `background` e
+ * `border` o vocabulário legítimo é curto o bastante para ser escrito por inteiro, e aí `white`,
+ * `#eee6fe`, `rgb(...)` e `oklch(...)` caem todos pelo mesmo mecanismo. A restrição a propriedades
+ * de cor é o que impede a canária de ter opinião sobre geometria: `width: 12px` não passa por aqui, e
+ * mudar os 12px é ajuste de design, não violação.
+ *
+ * A existência do bloco não é reafirmada aqui: quem a guarda é a primeira canária, e ela vem antes no
+ * arquivo — o mesmo arranjo do `@theme inline` e dos cinco describes que o leem.
+ */
+const PROPRIEDADE_DE_COR = /(?:^|-)(?:background|color|border|outline|shadow|fill|stroke)(?:$|-)/
+
+const VALOR_DE_COR_PERMITIDO =
+  /^(?:var\(--[a-z-]+\)|transparent|0|\d+(?:\.\d+)?(?:px|%)|solid|dashed|dotted|none)$/
+
+describe('a barra não decide cor', () => {
+  it('toda cor do bloco `::-webkit-scrollbar` é `var(--*)` ou `transparent`', () => {
+    // Regra, propriedade e o valor recusado: a cor do app sai da folha, e quem encontra este vermelho
+    // precisa ver o que foi escrito à mão para saber qual token deveria tê-lo dado.
+    const literais = lerRegrasDaBarra().flatMap(({ seletor, corpo }) =>
+      corpo
+        .split(';')
+        .map((declaracao) => declaracao.trim())
+        .filter((declaracao) => declaracao.length > 0)
+        .flatMap((declaracao) => {
+          const [propriedade = '', valor = ''] = declaracao.split(/\s*:\s*/, 2)
+
+          return PROPRIEDADE_DE_COR.test(propriedade)
+            ? valor
+                .split(/\s+/)
+                .filter((token) => !VALOR_DE_COR_PERMITIDO.test(token))
+                .map((token) => `${seletor} { ${propriedade} } — ${token}`)
+            : []
+        }),
+    )
+
+    expect(literais).toEqual([])
   })
 })
 

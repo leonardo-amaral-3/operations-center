@@ -5,7 +5,7 @@
     "src/main/github/fixture.ts, que despacha por igualdade de documento: CARD_QUERY vem para cá,",
     "qualquer outro vai para tests/fixtures/board.json.",
     "",
-    "UMA ENTRADA POR ISSUE DE board.json QUE VIRA CARTÃO — 1, 2, 4, 901, 903, 904, 905, 906, 907, 910, 911 e 920 —, e não só",
+    "UMA ENTRADA POR ISSUE DE board.json QUE VIRA CARTÃO — 1, 2, 4, 901, 903, 904, 905, 906, 907, 908, 910, 911 e 920 —, e não só",
     "pelas que os smokes de hoje abrem: quem escolhe o cartão é a derivação da fixture, e uma entrada faltando",
     "viraria vermelho na escolha, e não no que o teste quer provar. O 902 fica de fora porque não tem",
     "Status e portanto NÃO EXISTE como cartão (regra 4 do BoardReader) — não há clique possível nele.",
@@ -16,7 +16,7 @@
     "leonardo-amaral-3/operations-center, salvos como a API devolveu — inclusive os comentários da",
     "esteira com o marcador `<!-- gm:X -->` na primeira linha, que são o insumo da etiqueta do CA-2.",
     "",
-    "SINTÉTICOS (9, escritos à mão, os mesmos números sintéticos de board.json):",
+    "SINTÉTICOS (10, escritos à mão, os mesmos números sintéticos de board.json):",
     "  · 901 — o cartão FECHADO em ✅ Produção, o que o smoke do conteúdo abre para provar o CA-3 (todo",
     "    cartão abre, conversável ou não). O corpo é longo E TEM TABELA LARGA E BLOCO DE CÓDIGO de",
     "    linha comprida de propósito: é o insumo do CA-4, e sem eles não haveria o que tentar estourar",
@@ -26,9 +26,13 @@
     "    repo não existe e nunca vai responder de verdade; a entrada existe porque ele É um cartão do",
     "    board, e a leitura do conteúdo não depende de a pasta local ser encontrada — só a sessão",
     "    depende. Sem ela, abrir aquele cartão morreria na fixture antes de chegar ao CA-5 do #6.",
-    "  · 904, 905, 906 e 907 — o épico e as três fases que board.json ganhou no card #41. O 904 é o pai",
-    "    de 905 e 906; o 907 declara `parent` #908, que NÃO tem item no board. Nenhum smoke abre nenhum",
-    "    dos quatro hoje: eles estão aqui pela regra do parágrafo de cima, e não por um clique. O 908 é",
+    "  · 904 — o SEGUNDO cartão conversável da mesma coluna do #1 (👀 Revisão), acrescentado no card",
+    "    #45. É o insumo do RA-2: o clique nele é o que fecha o cartão que já estava aberto naquela",
+    "    coluna. Também é do repo forasteiro, e por economia: no repo-casa, abri-lo subiria uma",
+    "    sessão real do Claude Code e gastaria cota só para provar que OUTRO cartão colapsou.",
+    "  · 905, 906, 907 e 908 — o épico e as três fases que board.json ganhou no card #41. O 905 é o pai",
+    "    de 906 e 907; o 908 declara `parent` #909, que NÃO tem item no board. Nenhum smoke abre nenhum",
+    "    dos quatro hoje: eles estão aqui pela regra do parágrafo de cima, e não por um clique. O 909 é",
     "    o único que fica de fora — sem item no board, ele não é cartão, e não há clique possível nele,",
     "    exatamente como o 902.",
     "  · 910, 911 e 920 — os cartões dos DOIS OUTROS BOARDS da esteira, que board.json ganhou no card #25",
@@ -38,7 +42,7 @@
     "",
     "MUDOU O CARD_QUERY? RECAPTURE. Uma fixture capturada com uma versão anterior da consulta fica",
     "verde contra dados que a API não devolve mais. Recapture com o documento que estiver em",
-    "src/core/board/query.ts e recoloque os cinco sintéticos. Entrou ou saiu cartão de board.json?",
+    "src/core/board/query.ts e recoloque os dez sintéticos. Entrou ou saiu cartão de board.json?",
     "Então entrou ou saiu entrada daqui — as duas fixtures são um par."
   ],
   "1": {
@@ -175,7 +179,7 @@
       "repository": {
         "issue": {
           "number": 904,
-          "body": "## Sintético: o épico com duas fases no board\n\nEste cartão é o **pai** das issues #905 e #906, e por isso o kanban desenha nele a lista das fases\ncom o nome da estação de cada uma — o CA-2 do card #41.\n\nAs duas fases estão em colunas **diferentes** da dele e diferentes entre si, o que é o CA-4 em\nforma de dado: listar as fases dentro do épico não pode mover, duplicar nem esconder o cartão de\nnenhuma delas da coluna a que ela pertence.\n\nA entrada existe aqui porque ele **é** um cartão de `board.json`, e não porque algum smoke o abra:\no par entre as duas fixtures é por cartão, e não por clique.",
+          "body": "## Sintético: o segundo cartão da mesma coluna\n\nVive em 👀 Revisão, a **mesma** coluna do #1, e é o único par de conversáveis juntos que a\nfixture tem: o board real não tem nenhum. Foi acrescentado no card #45 para que o smoke possa\nclicar nele e provar que o cartão que já estava aberto naquela coluna **fecha**, sem que a\nsessão dele morra junto.\n\nO repo é forasteiro (`leonardo-amaral-3/repo-forasteiro`) de propósito, e é aí que está a\neconomia: abrir este cartão no repo-casa subiria uma sessão real do Claude Code e gastaria\ncota só para provar que **outro** cartão colapsou. Forasteiro, ele para no `choose-folder` —\nque é abertura suficiente para o que se quer provar.\n\nO corpo é curto porque nenhuma asserção o lê. O que este cartão precisa ter é uma **entrada**:\nsem ela, abri-lo traria o erro da fixture para dentro do cartão.",
           "comments": {
             "totalCount": 0,
             "nodes": []
@@ -189,7 +193,7 @@
       "repository": {
         "issue": {
           "number": 905,
-          "body": "## Sintético: a primeira fase do épico #904\n\nEste cartão declara `parent` #904 e vive em 🔨 Implementação — outra coluna que a do épico. É ele\nque prova as duas metades de uma vez: o crachá `⤴ #904` no próprio cartão (CA-1) e uma das duas\nlinhas que o #904 desenha (CA-2).\n\nO `parent` traz o `repository` dentro dele porque o cruzamento da inversão é por `repo#número` dos\ndois lados — um número que casa com o repo errado não casa com nada, e o épico ficaria sem fases\nem silêncio.",
+          "body": "## Sintético: o épico com duas fases no board\n\nEste cartão é o **pai** das issues #906 e #907, e por isso o kanban desenha nele a lista das fases\ncom o nome da estação de cada uma — o CA-2 do card #41.\n\nAs duas fases estão em colunas **diferentes** da dele e diferentes entre si, o que é o CA-4 em\nforma de dado: listar as fases dentro do épico não pode mover, duplicar nem esconder o cartão de\nnenhuma delas da coluna a que ela pertence.\n\nA entrada existe aqui porque ele **é** um cartão de `board.json`, e não porque algum smoke o abra:\no par entre as duas fixtures é por cartão, e não por clique.",
           "comments": {
             "totalCount": 0,
             "nodes": []
@@ -203,7 +207,7 @@
       "repository": {
         "issue": {
           "number": 906,
-          "body": "## Sintético: a segunda fase do épico #904\n\nMesma coisa que a #905, numa **terceira** coluna (✅ Produção) e fechada. Existe porque com uma\nfase só não haveria como provar nem a ordem crescente por número, nem que o nome da estação sai da\ncoluna de cada fase e não de uma constante.",
+          "body": "## Sintético: a primeira fase do épico #905\n\nEste cartão declara `parent` #905 e vive em 🔨 Implementação — outra coluna que a do épico. É ele\nque prova as duas metades de uma vez: o crachá `⤴ #905` no próprio cartão (CA-1) e uma das duas\nlinhas que o #905 desenha (CA-2).\n\nO `parent` traz o `repository` dentro dele porque o cruzamento da inversão é por `repo#número` dos\ndois lados — um número que casa com o repo errado não casa com nada, e o épico ficaria sem fases\nem silêncio.",
           "comments": {
             "totalCount": 0,
             "nodes": []
@@ -217,7 +221,21 @@
       "repository": {
         "issue": {
           "number": 907,
-          "body": "## Sintético: a fase cujo épico não está no board\n\nEste cartão declara `parent` #908 — uma issue que **não tem item neste board**. É a borda do CA-1\ndo card #41: o número e o título do épico vêm do `parent` que a API devolve, e não da varredura do\nretrato, então o crachá aparece do mesmo jeito.\n\nO caminho contrário não vale, e a spec o diz: o #908 não existe como cartão, logo não há onde\ndesenhar a lista de fases dele. O parentesco só é visível do lado da filha.",
+          "body": "## Sintético: a segunda fase do épico #905\n\nMesma coisa que a #906, numa **terceira** coluna (✅ Produção) e fechada. Existe porque com uma\nfase só não haveria como provar nem a ordem crescente por número, nem que o nome da estação sai da\ncoluna de cada fase e não de uma constante.",
+          "comments": {
+            "totalCount": 0,
+            "nodes": []
+          }
+        }
+      }
+    }
+  },
+  "908": {
+    "data": {
+      "repository": {
+        "issue": {
+          "number": 908,
+          "body": "## Sintético: a fase cujo épico não está no board\n\nEste cartão declara `parent` #909 — uma issue que **não tem item neste board**. É a borda do CA-1\ndo card #41: o número e o título do épico vêm do `parent` que a API devolve, e não da varredura do\nretrato, então o crachá aparece do mesmo jeito.\n\nO caminho contrário não vale, e a spec o diz: o #909 não existe como cartão, logo não há onde\ndesenhar a lista de fases dele. O parentesco só é visível do lado da filha.",
           "comments": {
             "totalCount": 0,
             "nodes": []

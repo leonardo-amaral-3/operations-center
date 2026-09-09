@@ -362,8 +362,16 @@ export function assistantToolUse(
  * `is_error` só é escrito quando é `true`: no sucesso o SDK **omite** o campo em vez de mandá-lo
  * `false`, e um fake que mandasse `false` esconderia justamente o caso que a guarda `=== true`
  * existe para tratar.
+ *
+ * `toolUseResult` é a saída estruturada da chamada — o campo de onde o diff é lido. Omiti-lo é o
+ * default porque é o que acontece na maioria das ferramentas, e porque o roteiro que não fala de
+ * diff não deve precisar dizer nada sobre ele.
  */
-export function toolResult(toolUseId: string, isError = false): SDKUserMessage {
+export function toolResult(
+  toolUseId: string,
+  isError = false,
+  toolUseResult?: unknown,
+): SDKUserMessage {
   return {
     type: 'user',
     message: {
@@ -378,9 +386,56 @@ export function toolResult(toolUseId: string, isError = false): SDKUserMessage {
       ],
     },
     parent_tool_use_id: null,
+    ...(toolUseResult === undefined ? {} : { tool_use_result: toolUseResult }),
     uuid: nextUuid(),
     session_id: SESSION_ID,
   }
+}
+
+/**
+ * Vários resultados numa mensagem **só** — a forma que a guarda do diff existe para recusar.
+ *
+ * Ela merece helper próprio porque o `tool_use_result` é um campo da **mensagem**, e não do bloco:
+ * é justamente por isso que com dois blocos não há como saber de quem ele é. Um roteiro que
+ * mandasse dois `toolResult()` seguidos daria duas mensagens, e não exercitaria nada disso.
+ */
+export function toolResultBatch(
+  toolUseIds: readonly string[],
+  toolUseResult?: unknown,
+): SDKUserMessage {
+  return {
+    type: 'user',
+    message: {
+      role: 'user',
+      content: toolUseIds.map((id) => ({
+        type: 'tool_result' as const,
+        tool_use_id: id,
+        content: 'ok',
+      })),
+    },
+    parent_tool_use_id: null,
+    ...(toolUseResult === undefined ? {} : { tool_use_result: toolUseResult }),
+    uuid: nextUuid(),
+    session_id: SESSION_ID,
+  }
+}
+
+/** Um trecho do `structuredPatch`, com os dois lados de partida separados de propósito. */
+export interface FakeHunk {
+  newStart: number
+  oldStart: number
+  /** As linhas **com** o prefixo, como o SDK as manda: quem o lê é o core, uma vez. */
+  lines: readonly string[]
+}
+
+/**
+ * A saída estruturada de uma escrita que alterou arquivo — o `tool_use_result` de onde o diff sai.
+ *
+ * Carrega só o que o core lê. O resultado real traz mais campos (`filePath`, `oldString`,
+ * `userModified`…), e enchê-lo deles aqui daria a impressão de que algum importa.
+ */
+export function patchResult(hunks: readonly FakeHunk[]): Record<string, unknown> {
+  return { type: 'update', structuredPatch: hunks }
 }
 
 /**
