@@ -22,6 +22,7 @@ import type { Theme } from '../shared/theme'
 import { registerThemeIpc } from './appearance'
 import { registerBoardsIpc } from './boards'
 import { registerCardIpc } from './card'
+import { createClaudeBinSource } from './claudeBin'
 import {
   inspectSession,
   loadConversations,
@@ -194,6 +195,10 @@ const host = new SessionHost({
   query,
   model: resolveModel(),
   settingSources: resolveSettingSources(),
+  // **Sempre, e não só empacotado.** `yarn dev` e `yarn smoke` passam pela mesma cadeia do
+  // executável — é isso que impede o clássico "funciona no dev" e o que faz os smokes que sobem
+  // sessão real virarem, de graça, o teste de que a resolução funciona de ponta a ponta.
+  claudeBin: createClaudeBinSource(),
 })
 
 // **O IPC de board só é registrado no kanban.** Assim o smoke da fatia vertical (`OC_SCREEN=chat`)
