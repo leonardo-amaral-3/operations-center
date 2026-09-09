@@ -94,6 +94,24 @@ describe('a superfície de board é somente-leitura', () => {
     // tirar uma escrita de dentro de `boards:`, e aqui não há de que escapar. É por isso que estes
     // dois também ficam fora da lista da terceira asserção sem que ela precise abrir exceção para
     // um nome.
+    //
+    // **E a dos quatro canais do #21, que é a maior entrada de uma vez desde o começo.** A janela
+    // perdeu a moldura do sistema (`frame: false`), então minimizar, maximizar e fechar deixaram de
+    // ser gestos do Windows e passaram a ser botões do app — e um botão do renderer só alcança a
+    // `BrowserWindow` por um canal. `readWindow` responde se ela está maximizada; os outros três
+    // **escrevem**, e o que eles escrevem é a própria janela: nem disco, nem `OC_STATE_DIR`, nem
+    // GitHub. São os primeiros canais de escrita da ponte que não tocam arquivo nenhum.
+    //
+    // **Nenhum dos quatro consulta o board**, nem para ler. Cada um resolve a janela por
+    // `BrowserWindow.fromWebContents(event.sender)` e chama um método dela; a carga é vazia na ida
+    // e `{ maximized }` na volta — **nunca** cartão, pasta ou coordenada.
+    //
+    // O prefixo é `window:` e é família nova, pela mesma razão de `theme:`: não há escrita solta de
+    // dentro de `boards:` de que escapar, então não precisa de `ui:`. É isso que os mantém fora da
+    // lista da terceira asserção sem exceção nominal. E os nomes são `closeWindow`/`minimizeWindow`/
+    // `toggleMaximizeWindow` e não `close`/`minimize` porque `close` já é `'session:close'` — fechar
+    // a janela e encerrar uma sessão são coisas diferentes, e dois `close` na mesma superfície é
+    // como alguém liga o botão errado.
     expect(IPC_INVOKE).toEqual({
       start: 'session:start',
       send: 'session:send',
@@ -110,6 +128,10 @@ describe('a superfície de board é somente-leitura', () => {
       setDangerous: 'danger:set',
       readTheme: 'theme:read',
       setTheme: 'theme:set',
+      readWindow: 'window:read',
+      minimizeWindow: 'window:minimize',
+      toggleMaximizeWindow: 'window:toggle-maximize',
+      closeWindow: 'window:close',
     })
   })
 
@@ -140,6 +162,12 @@ describe('a superfície de board é somente-leitura', () => {
     // razão dos dois acima — é estado do app, e o throttle de 10s do board o faria chegar depois de
     // o humano já ter visto a cor antiga. **Não toca o board**, nem para ler: o valor sai do
     // `appearance.ts`, que só conhece a combinação corrente em memória e o `preferences.json`.
+    //
+    // E a do canal do #21: `window` avisa que a janela maximizou ou restaurou. Canal próprio pela
+    // mesma razão dos três acima, e com um motivo a mais que só ele tem — a janela muda **por fora**
+    // do app: duplo clique na faixa, `Win+↑`, arrastar para o topo. Sem o evento, o botão do meio
+    // continuaria dizendo "Maximizar" numa janela já maximizada. **Não toca o board**, nem para ler:
+    // o valor é `window.isMaximized()`, lido da própria `BrowserWindow` no instante da publicação.
     expect(IPC_EVENT).toEqual({
       init: 'session:init',
       message: 'session:message',
@@ -149,6 +177,7 @@ describe('a superfície de board é somente-leitura', () => {
       conversations: 'conversations:changed',
       dangerous: 'danger:changed',
       theme: 'theme:changed',
+      window: 'window:changed',
     })
   })
 

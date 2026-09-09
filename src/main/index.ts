@@ -40,6 +40,7 @@ import { judgeNavigation } from './navigation'
 import { loadActiveBoard, loadTheme, saveActiveBoard } from './preferences'
 import { gitOrigin, scanSessionFolders } from './repos'
 import { resolveThemeEnv, windowBackground } from './theme'
+import { registerWindowIpc } from './window'
 
 /**
  * A pasta de trabalho da sessão **sem cartão** — a da fatia vertical. Sem `OC_CWD`, é a raiz do repo:
@@ -467,8 +468,14 @@ void app.whenReady().then(async () => {
   // registrado depois da janela seria uma corrida contra o próprio boot.
   registerThemeIpc(theme, pintarJanela)
 
+  // **Antes de `createWindow` também**, e pela mesma razão da linha acima. O observador que ele
+  // devolve é a outra metade: os eventos `maximize`/`unmaximize` são da janela, e ela só existe da
+  // linha seguinte em diante.
+  const observarJanela = registerWindowIpc()
+
   const window = createWindow(theme)
   janelaViva = window
+  observarJanela(window)
 
   if (!boardsIpc) return
 
