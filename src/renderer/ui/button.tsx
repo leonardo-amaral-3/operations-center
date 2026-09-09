@@ -21,7 +21,7 @@ const buttonVariants = cva(
       size: {
         default: 'h-10 px-4 py-2',
         // O tamanho que o kanban pede: os botões do cartão vivem numa coluna de 288px e medem
-        // ~26px de altura hoje. `sm` (`h-9`) engordaria a barra de ações do `CardChat` e comeria a
+        // ~26px de altura hoje. `sm` (`h-9`) engordaria a barra de ações do `Chat` e comeria a
         // largura que o CA-3 do card #8 defende. O `text-xs` derruba o `text-sm` da base pelo
         // `twMerge` — conflito de `font-size`, a última vence.
         xs: 'h-7 px-2.5 text-xs',

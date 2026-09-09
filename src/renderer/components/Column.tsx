@@ -4,7 +4,7 @@ import type { BoardCard, BoardColumn } from '../../shared/board'
 import { Badge } from '../ui/badge'
 import { Card } from '../ui/card'
 import { BoardCardView } from './BoardCardView'
-import type { CardSession, CardSessions } from './CardChat'
+import type { CardSession, CardSessions } from './Chat'
 
 interface ColumnProps {
   column: BoardColumn

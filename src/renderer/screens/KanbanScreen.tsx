@@ -5,7 +5,7 @@ import type { BoardTab } from '../../shared/board'
 import type { DangerousSnapshot } from '../../shared/ipc'
 import type { SessionState } from '../../shared/session'
 import { BoardTabs } from '../components/BoardTabs'
-import type { CardSession, CardSessions } from '../components/CardChat'
+import type { CardSession, CardSessions } from '../components/Chat'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
 import { Badge } from '../ui/badge'
@@ -36,13 +36,13 @@ type SessionsAction =
  * O registro de sessões por cartão.
  *
  * Ele existe para o cartão **fechado**: enquanto o chat está na tela, quem sabe da sessão é o
- * próprio `CardChat`. Fechado o cartão, a sessão continua viva (CA-6) e este registro é a única
+ * próprio `Chat`. Fechado o cartão, a sessão continua viva (CA-6) e este registro é a única
  * coisa que ainda a enxerga.
  */
 function reduceSessions(sessions: CardSessions, action: SessionsAction): CardSessions {
   if (action.type === 'card') {
     const known = sessions[action.itemId]
-    // Devolver o **mesmo** registro quando nada mudou não é micro-otimização: o `CardChat` relata a
+    // Devolver o **mesmo** registro quando nada mudou não é micro-otimização: o `Chat` relata a
     // sessão de dentro de um efeito, e um registro novo a cada relato redesenharia o board em laço
     // sem a sessão ter mexido um dedo.
     if (known && known.id === action.session.id && known.state === action.session.state) {
@@ -53,7 +53,7 @@ function reduceSessions(sessions: CardSessions, action: SessionsAction): CardSes
   }
 
   // O evento vem por `sessionId` e o registro é por cartão; quem casa os dois é o relato do
-  // `CardChat`, feito assim que o retrato da sessão voltou. Evento de sessão que este kanban não
+  // `Chat`, feito assim que o retrato da sessão voltou. Evento de sessão que este kanban não
   // conhece simplesmente não tem onde entrar.
   const owner = Object.entries(sessions).find(([, session]) => session.id === action.sessionId)
   if (!owner) return sessions
