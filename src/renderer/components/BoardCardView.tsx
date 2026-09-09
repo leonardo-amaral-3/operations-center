@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardCard } from '../../shared/board'
-import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Card } from '../ui/card'
 import { CardChat } from './CardChat'
@@ -10,6 +9,7 @@ import type { CardSession } from './CardChat'
 import { CardContent } from './CardContent'
 import { ConversationBadge } from './ConversationBadge'
 import { DangerBadge } from './DangerBadge'
+import { FieldBadge } from './FieldBadge'
 import { StateBadge } from './StateBadge'
 
 interface BoardCardViewProps {
@@ -116,14 +116,7 @@ export function BoardCardView({
         {card.fields.map((field) => (
           // A chave é o nome do campo, não o `optionId`: um card tem no máximo uma opção por campo,
           // e o nome é o que continua único mesmo se duas opções compartilharem rótulo.
-          <Badge
-            key={field.name}
-            variant="neutral"
-            title={`${field.name}: ${field.value}`}
-            className="rounded-base px-1.5 py-0 text-[10px] font-normal"
-          >
-            {field.value}
-          </Badge>
+          <FieldBadge key={field.name} field={field} />
         ))}
       </div>
 

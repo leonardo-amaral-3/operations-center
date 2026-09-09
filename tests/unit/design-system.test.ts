@@ -298,6 +298,11 @@ const ANCORAS = [
   'data-dangerous',
   'data-deletions',
   'data-diff-kind',
+  // Entrou com o card #44: é por ela que o smoke do CA-6 encontra a etiqueta de **um** campo para
+  // comparar dois cartões. Âncora e não classe, e não o rótulo da opção: o teste precisa achar "a
+  // etiqueta de `Tipo`" sem afirmar que ela diz `🐞 Bug` nem que ela é `bg-tipo-bug` — as duas
+  // coisas que ele existe justamente para medir do outro lado da cascata.
+  'data-field',
   'data-label',
   'data-parent',
   'data-permission-mode',
@@ -554,6 +559,61 @@ describe('dentro de um campo, dois valores se distinguem', () => {
       .map(({ a, b, distancia }) => `${a} ↔ ${b}: ${distancia.toFixed(4)}`)
 
     expect(perto).toEqual([])
+  })
+})
+
+/**
+ * A outra metade do CA-2 do #44 — a que vive no componente, e não na folha.
+ *
+ * A metade de cima prova que os catorze tokens **existem** na banda calma. Ela não diz nada sobre
+ * quais deles a etiqueta escreve, e é exatamente aí que a divisão do #8 se desfaz na prática: um
+ * `bg-danger` posto no `FieldBadge` para "destacar o Bug" passaria em gamut, em AAA, em contraste e
+ * na distância, porque nenhuma dessas canárias olha o componente. E teria desfeito a divisão inteira
+ * — o vermelho forte é o que a sessão usa para dizer que falhou, não o que o card *é*.
+ *
+ * **Varredura de texto, e não import do mapa**, e a diferença é a razão de este teste existir ao
+ * lado do de baixo, que importa: perguntar ao `LOOKS` só provaria que o `LOOKS` é o que ele diz ser.
+ * A varredura pega a classe escrita **fora** dele — num `className` condicional, num default, num
+ * fallback "temporário". É a disciplina que as Proibições 1 e 2 já praticam neste arquivo.
+ *
+ * Os dois arquivos nomeados um a um, e não a pasta: `components/` está cheia de arquivos que
+ * escrevem `bg-attention` e `bg-danger` com todo direito. A regra não é "ninguém usa cor de estado",
+ * é "a etiqueta de campo não usa" — e é por isso que a lista é nominal e cresce por decisão.
+ */
+const ARQUIVOS_DA_ETIQUETA = [
+  '../../src/renderer/components/fieldLook.ts',
+  '../../src/renderer/components/FieldBadge.tsx',
+]
+
+/** Todo utilitário de fundo, do jeito que ele aparece escrito — inclusive dentro de um comentário. */
+const CLASSE_DE_FUNDO = /\bbg-[a-z0-9-]+/g
+
+/**
+ * As catorze permitidas, derivadas de `CAMPOS` — nunca uma segunda lista escrita à mão, que é como
+ * a folha e o componente começariam a discordar sem nada ficar vermelho.
+ */
+const FUNDOS_DE_ETIQUETA = TOKENS_DE_ETIQUETA.map((token) => token.replace('--', 'bg-'))
+
+describe('a etiqueta de campo só escreve fundo de etiqueta', () => {
+  it('todo `bg-*` dos dois arquivos da etiqueta é um dos catorze', () => {
+    // Arquivo, linha e a classe achada — a mesma cortesia da Proibição 1: uma canária que só diz
+    // "falhou" custa a quem a encontra vermelha mais do que resolve.
+    const intrusos = ARQUIVOS_DA_ETIQUETA.flatMap((relativo) => {
+      // Renomear ou mover um dos dois joga `ENOENT` aqui, e é o que se quer: um caminho que não
+      // existe mais passaria verde varrendo o vazio, e a proibição teria sumido em silêncio.
+      const conteudo = readFileSync(fileURLToPath(new URL(relativo, import.meta.url)), 'utf8')
+
+      return conteudo
+        .split('\n')
+        .flatMap((linha, indice) =>
+          [...linha.matchAll(CLASSE_DE_FUNDO)]
+            .map((achado) => achado[0])
+            .filter((classe) => !FUNDOS_DE_ETIQUETA.includes(classe))
+            .map((classe) => `${relativo}:${indice + 1} — ${classe}`),
+        )
+    })
+
+    expect(intrusos).toEqual([])
   })
 })
 
