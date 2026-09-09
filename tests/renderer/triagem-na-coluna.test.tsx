@@ -71,6 +71,8 @@ const CARTAO: BoardCard = {
   assignees: ['leonardo-amaral-3'],
   columnId: 'OPT_TRI',
   fields: [],
+  parent: null,
+  phases: [],
 }
 
 /** O que o `KanbanScreen` monta na coluna quando a triagem daquela aba está aberta. */
@@ -82,13 +84,18 @@ const ABERTA = {
 }
 
 function coluna(
-  over: { triage?: typeof ABERTA; onStartTriage?: () => void; cards?: readonly BoardCard[] } = {},
+  over: {
+    triage?: typeof ABERTA
+    onStartTriage?: () => void
+    cards?: readonly BoardCard[]
+    expandidos?: readonly string[]
+  } = {},
 ): string {
   return renderToStaticMarkup(
     <Column
       column={TRIAGEM}
       cards={over.cards ?? [CARTAO]}
-      expandedItemIds={[]}
+      expandedItemIds={over.expandidos ?? []}
       sessions={{}}
       conversations={[]}
       dangerous={[]}
@@ -127,6 +134,19 @@ function ocorrencias(html: string, agulha: string): number {
   return html.split(agulha).length - 1
 }
 
+/**
+ * A classe de largura da própria coluna — `w-90`, `w-[36rem]` —, lida da tag da `section` e não do
+ * documento inteiro: `w-fit` e `w-full` aparecem em elementos de dentro.
+ */
+function largura(html: string): string {
+  const classe = /class="([^"]*)"/.exec(tag(html, 'column'))?.[1] ?? ''
+  const medida = classe.split(/\s+/).find((c) => c.startsWith('w-'))
+
+  expect(medida, 'a coluna não declara largura').toBeDefined()
+
+  return medida as string
+}
+
 describe('CA-1 — a ação no cabeçalho e o painel no topo da pilha', () => {
   it('a ação existe quando a coluna a oferece, e não existe quando não a oferece', () => {
     const com = coluna({ onStartTriage: () => {} })
@@ -147,12 +167,17 @@ describe('CA-1 — a ação no cabeçalho e o painel no topo da pilha', () => {
     expect(html.indexOf('triage-panel')).toBeLessThan(html.indexOf('board-card'))
   })
 
-  it('o painel alarga a coluna, sem cartão aberto nenhum', () => {
-    // `expandedItemIds` está vazio nos dois renders: o que alarga aqui é só o painel, e é essa a
-    // metade do CA-1 que um teste com cartão aberto junto não separaria.
-    expect(coluna({ triage: ABERTA })).toContain('w-[34rem]')
-    expect(coluna()).toContain('w-72')
-    expect(coluna()).not.toContain('w-[34rem]')
+  it('o painel alarga a coluna, pela mesma medida de um cartão aberto', () => {
+    // O CA-1 manda repetir o `hosting` do cartão aberto, e a afirmação é essa — não o número. Este
+    // teste fixava `w-[34rem]`, e o #54 alargou a coluna para `w-[36rem]`: o critério continuou
+    // verdadeiro e só o teste ficou vermelho. A referência agora sai do próprio componente, então
+    // ela acompanha a decisão sozinha na próxima vez que a medida mudar.
+    const cartaoAberto = largura(coluna({ expandidos: [CARTAO.itemId] }))
+
+    expect(largura(coluna({ triage: ABERTA }))).toBe(cartaoAberto)
+    // E o painel alarga **sozinho**: aqui `expandedItemIds` está vazio, então o que alarga é só ele
+    // — a metade do CA-1 que um render com cartão aberto junto não separaria.
+    expect(largura(coluna())).not.toBe(cartaoAberto)
   })
 
   it('o painel **não é um cartão**: não vira `board-card` nem entra na contagem', () => {
