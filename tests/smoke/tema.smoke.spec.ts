@@ -1,12 +1,13 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 
 import { parseOklch, parseThemes } from '../../src/main/sheet'
 import type { Theme } from '../../src/shared/theme'
 import { BOARDS_FIXTURE_PATH, BOARD_FIXTURE_PATH } from './boards-fixture'
+import { launchSmokeApp } from './smoke-app'
 
 /**
  * O smoke do tema: a combinação de cores escolhida é a que a tela desenha.
@@ -271,13 +272,7 @@ test('a combinação escolhida é a que a tela desenha', async () => {
  * `finally` é o que impede um Electron pendurado de travar a subida seguinte quando uma delas falha.
  */
 async function medir(tema?: string, cofre = cofreVazio()): Promise<Medida> {
-  const app = await electron.launch({
-    // O app buildado, resolvido pelo `main` do `package.json`. O `yarn smoke` roda o
-    // `electron-vite build` antes justamente para que `out/` exista aqui.
-    args: ['.'],
-    cwd: REPO_ROOT,
-    env: envDoLaunch(tema, cofre),
-  })
+  const app = await launchSmokeApp({ stateDir: cofre, env: envDoLaunch(tema) })
 
   try {
     return await medirJanela(await app.firstWindow())
@@ -296,11 +291,7 @@ async function medir(tema?: string, cofre = cofreVazio()): Promise<Medida> {
  * único que precisa esperar por disco.
  */
 async function medirTroca(cofre: string): Promise<{ antes: Medida; depois: Medida }> {
-  const app = await electron.launch({
-    args: ['.'],
-    cwd: REPO_ROOT,
-    env: envDoLaunch(undefined, cofre),
-  })
+  const app = await launchSmokeApp({ stateDir: cofre, env: envDoLaunch(undefined) })
 
   try {
     const janela = await app.firstWindow()
@@ -417,19 +408,20 @@ function lerCombinacaoGravada(cofre: string): string | null {
 }
 
 /**
- * O ambiente do launch, que é o do kanban smoke (`:120-133`) mais a porta do tema.
+ * As portas **deste arquivo**: as do kanban smoke mais a do tema. O herdado não entra aqui —
+ * `launchSmokeApp` o compõe saneado por baixo destas chaves, e é lá que ele passou a morar.
  *
- * `OC_THEME` é **apagado** do herdado e só volta quando `tema` vier definido: a medição da default
- * precisa que a variável esteja genuinamente ausente, e `inheritedEnv()` traria a do shell de quem
- * roda — que é justamente o cenário do CA-2.
+ * `OC_THEME` só aparece quando `tema` vier definido, e é a ausência dela que a medição da
+ * combinação *default* mede. A garantia de que a ausência é genuína mudou de casa, mas não sumiu:
+ * quem apaga a variável do herdado agora é `smokeEnv()`, para todo o `tests/smoke/`, então um
+ * `OC_THEME` exportado no shell de quem roda o teste não chega ao app por caminho nenhum.
  *
- * O `OC_STATE_DIR` é a mesma ideia contra a outra fonte de contaminação, com uma diferença: ele
- * **nunca** é herdado, porque apagá-lo não bastaria — a ausência dele é justamente o caso ruim, o
- * app caindo no `userData` de verdade.
+ * O cofre saiu daqui pelo mesmo movimento, e por um motivo mais forte: virou o `stateDir` do
+ * `launchSmokeApp`, que o aplica **depois** destas portas. Não poder mais escrevê-lo daqui é o
+ * ponto — a pasta descartável deixou de ser uma chave que este arquivo precisa lembrar de pôr.
  */
-function envDoLaunch(tema: string | undefined, cofre: string): Record<string, string> {
+function envDoLaunch(tema: string | undefined): Record<string, string> {
   const env: Record<string, string> = {
-    ...inheritedEnv(),
     // As portas que trocam o GitHub por arquivo. São elas que tornam este smoke determinístico, e
     // são **duas**: sem `OC_BOARDS_FIXTURE` a descoberta não tem o que responder e lança, e o
     // kanban não desenha cartão nenhum para este teste medir cor em cima.
@@ -438,12 +430,7 @@ function envDoLaunch(tema: string | undefined, cofre: string): Record<string, st
     // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell abriria a tela errada, e as três
     // superfícies que este teste mede só existem no kanban.
     OC_SCREEN: 'kanban',
-    // A porta do cofre. Sem ela este arquivo passa a depender do `userData` real da máquina: leria
-    // a combinação lembrada de quem roda o teste, e gravaria por cima dela. Ver o topo do arquivo.
-    OC_STATE_DIR: cofre,
   }
-
-  delete env['OC_THEME']
 
   if (tema !== undefined) env['OC_THEME'] = tema
 
@@ -576,17 +563,4 @@ async function gutterReservado(locator: Locator): Promise<number> {
 
     return caixa.offsetHeight - caixa.clientHeight
   })
-}
-
-/**
- * O `process.env` do runner, pronto para o Playwright: passar `env` substitui o ambiente inteiro, e
- * sem `PATH` o Electron nem subiria. As chaves sem valor caem porque o tipo do Playwright só aceita
- * string.
- */
-function inheritedEnv(): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  )
 }
