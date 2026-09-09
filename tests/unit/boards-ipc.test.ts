@@ -318,6 +318,76 @@ describe('o observador dos boards', () => {
     expect(bancada.ipc.cardById('PVTI_de_ninguem')).toBeNull()
   })
 
+  it('repoOfBoard devolve o repo unânime da aba, sem se importar com a caixa', async () => {
+    const bancada = montar({
+      read: () =>
+        Promise.resolve({
+          ...lidoQualquer(),
+          cards: [
+            cartaoDoRepo('um', 'leonardo-amaral-3/operations-center'),
+            // A mesma coisa para o GitHub, que não distingue caixa em `owner/name`. Comparar as
+            // strings cruas faria a triagem desta aba cair no ramo ambíguo por causa de um `O`
+            // maiúsculo que ninguém digitou.
+            cartaoDoRepo('dois', 'Leonardo-Amaral-3/Operations-Center'),
+            { ...cartaoDoRepo('tres', 'leonardo-amaral-3/operations-center'), closed: true },
+          ],
+        }),
+    })
+
+    void bancada.readBoards()
+    await bancada.esperar(3)
+
+    // O `repository` como o board o escreveu, e não a chave normalizada: quem recebe isto é o
+    // `RepoIndex`, que normaliza de novo por conta própria.
+    expect(bancada.ipc.repoOfBoard(A.key)).toBe('leonardo-amaral-3/operations-center')
+  })
+
+  it('repoOfBoard responde "não sei" com dois repos, com aba vazia, e com aba que não existe', async () => {
+    const bancada = montar({
+      read: (input) =>
+        Promise.resolve({
+          ...lidoQualquer(),
+          cards:
+            input.owner === A.owner
+              ? [
+                  cartaoDoRepo('um', 'leonardo-amaral-3/operations-center'),
+                  // **Fechado, e conta**: a coluna ✅ Produção é do mesmo board, e um card de outro
+                  // repo continua tornando a aba ambígua depois de fechado. Filtrar por estado faria
+                  // o repo da aba — e a pasta da triagem — mudar sozinho conforme os cards fechassem.
+                  { ...cartaoDoRepo('dois', 'leonardo-amaral-3/claude-brain'), closed: true },
+                ]
+              : [],
+        }),
+    })
+
+    void bancada.readBoards()
+    await bancada.esperar(3)
+
+    // Dois repos: a moda escolheria um dos dois em silêncio, e a pasta da triagem passaria a mudar
+    // sozinha ao sabor de quantos cards cada repo tem. "Não sei" manda o painel pedir a pasta.
+    expect(bancada.ipc.repoOfBoard(A.key)).toBeNull()
+
+    // Aba sem cartão nenhum: não há de onde tirar repo.
+    expect(bancada.ipc.repoOfBoard(B.key)).toBeNull()
+
+    // E a aba que o retrato não tem — uma `key` de um board que sumiu entre o clique e a resposta.
+    expect(bancada.ipc.repoOfBoard('ninguem/999')).toBeNull()
+  })
+
+  it('repoOfBoard responde "não sei" antes de a leitura daquela aba voltar', async () => {
+    const presa = adiar<Board>()
+    const bancada = montar({ read: () => presa.promise })
+
+    void bancada.readBoards()
+
+    // A descoberta publicou e as leituras estão em voo: a aba já tem nome e ainda não tem board.
+    // É o mesmo "não sei" da aba ambígua, e de propósito — o painel trata os dois do mesmo jeito.
+    await bancada.esperar(1)
+    expect(bancada.ipc.repoOfBoard(A.key)).toBeNull()
+
+    presa.resolve(lidoQualquer())
+  })
+
   it('a aba lembrada nasce ativa quando ela está entre as descobertas', async () => {
     const bancada = montar({ loadActive: () => Promise.resolve(B.key) })
 
@@ -467,6 +537,14 @@ function cartaoDe(board: DiscoveredBoard): BoardCard {
     columnId: 'opt_qualquer',
     fields: [],
   }
+}
+
+/**
+ * Um cartão de um repo escolhido pelo teste. Só o `repository` importa para a régua da triagem — o
+ * resto é o cartão de sempre, para o caso não depender de campo nenhum que ele não olha.
+ */
+function cartaoDoRepo(sufixo: string, repository: string): BoardCard {
+  return { ...cartaoDe(A), itemId: `PVTI_${sufixo}`, repository }
 }
 
 /** A aba pedida, com o vermelho **aqui** e nomeando quem sumiu, em vez de um `undefined` adiante. */
