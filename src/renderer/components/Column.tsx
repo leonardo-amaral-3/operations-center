@@ -57,7 +57,7 @@ export function Column({
     //
     // `overflow-hidden` para o `border-b-2` do cabeçalho encostar nos cantos arredondados: sem ele o
     // separador atravessa o raio e sobra um bico preto em cada ponta.
-    <Card asChild className={`${hosting ? 'w-[34rem]' : 'w-72'} shrink-0 overflow-hidden`}>
+    <Card asChild className={`${hosting ? 'w-[36rem]' : 'w-90'} shrink-0 overflow-hidden`}>
       <section
         data-testid="column"
         data-column-id={column.id}
