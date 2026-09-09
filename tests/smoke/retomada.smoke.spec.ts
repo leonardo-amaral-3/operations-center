@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
 import {
@@ -11,6 +11,7 @@ import {
   FIRST_BOARD,
   fixtureProject,
 } from './boards-fixture'
+import { launchSmokeApp } from './smoke-app'
 
 import { CONVERSABLE_STATIONS, STATUS_FIELD } from '../../src/core/board/query'
 
@@ -367,18 +368,16 @@ test('CA-2: a mensagem seguinte continua o mesmo fio, na mesma sessão', async (
  * Sobe o app com o cenário inteiro ligado e espera a janela.
  *
  * Existe porque este smoke o faz **duas vezes**, com o mesmo ambiente nas duas: é a identidade das
- * variáveis entre os dois ciclos que faz o segundo enxergar o que o primeiro deixou.
+ * variáveis entre os dois ciclos — o `stateDir`, acima de tudo — que faz o segundo enxergar o que o
+ * primeiro deixou. `launchSmokeApp` a preserva sem esta função ter de cuidar dela: `smokeEnv()` é
+ * determinística e `state` é a mesma pasta nas duas chamadas.
  */
 async function launch(): Promise<void> {
-  app = await electron.launch({
-    // O app buildado, resolvido pelo `main` do `package.json`. O `yarn smoke` roda o
-    // `electron-vite build` antes justamente para que `out/` exista aqui.
-    args: ['.'],
-    cwd: REPO_ROOT,
+  app = await launchSmokeApp({
+    // A porta desta feature: sem ela o vínculo iria para o `userData` real da máquina, e o smoke
+    // sujaria o app de quem o roda.
+    stateDir: state,
     env: {
-      // O ambiente é herdado inteiro, e `ANTHROPIC_API_KEY` **não** é removida: é o mesmo trato dos
-      // outros smokes, que já afirmam lá que a sessão não sobe em billing de API.
-      ...inheritedEnv(),
       // As portas que trocam o GitHub por arquivo: o board deste smoke não toca a rede.
       OC_BOARD_FIXTURE: BOARD_FIXTURE_PATH,
       OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
@@ -388,9 +387,6 @@ async function launch(): Promise<void> {
       // repos**. O transcript da sessão continua nascendo na raiz de verdade, e é lá que a retomada
       // o procura.
       OC_CLAUDE_PROJECTS: projects,
-      // A porta desta feature: sem ela o vínculo iria para o `userData` real da máquina, e o smoke
-      // sujaria o app de quem o roda.
-      OC_STATE_DIR: state,
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell abriria a tela errada e o
       // teste falharia por um motivo que não tem nada a ver com retomada.
       OC_SCREEN: 'kanban',
@@ -513,18 +509,4 @@ function comparablePath(path: string | null): string {
     .replace(/[\\/]+/g, '/')
     .replace(/\/$/, '')
     .toLowerCase()
-}
-
-/**
- * O `process.env` do runner, pronto para o Playwright: passar `env` substitui o ambiente inteiro, e
- * sem `PATH` (e sem `HOME`/`USERPROFILE`, onde vivem as credenciais do Claude Code **e os
- * transcripts que a retomada lê**) o Electron nem subiria. As chaves sem valor caem porque o tipo do
- * Playwright só aceita string.
- */
-function inheritedEnv(): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  )
 }
