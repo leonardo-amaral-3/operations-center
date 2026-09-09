@@ -200,10 +200,40 @@ describe('SessionHost', () => {
     expect(options?.settingSources).toEqual([...DEFAULT_SETTING_SOURCES])
 
     // Ferramenta pré-aprovada não dispara o `canUseTool`, e sem ele a decisao nunca chega à tela.
-    // Chave de API e binário fixado também ficam de fora: as credenciais são as do Claude Code local.
+    // Chave de API fica de fora: as credenciais são as do Claude Code local.
     expect(options?.allowedTools).toBeUndefined()
-    expect(options?.pathToClaudeCodeExecutable).toBeUndefined()
     expect(options?.env).toBeUndefined()
+
+    // Sem `claudeBin` — o caso dos fakes — a opção não vai, e o SDK volta a resolver o binário
+    // sozinho. É o oposto exato do caso seguinte, e os dois juntos é que descrevem o contrato.
+    expect(options?.pathToClaudeCodeExecutable).toBeUndefined()
+  })
+
+  it('leva ao SDK o binário que o main resolveu — a porta que dispensa o pacote nativo', () => {
+    const fake = createFakeQuery()
+    new SessionHost({ query: fake.query, claudeBin: () => '/tmp/claude.exe' }).start({ cwd: CWD })
+
+    // Preenchida, esta é a opção que faz o `require.resolve` interno do SDK **nunca rodar** — é o
+    // que permite ao artefato empacotado excluir o `claude-agent-sdk-win32-x64` de 209 MB.
+    expect(fake.options?.pathToClaudeCodeExecutable).toBe('/tmp/claude.exe')
+  })
+
+  it('deixa o erro do binário ausente sair pelo start — é ele que a tela desenha', () => {
+    const fake = createFakeQuery()
+    const host = new SessionHost({
+      query: fake.query,
+      claudeBin: () => {
+        throw new Error('Claude Code não encontrado.')
+      },
+    })
+
+    // O thunk é chamado dentro do construtor do `SessionHandle`, então o `throw` atravessa o
+    // `start()` inteiro. Daqui ele rejeita o `invoke` do IPC e vira o `reason` do estado `failed`:
+    // a mensagem do app chega à tela sem UI nenhuma para ela.
+    expect(() => host.start({ cwd: CWD })).toThrow('Claude Code não encontrado.')
+
+    // E nenhuma sessão sobe pela metade: o `query()` nem chega a ser chamado.
+    expect(fake.options).toBeUndefined()
   })
 
   it('respeita o settingSources que o host receber — é assim que o smoke se isola', () => {
