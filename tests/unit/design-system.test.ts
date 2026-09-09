@@ -148,11 +148,12 @@ describe('a receita de casca só existe nas primitivas', () => {
 const CAMINHO_DO_TEMA = fileURLToPath(new URL('../../src/renderer/index.css', import.meta.url))
 
 /**
- * Os vinte e cinco utilitários de cor que o app tem direito de escrever, em três grupos — e os três
- * são separados porque **cada um responde a uma regra diferente**: a casca não tem regra de cor
- * nenhuma, os estados são a referência contra a qual a banda calma é medida, e as etiquetas são o
- * que se mede. Uma lista chapada de vinte e cinco obrigaria cada canária nova a recortar a sua
- * fatia de novo, e é assim que duas listas começam a discordar.
+ * Os vinte e nove utilitários de cor que o app tem direito de escrever, em quatro grupos — e os
+ * quatro são separados porque **cada um responde a uma regra diferente**: a casca não tem regra de
+ * cor nenhuma, os estados são a referência contra a qual a banda calma é medida, as tintas que correm
+ * sobre eles são a coluna da tabela AAA, e as etiquetas são o que se mede. Uma lista chapada de vinte
+ * e nove obrigaria cada canária nova a recortar a sua fatia de novo, e é assim que duas listas começam
+ * a discordar.
  *
  * Os sete da casca do neobrutalism, que são os mesmos que a lista "o que passa" da Proibição 1
  * isenta da varredura de paleta.
@@ -174,6 +175,22 @@ const TOKENS_DA_CASCA = [
 const TOKENS_DE_ESTADO = ['--attention', '--warning', '--question', '--danger']
 
 /**
+ * As quatro tintas que correm sobre os estados — o grupo que o #36 acrescentou.
+ *
+ * **Grupo próprio, e não quatro nomes dentro de `TOKENS_DE_ESTADO`**, pela mesma regra que já separa
+ * os outros três: cada grupo responde a uma canária diferente. Estes quatro entram na completude e no
+ * `@theme inline` como qualquer token, e **não** podem entrar na banda calma — o teto dela é o menor
+ * croma dos estados, e um preto de croma 0 no meio da conta zeraria o teto e reprovaria as catorze
+ * etiquetas de uma vez.
+ */
+const TOKENS_DE_TINTA_DE_ESTADO = [
+  '--attention-foreground',
+  '--warning-foreground',
+  '--question-foreground',
+  '--danger-foreground',
+]
+
+/**
  * As catorze etiquetas de campo, agrupadas **por campo** — e o agrupamento é dado, não arrumação: o
  * CA-1 cobra distância entre os valores de **um mesmo** campo, e é esta estrutura que diz quais
  * valores são de um mesmo campo. A lista chapada sai daqui, e não ao contrário, para não haver duas
@@ -192,11 +209,16 @@ const CAMPOS = {
 
 const TOKENS_DE_ETIQUETA: readonly string[] = Object.values(CAMPOS).flat()
 
-/** Os vinte e cinco, do jeito que a combinação os declara. */
-const TOKENS_DE_COMBINACAO = [...TOKENS_DA_CASCA, ...TOKENS_DE_ESTADO, ...TOKENS_DE_ETIQUETA]
+/** Os vinte e nove, do jeito que a combinação os declara. */
+const TOKENS_DE_COMBINACAO = [
+  ...TOKENS_DA_CASCA,
+  ...TOKENS_DE_ESTADO,
+  ...TOKENS_DE_TINTA_DE_ESTADO,
+  ...TOKENS_DE_ETIQUETA,
+]
 
 /**
- * Os mesmos vinte e cinco com o `--color-` que o `@theme inline` põe — o prefixo que transforma
+ * Os mesmos vinte e nove com o `--color-` que o `@theme inline` põe — o prefixo que transforma
  * variável CSS em utilitário do Tailwind, e sem o qual a classe simplesmente não é emitida.
  */
 const TOKENS_DE_COR = TOKENS_DE_COMBINACAO.map((token) => token.replace('--', '--color-'))
@@ -219,7 +241,7 @@ describe('o tema declara todo token de cor que a tela pode usar', () => {
     expect(lerThemeInline()).not.toBeNull()
   })
 
-  it('os vinte e cinco `--color-*` estão lá', () => {
+  it('os vinte e nove `--color-*` estão lá', () => {
     const bloco = lerThemeInline() ?? ''
 
     // O `:` faz parte da chave procurada de propósito: sem ele `--color-main` casaria com a
@@ -381,13 +403,13 @@ describe('o conjunto de combinações da folha é o declarado', () => {
   })
 })
 
-describe('toda combinação declara os vinte e cinco tokens', () => {
+describe('toda combinação declara os vinte e nove tokens', () => {
   it.each(THEMES)('a %s não deixa token de fora', (tema) => {
     const declarados = COMBINACOES.get(tema)
 
     // Por nome, e não por contagem. Com o `:root` sem cor nenhuma, faltar um token não herda em
     // silêncio da combinação anterior: dá fundo transparente aqui e sombra sem cor ali, cada um
-    // falhando à sua maneira e nenhum apontando para a folha. "Esperava 25, recebeu 24" deixaria
+    // falhando à sua maneira e nenhum apontando para a folha. "Esperava 29, recebeu 28" deixaria
     // esse trabalho todo para quem encontrasse o vermelho.
     const ausentes = TOKENS_DE_COMBINACAO.filter((token) => declarados?.has(token) !== true)
 
@@ -449,40 +471,50 @@ describe('toda cor de toda combinação cabe no sRGB', () => {
 })
 
 /**
- * Os vinte e dois pares de texto-sobre-superfície que o código **realmente escreve**, levantados por
+ * Os vinte e um pares de texto-sobre-superfície que o código **realmente escreve**, levantados por
  * varredura da árvore e não inventados.
  *
- * Quatro são o CA-4 do #29 — as cores de estado sob o preto de `--foreground` — e quatro são a
- * extensão que aquela spec declarou (Technical Decisions 6), porque são os pares que existem na tela
- * e que o #8 nunca precisou medir. Custam quatro linhas e fecham dois buracos: uma combinação futura
- * escurecer o `--main`, hoje o mais apertado dos oito, sem nada ficar vermelho; e a divergência entre
- * `--foreground` e `--main-foreground`, que hoje são a mesma cor e por isso escondem que o `<h2>` do
- * cabeçalho de coluna herda o primeiro, não o segundo.
+ * **Cada par é a tinta declarada sobre o fundo, e não `--foreground` sobre tudo.** É a mudança que o
+ * #36 trouxe, e ela é o que permite uma combinação de `--foreground` branco manter os pastéis de
+ * estado: os quatro pares de estado passaram a cobrar `--attention-foreground` e companhia. Nas duas
+ * claras a tinta declarada é o mesmo preto de sempre, então os quatro números não se mexeram —
+ * 11.14, 12.74, 10.76, 7.24, os que o #8 publicou.
+ *
+ * **Um par saiu, e a saída é a decisão.** `--foreground` sobre `--main` entrou no #29 como rede,
+ * porque `Column.tsx` escrevia o `<h2>` do cabeçalho de coluna sem classe de cor e ninguém via o
+ * problema enquanto `--foreground` e `--main-foreground` eram o mesmo preto. O #36 gastou a rede:
+ * conserta o `<h2>` para declarar a tinta do acento, e nenhum código escreve mais esse par. Mantê-lo
+ * obrigaria o acento da obsidiana a ser AAA sob branco, o que só um violeta profundo dá — e aí
+ * cabeçalho, abas e bolha do usuário virariam escuro-sobre-escuro. O que substitui a rede é o CA-6 do
+ * #36, que mede a `color` computada **daquele `<h2>`** no smoke, em vez de um par de tokens.
  *
  * **Fora daqui, com razão declarada:** os pares com opacidade (`text-foreground/70`, `/60`, `/50`).
  * Não são cor sólida — a razão real depende da composição alfa contra o fundo —, e afirmá-la a partir
- * dos tokens seria afirmar um número que não é o da tela. É pendência nomeada, não esquecimento.
+ * dos tokens seria afirmar um número que não é o da tela. É pendência nomeada, não esquecimento, e o
+ * #36 a mediu: na obsidiana o `/60` cai de AA para abaixo de AA.
  */
 const PARES_AAA = [
   { tinta: '--foreground', fundo: '--background' }, // o canvas do app, `index.css` no `body`
   { tinta: '--foreground', fundo: '--secondary-background' }, // `input.tsx`, `textarea.tsx`, a face de todo cartão
-  { tinta: '--foreground', fundo: '--attention' },
-  { tinta: '--foreground', fundo: '--warning' },
-  { tinta: '--foreground', fundo: '--question' },
-  { tinta: '--foreground', fundo: '--danger' },
+  { tinta: '--attention-foreground', fundo: '--attention' },
+  { tinta: '--warning-foreground', fundo: '--warning' },
+  { tinta: '--question-foreground', fundo: '--question' },
+  { tinta: '--danger-foreground', fundo: '--danger' },
   { tinta: '--main-foreground', fundo: '--main' }, // `badge.tsx`, `button.tsx`, `MessageBubble.tsx`
-  { tinta: '--foreground', fundo: '--main' }, // `Column.tsx`: o `<h2>` do cabeçalho não tem classe de cor
   // As catorze etiquetas de campo, derivadas em vez de transcritas — porque a regra é **uma só** e
   // dizê-la é mais honesto que copiá-la catorze vezes: a tinta sobre toda etiqueta é `--foreground`,
-  // que é o que a variante `neutral` da `Badge` já traz e que o fundo novo não derruba. Não há
-  // `--tipo-bug-foreground` pela mesma razão que não há `--attention-foreground`.
+  // que é o que a variante `neutral` da `Badge` já traz e que o fundo novo não derruba.
+  //
+  // **E é a etiqueta que muda de lado quando a combinação escurece, não a tinta.** A obsidiana
+  // declara as catorze escuras, com a mesma distância até a face de cartão que elas guardam nas
+  // claras; por isso não existe `--tipo-bug-foreground`, e a razão hoje é medida em vez de herdada.
   ...TOKENS_DE_ETIQUETA.map((fundo) => ({ tinta: '--foreground', fundo })),
 ]
 
 /** AAA para texto normal na WCAG 2.x. É o patamar que o #8 publicou e que o #29 manda manter. */
 const RAZAO_AAA = 7
 
-describe('toda combinação mantém AAA nos vinte e dois pares', () => {
+describe('toda combinação mantém AAA nos vinte e um pares', () => {
   it.each(THEMES.flatMap((tema) => PARES_AAA.map((par) => ({ tema, ...par }))))(
     'na $tema, $tinta sobre $fundo',
     ({ tema, tinta, fundo }) => {
@@ -610,14 +642,12 @@ describe('a etiqueta de campo só escreve fundo de etiqueta', () => {
       // existe mais passaria verde varrendo o vazio, e a proibição teria sumido em silêncio.
       const conteudo = readFileSync(fileURLToPath(new URL(relativo, import.meta.url)), 'utf8')
 
-      return conteudo
-        .split('\n')
-        .flatMap((linha, indice) =>
-          [...linha.matchAll(CLASSE_DE_FUNDO)]
-            .map((achado) => achado[0])
-            .filter((classe) => !FUNDOS_DE_ETIQUETA.includes(classe))
-            .map((classe) => `${relativo}:${indice + 1} — ${classe}`),
-        )
+      return conteudo.split('\n').flatMap((linha, indice) =>
+        [...linha.matchAll(CLASSE_DE_FUNDO)]
+          .map((achado) => achado[0])
+          .filter((classe) => !FUNDOS_DE_ETIQUETA.includes(classe))
+          .map((classe) => `${relativo}:${indice + 1} — ${classe}`),
+      )
     })
 
     expect(intrusos).toEqual([])
@@ -744,8 +774,8 @@ const CAMINHO_DO_HTML = fileURLToPath(new URL('../../src/renderer/index.html', i
 
 describe('o default do `index.html` é o `THEME_DEFAULT`', () => {
   it('o `data-theme` do `<html>` é a combinação que o código chama de padrão', () => {
-    // O default mora no HTML, e não em JS, para não haver **um instante sem cor**: os onze tokens
-    // vivem só dentro dos blocos `[data-theme]`, e uma página sem o atributo não teria fundo nem
+    // O default mora no HTML, e não em JS, para não haver **um instante sem cor**: os vinte e nove
+    // tokens vivem só dentro dos blocos `[data-theme]`, e uma página sem o atributo não teria fundo nem
     // tinta. O preço é que dois lugares podem divergir — e é essa divergência que este teste pega: o
     // app abriria numa cor que ninguém pediu, com o CA-2 falhando sem nenhum vermelho.
     const declarado = /data-theme="([a-z-]+)"/.exec(readFileSync(CAMINHO_DO_HTML, 'utf8'))?.[1]

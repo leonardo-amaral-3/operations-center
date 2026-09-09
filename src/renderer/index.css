@@ -4,25 +4,31 @@
  * O design system: neobrutalism.dev sobre shadcn/ui, em modo claro.
  *
  * A folha tem um **conjunto** de combinações de cores, não uma. Cada `[data-theme='<nome>']` declara
- * os vinte e cinco tokens de cor por inteiro, e nenhum deles mora no `:root`. O ganho é que uma
+ * os vinte e nove tokens de cor por inteiro, e nenhum deles mora no `:root`. O ganho é que uma
  * combinação incompleta não herda em silêncio da anterior — e quem garante isso é
- * `design-system.test.ts`, que exige os vinte e cinco de cada bloco pelo nome, não a cascata: sem o
+ * `design-system.test.ts`, que exige os vinte e nove de cada bloco pelo nome, não a cascata: sem o
  * teste, faltar um token daria fundo transparente aqui e sombra sem cor ali, cada um falhando à sua
- * maneira. O preço é a repetição das quatro cores de estado e das catorze etiquetas de campo, hoje
- * iguais nas duas; o ganho é que a combinação **pode** reafiná-las, que é o que o CA-4 do #29
- * pressupõe ao falar em "toda combinação".
+ * maneira. O preço é a repetição — as quatro cores de estado e as quatro tintas sobre elas são
+ * iguais nas três, e as catorze etiquetas de campo são iguais nas duas claras; o ganho é que a
+ * combinação **pode** reafiná-las, que é o que o CA-4 do #29 pressupõe ao falar em "toda
+ * combinação", e é exatamente o que a obsidiana faz com as catorze.
  *
- * **Ainda não há modo escuro, e continua sendo de propósito.** O que o #29 trouxe foi o mecanismo,
- * não o escuro: o argumento do #8 não mudou — com superfície escura a borda preta de 2px fica mais
- * escura que o fundo, deixa de recortar o cartão e passa a afundá-lo, que é o oposto do que o
- * neobrutalismo faz. Um escuro aqui também precisaria de `--attention-foreground` e companhia, que
- * nenhuma das duas combinações claras precisa.
+ * **Existe modo escuro desde o #36, e a borda continua preta — a escolha custa caro e está medida.**
+ * O argumento do #8 não estava errado: com superfície escura a borda preta de 2px deixa de recortar
+ * o cartão. O que mudou foi a decisão de pagar esse preço em vez de inverter o desenho. Há um teto
+ * matemático por trás dele: para a tinta clara manter AAA a superfície não passa de L≈46, e a borda
+ * preta contra L46 vale 2.94:1 — abaixo dos 3:1 que a WCAG pede de componente não-textual. A
+ * obsidiana entrega **2.08:1 contra o canvas e 2.81:1 contra a face**, ante 17.39 e 21.00 da
+ * lavanda. A alternativa medida — `--border` quase-branco — subiria o recorte para 12.28/10.09 e
+ * sairia de graça, porque `--shadow` é `var(--border)` no `:root`; foi recusada por inverter o
+ * desenho do neobrutalismo. Consequência aceita: a obsidiana é um grafite médio, não um preto, e o
+ * cabeçalho de coluna é a única superfície dela onde a casca recorta com força (7.49:1).
  *
  * **Toda cor tem de caber no sRGB.** Fora do gamut o Chromium remapeia por conta própria (redução de
  * croma em OKLCh), enquanto `src/main/color.ts` — que converte o `--background` desta folha para
  * pintar a janela antes do primeiro paint — clipa por canal. Os dois discordariam, e a moldura
  * ficaria de uma cor e o canvas de outra. Por isso a conversão lança fora do gamut e o teste varre
- * as duas combinações inteiras: o vermelho aparece no CI, não na janela.
+ * as três combinações inteiras: o vermelho aparece no CI, não na janela.
  *
  * Os valores vêm do arquivo canônico do projeto upstream, e **não** do preset
  * `/r/styling/violet.json`: os presets publicados trocam `secondary-background` entre claro e
@@ -53,13 +59,14 @@
 }
 
 /*
- * Os vinte e cinco tokens, e o que cada um significa. Vale para toda combinação — o que varia é o
- * valor. São três grupos: sete de casca, quatro de estado de sessão e catorze de etiqueta de campo.
+ * Os vinte e nove tokens, e o que cada um significa. Vale para toda combinação — o que varia é o
+ * valor. São quatro grupos: sete de casca, quatro de estado de sessão, as quatro tintas que correm
+ * sobre esses estados e catorze de etiqueta de campo.
  *
  * Sete são a casca do neobrutalism: três níveis de superfície (`--background` é o canvas do app,
- * `--secondary-background` a face de cartão, `--foreground` o preto que escreve nas duas), o acento
- * `--main` com a tinta que corre sobre ele, e `--border`/`--ring`, o preto que recorta e o que marca
- * o foco.
+ * `--secondary-background` a face de cartão, `--foreground` a tinta que escreve nas duas — preta nas
+ * claras, branca na obsidiana), o acento `--main` com a tinta que corre sobre ele, e
+ * `--border`/`--ring`, o preto que recorta e o que marca o foco.
  *
  * Quatro são do app, e o neobrutalism não os tem — ele dá **um** acento, e este app precisa de cinco
  * cores semânticas. A divisão é dura e é o NFR "Fidelidade da sinalização" do PRD (`:253`) escrito em
@@ -72,10 +79,22 @@
  * Catorze são as etiquetas de campo do cartão — `Tipo`, `Severidade`, `Classe` e `Rota` —, e o bloco
  * logo abaixo diz em que banda elas vivem e por quê.
  *
- * Não existe `--attention-foreground` e companhia porque em toda combinação clara o texto sobre os
- * quatro é `--foreground`, e o contraste é AAA — o que deixou de ser promessa de comentário e virou
- * tabela conferida em `design-system.test.ts`. Pela mesma razão não existe `--tipo-bug-foreground`:
- * a tinta sobre as catorze também é `--foreground`, e as catorze duplas estão na mesma tabela.
+ * **`--attention-foreground` e companhia existem porque a obsidiana separou tinta de fundo.** Enquanto
+ * toda combinação era clara, o texto sobre as quatro cores de estado era `--foreground` e o contraste
+ * saía AAA de graça. Com um `--foreground` branco isso deixaria de valer: os quatro pastéis de estado
+ * são os **mesmos** nas três combinações — por escolha, porque o que eles codificam é o que a sessão
+ * quer de você, e não o clima da combinação —, e branco sobre eles seria ilegível. Declarar a tinta
+ * por cor de estado é o que permite manter os pastéis e é o que faz a tabela AAA de
+ * `design-system.test.ts` falar em "a tinta declarada" em vez de assumir `--foreground`. Nas duas
+ * claras os quatro são um no-op deliberado — preto repetido —, e repetir é o preço de cada bloco ser
+ * uma paleta completa e legível sozinha.
+ *
+ * Já `--tipo-bug-foreground` e companhia continuam **não** existindo, e agora por uma razão medida em
+ * vez de herdada: a tinta sobre as catorze etiquetas segue sendo `--foreground` em toda combinação,
+ * porque é a **etiqueta** que muda de lado quando a combinação escurece. A obsidiana declara as suas
+ * catorze escuras (ver o bloco dela), e branco sobre elas dá 8.88 a 19.68. Catorze tokens de tinta
+ * comprariam a mesma legibilidade e custariam a rampa: as catorze virariam as coisas mais claras da
+ * tela, e o valor comum — que esta folha faz questão de deixar quase mudo — passaria a gritar.
  */
 
 /*
@@ -142,6 +161,16 @@
   --question: oklch(78% 0.13 230); /* azul — há uma pergunta aberta esperando resposta */
   --danger: oklch(70% 0.19 25); /* vermelho — quebrou, ou vai destruir algo */
 
+  /*
+   * A tinta que corre sobre cada cor de estado. Preta aqui, e o mesmo preto de `--foreground` — um
+   * no-op deliberado, não descuido: é a obsidiana que precisa da distinção, e cada bloco declara a
+   * paleta inteira para poder ser lido sozinho.
+   */
+  --attention-foreground: oklch(0% 0 0);
+  --warning-foreground: oklch(0% 0 0);
+  --question-foreground: oklch(0% 0 0);
+  --danger-foreground: oklch(0% 0 0);
+
   /* `Tipo` é nominal: quatro matizes, uma luminosidade só. */
   --tipo-bug: oklch(87% 0.06 25);
   --tipo-debito: oklch(87% 0.06 85);
@@ -196,6 +225,16 @@
   --question: oklch(78% 0.13 230); /* azul — há uma pergunta aberta esperando resposta */
   --danger: oklch(70% 0.19 25); /* vermelho — quebrou, ou vai destruir algo */
 
+  /*
+   * A tinta que corre sobre cada cor de estado. Preta aqui, e o mesmo preto de `--foreground` — um
+   * no-op deliberado, não descuido: é a obsidiana que precisa da distinção, e cada bloco declara a
+   * paleta inteira para poder ser lido sozinho.
+   */
+  --attention-foreground: oklch(0% 0 0);
+  --warning-foreground: oklch(0% 0 0);
+  --question-foreground: oklch(0% 0 0);
+  --danger-foreground: oklch(0% 0 0);
+
   /* `Tipo` é nominal: quatro matizes, uma luminosidade só. */
   --tipo-bug: oklch(87% 0.06 25);
   --tipo-debito: oklch(87% 0.06 85);
@@ -217,6 +256,81 @@
   --rota-completa: oklch(93% 0.02 187);
 }
 
+/*
+ * Obsidiana — a combinação escura, a do #36, e a primeira em que `--foreground` não é preto.
+ *
+ * **É a lavanda apagada, e não uma família nova.** O matiz `300.19` do canvas é o mesmo do
+ * `--background` da lavanda, e o acento é **idêntico** ao dela, valor por valor: um violeta próprio
+ * seria uma terceira família de matiz a caber num orçamento que o #8 já fechou (145°, 85°, 230° e
+ * 25° ocupados). `--main-foreground` preto sobre esse acento dá os mesmos 7.49 das claras.
+ *
+ * **`--foreground` é branco puro, e não um branco suavizado.** É ele que compra o L máximo das
+ * superfícies: com `oklch(97% 0 0)` a face teria de cair para L44 e o recorte da borda junto
+ * (2.68:1). E é o espelho exato do preto puro das duas claras.
+ *
+ * **`--ring` continua preto, e o foco de teclado paga por isso** — 2.08:1 contra o canvas, ante os
+ * 7.92:1 que um anel claro daria. É o único token cuja função inteira é ser visto, e o app se navega
+ * por `tablist`. Fica declarado porque é escolha, não descuido: se o foco incomodar no uso, o
+ * conserto é uma linha aqui, e não um redesenho.
+ *
+ * **As catorze etiquetas são as únicas cores que esta combinação reafina, e a rampa é derivada.**
+ * Cada uma guarda daqui a **mesma distância de luminosidade até a face de cartão** que guarda nas
+ * claras — lá a face é L100, aqui é L45, e o offset é o mesmo. É o que preserva a regra "mais tinta =
+ * mais urgência" e o valor comum quase mudo: a rampa não inverte, ela parte de outro lugar. Medido, a
+ * presença de cada etiqueta contra a sua face bate com a das claras casa a casa (`--severidade-alta`
+ * 2.68 → 2.64, `--classe-intangivel` 1.13 → 1.19). Matiz e croma são os das claras, com uma exceção
+ * abaixo. Repetir os valores claros aqui teria dado branco sobre pastel quase branco: 1.13 a 2.68:1,
+ * catorze reprovações de AA.
+ *
+ * **A família `Rota` tem o croma pela metade, e é o gamut que manda.** Em L19 o matiz 187 só comporta
+ * croma 0.033 em sRGB, e o 0.06 da clara ficaria fora — o mesmo obstáculo que a ametista documenta
+ * para o seu acento. Reduzir só o `--rota-hotfix` deixaria a família não-monotônica (0.03, 0.04,
+ * 0.02) e desfaria a leitura da rampa; a família inteira cai pela metade e a forma se mantém.
+ */
+[data-theme='obsidiana'] {
+  --background: oklch(38% 0.02 300.19);
+  --secondary-background: oklch(45% 0.022 300.19);
+  --foreground: oklch(100% 0 0);
+  --main-foreground: oklch(0% 0 0);
+  --main: oklch(70.28% 0.1753 295.36);
+  --border: oklch(0% 0 0);
+  --ring: oklch(0% 0 0);
+
+  --attention: oklch(78% 0.17 145); /* verde — a sessão devolveu a vez a você */
+  --warning: oklch(84% 0.16 85); /* âmbar — pare e olhe: permissão pendente, ou dado envelhecido */
+  --question: oklch(78% 0.13 230); /* azul — há uma pergunta aberta esperando resposta */
+  --danger: oklch(70% 0.19 25); /* vermelho — quebrou, ou vai destruir algo */
+
+  /*
+   * Aqui os quatro deixam de ser no-op: `--foreground` é branco, e branco sobre os pastéis de estado
+   * seria ilegível. Os pastéis ficam porque o que eles codificam não é o clima da combinação.
+   */
+  --attention-foreground: oklch(0% 0 0);
+  --warning-foreground: oklch(0% 0 0);
+  --question-foreground: oklch(0% 0 0);
+  --danger-foreground: oklch(0% 0 0);
+
+  /* `Tipo` é nominal: quatro matizes, uma luminosidade só. */
+  --tipo-bug: oklch(32% 0.06 25);
+  --tipo-debito: oklch(32% 0.06 85);
+  --tipo-melhoria: oklch(32% 0.06 145);
+  --tipo-duvida: oklch(32% 0.06 230);
+
+  /* Ordinais daqui para baixo: uma família por campo, e mais tinta = mais urgência. */
+  --severidade-alta: oklch(15% 0 0);
+  --severidade-media: oklch(25% 0 0);
+  --severidade-baixa: oklch(35% 0 0);
+
+  --classe-expedite: oklch(19% 0.06 340);
+  --classe-data-fixa: oklch(27% 0.045 340);
+  --classe-padrao: oklch(34% 0.03 340);
+  --classe-intangivel: oklch(41% 0.012 340);
+
+  --rota-hotfix: oklch(19% 0.03 187);
+  --rota-curta: oklch(29% 0.02 187);
+  --rota-completa: oklch(38% 0.01 187);
+}
+
 @theme inline {
   --color-main: var(--main);
   --color-background: var(--background);
@@ -230,6 +344,11 @@
   --color-warning: var(--warning);
   --color-question: var(--question);
   --color-danger: var(--danger);
+
+  --color-attention-foreground: var(--attention-foreground);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-question-foreground: var(--question-foreground);
+  --color-danger-foreground: var(--danger-foreground);
 
   --color-tipo-bug: var(--tipo-bug);
   --color-tipo-debito: var(--tipo-debito);
@@ -283,14 +402,17 @@ body {
  * alcança os oito contêineres que rolam hoje e o nono que ainda não existe — que é o que uma
  * enumeração dos oito não faria. É a ausência de sujeito, e não a lista, que a canária guarda.
  *
- * **O polegar é `--main`, e é a troca de combinação que decide isso.** Das vinte e cinco cores, só
- * `--background` e `--main` variam entre as combinações; as outras vinte e três são idênticas por
- * construção. Um polegar preto de `--border` sobre trilho branco ficaria bonito, usaria token e
- * **não mudaria um pixel** de lavanda para ametista — reprovaria o requisito em silêncio.
+ * **O polegar é `--main`, e é a troca de combinação que decide isso.** Um polegar preto de
+ * `--border` sobre trilho branco ficaria bonito, usaria token e **não mudaria um pixel** de lavanda
+ * para ametista — reprovaria o requisito em silêncio. `--border` é preto nas três combinações, e
+ * entre as duas claras só `--background` e `--main` variam: era contra esse par que a regra tinha de
+ * se defender. A obsidiana afrouxou a restrição — nela `--foreground`, as duas superfícies e as
+ * catorze etiquetas também mudam —, mas não a revoga, porque a barra tem de vestir **toda** troca de
+ * combinação, inclusive a que só mexe no acento.
  *
  * **O trilho é transparente, não `--background`.** Nas cinco superfícies lavanda o resultado é pixel
- * a pixel idêntico; nas outras três — as duas faces brancas de cartão e a bolha `--main` — pintar de
- * `--background` deixaria uma tarja lavanda que não pertence a nenhuma das duas cores. Uma regra,
+ * a pixel idêntico; nas outras três — as duas faces de cartão e a bolha `--main` — pintar de
+ * `--background` deixaria uma tarja que não pertence a nenhuma das duas cores. Uma regra,
  * zero exceção por contêiner. O canto existe pela mesma razão de ser transparente, e ele é real:
  * `overflow-x: auto` faz o `overflow-y` computar `auto`, então o quadradinho entre as duas barras
  * aparece nos contêineres "horizontais" e sem regra própria renderiza opaco, furando o desenho.

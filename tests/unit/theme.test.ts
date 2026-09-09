@@ -84,13 +84,16 @@ const CAMINHO_DA_FOLHA = fileURLToPath(new URL('../../src/renderer/index.css', i
 describe('`parseThemes` lê a folha do disco', () => {
   const combinacoes = parseThemes(readFileSync(CAMINHO_DA_FOLHA, 'utf8'))
 
-  it('acha as duas combinações declaradas', () => {
-    expect([...combinacoes.keys()]).toEqual(['lavanda', 'ametista'])
+  it('acha as três combinações declaradas', () => {
+    expect([...combinacoes.keys()]).toEqual(['lavanda', 'ametista', 'obsidiana'])
   })
 
-  it.each(['lavanda', 'ametista'] as const)('a %s traz os vinte e cinco tokens', (nome) => {
-    expect(combinacoes.get(nome)?.size).toBe(25)
-  })
+  it.each(['lavanda', 'ametista', 'obsidiana'] as const)(
+    'a %s traz os vinte e nove tokens',
+    (nome) => {
+      expect(combinacoes.get(nome)?.size).toBe(29)
+    },
+  )
 
   it('o valor chega inteiro e sem o `\\r` do CRLF grudado no fim', () => {
     // Este é o ponto em que um parser escrito no Linux passa e aqui falha: sem o `.trim()`, o valor
