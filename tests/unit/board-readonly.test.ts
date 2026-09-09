@@ -82,6 +82,18 @@ describe('a superfície de board é somente-leitura', () => {
     // mas escreve no `dangerous.json` do próprio app, em `OC_STATE_DIR`, e é a única coisa que ele
     // toca: nenhum dos dois consulta o board, nem para ler, e nenhum dos dois chega perto do
     // GitHub. A carga é `{ itemId, dangerous }` — cartão e um booleano, **nunca** pasta.
+    //
+    // E a dos dois canais do #36: `readTheme` responde qual combinação de cores vale agora, e
+    // `setTheme` troca para outra. `setTheme` **escreve** — o segundo canal de escrita da ponte,
+    // depois do `ui:active-board` —, e escreve no `preferences.json` do `OC_STATE_DIR`, ao lado da
+    // aba lembrada. **Nenhum dos dois consulta o board**, nem para ler: o que eles movem é a cor da
+    // tela e uma chave no cofre local, e nada disso passa perto do GitHub. A carga é `{ theme }` —
+    // um nome de combinação declarado na folha, **nunca** pasta nem coordenada.
+    //
+    // O prefixo é `theme:` e não `ui:` porque a família já é própria: o `ui:` do #32 nasceu para
+    // tirar uma escrita de dentro de `boards:`, e aqui não há de que escapar. É por isso que estes
+    // dois também ficam fora da lista da terceira asserção sem que ela precise abrir exceção para
+    // um nome.
     expect(IPC_INVOKE).toEqual({
       start: 'session:start',
       send: 'session:send',
@@ -96,6 +108,8 @@ describe('a superfície de board é somente-leitura', () => {
       readConversations: 'conversations:read',
       readDangerous: 'danger:read',
       setDangerous: 'danger:set',
+      readTheme: 'theme:read',
+      setTheme: 'theme:set',
     })
   })
 
@@ -121,6 +135,11 @@ describe('a superfície de board é somente-leitura', () => {
     // portão. Canal próprio pela mesma razão do de conversas — é estado do app e não tem nada a ver
     // com o throttle de 10s do board. **Não toca o board**, nem para ler: o conjunto sai do
     // `DangerIndex`, que só conhece o `dangerous.json` em `OC_STATE_DIR`.
+    //
+    // E a do canal do #36: `theme` avisa que a combinação de cores mudou. Canal próprio pela mesma
+    // razão dos dois acima — é estado do app, e o throttle de 10s do board o faria chegar depois de
+    // o humano já ter visto a cor antiga. **Não toca o board**, nem para ler: o valor sai do
+    // `appearance.ts`, que só conhece a combinação corrente em memória e o `preferences.json`.
     expect(IPC_EVENT).toEqual({
       init: 'session:init',
       message: 'session:message',
@@ -129,6 +148,7 @@ describe('a superfície de board é somente-leitura', () => {
       boards: 'boards:changed',
       conversations: 'conversations:changed',
       dangerous: 'danger:changed',
+      theme: 'theme:changed',
     })
   })
 

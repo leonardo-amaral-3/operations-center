@@ -87,7 +87,7 @@ export function Column({
             que a sessão quer de você. Misturar os dois é o que os tokens de estado existem para
             impedir. */}
         <header className="flex items-center justify-between gap-2 border-b-2 border-border bg-main px-3 py-2">
-          <h2 className="truncate text-xs font-heading" title={column.name}>
+          <h2 className="truncate text-xs font-heading text-main-foreground" title={column.name}>
             {column.name}
           </h2>
           {/* Entre o nome e a contagem, e **só** na estação de entrada: quem decide isso é o core,

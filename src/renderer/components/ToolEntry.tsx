@@ -42,9 +42,15 @@ const DIFF_GLYPHS: Record<DiffLine['kind'], string> = {
 /**
  * A cor da linha é **fundo**, não tinta, e isso não é preferência: o design system afere contraste
  * de `--foreground` *sobre* `--attention` e *sobre* `--danger` e publica `bg-*` na allowlist — os
- * dois tokens são fundo por construção. Como `--foreground` é preto puro nos dois temas, o
- * contraste é monotônico na luminância, e toda mistura entre dois fundos que já passam AAA passa
- * também; é por isso que o `/30` não pede par novo na tabela de contraste.
+ * dois tokens são fundo por construção.
+ *
+ * O `/30` continua fora da tabela de contraste porque mistura não é cor sólida, mas o preço deixou
+ * de ser zero. O argumento antigo — `--foreground` é preto puro em toda combinação, logo o contraste
+ * é monotônico na luminância — morreu com a obsidiana, que declara tinta clara: sobre estes dois
+ * fundos a tinta cheia cai de 17.39 para **4.80** no `add` e de 15.27 para **5.79** no `remove`, AA
+ * e não AAA. Consertar exigiria um token de tinta rebaixada por combinação, porque a opacidade do
+ * Tailwind é estática na classe e não varia por tema — é card próprio. Aqui fica medido e
+ * declarado, não esquecido.
  */
 const DIFF_BACKGROUNDS: Record<DiffLine['kind'], string> = {
   add: 'bg-attention/30',

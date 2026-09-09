@@ -49,6 +49,14 @@ export const IPC_INVOKE = {
   readConversations: 'conversations:read',
   readDangerous: 'danger:read',
   setDangerous: 'danger:set',
+  readTheme: 'theme:read',
+  /**
+   * Qual combinação de cores o humano escolheu. **É escrita**, como `activateBoard` — e como ela,
+   * escreve estado local do app, nunca o GitHub. O prefixo é o da própria família (`theme:`) e não
+   * `ui:`: aquele nasceu para tirar uma escrita solta de dentro de `boards:`, e aqui não há de que
+   * escapar — `theme:` já não colide com prefixo nenhum que fale com a rede.
+   */
+  setTheme: 'theme:set',
 } as const
 
 /** Main → renderer. Avisos de mão única, disparados pelo `core` quando a sessão se mexe. */
@@ -75,6 +83,12 @@ export const IPC_EVENT = {
    * 10s do board.
    */
   dangerous: 'danger:changed',
+  /**
+   * Trocou a combinação de cores. Canal próprio pela mesma razão dos dois acima — é estado do app e
+   * nada tem a ver com o throttle de 10s do board —, e de mão única porque quem troca é sempre o
+   * humano nesta janela: o retrato volta a todos os assinantes, inclusive a quem pediu.
+   */
+  theme: 'theme:changed',
 } as const
 
 /**
@@ -279,6 +293,29 @@ export interface DangerousSnapshot {
 }
 
 /**
+ * Qual combinação de cores vale **agora**.
+ *
+ * Um campo só, e mesmo assim um objeto: é a mesma forma dos outros três retratos, e é ela que deixa
+ * um segundo campo — um "escolhida pelo humano ou herdada do ambiente?", por exemplo — nascer sem
+ * quebrar o contrato de quem já assina.
+ */
+export interface ThemeSnapshot {
+  theme: Theme
+}
+
+/**
+ * Para qual combinação trocar.
+ *
+ * `Theme` e não `string`, ao contrário da `key` de `ActivateBoardRequest`: o conjunto legítimo é
+ * fechado e os dois lados o conhecem (`THEMES`), então o compilador já barra o nome inventado. O
+ * main **revalida com `isTheme` mesmo assim** — o tipo governa quem compila junto, não quem chega
+ * pela ponte em tempo de execução.
+ */
+export interface SetThemeRequest {
+  theme: Theme
+}
+
+/**
  * A superfície inteira que o renderer enxerga, exposta como `window.oc` pelo preload. O que não
  * está aqui não existe do lado de lá — não há `ipcRenderer`, não há `require`, não há Node.
  *
@@ -293,9 +330,21 @@ export interface OcApi {
   readonly screen: Screen
 
   /**
-   * Qual combinação de cores desenhar. Valor e não promessa, pela mesma razão de `screen`: o
-   * `main.tsx` põe o `data-theme` no `<html>` antes do primeiro render, e não há tela trocando de cor
-   * depois de aparecer.
+   * A **semente do primeiro paint** — e não *a* combinação corrente.
+   *
+   * Valor e não promessa, pela mesma razão de `screen`: o `main.tsx` põe o `data-theme` no `<html>`
+   * antes do primeiro render, e não há tela trocando de cor depois de aparecer. Ela vale por um
+   * instante — o que separa o boot da primeira resposta de `readTheme`.
+   *
+   * **A verdade corrente é o retrato** (`readTheme`/`onTheme`). Esta aqui é congelada no
+   * `process.argv` quando a janela nasce e nunca mais muda: depois da primeira troca ela está
+   * desatualizada, de propósito, e quem a ler achando que é a de agora desenha a cor de antes.
+   *
+   * As duas coexistem porque cada uma responde num instante em que a outra não tem resposta — e é
+   * essa distinção que precisa estar escrita: sem ela alguém "simplifica" removendo uma das duas e
+   * reintroduz exatamente o flash que o CA-4 proíbe. Removida a semente, o primeiro paint acontece
+   * antes de o retrato chegar e a janela pisca na cor errada; removido o retrato, a troca ao vivo
+   * do CA-3 não tem por onde chegar.
    */
   readonly theme: Theme
 
@@ -364,6 +413,23 @@ export interface OcApi {
   readDangerous(): Promise<DangerousSnapshot>
   /** Toda mudança do conjunto — a marca de um cartão, e o fim da carga do boot. */
   onDangerous(listener: (snapshot: DangerousSnapshot) => void): () => void
+
+  /**
+   * A combinação que vale agora. **Nunca volta vazia**: o main a resolveu antes de a janela existir,
+   * porque é dela que sai a cor com que a janela nasce (CA-4).
+   */
+  readTheme(): Promise<ThemeSnapshot>
+  /**
+   * Troca a combinação. **Sem retorno e sem atualização otimista**, como `setDangerous`: quem move a
+   * tela é o retrato que volta por `onTheme`, e não o que o clique pediu — uma fonte da verdade, e
+   * não duas se corrigindo.
+   *
+   * Resolve quando o main registrou a troca, e **não** quando ela chegou ao disco: a gravação é
+   * melhor esforço, e a cor não espera o arquivo.
+   */
+  setTheme(request: SetThemeRequest): Promise<void>
+  /** Toda troca de combinação, inclusive a que esta janela pediu. */
+  onTheme(listener: (snapshot: ThemeSnapshot) => void): () => void
 }
 
 declare global {

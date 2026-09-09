@@ -85,7 +85,10 @@ export function TurnPulse({ activity, somethingRunning }: TurnPulseProps): JSX.E
           texto sobre a face branca da conversa ele cai para perto de 1.6:1 e some. É o mesmo trato
           que o `Freshness` dá ao dado envelhecido, e é a mesma frase: pare e olhe. */}
       {silent ? (
-        <Badge variant="neutral" className="bg-warning px-1.5 py-0 text-[11px] font-normal">
+        <Badge
+          variant="neutral"
+          className="bg-warning text-warning-foreground px-1.5 py-0 text-[11px] font-normal"
+        >
           sem sinal há mais de 1 min
         </Badge>
       ) : null}

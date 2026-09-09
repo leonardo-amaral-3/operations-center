@@ -30,15 +30,15 @@ const LOOKS: Record<SessionState['kind'], { label: string; className: string }> 
   },
   awaiting_input: {
     label: 'Sua vez',
-    className: 'bg-attention text-foreground',
+    className: 'bg-attention text-attention-foreground',
   },
   awaiting_decision: {
     label: 'Decisão pendente',
-    className: 'bg-warning text-foreground',
+    className: 'bg-warning text-warning-foreground',
   },
   awaiting_answer: {
     label: 'Pergunta pendente',
-    className: 'bg-question text-foreground',
+    className: 'bg-question text-question-foreground',
   },
   closed: {
     label: 'Encerrada',
@@ -46,7 +46,7 @@ const LOOKS: Record<SessionState['kind'], { label: string; className: string }> 
   },
   failed: {
     label: 'Falhou',
-    className: 'bg-danger text-foreground',
+    className: 'bg-danger text-danger-foreground',
   },
 }
 

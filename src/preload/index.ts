@@ -22,9 +22,11 @@ import type {
   SessionMessageEvent,
   SessionStateEvent,
   SetDangerousRequest,
+  SetThemeRequest,
   StartRequest,
   StartResult,
   StopRequest,
+  ThemeSnapshot,
 } from '../shared/ipc'
 import { isTheme, THEME_DEFAULT, THEME_FLAG } from '../shared/theme'
 import type { Theme } from '../shared/theme'
@@ -55,6 +57,12 @@ function resolveScreen(): Screen {
  * Chama-se `themeFromArgv` e **não** `resolveTheme` de propósito: já existe um `resolveTheme` no
  * main, com a política de falha oposta, e dois nomes iguais para regras contrárias é como alguém
  * "uniformiza" o errado.
+ *
+ * **O que ela devolve é a semente do primeiro paint, não a verdade corrente.** A flag é congelada
+ * em `process.argv` quando a janela nasce; a partir da primeira troca do humano ela está
+ * desatualizada, e quem manda passa a ser o retrato de `readTheme`/`onTheme`. Ver o contrato do
+ * `theme` em `shared/ipc.ts` para o porquê de as duas coexistirem — e para o que quebra ao remover
+ * qualquer uma delas.
  */
 function themeFromArgv(): Theme {
   const arg = process.argv.find((value) => value.startsWith(THEME_FLAG))
@@ -118,6 +126,10 @@ const api: OcApi = {
     ipcRenderer.invoke(IPC_INVOKE.setDangerous, request) as Promise<void>,
   readDangerous: () => ipcRenderer.invoke(IPC_INVOKE.readDangerous) as Promise<DangerousSnapshot>,
   onDangerous: (listener) => subscribe<DangerousSnapshot>(IPC_EVENT.dangerous, listener),
+  readTheme: () => ipcRenderer.invoke(IPC_INVOKE.readTheme) as Promise<ThemeSnapshot>,
+  setTheme: (request: SetThemeRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.setTheme, request) as Promise<void>,
+  onTheme: (listener) => subscribe<ThemeSnapshot>(IPC_EVENT.theme, listener),
 }
 
 contextBridge.exposeInMainWorld('oc', api)

@@ -59,6 +59,32 @@ export function resolveTheme(raw: string | undefined): Theme {
 }
 
 /**
+ * O mesmo `OC_THEME` do `resolveTheme`, com o terceiro estado que a precedência precisa: `null` para
+ * *"o ambiente não pediu nada"*.
+ *
+ * **A diferença entre as duas é o que decide se o disco é consultado.** Na saída de `resolveTheme`,
+ * ausente e `lavanda` são o mesmo valor — e quem quisesse honrar a combinação lembrada não teria
+ * como distinguir "ninguém pediu" de "pediram a default". Aqui o `null` é essa distinção, e é ela
+ * que faz `OC_THEME` vencer o cofre (Decisão 7) sem que um `OC_THEME` **ausente** vença também.
+ *
+ * A política do valor presente é a de sempre, porque é a de sempre que ela reusa: inválido lança,
+ * com a mensagem e o valor cru de hoje. O que muda é só o vazio, que aqui é ausência e lá era
+ * default.
+ *
+ * `resolveTheme` **continua exportada e testada**: ela é o que o `theme.test.ts` já cobre, e a
+ * chamada de dentro daqui é o que impede as duas políticas de divergirem no dia em que uma quarta
+ * combinação nascer.
+ */
+export function resolveThemeEnv(raw: string | undefined): Theme | null {
+  // O `trim()` repetido aqui, e não lido de dentro do `resolveTheme`: é ele que faz `OC_THEME=" "`
+  // — a variável exportada e esvaziada — ser ausência em vez de um lançamento sobre espaço em
+  // branco. A mesma leitura que a irmã faz do vazio, com o desfecho que esta função precisa.
+  if (raw === undefined || raw.trim() === '') return null
+
+  return resolveTheme(raw)
+}
+
+/**
  * A cor com que a janela nasce na combinação pedida: o `--background` da folha, convertido para
  * sRGB.
  *

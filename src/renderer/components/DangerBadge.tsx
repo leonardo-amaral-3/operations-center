@@ -23,7 +23,7 @@ export function DangerBadge(): JSX.Element {
       variant="neutral"
       data-testid="danger-badge"
       title="Este cartão roda sem pedir permissão: as ferramentas da sessão executam sozinhas até você desligar o modo"
-      className="bg-danger"
+      className="bg-danger text-danger-foreground"
     >
       Dangerously
     </Badge>

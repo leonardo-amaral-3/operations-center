@@ -155,7 +155,7 @@ export function Chat({
               data-testid="card-end-session"
               variant="neutral"
               size="xs"
-              className="bg-danger"
+              className="bg-danger text-danger-foreground"
               onClick={onEnded}
             >
               Fechar
@@ -315,7 +315,7 @@ export function Chat({
               data-testid="card-stop-turn"
               variant="neutral"
               size="xs"
-              className="bg-warning"
+              className="bg-warning text-warning-foreground"
               onClick={stop}
             >
               Parar
@@ -375,7 +375,7 @@ export function Chat({
             data-testid="card-end-session"
             variant="neutral"
             size="xs"
-            className="bg-danger"
+            className="bg-danger text-danger-foreground"
             disabled={onEnded === undefined && morta}
             onClick={() => {
               if (!morta) {

@@ -17,7 +17,9 @@ import {
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen, SessionScope } from '../shared/ipc'
-import { THEME_FLAG } from '../shared/theme'
+import { THEME_DEFAULT, THEME_FLAG, THEMES } from '../shared/theme'
+import type { Theme } from '../shared/theme'
+import { registerThemeIpc } from './appearance'
 import { registerBoardsIpc } from './boards'
 import { registerCardIpc } from './card'
 import {
@@ -34,9 +36,9 @@ import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
 import { registerSessionIpc } from './ipc'
 import { judgeNavigation } from './navigation'
-import { loadActiveBoard, saveActiveBoard } from './preferences'
+import { loadActiveBoard, loadTheme, saveActiveBoard } from './preferences'
 import { gitOrigin, scanSessionFolders } from './repos'
-import { resolveTheme, windowBackground } from './theme'
+import { resolveThemeEnv, windowBackground } from './theme'
 
 /**
  * A pasta de trabalho da sessão **sem cartão** — a da fatia vertical. Sem `OC_CWD`, é a raiz do repo:
@@ -97,22 +99,34 @@ function createGraphQL(): GraphQLFn {
 }
 
 const screen = resolveScreen()
-const theme = resolveTheme(process.env.OC_THEME)
-// A cor calculada **no topo do módulo**, e não dentro de `createWindow`: aquela função roda dentro
-// do `void app.whenReady().then(...)` lá embaixo, e o `void` é justamente o que faria um `throw`
-// dali virar rejeição não tratada em vez de derrubar a subida. Aqui, folha malformada ou combinação
-// sem `--background` param o app antes de existir janela — que é a hora certa de reclamar.
-const windowColor = windowBackground(theme)
 
-function createWindow(): BrowserWindow {
+// O ambiente é validado **no topo do módulo**, síncrono: `OC_THEME=xpto` tem de derrubar a subida, e
+// lá dentro do `void app.whenReady().then(...)` ele viraria rejeição não tratada — o app abriria na
+// combinação errada, calado. O que desce para o `whenReady` é a *escolha*, que depende do disco;
+// **não** a *validação*, que não depende de nada.
+const THEME_DO_AMBIENTE = resolveThemeEnv(process.env.OC_THEME)
+
+// **Todas** as combinações convertidas aqui, e não só a que vai valer. Enquanto a escolha era do
+// ambiente, converter a escolhida bastava; agora ela depende do cofre, e o cofre só responde lá
+// dentro — converter só a dela devolveria ao `whenReady` exatamente o `throw` que a linha acima
+// existe para tirar de lá. Convertendo as três, folha malformada ou combinação sem `--background`
+// continuam parando o app antes de existir janela, que é a hora certa de reclamar.
+const CORES_DE_JANELA = new Map(THEMES.map((theme) => [theme, windowBackground(theme)]))
+
+function createWindow(theme: Theme): BrowserWindow {
   const window = new BrowserWindow({
     width: 1100,
     height: 760,
     // A cor da janela sai da folha do design system, convertida para sRGB — nunca escrita aqui. Sem
     // ela o Chromium pinta a janela de branco antes do primeiro paint do renderer e a abertura
     // pisca; com um hex à mão, ela pisca no dia em que a folha mudar e ninguém lembrar deste
-    // arquivo.
-    backgroundColor: windowColor,
+    // arquivo. E é da **combinação que vai valer** que ela sai: com a lembrada no cofre, uma cor
+    // fixa aqui faria a moldura abrir clara e o canvas escurecer no primeiro paint (CA-4).
+    //
+    // O `??` é formalidade de tipo e não caminho vivo: o mapa é construído sobre `THEMES` e `Theme`
+    // é a união desses mesmos nomes, então a chave sempre existe. A reserva é a default, e não um
+    // `throw`, porque daqui para baixo já se roda dentro do `whenReady`.
+    backgroundColor: CORES_DE_JANELA.get(theme) ?? windowBackground(THEME_DEFAULT),
     show: false,
     autoHideMenuBar: true,
     title: 'Operations Center',
@@ -381,6 +395,32 @@ ipcMain.handle(
 )
 
 /**
+ * A janela do app, ou `null` antes de ela existir. Só o `pintarJanela` a consome.
+ *
+ * Existe porque `registerThemeIpc` roda **antes** de `createWindow` — e tem de rodar: o canal
+ * precisa estar de pé antes de o renderer poder pedir o primeiro retrato.
+ */
+let janelaViva: BrowserWindow | null = null
+
+/**
+ * Repinta a moldura quando o humano troca de combinação.
+ *
+ * Necessário porque o `backgroundColor` de uma `BrowserWindow` é fixado na construção: sem isto, um
+ * app que trocou para a obsidiana mostraria a lavanda na faixa que o Chromium ainda não pintou ao
+ * ser redimensionado.
+ *
+ * Referência para a frente, como `publicarConversas` e `publicarPerigo`, e pela mesma razão: quem
+ * registra o canal não conhece a janela. O `?.` não é caminho vivo — a janela nasce duas linhas
+ * depois do registro, e a primeira troca é um clique humano, muito depois das duas.
+ *
+ * O `??` é a mesma formalidade de tipo do `createWindow`: `CORES_DE_JANELA` é construído sobre
+ * `THEMES`, e `Theme` é a união desses mesmos nomes.
+ */
+function pintarJanela(theme: Theme): void {
+  janelaViva?.setBackgroundColor(CORES_DE_JANELA.get(theme) ?? windowBackground(THEME_DEFAULT))
+}
+
+/**
  * Onde a pasta escolhida vai parar — ou `null` quando não há onde, e então o diálogo nem abre:
  * cartão que sumiu do retrato, ou triagem fora do kanban, onde não existe aba nenhuma.
  *
@@ -408,8 +448,23 @@ function destinoDaEscolha(scope: SessionScope): ((path: string) => void) | null 
   }
 }
 
-void app.whenReady().then(() => {
-  const window = createWindow()
+void app.whenReady().then(async () => {
+  // A precedência do CA-4, e ela é lida da esquerda para a direita: `OC_THEME` vence o cofre
+  // (Decisão 7 — quem exporta a variável está testando, não usando), o cofre vence a default, e a
+  // default é o que sobra para quem nunca escolheu (CA-5).
+  //
+  // **Antes de `createWindow`, e é esta ordem que é o CA-4 inteiro.** O `await` atrasa a janela por
+  // uma leitura de arquivo pequeno; é o preço de ela nascer já na cor certa, porque a janela nasce
+  // com **uma** cor e não há como corrigi-la depois sem o usuário ver a errada primeiro.
+  const theme = THEME_DO_AMBIENTE ?? (await loadTheme()) ?? THEME_DEFAULT
+
+  // **Antes de `createWindow`**: o renderer pede o primeiro retrato assim que monta, e um canal
+  // registrado depois da janela seria uma corrida contra o próprio boot.
+  registerThemeIpc(theme, pintarJanela)
+
+  const window = createWindow(theme)
+  janelaViva = window
+
   if (!boardsIpc) return
 
   // Em paralelo à criação da janela: a leitura começa antes de o renderer pedir.

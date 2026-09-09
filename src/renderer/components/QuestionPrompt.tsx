@@ -83,7 +83,7 @@ export function QuestionPrompt({ request, onAnswer, queued }: QuestionPromptProp
   return (
     // Azul, e não âmbar: `bg-question` é a mesma cor do `awaiting_answer` no `StateBadge`, e a
     // pergunta não é a permissão — quem olha o cartão precisa distinguir os dois de longe.
-    <Card asChild className="bg-question px-3 py-2.5">
+    <Card asChild className="bg-question text-question-foreground px-3 py-2.5">
       <section data-testid="question-prompt">
         <div className="space-y-3">
           {request.questions.map((question) => (

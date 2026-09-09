@@ -5,7 +5,7 @@
  * preload lê a flag de `process.argv`, e o renderer recebe o valor pela ponte. Um enum por camada
  * seria três listas que divergem no dia em que a quarta combinação nascer.
  */
-export const THEMES = ['lavanda', 'ametista'] as const
+export const THEMES = ['lavanda', 'ametista', 'obsidiana'] as const
 
 export type Theme = (typeof THEMES)[number]
 
