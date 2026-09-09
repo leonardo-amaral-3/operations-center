@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 
 import { contrastRatio, oklabDistance, oklchToSrgb, type Rgb8 } from '../../src/main/color'
 import { parseOklch, parseThemes } from '../../src/main/sheet'
+import { fieldLook, LOOKS } from '../../src/renderer/components/fieldLook'
+import type { BoardCardField } from '../../src/shared/board'
 import { THEME_DEFAULT, THEMES, type Theme } from '../../src/shared/theme'
 
 /**
@@ -552,6 +554,122 @@ describe('dentro de um campo, dois valores se distinguem', () => {
       .map(({ a, b, distancia }) => `${a} ↔ ${b}: ${distancia.toFixed(4)}`)
 
     expect(perto).toEqual([])
+  })
+})
+
+/**
+ * O CA-5 do #44: valor que o board não conhece não quebra nada.
+ *
+ * É critério, e não detalhe, porque o app **aponta para mais de um board**: o `CARD_FIELDS` casa
+ * campo por nome (`query.ts:143`) e o mapa de aparência casa opção por rótulo, e nada obriga dois
+ * Projects a nomear as opções igual. Sem esta canária, um board de terceiro pintaria a etiqueta
+ * errada **em silêncio** — o modo de falha que a própria `query.ts` já se recusa a aceitar para a
+ * conversabilidade.
+ *
+ * Aqui se **importa** o mapa, e não se varre o texto como nas outras canárias de componente: são
+ * perguntas diferentes. A varredura pega um `bg-danger` escrito fora do mapa; só a chamada de
+ * verdade prova que `'🧰 Débito técnico'`, com emoji e acento, encontra a sua cor.
+ */
+
+/**
+ * Um campo do cartão como o board o entrega.
+ *
+ * O `optionId` vai preenchido e **não é lido** — está aqui para tornar visível o que a assinatura
+ * permitiria e o mapa recusa: casar por id amarraria a cor a um board só.
+ */
+function campoDe(name: string, value: string): BoardCardField {
+  return { name, value, optionId: 'PVTSSF_id_que_o_mapa_nao_le' }
+}
+
+/**
+ * Os catorze rótulos **reais**, com emoji e acento, do `## Board` dos dois `CLAUDE.md` deste
+ * workspace: o do `operations-center` (Project 2) e o do `claude-brain` (Project 3).
+ *
+ * Os dois declaram hoje os mesmos rótulos com **`optionId` diferentes** — `🐞 Bug` é `5bef632a` num
+ * e `db1ed6ad` no outro —, e é essa a razão de o mapa casar por rótulo: o id não atravessa board.
+ * O que a lista prova, e uma tabela de chaves já normalizadas não provaria, é o caminho inteiro:
+ * a string que o GitHub devolve entra, e a classe sai.
+ */
+const ROTULOS_REAIS = [
+  { campo: 'Tipo', valor: '🐞 Bug', classe: 'bg-tipo-bug' },
+  { campo: 'Tipo', valor: '🧰 Débito técnico', classe: 'bg-tipo-debito' },
+  { campo: 'Tipo', valor: '✨ Melhoria', classe: 'bg-tipo-melhoria' },
+  { campo: 'Tipo', valor: '❓ Dúvida', classe: 'bg-tipo-duvida' },
+  { campo: 'Severidade', valor: 'S1', classe: 'bg-severidade-alta' },
+  { campo: 'Severidade', valor: 'S2', classe: 'bg-severidade-media' },
+  { campo: 'Severidade', valor: 'S3', classe: 'bg-severidade-baixa' },
+  { campo: 'Classe', valor: '🔴 Expedite', classe: 'bg-classe-expedite' },
+  { campo: 'Classe', valor: '📅 Data fixa', classe: 'bg-classe-data-fixa' },
+  { campo: 'Classe', valor: '⚪ Padrão', classe: 'bg-classe-padrao' },
+  { campo: 'Classe', valor: '🔧 Intangível', classe: 'bg-classe-intangivel' },
+  { campo: 'Rota', valor: 'Hotfix', classe: 'bg-rota-hotfix' },
+  { campo: 'Rota', valor: 'Curta', classe: 'bg-rota-curta' },
+  { campo: 'Rota', valor: 'Completa', classe: 'bg-rota-completa' },
+]
+
+/**
+ * O que **não** está no mapa, em quatro formas de não estar — e nenhuma delas é hipotética.
+ *
+ * `'🐞 Defeito'` é a opção renomeada; `'S4'`, a opção nova; `'Padrão'` em `Rota` é o rótulo que
+ * existe **noutro campo** do mesmo board, que é como uma cor vazaria de um campo para o outro se o
+ * mapa fosse chapado; e a string vazia é o campo que veio sem valor.
+ */
+const VALORES_ESTRANHOS = [
+  campoDe('Tipo', '🐞 Defeito'),
+  campoDe('Severidade', 'S4'),
+  campoDe('Rota', '⚪ Padrão'),
+  campoDe('Classe', ''),
+]
+
+/**
+ * Campo que o mapa não conhece, nas três formas em que ele aparece.
+ *
+ * `'Módulo'` é campo **real** deste board e não é etiqueta; `'Prioridade'` é o campo que outro board
+ * pode ter e este não; e `'tipo'` em minúscula é a assimetria dita em voz alta — **o nome do campo
+ * não é normalizado, o valor é**. E é deliberado: o nome chega verbatim de `CARD_FIELDS`
+ * (`BoardReader.ts:155-157`), então normalizá-lo seria afrouxar uma comparação que já é exata na
+ * origem, enquanto o valor é texto livre de quem configurou o board.
+ */
+const CAMPOS_ESTRANHOS = [
+  campoDe('Módulo', 'Comum'),
+  campoDe('Prioridade', 'Alta'),
+  campoDe('tipo', '🐞 Bug'),
+]
+
+describe('o mapa de aparência pinta o que conhece e cai em neutro no resto', () => {
+  it('os catorze rótulos reais dos dois boards devolvem a classe do seu token', () => {
+    // Campo, valor e classe na mesma string: quem encontrar esta vermelha precisa ver **qual**
+    // rótulo deixou de casar, e não que "um dos catorze" deixou.
+    const lidos = ROTULOS_REAIS.map(
+      ({ campo, valor }) => `${campo} ${valor} → ${fieldLook(campoDe(campo, valor))}`,
+    )
+
+    expect(lidos).toEqual(
+      ROTULOS_REAIS.map(({ campo, valor, classe }) => `${campo} ${valor} → ${classe}`),
+    )
+  })
+
+  it.each(VALORES_ESTRANHOS)('$campo com valor $value sai neutro', (field) => {
+    expect(fieldLook(field)).toBe('')
+  })
+
+  it.each(CAMPOS_ESTRANHOS)('o campo $name não é etiqueta de cor nenhuma', (field) => {
+    expect(fieldLook(field)).toBe('')
+  })
+
+  it('cada campo tem tantas entradas quantos tokens a folha lhe deu', () => {
+    // Contado contra `CAMPOS`, e não contra quatro números escritos aqui: o mapa e a folha são um
+    // contrato de duas pontas — catorze tokens, catorze entradas —, e um número solto no teste
+    // deixaria as duas pontas envelhecerem separadas. É também o que denuncia uma **colisão de
+    // chave normalizada**, que é o preço declarado da normalização: duas opções que reduzissem à
+    // mesma chave apagariam uma entrada e o total cairia.
+    const tamanhos = Object.entries(LOOKS).map(
+      ([campo, valores]) => `${campo}: ${Object.keys(valores).length}`,
+    )
+
+    expect(tamanhos).toEqual(
+      Object.entries(CAMPOS).map(([campo, tokens]) => `${campo}: ${tokens.length}`),
+    )
   })
 })
 
