@@ -1,8 +1,10 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Page } from '@playwright/test'
+
+import { launchSmokeApp } from './smoke-app'
 
 /**
  * O smoke: a fatia vertical inteira, de uma ponta à outra.
@@ -15,10 +17,6 @@ import type { ElectronApplication, Page } from '@playwright/test'
  * As âncoras `data-testid` que ele lê são contrato fixado na spec. Se alguma faltar, o bug é do
  * componente: a âncora volta ao nome da spec, nunca o teste ao nome errado.
  */
-
-// `__dirname` e não `import.meta.url`: o Playwright transpila os specs para CommonJS enquanto o
-// `package.json` não for `type: module`, e `import.meta` ali é erro de sintaxe.
-const REPO_ROOT = join(__dirname, '..', '..')
 
 /** Modelo barato: o smoke roda a cada verificação da fundação, e cota é recurso compartilhado. */
 const SMOKE_MODEL = 'haiku'
@@ -36,21 +34,29 @@ let app: ElectronApplication
 let window: Page
 /** A `cwd` da sessão. Temporária porque é aqui que o `smoke.txt` do passo 5 vai parar. */
 let workdir: string
+/**
+ * A pasta de estado do app. Descartável, e **própria** — não o `workdir`.
+ *
+ * Descartável porque sem ela o app grava `dangerous.json` e `conversations.json` no `userData` real
+ * quem roda: o smoke passaria a sujar a máquina e a depender do que ela já tinha.
+ *
+ * E separada do `workdir` porque aquela pasta é o `OC_CWD` da sessão, e o passo 5 espera encontrar
+ * lá **só** o `smoke.txt` que o modelo escreveu. Arquivos de estado nascendo ao lado tornariam
+ * aquela asserção uma medida de outra coisa.
+ */
+let stateDir: string
 
 test.beforeAll(async () => {
   workdir = mkdtempSync(join(tmpdir(), 'oc-smoke-'))
+  stateDir = mkdtempSync(join(tmpdir(), 'oc-smoke-state-'))
 
-  app = await electron.launch({
-    // O app buildado, resolvido pelo `main` do `package.json`. O `yarn smoke` roda o
-    // `electron-vite build` antes justamente para que `out/` exista aqui.
-    args: ['.'],
-    cwd: REPO_ROOT,
+  app = await launchSmokeApp({
+    // O ambiente que `launchSmokeApp` herda mantém `ANTHROPIC_API_KEY`, e é de propósito. Ela é o
+    // objeto da asserção do passo 3: apagá-la aqui garantiria o resultado que o teste deveria estar
+    // provando — o falso-verde que este critério existe para evitar. Se a chave estiver no
+    // ambiente, o app de fato subiria em billing de API, e o smoke deve dizer isso em vermelho.
+    stateDir,
     env: {
-      // O ambiente é herdado inteiro, e `ANTHROPIC_API_KEY` **não** é removida de propósito. Ela é
-      // o objeto da asserção do passo 3: apagá-la aqui garantiria o resultado que o teste deveria
-      // estar provando — o falso-verde que este critério existe para evitar. Se a chave estiver no
-      // ambiente, o app de fato subiria em billing de API, e o smoke deve dizer isso em vermelho.
-      ...inheritedEnv(),
       // Sem carregar as settings pessoais, nenhuma allowlist pode pré-aprovar a ferramenta do
       // passo 5 e fazer o pedido de permissão não aparecer. É o que torna aquele passo
       // determinístico — e, de quebra, o que deixa o smoke barato: a maior parte do custo de uma
@@ -70,8 +76,9 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await app.close()
   // Só depois de o app morrer: enquanto o subprocesso do Claude Code viver, o Windows segura
-  // handles na pasta.
+  // handles nas pastas.
   rmSync(workdir, { recursive: true, force: true, maxRetries: 3 })
+  rmSync(stateDir, { recursive: true, force: true, maxRetries: 3 })
 })
 
 test('a fatia vertical responde, se identifica e pede permissão para escrever', async () => {
@@ -188,17 +195,4 @@ async function allowUntilAwaitingInput(page: Page): Promise<void> {
   }
 
   throw new Error(`a sessão não devolveu a vez em ${TURN_TIMEOUT} ms`)
-}
-
-/**
- * O `process.env` do runner, pronto para o Playwright: passar `env` substitui o ambiente inteiro,
- * e sem `PATH` (e sem `HOME`/`USERPROFILE`, onde vivem as credenciais do Claude Code) o Electron
- * nem subiria. As chaves sem valor caem porque o tipo do Playwright só aceita string.
- */
-function inheritedEnv(): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  )
 }

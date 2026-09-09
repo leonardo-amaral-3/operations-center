@@ -1,7 +1,7 @@
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
 import { CONVERSABLE_STATIONS, STATUS_FIELD } from '../../src/core/board/query'
@@ -11,6 +11,7 @@ import {
   FIRST_BOARD,
   fixtureProject,
 } from './boards-fixture'
+import { launchSmokeApp } from './smoke-app'
 
 /**
  * O smoke do conteúdo: abrir um cartão que não conversa, ler o que está escrito nele e recarregar —
@@ -199,23 +200,18 @@ test.beforeAll(async () => {
   copyFileSync(BOARD_FIXTURE_PATH, boardFixtureCopy)
   copyFileSync(CARD_FIXTURE_PATH, cardFixtureCopy)
 
-  app = await electron.launch({
-    // O app buildado, resolvido pelo `main` do `package.json`. O `yarn smoke` roda o
-    // `electron-vite build` antes justamente para que `out/` exista aqui.
-    args: ['.'],
-    cwd: REPO_ROOT,
+  app = await launchSmokeApp({
+    // Descartável, e **não** o `userData` real: sem isto o app lê o `preferences.json` da máquina
+    // de quem roda e `pickActive` abre a aba lembrada de uso de verdade — enquanto tudo o que este
+    // arquivo espera sai do `FIRST_BOARD`. O vermelho vem como "Expected: 6, Received: 2", que
+    // acusa o board errado sem dizer o nome dele.
+    stateDir: scenario,
     env: {
-      ...inheritedEnv(),
       // As três portas que trocam o GitHub por arquivo — e é só isso que este smoke precisa de
       // ambiente. **Absolutos**, e é o ponto: o processo do Electron não roda com a `cwd` do runner.
       OC_BOARD_FIXTURE: boardFixtureCopy,
       OC_BOARDS_FIXTURE: boardsFixtureCopy,
       OC_CARD_FIXTURE: cardFixtureCopy,
-      // Descartável, e **não** o `userData` real: sem isto o app lê o `preferences.json` da máquina
-      // de quem roda e `pickActive` abre a aba lembrada de uso de verdade — enquanto tudo o que este
-      // arquivo espera sai do `FIRST_BOARD`. O vermelho vem como "Expected: 6, Received: 2", que
-      // acusa o board errado sem dizer o nome dele.
-      OC_STATE_DIR: scenario,
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell de quem roda abriria a tela
       // errada e o teste falharia por um motivo que não tem nada a ver com o conteúdo do card.
       OC_SCREEN: 'kanban',
@@ -451,17 +447,4 @@ async function caixaDe(locator: Locator, oQue: string): Promise<Caixa> {
   if (caixa === null) throw new Error(`${oQue}: sem caixa — fora do layout`)
 
   return caixa
-}
-
-/**
- * O `process.env` do runner, pronto para o Playwright: passar `env` substitui o ambiente inteiro, e
- * sem `PATH` o Electron nem subiria. As chaves sem valor caem porque o tipo do Playwright só aceita
- * string.
- */
-function inheritedEnv(): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  )
 }
