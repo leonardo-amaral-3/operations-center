@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { CONVERSABLE_STATIONS, ESTEIRA_STATIONS } from '../../src/core/board/query'
-import { normalizeStation, runsEsteira } from '../../src/core/board/stations'
+import {
+  CONVERSABLE_STATIONS,
+  ESTEIRA_STATIONS,
+  TRIAGE_STATION,
+} from '../../src/core/board/query'
+import { isTriage, normalizeStation, runsEsteira } from '../../src/core/board/stations'
 
 /**
  * A regra de discriminação do CA-1, sozinha e sem quem a consuma.
@@ -73,6 +77,37 @@ describe('runsEsteira — a assinatura que decide se um Project vira aba', () =>
   })
 })
 
+describe('isTriage — a estação de entrada, e só ela', () => {
+  it('reconhece a triagem em qualquer decoração que o board lhe dê', () => {
+    // As três formas que existem: como o board decora, como a norma nomeia, e como alguém digita.
+    expect(isTriage('📥 Triagem')).toBe(true)
+    expect(isTriage('Triagem')).toBe(true)
+    expect(isTriage('triagem')).toBe(true)
+  })
+
+  it('recusa cada uma das outras sete estações da esteira', () => {
+    // Nomeadamente 'Backlog' e '🧪 Validação em Dev', mas o laço vale mais que os dois: é ele que
+    // pega o dia em que uma estação nova entrar na norma e a régua passar a aceitá-la por descuido.
+    for (const outra of ESTEIRA_DECORADA.filter((name) => !isTriage(name))) {
+      expect(isTriage(outra), outra).toBe(false)
+    }
+
+    expect(ESTEIRA_DECORADA.filter((name) => isTriage(name))).toEqual(['📥 Triagem'])
+  })
+
+  it('recusa o nome que apenas contém `triagem` — a comparação é do nome inteiro', () => {
+    // 'Pré-triagem' normaliza para 'pre-triagem', e uma régua de prefixo ou de `includes` a
+    // aceitaria: duas colunas ofereceriam a nova triagem no mesmo board.
+    expect(isTriage('Pré-triagem')).toBe(false)
+    expect(isTriage('Triagem técnica')).toBe(false)
+  })
+
+  it('recusa o rótulo vazio — coluna sem nome não é estação nenhuma', () => {
+    expect(isTriage('')).toBe(false)
+    expect(isTriage('📥')).toBe(false)
+  })
+})
+
 describe('as duas listas de estação não podem divergir', () => {
   it('toda estação conversável é uma estação da esteira', () => {
     // Sem esta amarra, uma edição distraída em `CONVERSABLE_STATIONS` faria o app admitir um board
@@ -83,6 +118,14 @@ describe('as duas listas de estação não podem divergir', () => {
     )
 
     expect(forasteiras).toEqual([])
+  })
+
+  it('a estação da triagem é uma das 8, e é conversável', () => {
+    // `TRIAGE_STATION` é uma quarta cópia do mesmo nome. Sem esta amarra, renomear a estação na
+    // norma sem renomeá-la aqui faria `isTriage` deixar de casar com coluna nenhuma **em silêncio**
+    // — e o botão da nova triagem simplesmente não apareceria em board nenhum.
+    expect(ESTEIRA_STATIONS.map(normalizeStation)).toContain(normalizeStation(TRIAGE_STATION))
+    expect(CONVERSABLE_STATIONS.map(normalizeStation)).toContain(normalizeStation(TRIAGE_STATION))
   })
 
   it('as conversáveis são menos que as 8 — a esteira tem estação sem skill', () => {

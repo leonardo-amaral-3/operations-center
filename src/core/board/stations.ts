@@ -8,7 +8,7 @@
  * recusar — o mesmo motivo que tirou as guardas de `narrow.ts` de dentro do leitor que as escreveu.
  */
 
-import { CONVERSABLE_STATIONS, ESTEIRA_STATIONS } from './query'
+import { CONVERSABLE_STATIONS, ESTEIRA_STATIONS, TRIAGE_STATION } from './query'
 
 /**
  * O nome da estação reduzido ao que a norma nomeia, para a comparação não depender de como o board
@@ -30,6 +30,17 @@ export function normalizeStation(name: string): string {
 
 /** As estações conversáveis já normalizadas — a forma em que a comparação de `readColumns` acontece. */
 export const CONVERSABLE: ReadonlySet<string> = new Set(CONVERSABLE_STATIONS.map(normalizeStation))
+
+/** A forma normalizada de `TRIAGE_STATION` — em que a comparação de `isTriage` acontece. */
+const TRIAGEM = normalizeStation(TRIAGE_STATION)
+
+/**
+ * Aquela coluna é a 📥 Triagem? Por **nome normalizado**, como as outras duas perguntas deste
+ * módulo — `optionId` é do board, nome é da norma.
+ */
+export function isTriage(name: string): boolean {
+  return normalizeStation(name) === TRIAGEM
+}
 
 /** As 8 da norma já normalizadas — a forma em que a comparação de `runsEsteira` acontece. */
 const ESTEIRA = ESTEIRA_STATIONS.map(normalizeStation)

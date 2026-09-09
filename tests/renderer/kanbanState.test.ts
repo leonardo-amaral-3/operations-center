@@ -48,8 +48,8 @@ function board(titulo: string, posicoes: Readonly<Record<string, string>> = POSI
   return {
     title: titulo,
     columns: [
-      { id: OPT_TRI, name: '📥 Triagem', conversable: true },
-      { id: OPT_IMP, name: '🔨 Implementação', conversable: true },
+      { id: OPT_TRI, name: '📥 Triagem', conversable: true, triage: true },
+      { id: OPT_IMP, name: '🔨 Implementação', conversable: true, triage: false },
     ],
     cards: Object.entries(posicoes).map(([itemId, columnId]) => card(itemId, columnId)),
   }

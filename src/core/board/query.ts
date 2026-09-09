@@ -184,3 +184,11 @@ export const ESTEIRA_STATIONS = [
   'Release',
   'Produção',
 ] as const
+
+/**
+ * A estação de entrada do funil — a única que oferece a nova triagem (RF-9).
+ *
+ * Constante nomeada e não `ESTEIRA_STATIONS[0]`: a ordem daquela lista é a da esteira e existe para
+ * ser lida por gente, não indexada por código que quebraria em silêncio se alguém a reordenasse.
+ */
+export const TRIAGE_STATION = 'Triagem'

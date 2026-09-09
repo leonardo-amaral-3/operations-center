@@ -1,7 +1,7 @@
 import { MAX_PAGES, selectByAlias } from './envelope'
 import { asArray, asNumber, asRecord, asString } from './narrow'
 import { BOARD_QUERY, CARD_FIELDS, STATUS_FIELD } from './query'
-import { CONVERSABLE, normalizeStation } from './stations'
+import { CONVERSABLE, isTriage, normalizeStation } from './stations'
 import type { Board, BoardCard, BoardCardField, BoardColumn, GraphQLFn } from './types'
 
 /**
@@ -102,7 +102,12 @@ function readColumns(project: Record<string, unknown>): readonly BoardColumn[] {
     const id = asString(option?.['id'])
     const name = asString(option?.['name'])
     if (id !== null && name !== null) {
-      columns.push({ id, name, conversable: CONVERSABLE.has(normalizeStation(name)) })
+      columns.push({
+        id,
+        name,
+        conversable: CONVERSABLE.has(normalizeStation(name)),
+        triage: isTriage(name),
+      })
     }
   }
 
