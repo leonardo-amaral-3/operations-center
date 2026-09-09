@@ -1,3 +1,5 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
@@ -108,8 +110,12 @@ const EXCLUDED_NUMBERS = NODES.filter((node) => toExpectedCard(node) === null)
 
 let app: ElectronApplication
 let window: Page
+/** Descartável, e não o `userData` real: sem `preferences.json`, `pickActive` cai no primeiro. */
+let state: string
 
 test.beforeAll(async () => {
+  state = mkdtempSync(join(tmpdir(), 'oc-kanban-'))
+
   app = await electron.launch({
     // O app buildado, resolvido pelo `main` do `package.json`. O `yarn smoke` roda o
     // `electron-vite build` antes justamente para que `out/` exista aqui.
@@ -126,6 +132,11 @@ test.beforeAll(async () => {
       // Fixado pelo mesmo argumento, e não herdado: o CA-2 aqui afirma cor, e um `OC_THEME`
       // exportado no shell de quem roda mudaria em silêncio o que estas asserções medem.
       OC_THEME: 'lavanda',
+      // Descartável pelo mesmo argumento das duas de cima, e a que mais dói quando falta: sem ela o
+      // app lê o `preferences.json` da máquina de quem roda e `pickActive` abre a aba lembrada de
+      // uso de verdade, enquanto tudo o que este arquivo espera sai do `FIRST_BOARD`. O vermelho
+      // vem como "Expected: 6, Received: 2" — acusa o board errado sem dizer o nome dele.
+      OC_STATE_DIR: state,
     },
   })
 
@@ -134,6 +145,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app.close()
+  rmSync(state, { recursive: true, force: true, maxRetries: 3 })
 })
 
 /**
