@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
 import { CARD_FIELDS, STATUS_FIELD } from '../../src/core/board/query'
@@ -11,6 +11,7 @@ import {
   FIRST_BOARD,
   fixtureProject,
 } from './boards-fixture'
+import { launchSmokeApp } from './smoke-app'
 
 /**
  * O smoke do kanban: o board da fixture desenhado na tela, de ponta a ponta.
@@ -27,10 +28,6 @@ import {
  * As âncoras `data-testid` que ele lê são contrato fixado na spec. Se alguma faltar, o bug é do
  * componente: a âncora volta ao nome da spec, nunca o teste ao nome errado.
  */
-
-// `__dirname` e não `import.meta.url`: o Playwright transpila os specs para CommonJS enquanto o
-// `package.json` não for `type: module`, e `import.meta` ali é erro de sintaxe.
-const REPO_ROOT = join(__dirname, '..', '..')
 
 /**
  * O board do envelope cru, do jeito que o `BoardReader` o recebe.
@@ -206,27 +203,23 @@ let state: string
 test.beforeAll(async () => {
   state = mkdtempSync(join(tmpdir(), 'oc-kanban-'))
 
-  app = await electron.launch({
-    // O app buildado, resolvido pelo `main` do `package.json`. O `yarn smoke` roda o
-    // `electron-vite build` antes justamente para que `out/` exista aqui.
-    args: ['.'],
-    cwd: REPO_ROOT,
+  app = await launchSmokeApp({
+    // A que mais dói quando falta: sem ela o app lê o `preferences.json` da máquina de quem roda e
+    // `pickActive` abre a aba lembrada de uso de verdade, enquanto tudo o que este arquivo espera
+    // sai do `FIRST_BOARD`. O vermelho vem como "Expected: 6, Received: 2" — acusa o board errado
+    // sem dizer o nome dele.
+    stateDir: state,
     env: {
-      ...inheritedEnv(),
       // As portas que trocam o GitHub por arquivo. São elas que tornam este smoke determinístico.
       OC_BOARD_FIXTURE: BOARD_FIXTURE_PATH,
       OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell de quem roda abriria a tela
       // errada e o teste falharia por um motivo que não tem nada a ver com o kanban.
       OC_SCREEN: 'kanban',
-      // Fixado pelo mesmo argumento, e não herdado: o CA-2 aqui afirma cor, e um `OC_THEME`
-      // exportado no shell de quem roda mudaria em silêncio o que estas asserções medem.
+      // Fixado pelo mesmo argumento: o CA-2 aqui afirma cor, e um `OC_THEME` exportado no shell de
+      // quem roda mudaria em silêncio o que estas asserções medem. Herdá-lo já não é possível —
+      // `smokeEnv()` o apaga —, mas este arquivo precisa de um tema **nomeado**, e não do default.
       OC_THEME: 'lavanda',
-      // Descartável pelo mesmo argumento das duas de cima, e a que mais dói quando falta: sem ela o
-      // app lê o `preferences.json` da máquina de quem roda e `pickActive` abre a aba lembrada de
-      // uso de verdade, enquanto tudo o que este arquivo espera sai do `FIRST_BOARD`. O vermelho
-      // vem como "Expected: 6, Received: 2" — acusa o board errado sem dizer o nome dele.
-      OC_STATE_DIR: state,
     },
   })
 
@@ -619,17 +612,4 @@ function cardLocator(number: number): Locator {
  */
 function etiquetaDe(number: number, field: string): Locator {
   return cardLocator(number).locator(`[data-field="${field}"]`)
-}
-
-/**
- * O `process.env` do runner, pronto para o Playwright: passar `env` substitui o ambiente inteiro, e
- * sem `PATH` o Electron nem subiria. As chaves sem valor caem porque o tipo do Playwright só aceita
- * string.
- */
-function inheritedEnv(): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  )
 }

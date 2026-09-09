@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
 import { CONVERSABLE_STATIONS, STATUS_FIELD } from '../../src/core/board/query'
@@ -12,6 +12,7 @@ import {
   DISCOVERED,
   fixtureProject,
 } from './boards-fixture'
+import { launchSmokeApp } from './smoke-app'
 
 /**
  * O smoke das abas: uma aba por board da esteira, a troca de aba trocando o kanban inteiro, a
@@ -412,25 +413,21 @@ test('CA-3: a conversa sobrevive à troca de aba e não vaza', async () => {
  * Sobe o app com o cenário ligado e espera a janela.
  *
  * Existe porque este smoke o faz **duas vezes**, com o mesmo ambiente nas duas: é a identidade das
- * variáveis entre os dois ciclos — o `OC_STATE_DIR`, acima de tudo — que faz o segundo enxergar o
- * que o primeiro deixou.
+ * variáveis entre os dois ciclos — o `stateDir`, acima de tudo — que faz o segundo enxergar o que o
+ * primeiro deixou. `launchSmokeApp` a preserva sem esta função ter de cuidar dela: `smokeEnv()` é
+ * determinística e `state` é a mesma pasta nas duas chamadas.
  */
 async function launch(): Promise<void> {
-  app = await electron.launch({
-    // O app buildado, resolvido pelo `main` do `package.json`. O `yarn smoke` roda o
-    // `electron-vite build` antes justamente para que `out/` exista aqui.
-    args: ['.'],
-    cwd: REPO_ROOT,
+  app = await launchSmokeApp({
+    // A porta desta feature: sem ela a aba ativa iria para o `userData` real da máquina, e o smoke
+    // mudaria a aba em que o app de quem o roda abre da próxima vez.
+    stateDir: state,
     env: {
-      ...inheritedEnv(),
       // As portas que trocam o GitHub por arquivo. São elas que tornam este smoke determinístico —
       // e a de `boards.json` é o que faz a barra de abas ser a da fixture, e não a da conta de quem
       // roda o teste.
       OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
       OC_BOARD_FIXTURE: BOARD_FIXTURE_PATH,
-      // A porta desta feature: sem ela a aba ativa iria para o `userData` real da máquina, e o
-      // smoke mudaria a aba em que o app de quem o roda abre da próxima vez.
-      OC_STATE_DIR: state,
       // A do conteúdo do card, obrigatória a partir do CA-3: ver o comentário da constante.
       OC_CARD_FIXTURE: CARD_FIXTURE_PATH,
       // A porta que troca `~/.claude/projects` pela raiz do cenário. É ela que torna a descoberta
@@ -651,17 +648,4 @@ function columnLocator(columnId: string): Locator {
 
 function cardLocator(number: number): Locator {
   return window.locator(`[data-testid="board-card"][data-card-number="${number}"]`)
-}
-
-/**
- * O `process.env` do runner, pronto para o Playwright: passar `env` substitui o ambiente inteiro, e
- * sem `PATH` o Electron nem subiria. As chaves sem valor caem porque o tipo do Playwright só aceita
- * string.
- */
-function inheritedEnv(): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  )
 }
