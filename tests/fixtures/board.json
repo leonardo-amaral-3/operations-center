@@ -160,6 +160,13 @@
                         }
                       },
                       {
+                        "optionId": "8b82096b",
+                        "name": "⚪ Padrão",
+                        "field": {
+                          "name": "Classe"
+                        }
+                      },
+                      {
                         "optionId": "88b477d4",
                         "name": "Completa",
                         "field": {
@@ -267,6 +274,13 @@
                         "name": "✨ Melhoria",
                         "field": {
                           "name": "Tipo"
+                        }
+                      },
+                      {
+                        "optionId": "2f6c2c73",
+                        "name": "🔴 Expedite",
+                        "field": {
+                          "name": "Classe"
                         }
                       },
                       {
