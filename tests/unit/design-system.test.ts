@@ -1049,6 +1049,52 @@ describe('a barra não decide cor', () => {
 })
 
 /**
+ * O CA-3: a moldura da janela sai da paleta.
+ *
+ * Mesmo molde da canária acima, mesmo argumento — a casca do app é do tema, não do arquivo — e outro
+ * sujeito: ali o bloco `::-webkit-scrollbar`, aqui a regra `body`, que desde o #21 recorta a janela
+ * inteira em 2px agora que a moldura deixou de ser a do sistema.
+ *
+ * **Existência e cor na mesma lista, e é de propósito.** O modo de falha desta feature não é escrever
+ * `#000` — é a regra `border` **sumir** numa recomposição da folha, e a janela voltar a não ter
+ * moldura nenhuma sem um vermelho em lugar nenhum, exatamente como o rollback pela metade que a
+ * primeira canária da barra cobre. `[]` diz "a moldura sumiu" e `['#000']` diz "a cor foi escrita à
+ * mão": são consertos diferentes, e a lista os distingue enquanto um booleano os confundiria.
+ *
+ * **Sem opinião sobre geometria, como a canária da barra.** Só o que não é espessura nem traço chega
+ * à asserção, então trocar os 2px por 3 é ajuste de design e não violação — o que não passa é a cor
+ * deixar de ser `var(--border)`. A verificação a olho nas três combinações e com a janela maximizada
+ * é bloqueante na validação em dev: nenhum teste enxerga o que o DWM desenha por fora destes 2px.
+ */
+
+/** O vocabulário não-cromático de uma borda: espessura e traço. O que sobrar é a cor. */
+const VALOR_SEM_COR_DA_BORDA = /^(?:\d+(?:\.\d+)?(?:px|rem|em|%)|solid|dashed|dotted|none)$/
+
+describe('a moldura da janela não decide cor', () => {
+  it('a regra `body` declara `border`, e a cor dela é `var(--border)`', () => {
+    const corpo = [...lerFolhaSemComentarios().matchAll(REGRA)].find(
+      (regra) => (regra.groups?.['seletor'] ?? '').trim() === 'body',
+    )?.groups?.['corpo']
+
+    // A existência da regra primeiro, e separada: uma folha sem `body` nenhum não tem declaração para
+    // reclamar, e o vermelho da lista lá embaixo mandaria procurar uma cor num lugar que não existe.
+    expect(corpo).toBeDefined()
+
+    const cores = (corpo ?? '')
+      .split(';')
+      .map((declaracao) => declaracao.trim())
+      .filter((declaracao) => /^border\s*:/.test(declaracao))
+      .flatMap((declaracao) =>
+        (declaracao.split(/\s*:\s*/, 2)[1] ?? '')
+          .split(/\s+/)
+          .filter((token) => !VALOR_SEM_COR_DA_BORDA.test(token)),
+      )
+
+    expect(cores).toEqual(['var(--border)'])
+  })
+})
+
+/**
  * A guarda das varreduras: cada raiz varrida tem de devolver ao menos um arquivo.
  *
  * Sem ela, renomear `src/renderer/` — ou mudar a extensão da fonte — deixaria as varreduras **verdes
