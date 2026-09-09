@@ -1095,6 +1095,73 @@ describe('a moldura da janela não decide cor', () => {
 })
 
 /**
+ * O outro lado do CA-2: a faixa arrasta a janela, e os botões dela não.
+ *
+ * Duas afirmações num par, e é o par que vale. A folha declara as duas `@utility` — a que arrasta e
+ * a que **nega** — e a faixa usa uma vez a primeira e três vezes a segunda, uma por botão.
+ *
+ * **A que nega é o sujeito desta canária.** Um elemento dentro de uma região de arrasto para de
+ * receber clique: apagar `nao-arrasta-a-janela` de um botão o transforma em alça de arrastar, ele
+ * deixa de responder, e **nada** fica vermelho — não é erro de tipo, não é erro de lint, e o teste de
+ * renderer continua verde porque `-webkit-app-region` não existe em `jsdom`. É um defeito que só a
+ * janela de verdade mostra, e é por isso que a contagem mora aqui.
+ *
+ * **Os dois lados lidos sem comentário**, como as canárias da barra fazem com a folha — e aqui não
+ * é zelo hipotético: o parágrafo que explica as duas utilidades cita as duas pelo nome dos dois
+ * lados, na folha e no JSX. Sobre o texto cru, esta contagem acharia a classe num comentário e
+ * passaria verde sobre um arquivo que a tivesse perdido do botão.
+ *
+ * Apagar comentário de linha por regex erra por excesso em arquivo com `//` dentro de string — e
+ * **é o erro que se quer**, porque ele só pode apagar uso de verdade e derrubar a canária. O erro na
+ * outra direção é que seria caro: verde sobre um botão que virou alça de arrasto.
+ *
+ * **Na ordem de declaração, e não ordenada.** A primeira ocorrência ser a que arrasta é a própria
+ * estrutura da faixa: a região é o contêiner, as negações são os botões dentro dela. Uma lista
+ * ordenada diria a mesma contagem e deixaria passar o inverso — os botões arrastando e a faixa não.
+ */
+const CAMINHO_DA_FAIXA = fileURLToPath(
+  new URL('../../src/renderer/components/WindowBar.tsx', import.meta.url),
+)
+
+/** O comentário de linha, que a folha não tem e o TSX tem — o de bloco já é o `COMENTARIO` acima. */
+const COMENTARIO_DE_LINHA = /\/\/[^\n]*/g
+
+/** A faixa sem comentário nenhum: o de bloco do JSX cai no `COMENTARIO`, e o de linha neste. */
+function lerFaixaSemComentarios(): string {
+  return readFileSync(CAMINHO_DA_FAIXA, 'utf8')
+    .replace(COMENTARIO, '')
+    .replace(COMENTARIO_DE_LINHA, '')
+}
+
+/** As duas classes de arrasto, e só elas: o prefixo que nega é grupo, para não contar duas vezes. */
+const CLASSE_DE_ARRASTO = /(?<![\w-])(nao-)?arrasta-a-janela(?![\w-])/g
+
+describe('a faixa arrasta a janela, e os três botões dela não', () => {
+  it('a folha declara as duas `@utility` de arrasto', () => {
+    const declaradas = [...lerFolhaSemComentarios().matchAll(/@utility\s+([\w-]+)/g)].map(
+      ([, nome]) => nome,
+    )
+
+    // A existência primeiro, e separada da contagem — o mesmo arranjo das duas canárias da barra:
+    // sem a folha, a contagem do arquivo passaria verde sobre classes que não existem em lugar
+    // nenhum, e o JSX ficaria decorando o nome de uma utilidade apagada.
+    expect(declaradas).toContain('arrasta-a-janela')
+    expect(declaradas).toContain('nao-arrasta-a-janela')
+  })
+
+  it('`WindowBar.tsx` arrasta uma vez e nega três', () => {
+    const usos = [...lerFaixaSemComentarios().matchAll(CLASSE_DE_ARRASTO)].map(([uso]) => uso)
+
+    expect(usos).toEqual([
+      'arrasta-a-janela',
+      'nao-arrasta-a-janela',
+      'nao-arrasta-a-janela',
+      'nao-arrasta-a-janela',
+    ])
+  })
+})
+
+/**
  * A guarda das varreduras: cada raiz varrida tem de devolver ao menos um arquivo.
  *
  * Sem ela, renomear `src/renderer/` — ou mudar a extensão da fonte — deixaria as varreduras **verdes

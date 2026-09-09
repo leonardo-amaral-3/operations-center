@@ -10,6 +10,7 @@ import type {
   SessionStateEvent,
   StartRequest,
   StartResult,
+  WindowSnapshot,
 } from '../../src/shared/ipc'
 import { IDLE_ACTIVITY } from '../../src/shared/session'
 
@@ -32,18 +33,34 @@ import { IDLE_ACTIVITY } from '../../src/shared/session'
  *    `onState`, como o core faz. Sem isso o teste pararia na causa interna ("ninguém chamou
  *    `close`") em vez de percorrer o elo `close → closed → onEnded → painel fora`, que é o caminho
  *    que o usuário viu.
+ *
+ * A família `window:` entrou pelo #21 e **não** reproduz regra nenhuma do main, de propósito: ela
+ * registra o que foi pedido e publica só quando o teste manda. Um falso que alternasse `maximized`
+ * sozinho a cada `toggleMaximizeWindow` esconderia justamente o defeito que a Decisão 5 previne —
+ * uma faixa que adiantasse a tela pelo próprio clique passaria verde contra ele, e continuaria
+ * errando na janela de verdade toda vez que ela maximizasse por fora (duplo clique, `Win+↑`,
+ * arrasto ao topo). Aqui quem move a faixa é o retrato, e o retrato é do teste.
  */
 export interface OcFake {
   /** Os `sessionId` que a tela mandou encerrar, na ordem. É a asserção central do #63. */
   readonly fechadas: readonly string[]
   /** Os ids que o `start` entregou, na ordem — prova a idempotência por escopo. */
   readonly entregues: readonly string[]
+  /**
+   * Os membros da família `window:` que a tela chamou, na ordem e pelo nome — a assinatura
+   * inclusive, que é o que deixa a ordem `onWindow` → `readWindow` (assinar antes de pedir) ser
+   * afirmada em vez de suposta.
+   */
+  readonly pedidosDaJanela: readonly string[]
+  /** Publica um retrato da janela aos assinantes de `onWindow`, como o observador do main faz. */
+  publicarJanela(snapshot: WindowSnapshot): void
 }
 
 /** Instala o falso em `window.oc` e devolve o registro do que a tela pediu. */
 export function instalarOc(): OcFake {
   const fechadas: string[] = []
   const entregues: string[] = []
+  const pedidosDaJanela: string[] = []
 
   // As sessões vivas por escopo, que é o que faz o `start` ser idempotente. Um `Map`, e não um id
   // só, porque a mesma tela pode ter dois escopos em cena ao mesmo tempo.
@@ -57,6 +74,7 @@ export function instalarOc(): OcFake {
   const ouvintesDeMensagem: ((event: SessionMessageEvent) => void)[] = []
   const ouvintesDeEstado: ((event: SessionStateEvent) => void)[] = []
   const ouvintesDePulso: ((event: SessionActivityEvent) => void)[] = []
+  const ouvintesDaJanela: ((snapshot: WindowSnapshot) => void)[] = []
 
   // Os `on*` guardam o ouvinte e devolvem o cancelamento, como a ponte de verdade — sem isso a
   // limpeza do efeito não teria o que desfazer, e um monte descartado continuaria recebendo evento.
@@ -139,6 +157,40 @@ export function instalarOc(): OcFake {
     setDangerous(): Promise<void> {
       return Promise.resolve()
     },
+
+    readWindow(): Promise<WindowSnapshot> {
+      pedidosDaJanela.push('readWindow')
+
+      // `false` porque é como a janela nasce — `createWindow` não chama `maximize()` —, e é este
+      // retrato do boot que a faixa aplica sobre a própria semente.
+      return Promise.resolve({ maximized: false })
+    },
+
+    // A assinatura também entra no registro: sem ela, "assinar antes de pedir" não teria como ser
+    // afirmado, e é dessa ordem que depende a guarda `pushed` da faixa.
+    onWindow(ouvinte: (snapshot: WindowSnapshot) => void): () => void {
+      pedidosDaJanela.push('onWindow')
+
+      return assinar(ouvintesDaJanela, ouvinte)
+    },
+
+    minimizeWindow(): Promise<void> {
+      pedidosDaJanela.push('minimizeWindow')
+
+      return Promise.resolve()
+    },
+
+    toggleMaximizeWindow(): Promise<void> {
+      pedidosDaJanela.push('toggleMaximizeWindow')
+
+      return Promise.resolve()
+    },
+
+    closeWindow(): Promise<void> {
+      pedidosDaJanela.push('closeWindow')
+
+      return Promise.resolve()
+    },
   }
 
   // A asserção mora aqui, e não no descritor: o `value` de um `PropertyDescriptor` é `any` e
@@ -150,5 +202,14 @@ export function instalarOc(): OcFake {
   // compila; `configurable` para o próximo teste poder reinstalar por cima.
   Object.defineProperty(window, 'oc', { value: ponte, configurable: true })
 
-  return { fechadas, entregues }
+  return {
+    fechadas,
+    entregues,
+    pedidosDaJanela,
+    // Cópia do registro antes de percorrer, como o `close` acima: um ouvinte que se cancele ao
+    // receber o retrato não pode furar a iteração de quem ainda não recebeu.
+    publicarJanela(snapshot: WindowSnapshot): void {
+      for (const ouvinte of [...ouvintesDaJanela]) ouvinte(snapshot)
+    },
+  }
 }
