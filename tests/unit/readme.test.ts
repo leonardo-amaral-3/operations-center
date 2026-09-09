@@ -68,10 +68,41 @@ describe('README', () => {
     expect(readme).toMatch(/GitHub CLI \(`gh`\) instalado e logado/)
   })
 
+  it('avisa que o git precisa estar no PATH', () => {
+    // A terceira exigência de máquina, e a que o README passou seis cards sem dizer. O app spawna
+    // `git remote get-url origin` para descobrir a qual repo cada pasta local corresponde — o mapa
+    // que decide **em que pasta a sessão de um cartão roda**. Sem `git` a resposta é `null`, com a
+    // mesma tolerância de "pasta não é repo": nada quebra na tela, e os cartões só deixam de achar
+    // a pasta deles. É por não quebrar que a omissão sobreviveu tanto tempo, e é por isso que ela
+    // precisa de canária em vez de confiança.
+    expect(readme).toMatch(/^## Pré-requisitos$/m)
+    expect(readme).toContain('`git`')
+  })
+
+  it('separa o que a máquina precisa ter do que só o desenvolvimento pede', () => {
+    // O CA-3 do card #56, e a razão de ele existir: com o executável, a lista única de
+    // pré-requisitos passou a mentir por omissão — ela misturava o que se pode dispensar (Node,
+    // yarn, o repo clonado) com o que não se pode (`gh`, `git`, Claude Code). Quem recebe só a
+    // pasta do `.exe` precisa saber qual das duas metades ainda vale para ele.
+    expect(readme).toContain('O que a máquina precisa ter')
+    expect(readme).toContain('O que só o desenvolvimento pede')
+  })
+
+  it('documenta o executável e o que ele dispensa', () => {
+    // A seção que o card #56 criou. As três coisas que ela não pode deixar de dizer: onde o
+    // artefato cai, que se copia a **pasta inteira** (mover só o `.exe` não roda — o runtime do
+    // Chromium e o `app.asar` são irmãos dele), e que o `claude.exe` de 209 MB **não** vai junto,
+    // que é a decisão inteira do card em uma frase.
+    expect(readme).toMatch(/^## Executável$/m)
+    expect(readme).toContain('dist/win-unpacked')
+    expect(readme).toContain('pasta inteira')
+  })
+
   it('lista os comandos que o repo oferece', () => {
     expect(readme).toMatch(/^## Comandos$/m)
 
-    for (const script of ['dev', 'build', 'test', 'smoke', 'lint', 'typecheck']) {
+    // `package` entrou no #56 e é o único da lista que produz artefato em vez de rodar algo.
+    for (const script of ['dev', 'build', 'test', 'smoke', 'lint', 'typecheck', 'package']) {
       expect(readme).toContain(`yarn ${script}`)
     }
   })
@@ -106,6 +137,7 @@ describe('README', () => {
       'OC_CARD_FIXTURE',
       'OC_CLAUDE_PROJECTS',
       'OC_STATE_DIR',
+      'OC_CLAUDE_BIN',
     ]) {
       expect(readme).toContain(variavel)
     }
