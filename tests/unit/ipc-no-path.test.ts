@@ -48,7 +48,15 @@ interface Carga {
 }
 
 /**
- * As interfaces do contrato, com os campos de cada uma.
+ * Comentário fora antes de procurar campo: a prosa desta spec fala de pasta e de caminho o tempo
+ * todo, e canária que dispara com comentário é canária que alguém desliga.
+ */
+function semComentarios(corpo: string): string {
+  return corpo.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+}
+
+/**
+ * As cargas do contrato, com os campos de cada uma.
  *
  * Regex e não parser de TypeScript: as cargas do contrato são objetos rasos de propriedades simples,
  * e um parser aqui seria mais superfície para manter do que a coisa que ele verifica. A sanidade
@@ -63,12 +71,34 @@ function lerCargas(): Carga[] {
     const corpo = bloco.groups?.['corpo']
     if (nome === undefined || corpo === undefined || FORA_DA_VARREDURA.includes(nome)) continue
 
-    // Comentário fora antes de procurar campo: a prosa desta spec fala de pasta e de caminho o
-    // tempo todo, e canária que dispara com comentário é canária que alguém desliga.
-    const semComentarios = corpo.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
-    const campos = [...semComentarios.matchAll(/^\s*(?:readonly\s+)?(?<campo>\w+)\??\s*:/gm)].map(
-      (campo) => campo.groups?.['campo'] ?? '',
+    const campos = [
+      ...semComentarios(corpo).matchAll(/^\s*(?:readonly\s+)?(?<campo>\w+)\??\s*:/gm),
+    ].map((campo) => campo.groups?.['campo'] ?? '')
+
+    cargas.push({ nome, campos })
+  }
+
+  /**
+   * As uniões do contrato, que `export interface` não pega.
+   *
+   * `SessionScope` é a primeira e é carga de ida em quatro canais: sem esta metade, um
+   * `{ kind: 'triage'; boardKey: string; path: string }` entraria com a canária verde e sem uma
+   * linha de diff aqui. O corpo vai até a próxima declaração em coluna zero, e as alternativas de
+   * string pura (o `Screen`) não têm campo nenhum a varrer — por isso ficam de fora.
+   */
+  for (const bloco of fonte.matchAll(/export type (?<nome>\w+)\s*=(?<corpo>[\s\S]*?)(?=\n\S|$)/g)) {
+    const nome = bloco.groups?.['nome']
+    const corpo = bloco.groups?.['corpo']
+    if (nome === undefined || corpo === undefined || FORA_DA_VARREDURA.includes(nome)) continue
+
+    // Cada alternativa é um objeto de uma linha, com `;` separando os campos: a âncora de linha da
+    // varredura de interface acharia só o primeiro de cada uma.
+    const campos = [...semComentarios(corpo).matchAll(/\{(?<objeto>[^}]*)\}/g)].flatMap((objeto) =>
+      [...(objeto.groups?.['objeto'] ?? '').matchAll(/(?<campo>\w+)\??\s*:/g)].map(
+        (campo) => campo.groups?.['campo'] ?? '',
+      ),
     )
+    if (campos.length === 0) continue
 
     cargas.push({ nome, campos })
   }
@@ -88,6 +118,8 @@ describe('nenhum caminho de disco atravessa a ponte', () => {
 
     expect(nomes).toEqual(
       expect.arrayContaining([
+        'SessionScope',
+        'StartResult',
         'SessionSnapshot',
         'StartRequest',
         'SendRequest',
@@ -125,9 +157,18 @@ describe('nenhum caminho de disco atravessa a ponte', () => {
     expect(resultado?.campos).toEqual(['chosen'])
   })
 
-  it('para começar uma sessão o renderer manda cartão, não pasta', () => {
+  it('para começar uma sessão o renderer manda escopo, não pasta', () => {
     const pedido = cargas.find((carga) => carga.nome === 'StartRequest')
 
-    expect(pedido?.campos).toEqual(['itemId'])
+    expect(pedido?.campos).toEqual(['scope'])
+  })
+
+  it('o escopo diz de quem é a sessão, e nada mais: cartão ou aba, nunca onde', () => {
+    // O ponto exato em que a invariante quase caiu: a triagem precisa de uma pasta que não sai de
+    // cartão nenhum, e o atalho seria mandá-la daqui. Quem a resolve é o main, com a `key` da aba —
+    // que para o renderer é string opaca, como o `itemId` sempre foi.
+    const escopo = cargas.find((carga) => carga.nome === 'SessionScope')
+
+    expect(escopo?.campos).toEqual(['kind', 'itemId', 'kind', 'boardKey'])
   })
 })

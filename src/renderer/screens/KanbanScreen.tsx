@@ -179,7 +179,7 @@ export function KanbanScreen(): JSX.Element {
     // Sem estado otimista: o crachá segue o retrato publicado. É o que faz uma recusa do SDK
     // simplesmente não mover a tela, em vez de movê-la e ter de voltar atrás. E sem guarda de
     // clique duplo aqui: quem a tem é o `#switching` do core, num lugar só.
-    void window.oc.setDangerous({ itemId, dangerous })
+    void window.oc.setDangerous({ scope: { kind: 'card', itemId }, dangerous })
   }, [])
 
   // A aba ativa sai do `activeKey`, que é do main: a tela não escolhe aba, só desenha a escolhida.

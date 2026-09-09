@@ -272,10 +272,13 @@ function publicarPerigo(): void {
 const sessionIpc = registerSessionIpc(host, {
   conversations,
   danger,
-  resolveCwd: async (itemId) => {
-    if (itemId === undefined) return resolveCwd()
+  resolveCwd: async (scope) => {
+    if (scope === undefined) return resolveCwd()
+    // A pasta da triagem sai do repo unânime da aba, e essa leitura ainda não existe: enquanto ela
+    // não chega, o escopo existe no tipo e ninguém o constrói — nenhum painel de triagem é montado.
+    if (scope.kind === 'triage') return null
 
-    const card = boardsIpc?.cardById(itemId)
+    const card = boardsIpc?.cardById(scope.itemId)
     if (!card) return null
 
     let path = repos.pathFor(card.repository)
@@ -299,12 +302,16 @@ const sessionIpc = registerSessionIpc(host, {
  *
  * Mora no main — e não no `registerSessionIpc` — porque a peça que ele opera é o índice de repos, e
  * porque `dialog` é Electron puro. O caminho escolhido **não volta ao renderer**: fica no índice, e
- * o `start({ itemId })` seguinte já o encontra.
+ * o `start({ scope })` seguinte já o encontra.
  */
 ipcMain.handle(
   IPC_INVOKE.chooseFolder,
   async (event, request: ChooseFolderRequest): Promise<ChooseFolderResult> => {
-    const card = boardsIpc?.cardById(request.itemId)
+    // A escolha da triagem tem outro destino — não o índice de repos, que é por repo —, e o painel
+    // que a pediria ainda não existe. Sem destino não há o que perguntar.
+    if (request.scope.kind === 'triage') return { chosen: false }
+
+    const card = boardsIpc?.cardById(request.scope.itemId)
     if (!card) return { chosen: false }
 
     // Preso à janela que perguntou: o seletor é modal dela, e não uma caixa solta que se perde atrás

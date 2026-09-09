@@ -39,9 +39,9 @@ interface CardChatProps {
 /**
  * A conversa dentro do cartão do kanban.
  *
- * A sessão é pedida **pelo `itemId`**: quem traduz cartão em pasta é o main, e o renderer nunca
- * manda caminho. Ela também **não** morre quando este componente sai de cena — `closeOnUnmount:
- * false` é o CA-6 escrito em uma linha: colapsar não encerra nada.
+ * A sessão é pedida **pelo escopo do cartão**: quem traduz cartão em pasta é o main, e o renderer
+ * nunca manda caminho. Ela também **não** morre quando este componente sai de cena —
+ * `closeOnUnmount: false` é o CA-6 escrito em uma linha: colapsar não encerra nada.
  *
  * O histórico tem scroll próprio e altura máxima porque o cartão vive dentro de uma coluna: sem o
  * teto, uma conversa longa empurraria a coluna para sempre e o kanban deixaria de ser um kanban.
@@ -54,7 +54,9 @@ export function CardChat({
   onToggleDangerous,
 }: CardChatProps): JSX.Element {
   const { view, send, decide, answer, stop, end, restart } = useSessionView({
-    itemId,
+    // Objeto novo a cada render, e é seguro: o hook depende da **chave** do escopo, não da
+    // referência.
+    scope: { kind: 'card', itemId },
     closeOnUnmount: false,
   })
   const [draft, setDraft] = useState('')
@@ -74,7 +76,7 @@ export function CardChat({
   }, [view.messages])
 
   async function pickFolder(): Promise<void> {
-    const { chosen } = await window.oc.chooseFolder({ itemId })
+    const { chosen } = await window.oc.chooseFolder({ scope: { kind: 'card', itemId } })
     // Só o "houve escolha" volta pela ponte; a pasta fica no main. O `restart` é o caminho de volta:
     // o mesmo `start`, agora com o índice sabendo onde o repo está.
     if (chosen) restart()

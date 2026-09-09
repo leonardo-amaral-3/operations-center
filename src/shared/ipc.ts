@@ -78,6 +78,29 @@ export const IPC_EVENT = {
 } as const
 
 /**
+ * De quem é a sessão. É a RN-1 do PRD escrita no tipo: não há chat sem card, com a exceção da nova
+ * triagem — que existe justamente para criar um.
+ *
+ * Ausente (o `scope` opcional do `StartRequest`) continua sendo a tela de chat da fatia vertical,
+ * que roda em `OC_CWD` e não conhece board nenhum.
+ */
+export type SessionScope =
+  | { kind: 'card'; itemId: string }
+  /** A triagem daquela aba. `boardKey` é a `key` opaca da aba, como no `ui:active-board`. */
+  | { kind: 'triage'; boardKey: string }
+
+/**
+ * A chave única de um escopo, e o **único** lugar que a compõe.
+ *
+ * O main indexa sessões vivas e partidas em voo por esta string; o renderer a usa como dependência
+ * de efeito. Compor `card:` e `triage:` em dois lugares faria os espaços de chave se cruzarem no dia
+ * em que um dos dois mudasse de prefixo.
+ */
+export function scopeKey(scope: SessionScope): string {
+  return scope.kind === 'card' ? `card:${scope.itemId}` : `triage:${scope.boardKey}`
+}
+
+/**
  * O retrato da sessão no instante em que ela nasce.
  *
  * `start` devolve o retrato em vez de só o id porque a assinatura dos canais e a criação da sessão
@@ -87,11 +110,11 @@ export const IPC_EVENT = {
 export interface SessionSnapshot {
   id: string
   /**
-   * De qual cartão é esta sessão, ou `undefined` na tela de chat da fatia vertical. Volta no retrato
-   * porque o kanban mantém várias sessões vivas ao mesmo tempo: sem ele, uma resposta que chega
-   * fora de ordem não teria como ser casada com o cartão que a pediu.
+   * De quem é esta sessão, ou `undefined` na tela de chat da fatia vertical. Volta no retrato porque
+   * o kanban mantém várias sessões vivas ao mesmo tempo: sem ele, uma resposta que chega fora de
+   * ordem não teria como ser casada com quem a pediu.
    */
-  itemId: string | undefined
+  scope: SessionScope | undefined
   init: SessionInit | undefined
   state: SessionState
   messages: readonly ChatMessage[]
@@ -103,12 +126,13 @@ export interface SessionSnapshot {
 }
 
 /**
- * De qual cartão é a sessão. Ausente = a tela de chat da fatia vertical, que roda em `OC_CWD`.
+ * De quem é a sessão. Ausente = a tela de chat da fatia vertical, que roda em `OC_CWD`.
  *
- * Continua sendo o main quem traduz `itemId` em pasta: o renderer manda o cartão, nunca o caminho.
+ * Continua sendo o main quem traduz escopo em pasta: o renderer manda o cartão ou a aba, nunca o
+ * caminho.
  */
 export interface StartRequest {
-  itemId?: string
+  scope?: SessionScope
 }
 
 /**
@@ -148,9 +172,9 @@ export interface CloseRequest {
   sessionId: string
 }
 
-/** Abre o seletor de diretório para o repo daquele cartão (CA-5). */
+/** Abre o seletor de diretório para a pasta em que aquele escopo rodaria (CA-5). */
 export interface ChooseFolderRequest {
-  itemId: string
+  scope: SessionScope
 }
 
 /**
@@ -229,14 +253,14 @@ export interface ConversationsSnapshot {
 }
 
 /**
- * Qual cartão, e para qual lado. `dangerous: false` é desmarcar.
+ * De quem é a marca, e para qual lado. `dangerous: false` é desmarcar.
  *
- * **`itemId`, nunca pasta** — a mesma regra do `StartRequest`, e aqui ela vale ainda mais: o modo
+ * **Escopo, nunca pasta** — a mesma regra do `StartRequest`, e aqui ela vale ainda mais: o modo
  * tira o portão de uma sessão que escreve em disco, e deixar o renderer dizer *onde* seria juntar
  * as duas metades exatas do buraco que `contextIsolation` fecha.
  */
 export interface SetDangerousRequest {
-  itemId: string
+  scope: SessionScope
   dangerous: boolean
 }
 
@@ -270,14 +294,14 @@ export interface OcApi {
   readonly theme: Theme
 
   /**
-   * Começa a sessão do cartão — ou a da fatia vertical, quando `start()` vem sem cartão nenhum.
+   * Começa a sessão daquele escopo — ou a da fatia vertical, quando `start()` vem sem escopo nenhum.
    *
-   * O único parâmetro é o `itemId`: a pasta de trabalho e o modelo continuam sendo resolvidos no
+   * O único parâmetro é o escopo: a pasta de trabalho e o modelo continuam sendo resolvidos no
    * main (`OC_CWD`, `OC_MODEL`, e o índice de repos do RF-10). Deixar o renderer escolher a `cwd`
    * seria dar a uma tela sandboxada o poder de apontar uma sessão do Claude Code para qualquer lugar
    * do disco.
    *
-   * Idempotente por cartão: com sessão viva para aquele `itemId`, devolve o retrato dela em vez de
+   * Idempotente por escopo: com sessão viva para aquele escopo, devolve o retrato dela em vez de
    * subir uma segunda — é o que faz colapsar e reabrir manter a conversa.
    */
   start(request?: StartRequest): Promise<StartResult>
@@ -286,7 +310,7 @@ export interface OcApi {
   respondPermission(request: RespondPermissionRequest): Promise<void>
   answerQuestion(request: AnswerQuestionRequest): Promise<void>
   close(request: CloseRequest): Promise<void>
-  /** Pergunta ao humano onde o repo daquele cartão está. A escolha fica no main (CA-5). */
+  /** Pergunta ao humano em que pasta aquele escopo roda. A escolha fica no main (CA-5). */
   chooseFolder(request: ChooseFolderRequest): Promise<ChooseFolderResult>
   onInit(listener: (event: SessionInitEvent) => void): () => void
   onMessage(listener: (event: SessionMessageEvent) => void): () => void
@@ -322,7 +346,7 @@ export interface OcApi {
   onConversations(listener: (snapshot: ConversationsSnapshot) => void): () => void
 
   /**
-   * Liga ou desliga o modo *dangerously* daquele cartão.
+   * Liga ou desliga o modo *dangerously* daquele escopo.
    *
    * **Sem retorno, e sem atualização otimista do lado da tela**: o crachá segue o retrato publicado
    * por `onDangerous`, e só ele. Com sessão viva quem manda é o que o SDK aceitou, não o que a tela
