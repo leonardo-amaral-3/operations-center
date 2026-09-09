@@ -88,8 +88,8 @@ describe('`parseThemes` lê a folha do disco', () => {
     expect([...combinacoes.keys()]).toEqual(['lavanda', 'ametista'])
   })
 
-  it.each(['lavanda', 'ametista'] as const)('a %s traz os onze tokens', (nome) => {
-    expect(combinacoes.get(nome)?.size).toBe(11)
+  it.each(['lavanda', 'ametista'] as const)('a %s traz os vinte e cinco tokens', (nome) => {
+    expect(combinacoes.get(nome)?.size).toBe(25)
   })
 
   it('o valor chega inteiro e sem o `\\r` do CRLF grudado no fim', () => {

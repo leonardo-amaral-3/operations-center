@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { contrastRatio, oklchToSrgb, type Rgb8 } from '../../src/main/color'
+import { contrastRatio, oklabDistance, oklchToSrgb, type Rgb8 } from '../../src/main/color'
 import { parseOklch, parseThemes } from '../../src/main/sheet'
 import { THEME_DEFAULT, THEMES, type Theme } from '../../src/shared/theme'
 
@@ -146,23 +146,58 @@ describe('a receita de casca só existe nas primitivas', () => {
 const CAMINHO_DO_TEMA = fileURLToPath(new URL('../../src/renderer/index.css', import.meta.url))
 
 /**
- * Os onze utilitários de cor que o app tem direito de escrever. São os mesmos onze que a lista "o
- * que passa" da Proibição 1 isenta da varredura de paleta: sete da casca do neobrutalism, quatro
- * dos estados de sessão que ele não tem.
+ * Os vinte e cinco utilitários de cor que o app tem direito de escrever, em três grupos — e os três
+ * são separados porque **cada um responde a uma regra diferente**: a casca não tem regra de cor
+ * nenhuma, os estados são a referência contra a qual a banda calma é medida, e as etiquetas são o
+ * que se mede. Uma lista chapada de vinte e cinco obrigaria cada canária nova a recortar a sua
+ * fatia de novo, e é assim que duas listas começam a discordar.
+ *
+ * Os sete da casca do neobrutalism, que são os mesmos que a lista "o que passa" da Proibição 1
+ * isenta da varredura de paleta.
  */
-const TOKENS_DE_COR = [
-  '--color-main',
-  '--color-background',
-  '--color-secondary-background',
-  '--color-foreground',
-  '--color-main-foreground',
-  '--color-border',
-  '--color-ring',
-  '--color-attention',
-  '--color-warning',
-  '--color-question',
-  '--color-danger',
+const TOKENS_DA_CASCA = [
+  '--main',
+  '--background',
+  '--secondary-background',
+  '--foreground',
+  '--main-foreground',
+  '--border',
+  '--ring',
 ]
+
+/**
+ * Os quatro estados de sessão, que o neobrutalism não tem: são eles que dizem **o que a sessão quer
+ * de você**, e é contra o croma deles que a banda calma das etiquetas se mede.
+ */
+const TOKENS_DE_ESTADO = ['--attention', '--warning', '--question', '--danger']
+
+/**
+ * As catorze etiquetas de campo, agrupadas **por campo** — e o agrupamento é dado, não arrumação: o
+ * CA-1 cobra distância entre os valores de **um mesmo** campo, e é esta estrutura que diz quais
+ * valores são de um mesmo campo. A lista chapada sai daqui, e não ao contrário, para não haver duas
+ * fontes a divergir.
+ *
+ * A ordem dentro de cada campo é a da rampa, do mais urgente ao mais calmo — a regra "mais tinta =
+ * mais urgência" que a folha declara. `Tipo` é o nominal dos quatro, e nele a ordem não significa
+ * nada: os quatro estão na mesma luminosidade e o que os separa é matiz.
+ */
+const CAMPOS = {
+  Tipo: ['--tipo-bug', '--tipo-debito', '--tipo-melhoria', '--tipo-duvida'],
+  Severidade: ['--severidade-alta', '--severidade-media', '--severidade-baixa'],
+  Classe: ['--classe-expedite', '--classe-data-fixa', '--classe-padrao', '--classe-intangivel'],
+  Rota: ['--rota-hotfix', '--rota-curta', '--rota-completa'],
+} as const
+
+const TOKENS_DE_ETIQUETA: readonly string[] = Object.values(CAMPOS).flat()
+
+/** Os vinte e cinco, do jeito que a combinação os declara. */
+const TOKENS_DE_COMBINACAO = [...TOKENS_DA_CASCA, ...TOKENS_DE_ESTADO, ...TOKENS_DE_ETIQUETA]
+
+/**
+ * Os mesmos vinte e cinco com o `--color-` que o `@theme inline` põe — o prefixo que transforma
+ * variável CSS em utilitário do Tailwind, e sem o qual a classe simplesmente não é emitida.
+ */
+const TOKENS_DE_COR = TOKENS_DE_COMBINACAO.map((token) => token.replace('--', '--color-'))
 
 /**
  * O corpo do `@theme inline`. Devolve `null` quando o bloco não existe — o que é um resultado, não
@@ -182,7 +217,7 @@ describe('o tema declara todo token de cor que a tela pode usar', () => {
     expect(lerThemeInline()).not.toBeNull()
   })
 
-  it('os onze `--color-*` estão lá', () => {
+  it('os vinte e cinco `--color-*` estão lá', () => {
     const bloco = lerThemeInline() ?? ''
 
     // O `:` faz parte da chave procurada de propósito: sem ele `--color-main` casaria com a
@@ -310,9 +345,6 @@ describe('as âncoras que os testes leem seguem onde estavam', () => {
  * mais do que resolve.
  */
 
-/** Os mesmos onze, do jeito que a combinação os declara: sem o `--color-` que o `@theme inline` põe. */
-const TOKENS_DE_COMBINACAO = TOKENS_DE_COR.map((token) => token.replace('--color-', '--'))
-
 /**
  * A folha lida uma vez, pelo mesmo parser que o main usa para pintar a janela.
  *
@@ -335,13 +367,13 @@ describe('o conjunto de combinações da folha é o declarado', () => {
   })
 })
 
-describe('toda combinação declara os onze tokens', () => {
+describe('toda combinação declara os vinte e cinco tokens', () => {
   it.each(THEMES)('a %s não deixa token de fora', (tema) => {
     const declarados = COMBINACOES.get(tema)
 
     // Por nome, e não por contagem. Com o `:root` sem cor nenhuma, faltar um token não herda em
     // silêncio da combinação anterior: dá fundo transparente aqui e sombra sem cor ali, cada um
-    // falhando à sua maneira e nenhum apontando para a folha. "Esperava 11, recebeu 10" deixaria
+    // falhando à sua maneira e nenhum apontando para a folha. "Esperava 25, recebeu 24" deixaria
     // esse trabalho todo para quem encontrasse o vermelho.
     const ausentes = TOKENS_DE_COMBINACAO.filter((token) => declarados?.has(token) !== true)
 
@@ -350,17 +382,27 @@ describe('toda combinação declara os onze tokens', () => {
 })
 
 /**
- * O pixel de um token da folha, e o único lugar onde "token ausente" vira mensagem com nome.
+ * O `[l, c, h]` de um token da folha, e o único lugar onde "token ausente" vira mensagem com nome.
+ *
+ * Ler aqui — em vez de transcrever números no teste — é o que amarra as canárias à folha de verdade:
+ * um valor reafinado lá chega sozinho a todas elas.
+ */
+function valorDoToken(tema: Theme, token: string): readonly [number, number, number] {
+  const valor = COMBINACOES.get(tema)?.get(token)
+
+  if (valor === undefined) throw new Error(`a combinação ${tema} não declara ${token}`)
+
+  return parseOklch(valor)
+}
+
+/**
+ * O pixel de um token da folha.
  *
  * Converter aqui — em vez de guardar hexes no teste — é o que amarra a canária à mesma matemática que
  * pinta a janela: se `oklchToSrgb` divergir um dia, diverge para os dois.
  */
 function corDoToken(tema: Theme, token: string): Rgb8 {
-  const valor = COMBINACOES.get(tema)?.get(token)
-
-  if (valor === undefined) throw new Error(`a combinação ${tema} não declara ${token}`)
-
-  return oklchToSrgb(...parseOklch(valor))
+  return oklchToSrgb(...valorDoToken(tema, token))
 }
 
 describe('toda cor de toda combinação cabe no sRGB', () => {
@@ -381,7 +423,7 @@ describe('toda cor de toda combinação cabe no sRGB', () => {
         return []
       } catch (erro) {
         // Combinação, token e o valor cru: sem os três, quem encontra o vermelho abre a folha e
-        // adivinha qual das vinte e duas declarações não coube.
+        // adivinha qual das cinquenta declarações não coube.
         const motivo = erro instanceof Error ? erro.message : 'erro sem mensagem'
 
         return [`${tema} ${token}: ${valor} — ${motivo}`]
@@ -393,7 +435,7 @@ describe('toda cor de toda combinação cabe no sRGB', () => {
 })
 
 /**
- * Os oito pares de texto-sobre-superfície que o código **realmente escreve**, levantados por
+ * Os vinte e dois pares de texto-sobre-superfície que o código **realmente escreve**, levantados por
  * varredura da árvore e não inventados.
  *
  * Quatro são o CA-4 do #29 — as cores de estado sob o preto de `--foreground` — e quatro são a
@@ -416,12 +458,17 @@ const PARES_AAA = [
   { tinta: '--foreground', fundo: '--danger' },
   { tinta: '--main-foreground', fundo: '--main' }, // `badge.tsx`, `button.tsx`, `MessageBubble.tsx`
   { tinta: '--foreground', fundo: '--main' }, // `Column.tsx`: o `<h2>` do cabeçalho não tem classe de cor
+  // As catorze etiquetas de campo, derivadas em vez de transcritas — porque a regra é **uma só** e
+  // dizê-la é mais honesto que copiá-la catorze vezes: a tinta sobre toda etiqueta é `--foreground`,
+  // que é o que a variante `neutral` da `Badge` já traz e que o fundo novo não derruba. Não há
+  // `--tipo-bug-foreground` pela mesma razão que não há `--attention-foreground`.
+  ...TOKENS_DE_ETIQUETA.map((fundo) => ({ tinta: '--foreground', fundo })),
 ]
 
 /** AAA para texto normal na WCAG 2.x. É o patamar que o #8 publicou e que o #29 manda manter. */
 const RAZAO_AAA = 7
 
-describe('toda combinação mantém AAA nos oito pares', () => {
+describe('toda combinação mantém AAA nos vinte e dois pares', () => {
   it.each(THEMES.flatMap((tema) => PARES_AAA.map((par) => ({ tema, ...par }))))(
     'na $tema, $tinta sobre $fundo',
     ({ tema, tinta, fundo }) => {
@@ -433,6 +480,79 @@ describe('toda combinação mantém AAA nos oito pares', () => {
       expect(razao).toBeGreaterThanOrEqual(RAZAO_AAA)
     },
   )
+})
+
+/**
+ * O CA-2 do #44 na metade que é de folha: a banda calma é **medida**, e medida contra os estados.
+ *
+ * É a divisão do #8 — forte = a sessão quer algo de você, lavado = o que o card é — deixando de ser
+ * comentário e virando asserção. Sem ela, a próxima etiqueta a ganhar um croma "só um pouco maior"
+ * ergue a paleta até a altura dos crachás e apaga a diferença que o `StateBadge` existe para
+ * carregar: nada quebra, nenhum teste fica vermelho, e o sinal simplesmente deixa de significar.
+ *
+ * **Relacional de propósito, e é isso que a mantém viva.** Escrito como número fixo — "croma ≤
+ * 0.065" — o teto apodreceria no dia em que alguém reafinasse o `--question`; escrito contra o menor
+ * croma de estado **da própria combinação**, ele se reajusta sozinho e vale para uma combinação que
+ * ainda não existe.
+ */
+const FATOR_DA_BANDA_CALMA = 2
+
+describe('as etiquetas de campo ficam na banda calma', () => {
+  it.each(THEMES)('na %s, nenhuma etiqueta chega a metade do menor croma de estado', (tema) => {
+    const cromaDe = (token: string): number => valorDoToken(tema, token)[1]
+    const teto = Math.min(...TOKENS_DE_ESTADO.map(cromaDe)) / FATOR_DA_BANDA_CALMA
+
+    // Token, croma e teto: quem encontra este vermelho precisa saber **por quanto** estourou, que é
+    // a diferença entre baixar um croma e desfazer a divisão inteira.
+    const estourados = TOKENS_DE_ETIQUETA.filter((token) => cromaDe(token) > teto).map(
+      (token) => `${token}: croma ${cromaDe(token)} — o teto desta combinação é ${teto}`,
+    )
+
+    expect(estourados).toEqual([])
+  })
+})
+
+/**
+ * O CA-1 do #44: dentro de um campo, dois valores se distinguem sem ler o rótulo.
+ *
+ * O limiar é **declarado, e não medido em olho humano**: 0.05 é ~2,5× a diferença que a literatura
+ * de OKLab trata como o menor passo perceptível (~0.02). Ele existe para que "se distinguem" seja
+ * uma asserção que o CI cobra, e não uma opinião que envelhece com quem a deu.
+ *
+ * **Dentro do campo, e não entre campos** — e a restrição é a decisão, não uma economia. Os valores
+ * *comuns* de `Severidade`, `Classe` e `Rota` (`S3`, `⚪ Padrão`, `Completa`) são quase mudos por
+ * construção, pela regra "mais tinta = mais urgência", e por isso se parecem entre si: `S3` e
+ * `⚪ Padrão` estão a 0.0316 um do outro. Que dois quase mudos se pareçam não custa nada — a
+ * informação que carregam é a mesma, "nada de especial aqui" —, e quem precisar do detalhe tem a
+ * ordem de `CARD_FIELDS` e o `title` da etiqueta. Um limiar cobrado entre campos proibiria a própria
+ * rampa que a folha acabou de escolher.
+ */
+const DISTANCIA_MINIMA_NO_CAMPO = 0.05
+
+/** Os pares de uma lista, sem repetição e sem o par de um item consigo mesmo. */
+function pares<T>(itens: readonly T[]): [T, T][] {
+  return itens.flatMap((a, indice) => itens.slice(indice + 1).map((b): [T, T] => [a, b]))
+}
+
+describe('dentro de um campo, dois valores se distinguem', () => {
+  it.each(
+    THEMES.flatMap((tema) =>
+      Object.entries(CAMPOS).map(([campo, tokens]) => ({ tema, campo, tokens })),
+    ),
+  )('na $tema, os valores de $campo se distinguem dois a dois', ({ tema, tokens }) => {
+    // O par e a distância, nunca um booleano: reafinar uma cor exige saber de quanto foi o déficit e
+    // entre quais dois valores — que é a informação que um `toBe(true)` joga fora.
+    const perto = pares(tokens)
+      .map(([a, b]) => ({
+        a,
+        b,
+        distancia: oklabDistance(valorDoToken(tema, a), valorDoToken(tema, b)),
+      }))
+      .filter(({ distancia }) => distancia < DISTANCIA_MINIMA_NO_CAMPO)
+      .map(({ a, b, distancia }) => `${a} ↔ ${b}: ${distancia.toFixed(4)}`)
+
+    expect(perto).toEqual([])
+  })
 })
 
 const CAMINHO_DO_HTML = fileURLToPath(new URL('../../src/renderer/index.html', import.meta.url))
