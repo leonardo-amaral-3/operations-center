@@ -28,8 +28,16 @@ const COMENTARIO = /\/\*[\s\S]*?\*\//g
  */
 const BLOCO = /\[data-theme=['"](?<nome>[a-z-]+)['"]\]\s*\{(?<corpo>[^}]*)\}/g
 
-/** Uma declaração de custom property dentro do bloco: o nome e o valor até o `;`. */
-const DECLARACAO = /(?<token>--[a-z-]+)\s*:\s*(?<valor>[^;]+);/g
+/**
+ * Uma declaração de custom property dentro do bloco: o nome e o valor até o `;`.
+ *
+ * **O dígito no nome é aceito, e a razão é um modo de falha medido.** Com `--[a-z-]+`, uma
+ * declaração de `--severidade-1` não casava **nada**: o token sumia daqui e, com ele, das canárias
+ * de completude, gamut e contraste — enquanto a folha o declarava e a tela pintava com ele. É o
+ * pior vermelho que uma canária pode dar, que é nenhum. Os nomes de hoje não têm dígito de
+ * propósito, e o alargamento existe para o próximo, não para eles.
+ */
+const DECLARACAO = /(?<token>--[a-z0-9-]+)\s*:\s*(?<valor>[^;]+);/g
 
 /** O único formato de cor que as combinações usam: luminosidade em %, croma, matiz. */
 const COR = /^oklch\(\s*(?<l>[\d.]+)%\s+(?<c>[\d.]+)\s+(?<h>[\d.]+)\s*\)$/
