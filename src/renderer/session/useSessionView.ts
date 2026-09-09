@@ -42,6 +42,42 @@ function reasonOf(error: unknown): string {
 }
 
 /**
+ * Quantas vistas estão montadas para cada escopo, por `scopeKey`.
+ *
+ * Existe por causa de uma assimetria do `start`: **sem escopo** ele cria uma sessão nova a cada
+ * chamada, e o id que volta a um monte é só dele; **com escopo** ele é idempotente
+ * (`livingSessionFor` e `oneStartPerScope`, em `src/main/ipc.ts`), e dois montes do mesmo escopo
+ * recebem **o mesmo id**. Sem este registro, a vista descartada pelo duplo-monte do StrictMode
+ * encerrava a sessão que a vista viva estava mostrando — o defeito do #63, com o painel da triagem
+ * sumindo da coluna no meio da digitação.
+ *
+ * Estado de módulo, e não um `useRef`: a pergunta é "sobrou alguém segurando **este escopo**", e não
+ * "sobrou alguém neste componente". Num ref, um efeito religado com `chave` nova contaria o monte
+ * novo como se ele segurasse a sessão do escopo **antigo**, que então vazaria viva.
+ *
+ * O par `segurar`/`soltar` roda no corpo e na limpeza do efeito — os dois síncronos, no mesmo commit
+ * do React. A promessa do `start` atravessa a ponte IPC e volta sempre depois disso: quando ela
+ * chega, o monte sucessor já se registrou.
+ */
+const montadas = new Map<string, number>()
+
+function segurar(chave: string): void {
+  montadas.set(chave, (montadas.get(chave) ?? 0) + 1)
+}
+
+/**
+ * A chave **sai** do mapa ao chegar a zero: "ninguém segura este escopo" continua sendo a ausência
+ * da chave, e não um zero guardado — duas formas de dizer a mesma coisa fariam toda leitura checar
+ * as duas. É a mesma régua do `comLista` em `screens/kanbanState.ts`.
+ */
+function soltar(chave: string): void {
+  const restantes = (montadas.get(chave) ?? 1) - 1
+
+  if (restantes > 0) montadas.set(chave, restantes)
+  else montadas.delete(chave)
+}
+
+/**
  * O estado de uma sessão na tela, e o roteamento de eventos que o mantém.
  *
  * Mora aqui, e não dentro de cada tela, porque o cartão-chat do kanban seria uma cópia do
@@ -73,6 +109,11 @@ export function useSessionView({ scope, closeOnUnmount }: SessionViewOptions): S
     let ownId: string | null = null
     let cancelled = false
     const held: { sessionId: string; action: SessionAction }[] = []
+
+    // Sem escopo não entra no registro, e é essa ausência — e não uma segunda guarda lá embaixo —
+    // que preserva o `ChatScreen` (RA-3): lá cada `start` cria uma sessão nova, o registro nunca
+    // encontra a chave vazia, e o descarte continua encerrando a **dele** como sempre encerrou.
+    if (chave !== '') segurar(chave)
 
     // Escopo trocado ou tentativa nova recomeçam do zero: o que sobrou da sessão anterior não é o
     // retrato desta.
@@ -124,10 +165,15 @@ export function useSessionView({ scope, closeOnUnmount }: SessionViewOptions): S
         const snapshot: SessionSnapshot = result.session
 
         if (cancelled) {
-          // A vista que pediu esta sessão já saiu de cena (o duplo-monte do StrictMode, em dev). Só
-          // quem encerra ao sair encerra aqui: no cartão do kanban a sessão existe para sobreviver à
-          // vista, e o `start` por escopo é idempotente — o monte seguinte reencontra esta mesma.
-          if (owns.current) void window.oc.close({ sessionId: snapshot.id })
+          // A vista que pediu esta sessão já saiu de cena (o duplo-monte do StrictMode, em dev).
+          // Encerrar aqui exige **as duas** coisas: encerrar ao sair, e a sessão ser de fato só
+          // desta vista. Com escopo o `start` é idempotente, então o monte seguinte reencontra
+          // **esta mesma** sessão, com este mesmo id — encerrá-la mataria a conversa que está na
+          // tela (#63). `montadas` é quem sabe se sobrou alguém segurando o escopo; a chave vazia
+          // nunca está lá (ver o `segurar` no topo do efeito), então a vista sem escopo passa.
+          if (owns.current && !montadas.has(chave)) {
+            void window.oc.close({ sessionId: snapshot.id })
+          }
 
           return
         }
@@ -148,8 +194,17 @@ export function useSessionView({ scope, closeOnUnmount }: SessionViewOptions): S
 
     return () => {
       cancelled = true
+      if (chave !== '') soltar(chave)
       for (const unsubscribe of unsubscribes) unsubscribe()
-      if (ownId && owns.current) void window.oc.close({ sessionId: ownId })
+      // A mesma guarda do ramo do descarte, e pela mesma razão: com escopo, a sessão em mãos pode
+      // ser de mais alguém. Num desmonte de verdade o `soltar` acima já tirou a chave, então a
+      // guarda deixa passar e nada muda. O que ela impede é **duas vistas do mesmo escopo** —
+      // possível hoje, porque `column.triage` é por coluna (`core/board/BoardReader.ts:120`) e um
+      // board com duas colunas cujo nome case com `isTriage` renderiza dois painéis com a mesma
+      // `boardKey`. Sem ela, fechar um mataria a sessão do outro: o #63 de novo, por outra porta.
+      if (ownId && owns.current && !montadas.has(chave)) {
+        void window.oc.close({ sessionId: ownId })
+      }
     }
   }, [chave, attempt])
 
