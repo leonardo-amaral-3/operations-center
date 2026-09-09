@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
 import { CONVERSABLE_STATIONS, STATUS_FIELD } from '../../src/core/board/query'
@@ -12,6 +12,7 @@ import {
   FIRST_BOARD,
   fixtureProject,
 } from './boards-fixture'
+import { launchSmokeApp } from './smoke-app'
 
 /**
  * O smoke do cartão-chat: clicar num cartão do kanban e conversar dentro dele, de ponta a ponta.
@@ -273,15 +274,17 @@ test.beforeAll(async () => {
     'utf8',
   )
 
-  app = await electron.launch({
-    // O app buildado, resolvido pelo `main` do `package.json`. O `yarn smoke` roda o
-    // `electron-vite build` antes justamente para que `out/` exista aqui.
-    args: ['.'],
-    cwd: REPO_ROOT,
+  app = await launchSmokeApp({
+    // A pasta de estado do próprio app, apontada para o cenário por duas razões independentes.
+    //
+    // A que o #10 obriga: a marca do modo é durável, e sem ela uma marca sobrevivente de uma
+    // rodada anterior faria o último teste deste arquivo começar com o modo já ligado — ele
+    // provaria que desligar funciona, e não que ligar funciona.
+    //
+    // E a que já valia antes dele: sem ela, este smoke escreve o `conversations.json` no `userData`
+    // real da máquina de quem o roda. Um vazamento pequeno, mas que não tem defensor.
+    stateDir,
     env: {
-      // O ambiente é herdado inteiro, e `ANTHROPIC_API_KEY` **não** é removida: é o mesmo trato do
-      // smoke da fatia vertical, que já afirma lá que a sessão não sobe em billing de API.
-      ...inheritedEnv(),
       // As portas que trocam o GitHub por arquivo: o board deste smoke não toca a rede.
       OC_BOARD_FIXTURE: BOARD_FIXTURE_PATH,
       OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
@@ -290,15 +293,6 @@ test.beforeAll(async () => {
       // A porta que troca `~/.claude/projects` pela raiz do cenário. É ela que torna a descoberta
       // determinística sem substituir nenhuma peça dela.
       OC_CLAUDE_PROJECTS: projects,
-      // A pasta de estado do próprio app, apontada para o cenário por duas razões independentes.
-      //
-      // A que o #10 obriga: a marca do modo é durável, e sem esta porta uma marca sobrevivente de
-      // uma rodada anterior faria o último teste deste arquivo começar com o modo já ligado — ele
-      // provaria que desligar funciona, e não que ligar funciona.
-      //
-      // E a que já valia antes dele: sem a variável, este smoke escreve o `conversations.json` no
-      // `userData` real da máquina de quem o roda. Um vazamento pequeno, mas que não tem defensor.
-      OC_STATE_DIR: stateDir,
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell abriria a tela errada e o
       // teste falharia por um motivo que não tem nada a ver com o cartão-chat.
       OC_SCREEN: 'kanban',
@@ -1013,17 +1007,4 @@ function comparablePath(path: string | null): string {
     .replace(/[\\/]+/g, '/')
     .replace(/\/$/, '')
     .toLowerCase()
-}
-
-/**
- * O `process.env` do runner, pronto para o Playwright: passar `env` substitui o ambiente inteiro,
- * e sem `PATH` (e sem `HOME`/`USERPROFILE`, onde vivem as credenciais do Claude Code) o Electron
- * nem subiria. As chaves sem valor caem porque o tipo do Playwright só aceita string.
- */
-function inheritedEnv(): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  )
 }

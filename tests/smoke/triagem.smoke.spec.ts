@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
 import { STATUS_FIELD, TRIAGE_STATION } from '../../src/core/board/query'
@@ -11,6 +11,7 @@ import {
   FIRST_BOARD,
   fixtureProject,
 } from './boards-fixture'
+import { launchSmokeApp } from './smoke-app'
 
 /**
  * O smoke da nova triagem pela coluna 📥 Triagem: a ação, o painel e a saída (CA-1, CA-2 e CA-3 do
@@ -40,10 +41,6 @@ import {
  * teste quebrar no dia em que a fixture fosse recapturada — um vermelho que não diz nada sobre o
  * código.
  */
-
-// `__dirname` e não `import.meta.url`: o Playwright transpila os specs para CommonJS enquanto o
-// `package.json` não for `type: module`, e `import.meta` ali é erro de sintaxe.
-const REPO_ROOT = join(__dirname, '..', '..')
 
 /**
  * O board do envelope cru, do jeito que o `BoardReader` o recebe — a mesma leitura, e o mesmo `as`,
@@ -112,20 +109,15 @@ test.describe.configure({ mode: 'serial' })
 test.beforeAll(async () => {
   state = mkdtempSync(join(tmpdir(), 'oc-triagem-'))
 
-  app = await electron.launch({
-    // O app buildado, resolvido pelo `main` do `package.json`. O `yarn smoke` roda o
-    // `electron-vite build` antes justamente para que `out/` exista aqui.
-    args: ['.'],
-    cwd: REPO_ROOT,
+  app = await launchSmokeApp({
+    // A aba que abre é a previsão do `FIRST_BOARD`, e ela só vale sem aba lembrada: uma
+    // `preferences.json` de uso real na máquina de quem roda escolheria outra, e o teste mediria um
+    // board que a fixture não descreve.
+    stateDir: state,
     env: {
-      ...inheritedEnv(),
       // As portas que trocam o GitHub por arquivo. São elas que tornam este smoke determinístico.
       OC_BOARD_FIXTURE: BOARD_FIXTURE_PATH,
       OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
-      // A aba que abre é a previsão do `FIRST_BOARD`, e ela só vale sem aba lembrada: uma
-      // `preferences.json` de uso real na máquina de quem roda escolheria outra, e o teste mediria
-      // um board que a fixture não descreve.
-      OC_STATE_DIR: state,
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell de quem roda abriria a tela
       // errada — e sem kanban não há coluna, não há ação e não há triagem.
       OC_SCREEN: 'kanban',
@@ -238,17 +230,4 @@ function ehCartao(node: FixtureNode): boolean {
 /** O `optionId` do `Status` do item, ou `undefined` se ele não estiver em coluna nenhuma. */
 function statusOptionId(node: FixtureNode): string | undefined {
   return node.fieldValues.nodes.find((value) => value.field?.name === STATUS_FIELD)?.optionId
-}
-
-/**
- * O `process.env` do runner, pronto para o Playwright: passar `env` substitui o ambiente inteiro, e
- * sem `PATH` o Electron nem subiria. As chaves sem valor caem porque o tipo do Playwright só aceita
- * string.
- */
-function inheritedEnv(): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined,
-    ),
-  )
 }

@@ -16,6 +16,17 @@ export interface SessionHostDeps {
   query: QueryFn
   /** Modelo da sessão. Vem de `OC_MODEL`, lido pelo main: o core não lê ambiente. */
   model?: string
+  /**
+   * Onde está o `claude` que a sessão vai spawnar. Vem de `OC_CLAUDE_BIN`/PATH, resolvido pelo main:
+   * o core não lê ambiente nem disco.
+   *
+   * Thunk e não string porque a resolução é preguiçosa e cara (subprocesso), e porque instalar o
+   * Claude Code com o app aberto tem de ser visto sem reiniciar. **Lança** quando não acha — e a
+   * mensagem chega à tela, ver `start()`.
+   *
+   * Ausente é o caso dos testes, que passam um `query` fake: sem ele o SDK volta a resolver sozinho.
+   */
+  claudeBin?: () => string
   settingSources?: SettingSource[]
 }
 
@@ -72,7 +83,7 @@ export class SessionHost {
   }
 
   start(input: StartSessionInput): SessionHandle {
-    const { query, model, settingSources = [...DEFAULT_SETTING_SOURCES] } = this.#deps
+    const { query, model, claudeBin, settingSources = [...DEFAULT_SETTING_SOURCES] } = this.#deps
 
     return new SessionHandle(
       randomUUID(),
@@ -84,6 +95,19 @@ export class SessionHost {
             // Sem `forkSession`: ver `StartSessionInput.resume`. Ausente, o SDK abre conversa nova.
             resume: input.resume,
             model,
+            /**
+             * **Chamado aqui dentro, e não na linha de cima, é o que faz a mensagem chegar à tela.**
+             *
+             * Este closure roda dentro do construtor do `SessionHandle`, que roda dentro deste
+             * `start()`, que roda dentro do handler de `IPC_INVOKE.start`. Um `throw` do thunk
+             * rejeita o `invoke`, e o renderer já transforma rejeição em `state: 'failed'` com o
+             * `error.message` como razão — a mensagem do app, que nomeia `OC_CLAUDE_BIN`, e não a do
+             * SDK, que mandaria reinstalar justamente o pacote nativo que o artefato exclui.
+             * Resolver antes do closure faria o mesmo erro estourar noutro lugar, longe da tela.
+             *
+             * Ausente (os testes, com `query` fake), fica `undefined` e o SDK resolve sozinho.
+             */
+            pathToClaudeCodeExecutable: claudeBin?.(),
             permissionMode: input.dangerous === true ? 'bypassPermissions' : 'default',
             /**
              * **Sempre `true`, inclusive nascendo em `'default'`.**
