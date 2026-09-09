@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 
-import type { SessionSnapshot, StartRequest, StartResult } from '../../shared/ipc'
+import { scopeKey } from '../../shared/ipc'
+import type { SessionScope, SessionSnapshot, StartResult } from '../../shared/ipc'
 import type { PermissionDecision, QuestionAnswers } from '../../shared/session'
 import { INITIAL_VIEW, reduce } from './sessionView'
 import type { SessionAction, SessionView } from './sessionView'
@@ -11,8 +12,8 @@ import type { SessionAction, SessionView } from './sessionView'
 export type { SessionView }
 
 export interface SessionViewOptions {
-  /** De qual cartão é a sessão. Ausente = a tela de chat da fatia vertical, que roda em `OC_CWD`. */
-  itemId?: string
+  /** De quem é a sessão. Ausente = a tela de chat da fatia vertical, que roda em `OC_CWD`. */
+  scope?: SessionScope
   /**
    * Se a saída de cena encerra a sessão.
    *
@@ -51,7 +52,7 @@ function reasonOf(error: unknown): string {
  * sessão e a assinatura chegaria a ninguém; e o que chega antes de o retrato voltar fica represado,
  * porque só com o id na mão dá para saber de quem o evento é.
  */
-export function useSessionView({ itemId, closeOnUnmount }: SessionViewOptions): SessionViewHandle {
+export function useSessionView({ scope, closeOnUnmount }: SessionViewOptions): SessionViewHandle {
   const [view, dispatch] = useReducer(reduce, INITIAL_VIEW)
   const [attempt, setAttempt] = useState(0)
 
@@ -60,12 +61,20 @@ export function useSessionView({ itemId, closeOnUnmount }: SessionViewOptions): 
   const owns = useRef(closeOnUnmount)
   owns.current = closeOnUnmount
 
+  // A dependência do efeito é a **chave**, e não o objeto: um `{ kind: 'card', itemId }` montado no
+  // JSX é referência nova a cada render, e depender dele derrubaria e recriaria a sessão a cada
+  // quadro. O escopo em si sai de um ref — como o `owns` — porque só o corpo do efeito precisa dele,
+  // e ele nunca diverge da chave.
+  const chave = scope === undefined ? '' : scopeKey(scope)
+  const alvo = useRef(scope)
+  alvo.current = scope
+
   useEffect(() => {
     let ownId: string | null = null
     let cancelled = false
     const held: { sessionId: string; action: SessionAction }[] = []
 
-    // Cartão trocado ou tentativa nova recomeçam do zero: o que sobrou da sessão anterior não é o
+    // Escopo trocado ou tentativa nova recomeçam do zero: o que sobrou da sessão anterior não é o
     // retrato desta.
     dispatch({ type: 'reset' })
 
@@ -102,11 +111,9 @@ export function useSessionView({ itemId, closeOnUnmount }: SessionViewOptions): 
       }),
     ]
 
-    // Sem cartão o pedido vai sem carga nenhuma — que é o pedido que a tela de chat sempre fez.
-    const request: StartRequest | undefined = itemId === undefined ? undefined : { itemId }
-
     window.oc
-      .start(request)
+      // Sem escopo o pedido vai sem carga nenhuma — que é o pedido que a tela de chat sempre fez.
+      .start(chave === '' ? undefined : { scope: alvo.current })
       .then((result: StartResult) => {
         if (!result.started) {
           if (!cancelled) dispatch({ type: 'unknown-folder' })
@@ -119,7 +126,7 @@ export function useSessionView({ itemId, closeOnUnmount }: SessionViewOptions): 
         if (cancelled) {
           // A vista que pediu esta sessão já saiu de cena (o duplo-monte do StrictMode, em dev). Só
           // quem encerra ao sair encerra aqui: no cartão do kanban a sessão existe para sobreviver à
-          // vista, e o `start` por cartão é idempotente — o monte seguinte reencontra esta mesma.
+          // vista, e o `start` por escopo é idempotente — o monte seguinte reencontra esta mesma.
           if (owns.current) void window.oc.close({ sessionId: snapshot.id })
 
           return
@@ -144,7 +151,7 @@ export function useSessionView({ itemId, closeOnUnmount }: SessionViewOptions): 
       for (const unsubscribe of unsubscribes) unsubscribe()
       if (ownId && owns.current) void window.oc.close({ sessionId: ownId })
     }
-  }, [itemId, attempt])
+  }, [chave, attempt])
 
   return {
     view,

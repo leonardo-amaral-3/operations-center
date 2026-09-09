@@ -45,14 +45,14 @@ export function createFakeGraphQL(...pages: readonly GraphQLResponse[]): FakeGra
  * produz; separar os dois em duas listas paralelas seria convidar uma a envelhecer sem a outra.
  */
 export const STATUS_OPTIONS = [
-  { id: 'opt-triagem', name: '📥 Triagem', conversable: true },
-  { id: 'opt-backlog', name: '📋 Backlog', conversable: true },
-  { id: 'opt-spec', name: '🎯 Especificação', conversable: true },
-  { id: 'opt-impl', name: '🔨 Implementação', conversable: true },
-  { id: 'opt-revisao', name: '👀 Revisão', conversable: true },
-  { id: 'opt-validacao', name: '🧪 Validação em Dev', conversable: false },
-  { id: 'opt-release', name: '🚂 Release', conversable: true },
-  { id: 'opt-producao', name: '✅ Produção', conversable: false },
+  { id: 'opt-triagem', name: '📥 Triagem', conversable: true, triage: true },
+  { id: 'opt-backlog', name: '📋 Backlog', conversable: true, triage: false },
+  { id: 'opt-spec', name: '🎯 Especificação', conversable: true, triage: false },
+  { id: 'opt-impl', name: '🔨 Implementação', conversable: true, triage: false },
+  { id: 'opt-revisao', name: '👀 Revisão', conversable: true, triage: false },
+  { id: 'opt-validacao', name: '🧪 Validação em Dev', conversable: false, triage: false },
+  { id: 'opt-release', name: '🚂 Release', conversable: true, triage: false },
+  { id: 'opt-producao', name: '✅ Produção', conversable: false, triage: false },
 ] as const
 
 export interface EnvelopeInput {
@@ -86,8 +86,8 @@ export function envelope(input: EnvelopeInput = {}): GraphQLResponse {
   const outro = alias === 'user' ? 'organization' : 'user'
   const project = {
     title,
-    // Só `id` e `name`: o board de verdade não sabe o que é `conversable`, e o fake que o
-    // devolvesse deixaria de provar que a conclusão é do leitor.
+    // Só `id` e `name`: o board de verdade não sabe o que é `conversable` nem o que é `triage`, e o
+    // fake que os devolvesse deixaria de provar que as duas conclusões são do leitor.
     field: options === null ? null : { options: options.map(({ id, name }) => ({ id, name })) },
     items: { pageInfo: { hasNextPage, endCursor }, nodes: items },
   }

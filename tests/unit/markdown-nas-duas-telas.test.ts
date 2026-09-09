@@ -22,8 +22,11 @@ function lerFonte(caminho: string): string {
   return readFileSync(fileURLToPath(new URL(caminho, RAIZ)), 'utf8')
 }
 
-/** As duas telas que desenham conversa hoje. Uma terceira que apareça entra aqui. */
-const TELAS = ['src/renderer/components/Chat.tsx', 'src/renderer/components/CardChat.tsx'] as const
+/** Os dois componentes que desenham conversa hoje. Um terceiro que apareça entra aqui. */
+const TELAS = [
+  'src/renderer/components/Conversation.tsx',
+  'src/renderer/components/Chat.tsx',
+] as const
 
 describe('as duas telas desenham a fala pela mesma bolha', () => {
   it('a varredura leu as duas telas de verdade', () => {

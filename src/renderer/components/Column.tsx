@@ -2,9 +2,11 @@ import type { JSX } from 'react'
 
 import type { BoardCard, BoardColumn } from '../../shared/board'
 import { Badge } from '../ui/badge'
+import { Button } from '../ui/button'
 import { Card } from '../ui/card'
 import { BoardCardView } from './BoardCardView'
-import type { CardSession, CardSessions } from './CardChat'
+import type { CardSession, CardSessions } from './Chat'
+import { TriagePanel } from './TriagePanel'
 
 interface ColumnProps {
   column: BoardColumn
@@ -22,6 +24,19 @@ interface ColumnProps {
   conversations: readonly string[]
   /** Os cartões que rodam sem o portão — também do kanban inteiro (CA-2 do #10). */
   dangerous: readonly string[]
+  /**
+   * A triagem **desta** coluna, ou ausente. Quem decide se ela existe é a tela, pelo `column.triage`
+   * que veio do core e pelo estado do kanban — a coluna só a desenha, como já faz com
+   * `conversations` e `dangerous`.
+   */
+  triage?: {
+    boardKey: string
+    dangerous: boolean
+    onEnd: () => void
+    onToggleDangerous: (dangerous: boolean) => void
+  }
+  /** Abre a nova triagem. Ausente = esta coluna não oferece a ação (ou já tem uma aberta). */
+  onStartTriage?: () => void
   onToggle: (itemId: string) => void
   onSession: (itemId: string, session: CardSession) => void
   onToggleDangerous: (itemId: string, dangerous: boolean) => void
@@ -45,11 +60,15 @@ export function Column({
   sessions,
   conversations,
   dangerous,
+  triage,
+  onStartTriage,
   onToggle,
   onSession,
   onToggleDangerous,
 }: ColumnProps): JSX.Element {
-  const hosting = cards.some((card) => expandedItemIds.includes(card.itemId))
+  // O painel alarga a coluna pelo mesmo motivo que um cartão aberto — 288px não sustentam prompt de
+  // permissão legível —, e por isso entra no mesmo `hosting` em vez de ganhar uma largura própria.
+  const hosting = triage !== undefined || cards.some((card) => expandedItemIds.includes(card.itemId))
 
   return (
     // A raia não se separa do canvas pela cor — as duas são `bg-background`, que é o que a `Card` já
@@ -71,6 +90,22 @@ export function Column({
           <h2 className="truncate text-xs font-heading text-main-foreground" title={column.name}>
             {column.name}
           </h2>
+          {/* Entre o nome e a contagem, e **só** na estação de entrada: quem decide isso é o core,
+              pelo `column.triage`, e a tela só repassa o callback. Some enquanto o painel está na
+              coluna — não porque abrir duas triagens seria proibido, mas porque a `key` da aba é
+              uma só e a segunda seria a mesma. */}
+          {onStartTriage ? (
+            <Button
+              type="button"
+              data-testid="new-triage"
+              variant="neutral"
+              size="xs"
+              title="Iniciar nova triagem"
+              onClick={onStartTriage}
+            >
+              + Triagem
+            </Button>
+          ) : null}
           <Badge variant="neutral" className="px-2 py-0 font-mono text-[10px]">
             {cards.length}
           </Badge>
@@ -83,6 +118,11 @@ export function Column({
             recorte do `overflow` acontece na padding box, então os 8px acomodam os 4px de sombra do
             cartão sem clipá-la. */}
         <div className="flex-1 space-y-2 overflow-y-auto p-2">
+          {/* No topo da pilha, e antes dos cartões: a triagem é o que ainda não virou card, e a
+              coluna se lê de cima para baixo na ordem em que as coisas acontecem. A contagem do
+              cabeçalho **não** o conta — ela sai de `cards.length`, e o painel não é cartão. */}
+          {triage ? <TriagePanel {...triage} /> : null}
+
           {cards.map((card) => (
             // `itemId` e não o número: é a chave estável mesmo se a issue mudar de repo.
             <BoardCardView

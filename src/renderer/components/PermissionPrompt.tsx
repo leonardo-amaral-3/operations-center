@@ -63,7 +63,7 @@ export function PermissionPrompt({
             ação, e dois botões brancos lado a lado não distinguiriam o sim da recusa.
 
             `xs` e não `sm` porque este é **o mesmo componente** nas duas telas: dentro do cartão ele
-            fica ao lado dos botões `xs` do `CardChat`, e um `sm` ali seria o único botão graúdo da
+            fica ao lado dos botões `xs` do `Chat`, e um `sm` ali seria o único botão graúdo da
             coluna de 288px que o CA-3 defende. */}
         <div className="flex shrink-0 gap-2">
           <Button
