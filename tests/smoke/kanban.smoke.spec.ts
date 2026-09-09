@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
-import { STATUS_FIELD } from '../../src/core/board/query'
+import { CARD_FIELDS, STATUS_FIELD } from '../../src/core/board/query'
 import {
   BOARDS_FIXTURE_PATH,
   BOARD_FIXTURE_PATH,
@@ -285,9 +285,90 @@ test('CA-4: o carimbo de frescor sai preenchido e não acusa dado velho após a 
   expect(Number(readAt)).toBeGreaterThan(0)
 })
 
+/**
+ * CA-6: a cor da etiqueta de campo chega à tela.
+ *
+ * Dois elos que **nenhum** unitário deste repo cobre nem pode cobrir. O primeiro é a resolução do
+ * `twMerge`: a `Badge` chega com `bg-secondary-background` pela variante `neutral` e recebe a classe
+ * do campo por `className` — que a segunda vença é comportamento da primitiva, não da folha, e se um
+ * dia não vencer, os catorze tokens seguem existindo, passando em gamut, em AAA e em distância, e a
+ * tela continua branca. O segundo é a cascata inteira, de `data-theme` no `<html>` até o pixel.
+ *
+ * **Nenhum hex aqui**, pela mesma razão que `tema.smoke.spec.ts:22-26` declara: os valores absolutos
+ * são âncora do unitário, e congelá-los nos dois lugares é pagar duas vezes por uma prova só. O que
+ * se afirma é *diferença* e *não-é-a-face*.
+ *
+ * O que ele **não** afirma, de propósito: os quatro valores de `Tipo` ao mesmo tempo, os três de
+ * `Severidade`, os três de `Rota`. Que todos se distingam é do CA-1, no unitário, onde a prova é
+ * completa e barata; aqui prova-se que a cascata **entrega**, e para isso dois valores bastam.
+ */
+test('CA-6: a etiqueta de cada campo sai colorida, e dois valores não saem da mesma cor', async () => {
+  // A face do cartão — o `bg-secondary-background` que a variante `neutral` deixaria de pé se a
+  // classe do campo não vencesse. É o "branco" do critério, lido da tela em vez de digitado.
+  const face = await corDeFundo(window.getByTestId('board-card').first())
+
+  for (const field of CARD_FIELDS) {
+    const [um, outro] = doisCartoesQueDiferemEm(field)
+
+    const cor = await corDeFundo(etiquetaDe(um, field))
+    const outraCor = await corDeFundo(etiquetaDe(outro, field))
+
+    // Primeiro o não-branco, e nos dois cartões: se o `twMerge` não resolvesse, as duas cairiam na
+    // face **juntas** e a asserção de diferença sozinha passaria a acusar o sintoma errado.
+    for (const [numero, medida] of [
+      [um, cor],
+      [outro, outraCor],
+    ] as const) {
+      expect(
+        medida,
+        `a etiqueta ${field} do cartão #${numero} saiu com o fundo da face do cartão`,
+      ).not.toBe(face)
+    }
+
+    expect(
+      cor,
+      `os cartões #${um} e #${outro} têm ${field} diferente e a etiqueta saiu da mesma cor`,
+    ).not.toBe(outraCor)
+  }
+})
+
+/** O `optionId` que o item tem no campo, ou `undefined` se ele não tiver aquele campo. */
+function optionIdEm(node: FixtureNode, field: string): string | undefined {
+  return node.fieldValues.nodes.find((value) => value.field?.name === field)?.optionId
+}
+
 /** O `optionId` do `Status` do item, ou `undefined` se ele não estiver em coluna nenhuma. */
 function statusOptionId(node: FixtureNode): string | undefined {
-  return node.fieldValues.nodes.find((value) => value.field?.name === STATUS_FIELD)?.optionId
+  return optionIdEm(node, STATUS_FIELD)
+}
+
+/**
+ * Dois cartões **na tela** cujo valor daquele campo difere — derivados da fixture, nunca digitados.
+ *
+ * Escolher `#1` e `#901` a dedo faria o teste mentir no dia em que a fixture fosse recapturada com
+ * outros valores: ou ficaria verde comparando duas etiquetas que passaram a ser iguais, ou vermelho
+ * por um cartão que sumiu. O `throw` é o vermelho honesto desse dia — a fixture perdeu a borda que
+ * este critério precisa, e ele diz qual campo a perdeu.
+ */
+function doisCartoesQueDiferemEm(field: string): readonly [number, number] {
+  const primeiroCartaoDeCadaValor = new Map<string, number>()
+
+  for (const node of NODES) {
+    const card = toExpectedCard(node)
+    const optionId = optionIdEm(node, field)
+    if (card === null || optionId === undefined) continue
+    // O **primeiro** de cada valor, e não o último: assim a escolha é estável na ordem da fixture.
+    if (!primeiroCartaoDeCadaValor.has(optionId)) {
+      primeiroCartaoDeCadaValor.set(optionId, card.number)
+    }
+  }
+
+  const [um, outro] = [...primeiroCartaoDeCadaValor.values()]
+  if (um === undefined || outro === undefined) {
+    throw new Error(`a fixture não tem dois cartões na tela com ${field} diferente`)
+  }
+
+  return [um, outro]
 }
 
 /**
@@ -354,6 +435,17 @@ function columnLocator(columnId: string): Locator {
 
 function cardLocator(number: number): Locator {
   return window.locator(cardSelector(number))
+}
+
+/**
+ * A etiqueta de um campo dentro de um cartão, pelo `data-field` que o `FieldBadge` declara.
+ *
+ * Pela âncora do campo e **não** pelo texto da opção: assim a fixture pode renomear `✨ Melhoria`
+ * sem levar este teste junto — o que importa aqui é qual campo a etiqueta desenha, não como ele se
+ * chama hoje no board.
+ */
+function etiquetaDe(number: number, field: string): Locator {
+  return cardLocator(number).locator(`[data-field="${field}"]`)
 }
 
 /**
