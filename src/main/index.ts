@@ -16,7 +16,7 @@ import {
 } from '../core'
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
-import type { ChooseFolderRequest, ChooseFolderResult, Screen } from '../shared/ipc'
+import type { ChooseFolderRequest, ChooseFolderResult, Screen, SessionScope } from '../shared/ipc'
 import { THEME_FLAG } from '../shared/theme'
 import { registerBoardsIpc } from './boards'
 import { registerCardIpc } from './card'
@@ -28,6 +28,7 @@ import {
   saveConversations,
 } from './conversations'
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
+import type { DangerGate } from './danger'
 import { createFixtureGraphQL } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
@@ -222,6 +223,16 @@ const repos = new RepoIndex({ scan: scanSessionFolders(), origin: gitOrigin })
 // varredura ali seria um `git` por pasta de sessão da máquina para ninguém.
 if (screen === 'kanban') void repos.refresh()
 
+/**
+ * A pasta escolhida à mão para a triagem de cada aba. Em memória e nunca em disco, como o
+ * `#declared` do `RepoIndex`: a escolha explícita vence a descoberta enquanto o app viver, e a
+ * varredura da próxima abertura acha a pasta sozinha depois que uma sessão tiver rodado lá.
+ *
+ * Por aba, e **não** por repo: a aba que precisa desta escolha é justamente a que não tem um repo
+ * unânime, e não há repo a que atribuí-la.
+ */
+const triageFolders = new Map<string, string>()
+
 // O único dado durável do app. As quatro pontas de IO são do main pela mesma razão das do
 // `RepoIndex`: o core não lê disco nem chama o SDK.
 const conversations = new ConversationIndex({
@@ -269,28 +280,72 @@ function publicarPerigo(): void {
   dangerIpc?.publish()
 }
 
+/**
+ * O portão visto por escopo. Existe para o `registerSessionIpc` não ter de saber que a marca do
+ * cartão mora em disco e a da triagem em memória — a diferença é de durabilidade, não de regra.
+ *
+ * Fora do kanban (`OC_SCREEN=chat`) não há `dangerIpc` e não há triagem: a marca responde `false` e
+ * o `set` é no-op — que é a decisão 13 do #10, a tela de chat mantém o portão sem exceção.
+ */
+const dangerGate: DangerGate = {
+  isDangerous: async (scope) =>
+    scope.kind === 'card'
+      ? danger.isDangerous(scope.itemId)
+      : (dangerIpc?.isDangerous(scope.boardKey) ?? false),
+  set: (scope, dangerous) => {
+    if (scope.kind === 'card') danger.set(scope.itemId, dangerous)
+    else dangerIpc?.setTriage(scope.boardKey, dangerous)
+  },
+}
+
 const sessionIpc = registerSessionIpc(host, {
   conversations,
-  danger,
-  resolveCwd: async (itemId) => {
-    if (itemId === undefined) return resolveCwd()
+  danger: dangerGate,
+  resolveCwd: async (scope) => {
+    if (scope === undefined) return resolveCwd()
 
-    const card = boardsIpc?.cardById(itemId)
-    if (!card) return null
+    if (scope.kind === 'triage') {
+      // A escolha do humano vence a descoberta, como o `#declared` do `RepoIndex` — e por isso vem
+      // antes do repo unânime, não depois.
+      const escolhida = triageFolders.get(scope.boardKey)
+      // A pasta pode ter sido movida entre a escolha e o clique. Cair no CA-5 é melhor que mandar o
+      // Claude Code para um caminho que não existe mais — a mesma regra do fim desta função.
+      if (escolhida !== undefined) return existsSync(escolhida) ? escolhida : null
+    }
 
-    let path = repos.pathFor(card.repository)
+    // As duas origens do repo, e a única diferença entre os dois escopos daqui para baixo: o do
+    // cartão sai do cartão; o da triagem, do repo unânime da aba. Sem repo, a resposta é a mesma
+    // dos dois lados — "não sei", e o painel pede a pasta.
+    const repository =
+      scope.kind === 'card'
+        ? (boardsIpc?.cardById(scope.itemId)?.repository ?? null)
+        : (boardsIpc?.repoOfBoard(scope.boardKey) ?? null)
+    if (repository === null) return null
+
+    let path = repos.pathFor(repository)
 
     if (path === null) {
       // Segunda chance antes de desistir: um repo clonado com o app aberto, ou uma sessão criada
       // depois da varredura inicial, é achado sem incomodar ninguém. O `refresh()` tem guarda de
       // concorrência, então um segundo clique durante a varredura pega carona nela.
       await repos.refresh()
-      path = repos.pathFor(card.repository)
+      path = repos.pathFor(repository)
     }
 
     // A pasta pode ter sido movida ou apagada entre a varredura e o clique. Melhor cair no CA-5 e
     // pedir a pasta do que mandar o Claude Code para um caminho que não existe mais.
     return path !== null && existsSync(path) ? path : null
+  },
+  onTurnEnd: (scope) => {
+    // Sem kanban não há aba a reler, e a tela de chat (`scope === undefined`) não tem board nenhum
+    // por trás: os dois caem no mesmo no-op, e é por isso que a decisão mora aqui e não no `ipc.ts`.
+    if (!boardsIpc || scope === undefined) return
+
+    // A triagem já **é** de uma aba; o cartão precisa que alguém diga de qual. Um `itemId` que o
+    // retrato não conhece — cartão de board que sumiu, aba ainda não lida — não relê nada, em vez
+    // de relerem-se todas por precaução.
+    const key = scope.kind === 'triage' ? scope.boardKey : boardsIpc.tabKeyOf(scope.itemId)
+    if (key !== null) boardsIpc.readNow(key)
   },
 })
 
@@ -299,13 +354,15 @@ const sessionIpc = registerSessionIpc(host, {
  *
  * Mora no main — e não no `registerSessionIpc` — porque a peça que ele opera é o índice de repos, e
  * porque `dialog` é Electron puro. O caminho escolhido **não volta ao renderer**: fica no índice, e
- * o `start({ itemId })` seguinte já o encontra.
+ * o `start({ scope })` seguinte já o encontra.
  */
 ipcMain.handle(
   IPC_INVOKE.chooseFolder,
   async (event, request: ChooseFolderRequest): Promise<ChooseFolderResult> => {
-    const card = boardsIpc?.cardById(request.itemId)
-    if (!card) return { chosen: false }
+    // O destino é resolvido **antes** do diálogo: perguntar a pasta para descobrir depois que não há
+    // onde guardá-la faria o humano navegar o disco à toa.
+    const guardar = destinoDaEscolha(request.scope)
+    if (guardar === null) return { chosen: false }
 
     // Preso à janela que perguntou: o seletor é modal dela, e não uma caixa solta que se perde atrás
     // do app enquanto o cartão espera uma resposta que ninguém vê como dar.
@@ -317,13 +374,39 @@ ipcMain.handle(
 
     if (result.canceled || path === undefined) return { chosen: false }
 
-    // Só em memória, nunca em disco: assim que a sessão subir ali, o Claude Code escreve o
-    // transcript e a varredura da próxima abertura acha a pasta sozinha.
-    repos.declare(card.repository, path)
+    guardar(path)
 
     return { chosen: true }
   },
 )
+
+/**
+ * Onde a pasta escolhida vai parar — ou `null` quando não há onde, e então o diálogo nem abre:
+ * cartão que sumiu do retrato, ou triagem fora do kanban, onde não existe aba nenhuma.
+ *
+ * Os dois destinos são diferentes de propósito. A do cartão vai para o índice de repos, que é por
+ * repo. A da triagem vai para o mapa da aba e **não** passa por `repos.declare`: a pasta escolhida
+ * para uma aba ambígua não é a pasta de repo nenhum, e declará-la envenenaria o índice para todos os
+ * cartões daquele repo.
+ */
+function destinoDaEscolha(scope: SessionScope): ((path: string) => void) | null {
+  if (scope.kind === 'triage') {
+    if (!boardsIpc) return null
+
+    return (path) => {
+      triageFolders.set(scope.boardKey, path)
+    }
+  }
+
+  const card = boardsIpc?.cardById(scope.itemId)
+  if (!card) return null
+
+  // Só em memória, nunca em disco: assim que a sessão subir ali, o Claude Code escreve o transcript
+  // e a varredura da próxima abertura acha a pasta sozinha.
+  return (path) => {
+    repos.declare(card.repository, path)
+  }
+}
 
 void app.whenReady().then(() => {
   const window = createWindow()

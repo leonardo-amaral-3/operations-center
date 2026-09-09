@@ -21,7 +21,7 @@ import type { WebContents } from 'electron'
 
 import type { DangerIndex } from '../core'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
-import type { DangerousSnapshot } from '../shared/ipc'
+import type { DangerousSnapshot, SessionScope } from '../shared/ipc'
 import { readState, writeState } from './store'
 
 /**
@@ -71,6 +71,25 @@ export interface DangerIpc {
    * ligada ou desligada e o fim da carga do boot passam todos por aqui.
    */
   publish(): void
+  /**
+   * Aquela aba está com a triagem sem portão? **Síncrono**, ao contrário do `isDangerous` do
+   * `DangerIndex`: não há carga de disco a esperar, porque não há disco.
+   */
+  isDangerous(boardKey: string): boolean
+  /** Marca ou desmarca a triagem daquela aba, e publica. Nada disto atravessa o desligamento. */
+  setTriage(boardKey: string, dangerous: boolean): void
+}
+
+/**
+ * O portão visto por **escopo**, e não por cartão.
+ *
+ * Existe para o `registerSessionIpc` não ter de saber que a marca do cartão mora em disco e a da
+ * triagem em memória: a diferença é de durabilidade, não de regra, e ele só precisa da regra. Vive
+ * aqui, e não no core, porque o core não conhece aba.
+ */
+export interface DangerGate {
+  isDangerous(scope: SessionScope): Promise<boolean>
+  set(scope: SessionScope, dangerous: boolean): void
 }
 
 /**
@@ -82,8 +101,18 @@ export interface DangerIpc {
 export function registerDangerIpc(index: DangerIndex): DangerIpc {
   const subscribers = new Set<WebContents>()
 
+  /**
+   * As triagens sem portão, por `key` de aba. **Só em memória, nunca em disco** — ao contrário das
+   * marcas de cartão, e é a diferença que o CA-4 pede: uma triagem é uma conversa de minutos, e uma
+   * marca que atravessasse o desligamento tiraria o portão de uma sessão que ninguém pediu hoje.
+   *
+   * Um `Set` basta aqui, e não o `Map<chave, boolean>` do `DangerIndex`: o terceiro estado daquele
+   * mapa existe para o encontro com o disco, e este conjunto nunca encontra disco nenhum.
+   */
+  const triagens = new Set<string>()
+
   function retrato(): DangerousSnapshot {
-    return { itemIds: index.dangerous() }
+    return { itemIds: index.dangerous(), boardKeys: [...triagens] }
   }
 
   function publish(): void {
@@ -113,6 +142,17 @@ export function registerDangerIpc(index: DangerIndex): DangerIpc {
       void index.refresh()
     },
     publish,
+    isDangerous(boardKey: string): boolean {
+      return triagens.has(boardKey)
+    },
+    setTriage(boardKey: string, dangerous: boolean): void {
+      // Sem a guarda de "já estava assim" do `DangerIndex.set`: lá ela poupa uma gravação em disco,
+      // aqui não há gravação nenhuma a poupar, e publicar o mesmo retrato duas vezes é inerte.
+      if (dangerous) triagens.add(boardKey)
+      else triagens.delete(boardKey)
+
+      publish()
+    },
   }
 }
 

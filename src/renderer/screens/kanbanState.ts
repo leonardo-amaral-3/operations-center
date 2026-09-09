@@ -24,6 +24,14 @@ export interface KanbanState {
    * coluna sem nenhum código de remapeamento.
    */
   expanded: Readonly<Record<string, readonly string[]>>
+  /**
+   * A aba cuja triagem está aberta, ou `null`. **Uma no app inteiro**, e não uma por aba: trocar de
+   * aba encerra a triagem (Decisão 5 do #27), então guardar uma lista descreveria um estado que não
+   * existe.
+   *
+   * A `key` e não um booleano: é ela que compõe o `SessionScope` do painel.
+   */
+  triagem: string | null
 }
 
 export type KanbanAction =
@@ -36,12 +44,22 @@ export type KanbanAction =
    * retrato de todo jeito.
    */
   | { type: 'toggle'; key: string; itemId: string }
+  /**
+   * Abre a triagem da aba `key`. Uma só no app inteiro, como o campo que ela grava.
+   *
+   * A `key` vem do clique, e não do `activeKey` do retrato: o reducer não escolhe aba, e só a tela
+   * sabe de qual coluna partiu a ação.
+   */
+  | { type: 'abrir-triagem'; key: string }
+  /** Fecha a triagem aberta, seja de que aba for. Sem `key`: há no máximo uma. */
+  | { type: 'fechar-triagem' }
 
 export const INITIAL_KANBAN: KanbanState = {
   // Antes da descoberta a tela não sabe nem quantos boards existem — e `boards: null` é exatamente
   // isso, e não "descobri e não achei nenhum".
   snapshot: { boards: null, activeKey: null, discoveryError: null },
   expanded: {},
+  triagem: null,
 }
 
 export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanState {
@@ -50,8 +68,24 @@ export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanSt
     // usuário deixou aberto, nem quando o cartão mudou de coluna (RA-4 do #45) — fechar a conversa
     // no exato evento que este app existe para acompanhar seria o oposto do que ele faz. O que a
     // releitura tira é só o que deixou de existir.
-    return { ...state, snapshot: action.snapshot, expanded: podar(state.expanded, action.snapshot) }
+    return {
+      ...state,
+      snapshot: action.snapshot,
+      expanded: podar(state.expanded, action.snapshot),
+      // A triagem **não** atravessa a troca de aba, ao contrário de `expanded`: a decisão do card é
+      // que sair da aba encerra a triagem, e quem a encerra é o painel desmontado
+      // (`closeOnUnmount`). Zerar aqui é o que impede o painel de renascer — com uma sessão nova e a
+      // conversa perdida — ao voltar para a aba. Aba que sumiu do retrato cai na mesma linha, porque
+      // `activeKey` muda junto.
+      triagem: action.snapshot.activeKey === state.triagem ? state.triagem : null,
+    }
   }
+
+  if (action.type === 'abrir-triagem') return { ...state, triagem: action.key }
+
+  // Zera e pronto: o painel já saiu de cena e a sessão dele morreu com o desmonte. Não há lista de
+  // que tirar a aba, que é justamente o que o campo único compra.
+  if (action.type === 'fechar-triagem') return { ...state, triagem: null }
 
   const abertos = state.expanded[action.key] ?? []
 

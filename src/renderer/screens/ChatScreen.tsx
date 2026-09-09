@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 
 import type { SessionState } from '../../shared/session'
-import { Chat } from '../components/Chat'
+import { Conversation } from '../components/Conversation'
 import { PermissionPrompt } from '../components/PermissionPrompt'
 import { QuestionPrompt } from '../components/QuestionPrompt'
 import { StateBadge } from '../components/StateBadge'
@@ -50,10 +50,10 @@ export function ChatScreen(): JSX.Element {
         <QuestionPrompt request={view.question} onAnswer={answer} queued={view.queued} />
       ) : null}
 
-      <Chat
+      <Conversation
         messages={view.messages}
         activity={view.activity}
-        // A pergunta trava a caixa aqui pelo mesmo motivo do `CardChat`: o turno está parado
+        // A pergunta trava a caixa aqui pelo mesmo motivo do `Chat` do kanban: o turno está parado
         // esperando o `tool_result` dela, e o que for digitado entraria na fila atrás disso.
         disabled={dead || !view.id || view.question !== null}
         onSend={send}

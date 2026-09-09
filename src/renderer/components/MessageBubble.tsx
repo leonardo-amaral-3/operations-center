@@ -90,7 +90,7 @@ const SKINS: Record<BubbleScale, BubbleSkin> = {
  * Uma fala da conversa, nas duas telas.
  *
  * **Memoizada, e isso não é zelo**: o `draft` da caixa de texto mora no mesmo componente que a lista
- * nas duas telas (`Chat.tsx`, `CardChat.tsx`), então sem `memo` cada tecla digitada reparsearia o
+ * nos dois lugares (`Conversation.tsx`, `Chat.tsx`), então sem `memo` cada tecla digitada reparsearia o
  * markdown de todas as mensagens do histórico. A comparação rasa basta porque cada `ChatMessage` é
  * o **mesmo objeto** que veio pela ponte — o redutor de `useSessionView.ts` cria array novo, nunca
  * mensagem nova — e `scale` é literal.

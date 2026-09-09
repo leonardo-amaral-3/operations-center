@@ -318,6 +318,149 @@ describe('o observador dos boards', () => {
     expect(bancada.ipc.cardById('PVTI_de_ninguem')).toBeNull()
   })
 
+  it('repoOfBoard devolve o repo unânime da aba, sem se importar com a caixa', async () => {
+    const bancada = montar({
+      read: () =>
+        Promise.resolve({
+          ...lidoQualquer(),
+          cards: [
+            cartaoDoRepo('um', 'leonardo-amaral-3/operations-center'),
+            // A mesma coisa para o GitHub, que não distingue caixa em `owner/name`. Comparar as
+            // strings cruas faria a triagem desta aba cair no ramo ambíguo por causa de um `O`
+            // maiúsculo que ninguém digitou.
+            cartaoDoRepo('dois', 'Leonardo-Amaral-3/Operations-Center'),
+            { ...cartaoDoRepo('tres', 'leonardo-amaral-3/operations-center'), closed: true },
+          ],
+        }),
+    })
+
+    void bancada.readBoards()
+    await bancada.esperar(3)
+
+    // O `repository` como o board o escreveu, e não a chave normalizada: quem recebe isto é o
+    // `RepoIndex`, que normaliza de novo por conta própria.
+    expect(bancada.ipc.repoOfBoard(A.key)).toBe('leonardo-amaral-3/operations-center')
+  })
+
+  it('repoOfBoard responde "não sei" com dois repos, com aba vazia, e com aba que não existe', async () => {
+    const bancada = montar({
+      read: (input) =>
+        Promise.resolve({
+          ...lidoQualquer(),
+          cards:
+            input.owner === A.owner
+              ? [
+                  cartaoDoRepo('um', 'leonardo-amaral-3/operations-center'),
+                  // **Fechado, e conta**: a coluna ✅ Produção é do mesmo board, e um card de outro
+                  // repo continua tornando a aba ambígua depois de fechado. Filtrar por estado faria
+                  // o repo da aba — e a pasta da triagem — mudar sozinho conforme os cards fechassem.
+                  { ...cartaoDoRepo('dois', 'leonardo-amaral-3/claude-brain'), closed: true },
+                ]
+              : [],
+        }),
+    })
+
+    void bancada.readBoards()
+    await bancada.esperar(3)
+
+    // Dois repos: a moda escolheria um dos dois em silêncio, e a pasta da triagem passaria a mudar
+    // sozinha ao sabor de quantos cards cada repo tem. "Não sei" manda o painel pedir a pasta.
+    expect(bancada.ipc.repoOfBoard(A.key)).toBeNull()
+
+    // Aba sem cartão nenhum: não há de onde tirar repo.
+    expect(bancada.ipc.repoOfBoard(B.key)).toBeNull()
+
+    // E a aba que o retrato não tem — uma `key` de um board que sumiu entre o clique e a resposta.
+    expect(bancada.ipc.repoOfBoard('ninguem/999')).toBeNull()
+  })
+
+  it('repoOfBoard responde "não sei" antes de a leitura daquela aba voltar', async () => {
+    const presa = adiar<Board>()
+    const bancada = montar({ read: () => presa.promise })
+
+    void bancada.readBoards()
+
+    // A descoberta publicou e as leituras estão em voo: a aba já tem nome e ainda não tem board.
+    // É o mesmo "não sei" da aba ambígua, e de propósito — o painel trata os dois do mesmo jeito.
+    await bancada.esperar(1)
+    expect(bancada.ipc.repoOfBoard(A.key)).toBeNull()
+
+    presa.resolve(lidoQualquer())
+  })
+
+  it('tabKeyOf diz de que aba é o cartão, e null para quem não está em nenhuma', async () => {
+    const bancada = montar()
+
+    void bancada.readBoards()
+    await bancada.esperar(3)
+
+    // O par do `cardById`, e é ele que traduz o fim de um turno de cartão na aba a reler. A busca é
+    // em **todas** as abas pela mesma razão: o humano pode ter trocado de aba durante o turno, e o
+    // card continua onde estava.
+    expect(bancada.ipc.tabKeyOf(cartaoDe(A).itemId)).toBe(A.key)
+    expect(bancada.ipc.tabKeyOf(cartaoDe(B).itemId)).toBe(B.key)
+
+    // O cartão que o retrato não tem — board que sumiu, aba ainda não lida. Não relê nada, em vez
+    // de relerem-se todas por precaução.
+    expect(bancada.ipc.tabKeyOf('PVTI_de_ninguem')).toBeNull()
+  })
+
+  it('readNow relê dentro do throttle — e só a aba pedida', async () => {
+    const bancada = montar()
+
+    void bancada.readBoards()
+    await bancada.esperar(3)
+    expect(bancada.read).toHaveBeenCalledTimes(2)
+
+    // O gatilho de rotina, dentro dos 10s, é descartado: é o throttle vivo, e é o que dá sentido à
+    // linha seguinte. Sem esta asserção, um `readNow` que não furasse nada passaria despercebido
+    // num teste onde o throttle já tivesse vencido.
+    bancada.ipc.refresh()
+    expect(bancada.read).toHaveBeenCalledTimes(2)
+
+    // O fim do turno não é rotina: é a notícia de que a skill acabou de criar um card. Fura.
+    bancada.ipc.readNow(A.key)
+    await bancada.esperar(4)
+
+    expect(bancada.read).toHaveBeenCalledTimes(3)
+    // E só a aba daquela sessão. Reler as duas seria uma leitura do GitHub a mais por turno, para
+    // uma aba em que nada aconteceu.
+    expect(bancada.read.mock.calls.at(-1)?.[0]).toEqual(coordenadaDe(A))
+  })
+
+  it('readNow não atropela a leitura em voo daquela aba', async () => {
+    const presa = adiar<Board>()
+    const bancada = montar({
+      read: (input) => (input.owner === A.owner ? presa.promise : Promise.resolve(lido(input))),
+    })
+
+    void bancada.readBoards()
+    await bancada.esperar(2)
+    expect(bancada.read).toHaveBeenCalledTimes(2)
+
+    // `force` pula **só** a guarda de throttle. A leitura em voo não é economia de trabalho: uma
+    // segunda leitura da mesma aba não responderia nada que a que já está a caminho não vá trazer,
+    // e um fim de turno chega no meio dela com frequência.
+    bancada.ipc.readNow(A.key)
+    expect(bancada.read).toHaveBeenCalledTimes(2)
+
+    presa.resolve(lidoQualquer())
+  })
+
+  it('readNow é no-op antes de a descoberta terminar', () => {
+    const bancada = montar()
+
+    // A outra guarda que `force` não pula: sem coordenada não há a quem perguntar. Uma sessão que
+    // devolveu a vez antes de a descoberta responder — o app aberto direto num cartão — cairia
+    // aqui, e pedir board a `undefined` seria trocar um retrato atrasado por uma exceção.
+    bancada.ipc.readNow(A.key)
+
+    expect(bancada.read).not.toHaveBeenCalled()
+    // E também não dispara a descoberta: quem a liga é o `refresh`, e o fim de um turno não é um
+    // gatilho de descoberta.
+    expect(bancada.find).not.toHaveBeenCalled()
+  })
+
   it('a aba lembrada nasce ativa quando ela está entre as descobertas', async () => {
     const bancada = montar({ loadActive: () => Promise.resolve(B.key) })
 
@@ -469,6 +612,14 @@ function cartaoDe(board: DiscoveredBoard): BoardCard {
     parent: null,
     phases: [],
   }
+}
+
+/**
+ * Um cartão de um repo escolhido pelo teste. Só o `repository` importa para a régua da triagem — o
+ * resto é o cartão de sempre, para o caso não depender de campo nenhum que ele não olha.
+ */
+function cartaoDoRepo(sufixo: string, repository: string): BoardCard {
+  return { ...cartaoDe(A), itemId: `PVTI_${sufixo}`, repository }
 }
 
 /** A aba pedida, com o vermelho **aqui** e nomeando quem sumiu, em vez de um `undefined` adiante. */
