@@ -346,6 +346,10 @@ const ANCORAS = [
   'data-state',
   'data-status',
   'data-testid',
+  // Entrou com o card #36: é por ela que o smoke acha o botão de **uma** combinação no seletor do
+  // cabeçalho. O rótulo do botão é o nome cru da combinação, mas rótulo é texto na tela — a âncora
+  // é o que faz o smoke do CA-3 clicar na obsidiana sem depender de o rótulo continuar sendo ele.
+  'data-theme-name',
   'data-tokens',
   'data-tool',
   'data-truncated',

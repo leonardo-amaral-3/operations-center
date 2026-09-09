@@ -7,6 +7,7 @@ import { BoardTabs } from '../components/BoardTabs'
 import type { CardSession, CardSessions } from '../components/CardChat'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
+import { ThemePicker } from '../components/ThemePicker'
 import { Badge } from '../ui/badge'
 import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
 
@@ -200,6 +201,10 @@ export function KanbanScreen(): JSX.Element {
             barra nasce com o primeiro retrato, e não antes. */}
         <BoardTabs boards={boards ?? []} activeKey={activeKey} onActivate={activate} />
         <div className="flex shrink-0 items-center gap-2">
+          {/* Primeiro do agrupamento da direita: o carimbo de frescor continua no extremo, onde
+              está desde o #12, e o seletor entra antes dele em vez de empurrá-lo. Ele não recebe
+              nem devolve nada — cuida da própria combinação, e a tela não ganha estado por isso. */}
+          <ThemePicker />
           {/* Um dono que não respondeu não apaga os boards dos que responderam — e também não some
               da tela. Fica ao lado do carimbo de frescor porque é a mesma frase: o que está aí é
               verdade, só que incompleta. O motivo inteiro vai no `title`, como no carimbo. */}
