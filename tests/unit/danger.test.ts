@@ -18,15 +18,32 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('electron', () => ({
-  ipcMain: { handle: (): void => undefined },
+const { handlers } = vi.hoisted(() => ({
+  handlers: new Map<string, (event: unknown) => unknown>(),
 }))
 
-import { loadDangerous, saveDangerous } from '../../src/main/danger'
+vi.mock('electron', () => ({
+  ipcMain: {
+    handle(channel: string, handler: (event: unknown) => unknown): void {
+      handlers.set(channel, handler)
+    },
+  },
+}))
+
+import type { WebContents } from 'electron'
+
+import { DangerIndex } from '../../src/core'
+import { loadDangerous, registerDangerIpc, saveDangerous } from '../../src/main/danger'
+import { IPC_EVENT, IPC_INVOKE } from '../../src/shared/ipc'
+import type { DangerousSnapshot } from '../../src/shared/ipc'
 
 const ARQUIVO = 'dangerous.json'
 const CARTAO = 'PVTI_cartao'
 const OUTRO = 'PVTI_outro'
+
+/** A `key` opaca de uma aba, como o `ui:active-board` a carrega. */
+const ABA = 'leonardo-amaral-3/2'
+const OUTRA_ABA = 'leonardo-amaral-3/3'
 
 /** A versão que o módulo grava. Repetida aqui de propósito: um bump tem de quebrar este arquivo. */
 const VERSAO_ATUAL = 1
@@ -153,5 +170,111 @@ describe('a escrita cria o diretório que ainda não existe', () => {
     } finally {
       process.env['OC_STATE_DIR'] = anterior
     }
+  })
+})
+/**
+ * A metade volátil do portão: a marca da triagem, que o CA-4 quer **fora** do disco.
+ *
+ * Aqui o `DangerIndex` é montado com `load`/`save` de mentira — ao contrário dos casos acima, que
+ * batem em disco de verdade —, e é de propósito: o que estes casos afirmam é que a marca da triagem
+ * **não chega** ao `save`, e um `save` espião é a única forma de afirmar uma chamada que não
+ * acontece.
+ */
+describe('registerDangerIpc — a marca da triagem é volátil', () => {
+  function montar(marcados: readonly string[] = []) {
+    handlers.clear()
+
+    const save = vi.fn(() => Promise.resolve())
+    const index = new DangerIndex({
+      load: () => Promise.resolve(new Set(marcados)),
+      save,
+      // A ponta que o main liga no `publicarPerigo`: sem ela, uma marca de cartão não publicaria, e
+      // o caso das duas listas juntas ficaria verde por não ter nada a comparar.
+      onChange: () => {
+        ipc.publish()
+      },
+    })
+
+    const publicados: DangerousSnapshot[] = []
+    const sender = {
+      isDestroyed: () => false,
+      send(channel: string, payload: unknown): void {
+        if (channel === IPC_EVENT.dangerous) publicados.push(payload as DangerousSnapshot)
+      },
+    } as unknown as WebContents
+
+    const ipc = registerDangerIpc(index)
+
+    /** O retrato pelo canal de leitura — que também é o que inscreve o `sender` nas publicações. */
+    function ler(): DangerousSnapshot {
+      const handler = handlers.get(IPC_INVOKE.readDangerous)
+      if (!handler) throw new Error('canal não registrado: ' + IPC_INVOKE.readDangerous)
+
+      return handler({ sender }) as DangerousSnapshot
+    }
+
+    return { index, ipc, save, ler, publicados }
+  }
+
+  it('a triagem marcada aparece em `boardKeys`, e o disco não é tocado', async () => {
+    const bancada = montar()
+    bancada.ler()
+
+    bancada.ipc.setTriage(ABA, true)
+
+    expect(bancada.ler()).toEqual({ itemIds: [], boardKeys: [ABA] })
+    // O `#persist` do índice é assíncrono: sem esta volta ao fim da fila de microtarefas, um `save`
+    // agendado passaria despercebido e o teste ficaria verde pelo motivo errado.
+    await Promise.resolve()
+    expect(bancada.save).not.toHaveBeenCalled()
+  })
+
+  it('marcar a triagem não move os `itemIds` do cartão, nem os regrava', async () => {
+    const bancada = montar([CARTAO])
+    // A carga do boot: sem ela o `itemIds` sairia vazio e o caso não teria o que preservar.
+    await bancada.index.refresh()
+
+    bancada.ipc.setTriage(ABA, true)
+
+    expect(bancada.ler()).toEqual({ itemIds: [CARTAO], boardKeys: [ABA] })
+    await Promise.resolve()
+    // A carga também não regrava — o `DangerIndex` não poda —, então o `save` continua intocado.
+    expect(bancada.save).not.toHaveBeenCalled()
+  })
+
+  it('desmarcar tira só aquela aba; as outras seguem marcadas', () => {
+    const bancada = montar()
+    bancada.ipc.setTriage(ABA, true)
+    bancada.ipc.setTriage(OUTRA_ABA, true)
+
+    bancada.ipc.setTriage(ABA, false)
+
+    expect(bancada.ipc.isDangerous(ABA)).toBe(false)
+    expect(bancada.ipc.isDangerous(OUTRA_ABA)).toBe(true)
+  })
+
+  it('cada mudança publica o retrato inteiro a quem assinou', () => {
+    const bancada = montar()
+    bancada.ler()
+
+    bancada.ipc.setTriage(ABA, true)
+    bancada.ipc.setTriage(ABA, false)
+
+    // Inteiro a cada mudança, e não delta: é o que faz um evento perdido não deixar o crachá preso.
+    expect(bancada.publicados).toEqual([
+      { itemIds: [], boardKeys: [ABA] },
+      { itemIds: [], boardKeys: [] },
+    ])
+  })
+
+  it('a marca não sobrevive ao registro: um app novo abre com `boardKeys` vazio', () => {
+    const primeira = montar()
+    primeira.ipc.setTriage(ABA, true)
+
+    // O desligamento, no que ele tem de observável aqui: um registro novo sobre o mesmo disco. O
+    // cartão voltaria; a triagem não tem de onde voltar.
+    const segunda = montar()
+
+    expect(segunda.ler().boardKeys).toEqual([])
   })
 })

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardTab } from '../../shared/board'
+import type { DangerousSnapshot } from '../../shared/ipc'
 import type { SessionState } from '../../shared/session'
 import { BoardTabs } from '../components/BoardTabs'
 import type { CardSession, CardSessions } from '../components/CardChat'
@@ -17,6 +18,15 @@ import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
  * nova a **toda** `Column` sem nenhum ganho.
  */
 const VAZIO: readonly string[] = []
+
+/**
+ * O retrato antes de o disco responder — as duas listas vazias, pelo mesmo motivo de sempre: um
+ * cartão volta **com** portão até o contrário ser sabido, nunca o inverso.
+ *
+ * Constante de módulo pela mesma razão do `VAZIO`, e por uma a mais: é o valor inicial de um
+ * `useState`, e um literal ali seria um objeto novo montado a cada render para ser descartado.
+ */
+const SEM_MARCA: DangerousSnapshot = { itemIds: [], boardKeys: [] }
 
 type SessionsAction =
   | { type: 'card'; itemId: string; session: CardSession }
@@ -76,10 +86,12 @@ export function KanbanScreen(): JSX.Element {
    */
   const [conversations, setConversations] = useState<readonly string[]>([])
   /**
-   * Os cartões que rodam sem o portão. Vazio até a leitura do disco voltar, e é o lado seguro: um
-   * cartão volta **com** portão até o contrário ser sabido, nunca o inverso.
+   * O que roda sem o portão: os cartões marcados em disco e as triagens marcadas nesta execução.
+   *
+   * O retrato **inteiro**, e não só os `itemIds`, porque as duas listas chegam no mesmo evento e
+   * separá-las aqui obrigaria dois estados a serem atualizados em par a cada publicação.
    */
-  const [dangerous, setDangerous] = useState<readonly string[]>([])
+  const [dangerous, setDangerous] = useState<DangerousSnapshot>(SEM_MARCA)
 
   useEffect(() => {
     // Assinar vem **antes** de pedir, como no `ChatScreen`: uma leitura que termine entre o pedido
@@ -130,11 +142,11 @@ export function KanbanScreen(): JSX.Element {
 
     const unsubscribe = window.oc.onDangerous((next) => {
       pushed = true
-      setDangerous(next.itemIds)
+      setDangerous(next)
     })
 
     void window.oc.readDangerous().then((next) => {
-      if (!pushed) setDangerous(next.itemIds)
+      if (!pushed) setDangerous(next)
     })
 
     return unsubscribe
@@ -231,7 +243,7 @@ export function KanbanScreen(): JSX.Element {
               expandedItemIds={expandedItemIds}
               sessions={sessions}
               conversations={conversations}
-              dangerous={dangerous}
+              dangerous={dangerous.itemIds}
               onToggle={toggle}
               onSession={registerSession}
               onToggleDangerous={toggleDangerous}

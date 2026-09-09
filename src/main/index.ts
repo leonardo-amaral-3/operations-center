@@ -28,6 +28,7 @@ import {
   saveConversations,
 } from './conversations'
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
+import type { DangerGate } from './danger'
 import { createFixtureGraphQL } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
@@ -279,9 +280,27 @@ function publicarPerigo(): void {
   dangerIpc?.publish()
 }
 
+/**
+ * O portão visto por escopo. Existe para o `registerSessionIpc` não ter de saber que a marca do
+ * cartão mora em disco e a da triagem em memória — a diferença é de durabilidade, não de regra.
+ *
+ * Fora do kanban (`OC_SCREEN=chat`) não há `dangerIpc` e não há triagem: a marca responde `false` e
+ * o `set` é no-op — que é a decisão 13 do #10, a tela de chat mantém o portão sem exceção.
+ */
+const dangerGate: DangerGate = {
+  isDangerous: async (scope) =>
+    scope.kind === 'card'
+      ? danger.isDangerous(scope.itemId)
+      : (dangerIpc?.isDangerous(scope.boardKey) ?? false),
+  set: (scope, dangerous) => {
+    if (scope.kind === 'card') danger.set(scope.itemId, dangerous)
+    else dangerIpc?.setTriage(scope.boardKey, dangerous)
+  },
+}
+
 const sessionIpc = registerSessionIpc(host, {
   conversations,
-  danger,
+  danger: dangerGate,
   resolveCwd: async (scope) => {
     if (scope === undefined) return resolveCwd()
 

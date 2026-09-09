@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import type { WebContents } from 'electron'
 
-import type { ConversationIndex, DangerIndex, SessionHandle, SessionHost } from '../core'
+import type { ConversationIndex, SessionHandle, SessionHost } from '../core'
 import { IPC_EVENT, IPC_INVOKE, scopeKey } from '../shared/ipc'
 import type {
   AnswerQuestionRequest,
@@ -17,6 +17,7 @@ import type {
 } from '../shared/ipc'
 import { IDLE_ACTIVITY } from '../shared/session'
 import type { TurnActivity } from '../shared/session'
+import type { DangerGate } from './danger'
 
 export interface SessionIpcOptions {
   /**
@@ -29,11 +30,14 @@ export interface SessionIpcOptions {
   /** O vínculo durável. Consultado antes de criar; alimentado pelo `init`; podado pelo `close`. */
   conversations: ConversationIndex
   /**
-   * A marca do modo *dangerously*, por cartão. Lida no nascimento de toda sessão e escrita pelo
+   * A marca do modo *dangerously*, por **escopo**. Lida no nascimento de toda sessão e escrita pelo
    * handler `setDangerous` — e **nunca** pelo `close`/`closeAll`: a marca é decisão sobre o cartão,
    * não sobre a conversa.
+   *
+   * Cartão vai a disco, triagem morre com o app; qual é qual é do `main/danger.ts`, e este registro
+   * não precisa saber — para ele as duas são a mesma pergunta.
    */
-  danger: DangerIndex
+  danger: DangerGate
   /**
    * Chamado quando uma sessão devolve a vez (`awaiting_input`). O main usa para reler a aba daquela
    * sessão.
@@ -171,9 +175,9 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     // esquecê-la num deles faria a marca valer só para metade dos cliques. Ela é aqui dentro, e não
     // no handler, porque é aqui que o `gate` já protege: duas partidas concorrentes leriam a marca
     // duas vezes e subiriam duas sessões. A marca gravada é por **cartão**: a tela de chat da fatia
-    // vertical não tem onde a ter (decisão 13 do #10), e a da triagem é outra durabilidade.
-    const dangerous =
-      scope?.kind === 'card' ? await options.danger.isDangerous(scope.itemId) : false
+    // vertical não tem onde a ter (decisão 13 do #10). A da triagem tem — outra durabilidade, mesma
+    // pergunta —, e quem sabe a diferença é o `DangerGate`.
+    const dangerous = scope === undefined ? false : await options.danger.isDangerous(scope)
 
     // A retomada é **só do cartão**: sem card não há vínculo durável a guardar, e um vínculo
     // sintético seria justamente o rastro que uma triagem não pode deixar para trás.
@@ -266,8 +270,8 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
       // pedido faria o crachá prometer um cartão sem portão que o portão ainda guarda.
       const efetivo = session ? await session.setDangerous(request.dangerous) : request.dangerous
 
-      // O `DangerIndex` é indexado por `itemId` e vai a disco: só o escopo de cartão tem onde gravar.
-      if (request.scope.kind === 'card') options.danger.set(request.scope.itemId, efetivo)
+      // Onde a marca é guardada — disco no cartão, memória na triagem — é decisão do `DangerGate`.
+      options.danger.set(request.scope, efetivo)
     },
   )
 

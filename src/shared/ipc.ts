@@ -265,11 +265,17 @@ export interface SetDangerousRequest {
 }
 
 /**
- * Quais cartões rodam sem o portão. Inteiro a cada mudança, como o `ConversationsSnapshot` e pela
- * mesma razão: evento perdido não deixa a tela num estado que nunca mais será corrigido.
+ * O que roda sem o portão. Inteiro a cada mudança, como o `ConversationsSnapshot` e pela mesma
+ * razão: evento perdido não deixa a tela num estado que nunca mais será corrigido.
  */
 export interface DangerousSnapshot {
+  /** Os cartões marcados. Sobrevivem ao desligamento: vêm do `dangerous.json`. */
   itemIds: readonly string[]
+  /**
+   * As triagens sem portão, por `key` de aba. Lista separada e não misturada com `itemIds` porque as
+   * duas têm durabilidade oposta — a do cartão sobrevive ao desligamento, a da triagem morre com ele.
+   */
+  boardKeys: readonly string[]
 }
 
 /**

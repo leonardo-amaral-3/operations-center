@@ -29,6 +29,7 @@ import type { WebContents } from 'electron'
 
 import { ConversationIndex, DangerIndex, SessionHost } from '../../src/core'
 import type { QueryFn } from '../../src/core/session/SessionHost'
+import type { DangerGate } from '../../src/main/danger'
 import { oneStartPerScope, registerSessionIpc } from '../../src/main/ipc'
 import { IPC_EVENT, IPC_INVOKE } from '../../src/shared/ipc'
 import type {
@@ -89,6 +90,11 @@ interface Bancada {
   /** Os cartões que estavam marcados no `dangerous.json` quando o app abriu. */
   marcados?: readonly string[]
   /**
+   * As abas cuja triagem está sem portão. Nunca vêm de disco — é o ponto: a lista nasce vazia a cada
+   * abertura do app, e aqui ela é semeada à mão porque só há uma execução.
+   */
+  triagens?: readonly string[]
+  /**
    * Arranca o `allowDangerouslySkipPermissions` do `query()`, e com ele a única forma de o SDK
    * recusar a troca de modo (M-3) — o mesmo truque do `startSemFlag` de `SessionHost.test.ts`.
    *
@@ -121,6 +127,27 @@ function montar(opcoes: Bancada = {}) {
     save: () => Promise.resolve(),
   })
 
+  /**
+   * As duas durabilidades atrás de uma pergunta só, como o `dangerGate` de `src/main/index.ts` as
+   * junta. Espelhado aqui, e não importado de lá: `index.ts` é o módulo que abre janela e lê
+   * `process.argv` no import, e o que este arquivo exercita é o `registerSessionIpc` — o que ele
+   * precisa do portão é o **contrato**, e o contrato é o `DangerGate`.
+   *
+   * O conjunto é o do main de verdade em espírito: memória pura, sem `load` e sem `save`.
+   */
+  const triagens = new Set(opcoes.triagens ?? [])
+  const gate: DangerGate = {
+    isDangerous: (scope) =>
+      scope.kind === 'card'
+        ? danger.isDangerous(scope.itemId)
+        : Promise.resolve(triagens.has(scope.boardKey)),
+    set: (scope, dangerous) => {
+      if (scope.kind === 'card') danger.set(scope.itemId, dangerous)
+      else if (dangerous) triagens.add(scope.boardKey)
+      else triagens.delete(scope.boardKey)
+    },
+  }
+
   // As duas pontas que a triagem **não** pode tocar. Espionadas em vez de inferidas pelo
   // `recoverable()`: um `restore` que não retoma nada e um `forget` de chave inexistente não deixam
   // rastro nenhum no índice, e é justamente a chamada que não pode existir.
@@ -143,7 +170,7 @@ function montar(opcoes: Bancada = {}) {
    */
   const onTurnEnd = vi.fn()
 
-  const ipc = registerSessionIpc(host, { resolveCwd, conversations, danger, onTurnEnd })
+  const ipc = registerSessionIpc(host, { resolveCwd, conversations, danger: gate, onTurnEnd })
 
   const recebidos: string[] = []
   const estados: SessionState[] = []
@@ -174,6 +201,8 @@ function montar(opcoes: Bancada = {}) {
   return {
     conversations,
     danger,
+    /** O que o portão volátil guarda agora. É o `boardKeys` do retrato, do lado do main. */
+    triagens,
     fake,
     criadas,
     resolveCwd,
@@ -531,6 +560,51 @@ describe('registerSessionIpc — o escopo da triagem', () => {
 
     expect(await bancada.start(TRIAGEM)).toEqual({ started: false, reason: 'unknown-folder' })
     expect(bancada.criadas).not.toHaveBeenCalled()
+  })
+
+  it('com a triagem daquela aba marcada, a sessão nova nasce sem o portão', async () => {
+    const bancada = montar({ triagens: [ABA] })
+
+    await bancada.start(TRIAGEM)
+
+    // O CA-4 pelo lado do nascimento: a pergunta é a mesma do cartão, e a resposta chega pelo mesmo
+    // caminho — a diferença de durabilidade fica toda do lado de lá do `DangerGate`.
+    expect(bancada.criadas).toHaveBeenCalledWith(expect.objectContaining({ dangerous: true }))
+    expect(bancada.fake.options?.permissionMode).toBe('bypassPermissions')
+  })
+
+  it('a marca de um cartão não vaza para a triagem da aba, nem o contrário', async () => {
+    const bancada = montar({ marcados: [CARTAO], triagens: [] })
+
+    await bancada.start(TRIAGEM)
+
+    // Dois espaços de chave separados, e o teste que os mantém assim: um `Set` só, indexado pela
+    // chave crua, faria o cartão marcado responder por uma aba que nunca foi marcada.
+    expect(bancada.criadas).toHaveBeenCalledWith(expect.objectContaining({ dangerous: false }))
+  })
+
+  it('marcar a triagem escreve no portão volátil, e nunca no índice que vai a disco', async () => {
+    const bancada = montar()
+    await bancada.start(TRIAGEM)
+
+    await bancada.marcar(TRIAGEM, true)
+
+    expect(bancada.fake.permissionModes).toEqual(['bypassPermissions'])
+    expect([...bancada.triagens]).toEqual([ABA])
+    // A metade que o CA-4 proíbe: nenhum `itemId` sintético no índice que grava o `dangerous.json`.
+    expect(bancada.danger.dangerous()).toEqual([])
+  })
+
+  it('a recusa do SDK também vale na triagem: o volátil guarda o efetivo, não o pedido', async () => {
+    const bancada = montar({ semFlag: true })
+    await bancada.start(TRIAGEM)
+
+    await bancada.marcar(TRIAGEM, true)
+
+    // O handler é um só para os dois escopos, e é ele que decide o que gravar. Sem este caso, uma
+    // regressão que gravasse o pedido só apareceria no cartão — e passaria batida na triagem.
+    expect(bancada.fake.permissionModes).toEqual(['bypassPermissions'])
+    expect([...bancada.triagens]).toEqual([])
   })
 })
 
