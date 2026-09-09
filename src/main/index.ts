@@ -19,6 +19,7 @@ import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen } from '../shared/ipc'
 import { THEME_DEFAULT, THEME_FLAG, THEMES } from '../shared/theme'
 import type { Theme } from '../shared/theme'
+import { registerThemeIpc } from './appearance'
 import { registerBoardsIpc } from './boards'
 import { registerCardIpc } from './card'
 import {
@@ -338,6 +339,32 @@ ipcMain.handle(
   },
 )
 
+/**
+ * A janela do app, ou `null` antes de ela existir. Só o `pintarJanela` a consome.
+ *
+ * Existe porque `registerThemeIpc` roda **antes** de `createWindow` — e tem de rodar: o canal
+ * precisa estar de pé antes de o renderer poder pedir o primeiro retrato.
+ */
+let janelaViva: BrowserWindow | null = null
+
+/**
+ * Repinta a moldura quando o humano troca de combinação.
+ *
+ * Necessário porque o `backgroundColor` de uma `BrowserWindow` é fixado na construção: sem isto, um
+ * app que trocou para a obsidiana mostraria a lavanda na faixa que o Chromium ainda não pintou ao
+ * ser redimensionado.
+ *
+ * Referência para a frente, como `publicarConversas` e `publicarPerigo`, e pela mesma razão: quem
+ * registra o canal não conhece a janela. O `?.` não é caminho vivo — a janela nasce duas linhas
+ * depois do registro, e a primeira troca é um clique humano, muito depois das duas.
+ *
+ * O `??` é a mesma formalidade de tipo do `createWindow`: `CORES_DE_JANELA` é construído sobre
+ * `THEMES`, e `Theme` é a união desses mesmos nomes.
+ */
+function pintarJanela(theme: Theme): void {
+  janelaViva?.setBackgroundColor(CORES_DE_JANELA.get(theme) ?? windowBackground(THEME_DEFAULT))
+}
+
 void app.whenReady().then(async () => {
   // A precedência do CA-4, e ela é lida da esquerda para a direita: `OC_THEME` vence o cofre
   // (Decisão 7 — quem exporta a variável está testando, não usando), o cofre vence a default, e a
@@ -347,7 +374,14 @@ void app.whenReady().then(async () => {
   // uma leitura de arquivo pequeno; é o preço de ela nascer já na cor certa, porque a janela nasce
   // com **uma** cor e não há como corrigi-la depois sem o usuário ver a errada primeiro.
   const theme = THEME_DO_AMBIENTE ?? (await loadTheme()) ?? THEME_DEFAULT
+
+  // **Antes de `createWindow`**: o renderer pede o primeiro retrato assim que monta, e um canal
+  // registrado depois da janela seria uma corrida contra o próprio boot.
+  registerThemeIpc(theme, pintarJanela)
+
   const window = createWindow(theme)
+  janelaViva = window
+
   if (!boardsIpc) return
 
   // Em paralelo à criação da janela: a leitura começa antes de o renderer pedir.
