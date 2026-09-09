@@ -41,6 +41,8 @@ function card(itemId: string, columnId: string): BoardCard {
     assignees: [],
     columnId,
     fields: [],
+    parent: null,
+    phases: [],
   }
 }
 

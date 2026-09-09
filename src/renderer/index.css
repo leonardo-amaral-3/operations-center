@@ -4,12 +4,13 @@
  * O design system: neobrutalism.dev sobre shadcn/ui, em modo claro.
  *
  * A folha tem um **conjunto** de combinações de cores, não uma. Cada `[data-theme='<nome>']` declara
- * os onze tokens de cor por inteiro, e nenhum deles mora no `:root`. O ganho é que uma combinação
- * incompleta não herda em silêncio da anterior — e quem garante isso é `design-system.test.ts`, que
- * exige os onze de cada bloco pelo nome, não a cascata: sem o teste, faltar um token daria fundo
- * transparente aqui e sombra sem cor ali, cada um falhando à sua maneira. O preço é a repetição das
- * quatro cores de estado, hoje iguais nas duas; o ganho é que a combinação **pode** reafiná-las, que
- * é o que o CA-4 do #29 pressupõe ao falar em "toda combinação".
+ * os vinte e cinco tokens de cor por inteiro, e nenhum deles mora no `:root`. O ganho é que uma
+ * combinação incompleta não herda em silêncio da anterior — e quem garante isso é
+ * `design-system.test.ts`, que exige os vinte e cinco de cada bloco pelo nome, não a cascata: sem o
+ * teste, faltar um token daria fundo transparente aqui e sombra sem cor ali, cada um falhando à sua
+ * maneira. O preço é a repetição das quatro cores de estado e das catorze etiquetas de campo, hoje
+ * iguais nas duas; o ganho é que a combinação **pode** reafiná-las, que é o que o CA-4 do #29
+ * pressupõe ao falar em "toda combinação".
  *
  * **Ainda não há modo escuro, e continua sendo de propósito.** O que o #29 trouxe foi o mecanismo,
  * não o escuro: o argumento do #8 não mudou — com superfície escura a borda preta de 2px fica mais
@@ -52,7 +53,8 @@
 }
 
 /*
- * Os onze tokens, e o que cada um significa. Vale para toda combinação — o que varia é o valor.
+ * Os vinte e cinco tokens, e o que cada um significa. Vale para toda combinação — o que varia é o
+ * valor. São três grupos: sete de casca, quatro de estado de sessão e catorze de etiqueta de campo.
  *
  * Sete são a casca do neobrutalism: três níveis de superfície (`--background` é o canvas do app,
  * `--secondary-background` a face de cartão, `--foreground` o preto que escreve nas duas), o acento
@@ -67,17 +69,64 @@
  * que fecha a faixa de matiz disponível para um acento novo: verde 145°, âmbar 85°, azul 230° e
  * vermelho 25° estão ocupados.
  *
+ * Catorze são as etiquetas de campo do cartão — `Tipo`, `Severidade`, `Classe` e `Rota` —, e o bloco
+ * logo abaixo diz em que banda elas vivem e por quê.
+ *
  * Não existe `--attention-foreground` e companhia porque em toda combinação clara o texto sobre os
  * quatro é `--foreground`, e o contraste é AAA — o que deixou de ser promessa de comentário e virou
- * tabela conferida em `design-system.test.ts`.
+ * tabela conferida em `design-system.test.ts`. Pela mesma razão não existe `--tipo-bug-foreground`:
+ * a tinta sobre as catorze também é `--foreground`, e as catorze duplas estão na mesma tabela.
+ */
+
+/*
+ * As catorze etiquetas de campo, e a banda em que elas vivem.
+ *
+ * **O orçamento de matiz acabou, e é isso que decide todo o resto.** Mantida a folga de 40° pela qual
+ * o #8 descartou teal e cyan como acento, os matizes ocupados — 25°, 85°, 145°, 230° e o acento em
+ * 295.36°/278° — deixam livres duas janelas de ~5°, e os quatro campos do cartão precisam de catorze
+ * aparências distintas. Matiz sozinho não paga essa conta, e nenhum arranjo dos matizes livres paga.
+ *
+ * **Por isso a fronteira entre etiqueta de campo e crachá de sessão é de intensidade, e não de
+ * matiz:** forte = a sessão quer algo de você · lavado = o que o card é. As catorze reusam à vontade
+ * as famílias de matiz dos quatro estados, e o que as separa é o croma — **nenhuma etiqueta passa de
+ * metade do menor croma entre `--attention`, `--warning`, `--question` e `--danger`**.
+ *
+ * A regra é relacional de propósito. Escrita como número fixo ela apodreceria no dia em que alguém
+ * reafinasse uma cor de estado; escrita contra o mínimo, ela se mantém sozinha. Hoje o menor é 0.13
+ * (o `--question`), o teto é 0.065 e o maior croma daqui é 0.06. Quem a cobra é
+ * `design-system.test.ts`, e é ela que impede a próxima cor de erodir o sinal do `StateBadge` — a
+ * divisão do #8 escrita numa forma que o CI consegue conferir, em vez de num comentário.
+ *
+ * **Cada campo ganha o canal que a sua natureza pede.** `Tipo` é nominal — quatro categorias sem
+ * ordem —, e categoria é o que matiz codifica: as quatro correm nas famílias dos estados, na mesma
+ * luminosidade. `Severidade`, `Classe` e `Rota` são ordinais, e ordem é o que luminosidade codifica:
+ * cada uma é uma rampa dentro de uma família só. Usar matiz para os quatro campos exigiria catorze
+ * matizes tão próximos uns dos outros que nenhum par se distinguiria.
+ *
+ * **As três rampas correm no mesmo sentido: mais tinta = mais urgência.** Uma regra para os três
+ * campos, em vez de três convenções a memorizar. Em `Rota` isso é escolha e não fato — `Completa` é
+ * o processo mais pesado e `Hotfix` o mais leve, e a rampa correria ao contrário se o eixo fosse
+ * cerimônia em vez de pressa. Ganhou pressa: quem varre o board procura o que está pegando fogo.
+ *
+ * **`Severidade` é acromática** porque é o único campo cujos valores não têm identidade própria:
+ * `S1`, `S2` e `S3` são números puros, sem emoji e sem nome. Magnitude sem identidade é exatamente o
+ * que uma rampa de cinza codifica, e ela custa **zero** do orçamento de matiz, que é o recurso
+ * escasso aqui.
+ *
+ * A consequência a conhecer antes de estranhá-la: o valor **comum** de cada rampa fica quase mudo —
+ * `⚪ Padrão` e `Completa` leem quase brancos. É a regra funcionando, não descuido. O cartão típico
+ * fica calmo e o excepcional (`🐞 Bug`, `S1`, `🔴 Expedite`, `Hotfix`) fica visível de longe.
  */
 
 /*
  * Lavanda — a combinação de origem, a do #8, e o default do app (`index.html`, `THEME_DEFAULT`).
  *
- * Os onze valores são os do `:root` de antes do #29, transcritos sem uma casa decimal de diferença:
- * o CA-2 é "o app abre como abre hoje", e qualquer reajuste "de passagem" o quebraria. É por isso
- * que este bloco — e só ele — está congelado valor a valor no teste.
+ * Os onze valores originais são os do `:root` de antes do #29, transcritos sem uma casa decimal de
+ * diferença: o CA-2 daquele card é "o app abre como abre hoje", e qualquer reajuste "de passagem" o
+ * quebraria. É por isso que este bloco — e só ele — tem esses onze congelados valor a valor no
+ * teste. As catorze etiquetas que entraram depois não são congeladas: elas nasceram aqui e não têm
+ * um "antes" a preservar, e o que se cobra delas — gamut, AAA, a banda calma e a distância dentro do
+ * campo — é medido a cada rodada, que é rede melhor do que transcrição.
  */
 [data-theme='lavanda'] {
   --background: oklch(93.88% 0.033 300.19);
@@ -92,6 +141,26 @@
   --warning: oklch(84% 0.16 85); /* âmbar — pare e olhe: permissão pendente, ou dado envelhecido */
   --question: oklch(78% 0.13 230); /* azul — há uma pergunta aberta esperando resposta */
   --danger: oklch(70% 0.19 25); /* vermelho — quebrou, ou vai destruir algo */
+
+  /* `Tipo` é nominal: quatro matizes, uma luminosidade só. */
+  --tipo-bug: oklch(87% 0.06 25);
+  --tipo-debito: oklch(87% 0.06 85);
+  --tipo-melhoria: oklch(87% 0.06 145);
+  --tipo-duvida: oklch(87% 0.06 230);
+
+  /* Ordinais daqui para baixo: uma família por campo, e mais tinta = mais urgência. */
+  --severidade-alta: oklch(70% 0 0);
+  --severidade-media: oklch(80% 0 0);
+  --severidade-baixa: oklch(90% 0 0);
+
+  --classe-expedite: oklch(74% 0.06 340);
+  --classe-data-fixa: oklch(82% 0.045 340);
+  --classe-padrao: oklch(89% 0.03 340);
+  --classe-intangivel: oklch(96% 0.012 340);
+
+  --rota-hotfix: oklch(74% 0.06 187);
+  --rota-curta: oklch(84% 0.04 187);
+  --rota-completa: oklch(93% 0.02 187);
 }
 
 /*
@@ -107,9 +176,11 @@
  * L=70.28 e 0.0295 em L=93.88, então repetir 0.1753 e 0.033 poria as duas cores fora do gamut. Ver o
  * comentário de gamut no topo desta folha para o que isso quebraria.
  *
- * As quatro cores de estado são as mesmas da lavanda, por escolha e não por herança: nada nesta
- * combinação pede um verde diferente, e repeti-las aqui é o preço de cada bloco ser uma paleta
- * completa e legível sozinha.
+ * As quatro cores de estado e as catorze etiquetas de campo são as mesmas da lavanda, por escolha e
+ * não por herança: nada nesta combinação pede um verde diferente nem um rosa diferente, e o que as
+ * catorze codificam é o vocabulário da esteira, não o clima da combinação. Repeti-las aqui é o preço
+ * de cada bloco ser uma paleta completa e legível sozinha — e uma combinação futura **pode**
+ * reafiná-las sem que nenhuma das regras acima precise ser reescrita.
  */
 [data-theme='ametista'] {
   --background: oklch(93.88% 0.025 278);
@@ -124,6 +195,26 @@
   --warning: oklch(84% 0.16 85); /* âmbar — pare e olhe: permissão pendente, ou dado envelhecido */
   --question: oklch(78% 0.13 230); /* azul — há uma pergunta aberta esperando resposta */
   --danger: oklch(70% 0.19 25); /* vermelho — quebrou, ou vai destruir algo */
+
+  /* `Tipo` é nominal: quatro matizes, uma luminosidade só. */
+  --tipo-bug: oklch(87% 0.06 25);
+  --tipo-debito: oklch(87% 0.06 85);
+  --tipo-melhoria: oklch(87% 0.06 145);
+  --tipo-duvida: oklch(87% 0.06 230);
+
+  /* Ordinais daqui para baixo: uma família por campo, e mais tinta = mais urgência. */
+  --severidade-alta: oklch(70% 0 0);
+  --severidade-media: oklch(80% 0 0);
+  --severidade-baixa: oklch(90% 0 0);
+
+  --classe-expedite: oklch(74% 0.06 340);
+  --classe-data-fixa: oklch(82% 0.045 340);
+  --classe-padrao: oklch(89% 0.03 340);
+  --classe-intangivel: oklch(96% 0.012 340);
+
+  --rota-hotfix: oklch(74% 0.06 187);
+  --rota-curta: oklch(84% 0.04 187);
+  --rota-completa: oklch(93% 0.02 187);
 }
 
 @theme inline {
@@ -139,6 +230,21 @@
   --color-warning: var(--warning);
   --color-question: var(--question);
   --color-danger: var(--danger);
+
+  --color-tipo-bug: var(--tipo-bug);
+  --color-tipo-debito: var(--tipo-debito);
+  --color-tipo-melhoria: var(--tipo-melhoria);
+  --color-tipo-duvida: var(--tipo-duvida);
+  --color-severidade-alta: var(--severidade-alta);
+  --color-severidade-media: var(--severidade-media);
+  --color-severidade-baixa: var(--severidade-baixa);
+  --color-classe-expedite: var(--classe-expedite);
+  --color-classe-data-fixa: var(--classe-data-fixa);
+  --color-classe-padrao: var(--classe-padrao);
+  --color-classe-intangivel: var(--classe-intangivel);
+  --color-rota-hotfix: var(--rota-hotfix);
+  --color-rota-curta: var(--rota-curta);
+  --color-rota-completa: var(--rota-completa);
 
   --spacing-boxShadowX: var(--box-shadow-x);
   --spacing-boxShadowY: var(--box-shadow-y);
@@ -177,8 +283,8 @@ body {
  * alcança os oito contêineres que rolam hoje e o nono que ainda não existe — que é o que uma
  * enumeração dos oito não faria. É a ausência de sujeito, e não a lista, que a canária guarda.
  *
- * **O polegar é `--main`, e é a troca de combinação que decide isso.** Das onze cores, só
- * `--background` e `--main` variam entre as combinações; as outras nove são idênticas por
+ * **O polegar é `--main`, e é a troca de combinação que decide isso.** Das vinte e cinco cores, só
+ * `--background` e `--main` variam entre as combinações; as outras vinte e três são idênticas por
  * construção. Um polegar preto de `--border` sobre trilho branco ficaria bonito, usaria token e
  * **não mudaria um pixel** de lavanda para ametista — reprovaria o requisito em silêncio.
  *

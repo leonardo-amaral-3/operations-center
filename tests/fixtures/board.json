@@ -17,7 +17,7 @@
     "a regra 2 do BoardReader existe para tolerar. É o PRIMEIRO da ordem de descoberta, e portanto o",
     "board que os quatro smokes desenham.",
     "",
-    "SINTÉTICOS DELE (6, acrescentados à mão, sempre no fim de items.nodes, ids PVTI_sintetico_):",
+    "SINTÉTICOS DELE (10, acrescentados à mão, sempre no fim de items.nodes, ids PVTI_sintetico_):",
     "  · PVTI_sintetico_issue_fechada — issue FECHADA em ✅ Produção e SEM responsável. Prova que issue",
     "    fechada entra (sem ela a última coluna nasceria vazia, o sintoma que a regra existe para",
     "    evitar) e cobre o cartão sem dono. O board real hoje não tem nenhum dos dois.",
@@ -35,6 +35,21 @@
     "    outro da mesma coluna: o board real não tem duas conversáveis juntas. Também é de repo",
     "    FORASTEIRO, e isso é a economia: em coluna conversável do repo-casa, abri-la subiria uma",
     "    sessão real do Claude Code e gastaria cota só para provar que OUTRO cartão colapsou.",
+    "  · PVTI_sintetico_epico — issue #905 em 🎯 Especificação, PAI de 906 e 907. É o épico do card #41:",
+    "    sem ele nenhum cartão teria fases a listar, e o CA-2 não teria o que desenhar.",
+    "  · PVTI_sintetico_fase_uma — issue #906 em 🔨 Implementação, com `parent` #905. A primeira fase, em",
+    "    coluna DIFERENTE da do épico — é o que torna o CA-4 verificável: a fase aparece na coluna dela,",
+    "    e não dentro do épico.",
+    "  · PVTI_sintetico_fase_duas — issue #907 em ✅ Produção, com `parent` #905. A segunda fase, numa",
+    "    TERCEIRA coluna: com uma fase só não daria para provar a ordem nem o nome de estação por fase.",
+    "  · PVTI_sintetico_fase_orfa — issue #908 em 📋 Backlog, com `parent` #909 — que NÃO tem item no",
+    "    board, de propósito. É a borda do CA-1: o crachá do épico sai do `parent` da API, e não da",
+    "    varredura do retrato, então ele aparece mesmo com o pai fora do board. Ele ocupa a Backlog e",
+    "    ainda sobram duas colunas vazias, que é do que a guarda de coluna vazia precisa.",
+    "",
+    "O `parent` das três fases vai no formato EXATO que a API devolve, com o `repository` DENTRO dele.",
+    "Errar o repo faz a inversão de src/core/board/epics.ts devolver zero fases EM SILÊNCIO: o cruzamento",
+    "é por `repo#número` dos dois lados, e um número que casa com o repo errado não casa com nada.",
     "",
     "=== ICSF-Solutions/19 e dono-sintetico/901 — INTEIRAMENTE SINTÉTICOS ===",
     "Os dois outros boards da esteira. Os itens são escritos à mão, e não capturados: arrastar os 37",
@@ -145,6 +160,13 @@
                         }
                       },
                       {
+                        "optionId": "8b82096b",
+                        "name": "⚪ Padrão",
+                        "field": {
+                          "name": "Classe"
+                        }
+                      },
+                      {
                         "optionId": "88b477d4",
                         "name": "Completa",
                         "field": {
@@ -252,6 +274,13 @@
                         "name": "✨ Melhoria",
                         "field": {
                           "name": "Tipo"
+                        }
+                      },
+                      {
+                        "optionId": "2f6c2c73",
+                        "name": "🔴 Expedite",
+                        "field": {
+                          "name": "Classe"
                         }
                       },
                       {
@@ -466,6 +495,211 @@
                       {
                         "optionId": "b3680a66",
                         "name": "👀 Revisão",
+                        "field": {
+                          "name": "Status"
+                        }
+                      },
+                      {
+                        "optionId": "b6b3a417",
+                        "name": "✨ Melhoria",
+                        "field": {
+                          "name": "Tipo"
+                        }
+                      },
+                      {
+                        "optionId": "432503f9",
+                        "name": "Comum",
+                        "field": {
+                          "name": "Módulo"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_sintetico_epico",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 905,
+                    "title": "Sintético: épico com duas fases, em estações diferentes da dele",
+                    "url": "https://github.com/leonardo-amaral-3/operations-center/issues/905",
+                    "closed": false,
+                    "repository": {
+                      "nameWithOwner": "leonardo-amaral-3/operations-center"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {
+                        "optionId": "b003f501",
+                        "name": "🎯 Especificação",
+                        "field": {
+                          "name": "Status"
+                        }
+                      },
+                      {
+                        "optionId": "b6b3a417",
+                        "name": "✨ Melhoria",
+                        "field": {
+                          "name": "Tipo"
+                        }
+                      },
+                      {
+                        "optionId": "432503f9",
+                        "name": "Comum",
+                        "field": {
+                          "name": "Módulo"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_sintetico_fase_uma",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 906,
+                    "title": "Sintético: fase de um épico que está no board, em outra coluna",
+                    "url": "https://github.com/leonardo-amaral-3/operations-center/issues/906",
+                    "closed": false,
+                    "repository": {
+                      "nameWithOwner": "leonardo-amaral-3/operations-center"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    },
+                    "parent": {
+                      "number": 905,
+                      "title": "Sintético: épico com duas fases, em estações diferentes da dele",
+                      "repository": {
+                        "nameWithOwner": "leonardo-amaral-3/operations-center"
+                      }
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {
+                        "optionId": "da732a01",
+                        "name": "🔨 Implementação",
+                        "field": {
+                          "name": "Status"
+                        }
+                      },
+                      {
+                        "optionId": "b6b3a417",
+                        "name": "✨ Melhoria",
+                        "field": {
+                          "name": "Tipo"
+                        }
+                      },
+                      {
+                        "optionId": "432503f9",
+                        "name": "Comum",
+                        "field": {
+                          "name": "Módulo"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_sintetico_fase_duas",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 907,
+                    "title": "Sintético: segunda fase do mesmo épico, numa terceira coluna",
+                    "url": "https://github.com/leonardo-amaral-3/operations-center/issues/907",
+                    "closed": true,
+                    "repository": {
+                      "nameWithOwner": "leonardo-amaral-3/operations-center"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    },
+                    "parent": {
+                      "number": 905,
+                      "title": "Sintético: épico com duas fases, em estações diferentes da dele",
+                      "repository": {
+                        "nameWithOwner": "leonardo-amaral-3/operations-center"
+                      }
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {
+                        "optionId": "98bb4dfe",
+                        "name": "✅ Produção",
+                        "field": {
+                          "name": "Status"
+                        }
+                      },
+                      {
+                        "optionId": "b6b3a417",
+                        "name": "✨ Melhoria",
+                        "field": {
+                          "name": "Tipo"
+                        }
+                      },
+                      {
+                        "optionId": "432503f9",
+                        "name": "Comum",
+                        "field": {
+                          "name": "Módulo"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PVTI_sintetico_fase_orfa",
+                  "content": {
+                    "__typename": "Issue",
+                    "number": 908,
+                    "title": "Sintético: fase cujo épico não está no board",
+                    "url": "https://github.com/leonardo-amaral-3/operations-center/issues/908",
+                    "closed": false,
+                    "repository": {
+                      "nameWithOwner": "leonardo-amaral-3/operations-center"
+                    },
+                    "assignees": {
+                      "nodes": [
+                        {
+                          "login": "leonardo-amaral-3"
+                        }
+                      ]
+                    },
+                    "parent": {
+                      "number": 909,
+                      "title": "Sintético: o épico que ficou de fora do retrato do board",
+                      "repository": {
+                        "nameWithOwner": "leonardo-amaral-3/operations-center"
+                      }
+                    }
+                  },
+                  "fieldValues": {
+                    "nodes": [
+                      {},
+                      {
+                        "optionId": "4c049744",
+                        "name": "📋 Backlog",
                         "field": {
                           "name": "Status"
                         }

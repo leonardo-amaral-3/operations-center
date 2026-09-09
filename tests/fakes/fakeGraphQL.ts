@@ -117,6 +117,15 @@ export interface IssueItemInput {
    * `Status` é um deles — item sem `Status` é item que a regra 4 deixa de fora.
    */
   fields?: Readonly<Record<string, readonly [value: string, optionId: string]>>
+  /**
+   * O nó `parent`, cru. **Não passar a opção deixa a chave ausente** — que é a forma da captura
+   * real de `tests/fixtures/board.json`, e o caso que `readParent` tem de narrar igual a `null`.
+   *
+   * `unknown` de propósito, e não um tipo montado: as formas tortas do pai (sem número, sem título,
+   * sem repositório) se escrevem literalmente no teste, como o `comments` do `cardEnvelope` já faz
+   * com o comentário malformado. Para a forma boa existe `parentNode`.
+   */
+  parent?: unknown
 }
 
 export function issueItem(input: IssueItemInput): Record<string, unknown> {
@@ -141,9 +150,26 @@ export function issueItem(input: IssueItemInput): Record<string, unknown> {
       closed,
       repository: { nameWithOwner: repository },
       assignees: { nodes: assignees.map((login) => ({ login })) },
+      // `in` e não `!== undefined`: é o que distingue "a issue não tem pai" (chave ausente, como na
+      // captura real) de `parent: null`, e os dois são casos separados do teste.
+      ...('parent' in input ? { parent: input.parent } : {}),
     },
     fieldValues: { nodes: fieldValueNodes(fields) },
   }
+}
+
+/**
+ * Um nó `parent` bem formado, como a API o devolve — com o `repository` **dentro** dele.
+ *
+ * Existe para que o teste não repita a forma aninhada em cada caso: errar o `nameWithOwner` produz
+ * um vínculo que some em silêncio, e uma helper é mais barata que descobrir isso pelo vermelho.
+ */
+export function parentNode(
+  number: number,
+  title = `Épico ${number}`,
+  repository = 'dono/repo',
+): Record<string, unknown> {
+  return { number, title, repository: { nameWithOwner: repository } }
 }
 
 /** Um rascunho do Projects: sem número, sem repo — e **com** `Status`, para provar o filtro por tipo. */

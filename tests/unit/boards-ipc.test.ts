@@ -609,6 +609,8 @@ function cartaoDe(board: DiscoveredBoard): BoardCard {
     assignees: [],
     columnId: 'opt_qualquer',
     fields: [],
+    parent: null,
+    phases: [],
   }
 }
 

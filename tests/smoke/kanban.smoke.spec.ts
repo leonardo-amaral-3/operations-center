@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
-import { STATUS_FIELD } from '../../src/core/board/query'
+import { CARD_FIELDS, STATUS_FIELD } from '../../src/core/board/query'
 import {
   BOARDS_FIXTURE_PATH,
   BOARD_FIXTURE_PATH,
@@ -59,6 +59,11 @@ interface FixtureNode {
     closed?: boolean
     repository?: { nameWithOwner: string }
     assignees?: { nodes: readonly { login: string }[] }
+    /**
+     * O épico de que este cartão é fase. **Ausente** na captura real de 2026-09-05, e é isso que
+     * o CA-3 mede: sem a chave, o cartão comum tem de sair igual ao de antes.
+     */
+    parent?: { number?: number; title?: string; repository?: { nameWithOwner: string } }
   }
   fieldValues: { nodes: readonly FixtureFieldValue[] }
 }
@@ -78,6 +83,20 @@ interface ExpectedCard {
   /** `owner/name`. O kanban não o desenha; a guarda da fixture o usa para vigiar a quinta borda. */
   repository: string
   assignees: readonly string[]
+  /** O épico de que este cartão é fase, ou `null`. Sai do `parent` da API, não do retrato. */
+  parent: ExpectedParent | null
+}
+
+/** O épico nomeado por uma fase — número e título, como a API os devolve. */
+interface ExpectedParent {
+  number: number
+  title: string
+  repository: string
+}
+
+/** Um cartão que **é** fase: o `parent` não é nulo, e o teste pode lê-lo sem guarda. */
+interface PhaseCard extends ExpectedCard {
+  parent: ExpectedParent
 }
 
 /** O retângulo que o Playwright devolve, em pixels da viewport. */
@@ -107,6 +126,77 @@ const EXPECTED_CARDS = NODES.map(toExpectedCard).filter((card) => card !== null)
 const EXCLUDED_NUMBERS = NODES.filter((node) => toExpectedCard(node) === null)
   .map((node) => node.content.number)
   .filter((number) => number !== undefined)
+
+/**
+ * A chave que identifica uma issue no board: repo **e** número, dos dois lados do cruzamento.
+ *
+ * Reescrita aqui, e não importada de `epics.ts`, pela mesma razão que `toExpectedCard` reescreve
+ * as regras do `BoardReader`: um teste que importa a implementação para saber o que esperar está
+ * comparando o código consigo mesmo. O repo entra porque um board hospeda issues de mais de um, e
+ * cruzar só por número penduraria uma fase sob um épico que não é o dela.
+ */
+function chave(repository: string, number: number): string {
+  return `${repository}#${number}`
+}
+
+/** As fases de cada épico que estão neste board, pela chave do épico, em ordem crescente. */
+const PHASES_BY_EPIC = agruparFases()
+
+function agruparFases(): ReadonlyMap<string, readonly ExpectedCard[]> {
+  const mapa = new Map<string, ExpectedCard[]>()
+
+  for (const card of EXPECTED_CARDS) {
+    if (card.parent === null) continue
+
+    const daquele = chave(card.parent.repository, card.parent.number)
+    const irmas = mapa.get(daquele)
+
+    if (irmas) irmas.push(card)
+    else mapa.set(daquele, [card])
+  }
+
+  for (const fases of mapa.values()) fases.sort((a, b) => a.number - b.number)
+
+  return mapa
+}
+
+/** As fases de um cartão — vazio para quase todos, que é o caso comum do CA-3. */
+function phasesOf(card: ExpectedCard): readonly ExpectedCard[] {
+  return PHASES_BY_EPIC.get(chave(card.repository, card.number)) ?? []
+}
+
+/**
+ * O épico com mais fases no board: o cartão em que o CA-2 tem mais o que provar.
+ *
+ * Derivado, e não escolhido pelo número: no dia em que a fixture ganhar um épico maior, é ele que
+ * este teste passa a medir, sem ninguém vir aqui trocar uma constante.
+ */
+const EPIC_CARD = required(
+  EXPECTED_CARDS.filter((card) => phasesOf(card).length > 0).sort(
+    (a, b) => phasesOf(b).length - phasesOf(a).length,
+  )[0],
+  'um épico com fases no próprio board (o CA-2)',
+)
+
+/**
+ * A fase cujo épico **não** tem cartão neste board — a borda do CA-1.
+ *
+ * É ela que separa "o crachá sai do `parent` da API" de "o crachá sai da varredura do retrato": as
+ * duas leituras dão o mesmo resultado em toda fase cujo pai está no board, e só divergem aqui.
+ */
+const ORPHAN_PHASE = required(
+  EXPECTED_CARDS.find((card): card is PhaseCard => {
+    const pai = card.parent
+
+    return (
+      pai !== null &&
+      !EXPECTED_CARDS.some(
+        (outro) => chave(outro.repository, outro.number) === chave(pai.repository, pai.number),
+      )
+    )
+  }),
+  'uma fase cujo épico está fora do board (a borda do CA-1)',
+)
 
 let app: ElectronApplication
 let window: Page
@@ -230,6 +320,43 @@ test('o cartão fechado entra, e o cartão sem dono diz que está sem dono', asy
   }
 })
 
+// Os dois testes do card #41. O `CA-n` do nome é o daquele card, e não o do #4 que os vizinhos
+// numeram — os dois conjuntos convivem neste arquivo, e o número sozinho seria ambíguo.
+test('#41 CA-1: a fase traz o crachá do épico mesmo com o épico fora do board', async () => {
+  const cracha = cardLocator(ORPHAN_PHASE.number).getByTestId('card-parent')
+
+  await expect(cracha).toHaveAttribute('data-parent-number', String(ORPHAN_PHASE.parent.number))
+  await expect(cracha).toContainText(`#${ORPHAN_PHASE.parent.number}`)
+
+  // O título do épico vai no `title`, e não na face: a coluna tem ~264px úteis e o crachá mostra
+  // só o número. É a segunda metade do CA-1.
+  expect(await cracha.getAttribute('title')).toContain(ORPHAN_PHASE.parent.title)
+
+  // E a metade que só esta borda prova: o épico não é cartão nenhum no kanban. Se o crachá viesse
+  // da varredura do retrato em vez do `parent` da API, aqui não haveria de onde tirá-lo.
+  await expect(cardLocator(ORPHAN_PHASE.parent.number)).toHaveCount(0)
+})
+
+test('#41 CA-2: o épico lista as fases deste board, cada uma com o nome da sua estação', async () => {
+  const fases = phasesOf(EPIC_CARD)
+  const naTela = cardLocator(EPIC_CARD.number).getByTestId('card-phase')
+
+  await expect(naTela).toHaveCount(fases.length)
+
+  for (const [index, fase] of fases.entries()) {
+    // `nth` é ordem de documento: comparar posição a posição é o que prova a ordem crescente por
+    // número, e não só que as mesmas fases estão todas lá.
+    const linha = naTela.nth(index)
+
+    await expect(linha).toHaveAttribute('data-phase-number', String(fase.number))
+    await expect(linha).toHaveAttribute('data-phase-column', fase.columnId)
+    await expect(linha).toContainText(`#${fase.number}`)
+    // O nome da estação sai das colunas da fixture. Escrevê-lo à mão aqui faria o teste quebrar no
+    // dia em que a estação fosse renomeada no board — um vermelho que não diz nada sobre o código.
+    await expect(linha).toContainText(nomeDaColuna(fase.columnId))
+  }
+})
+
 test('CA-2: a casca neobrutalista está na tela — borda de 2px, sombra dura e a paleta do tema', async () => {
   const column = window.getByTestId('column').first()
   const card = window.getByTestId('board-card').first()
@@ -297,9 +424,90 @@ test('CA-4: o carimbo de frescor sai preenchido e não acusa dado velho após a 
   expect(Number(readAt)).toBeGreaterThan(0)
 })
 
+/**
+ * CA-6: a cor da etiqueta de campo chega à tela.
+ *
+ * Dois elos que **nenhum** unitário deste repo cobre nem pode cobrir. O primeiro é a resolução do
+ * `twMerge`: a `Badge` chega com `bg-secondary-background` pela variante `neutral` e recebe a classe
+ * do campo por `className` — que a segunda vença é comportamento da primitiva, não da folha, e se um
+ * dia não vencer, os catorze tokens seguem existindo, passando em gamut, em AAA e em distância, e a
+ * tela continua branca. O segundo é a cascata inteira, de `data-theme` no `<html>` até o pixel.
+ *
+ * **Nenhum hex aqui**, pela mesma razão que `tema.smoke.spec.ts:22-26` declara: os valores absolutos
+ * são âncora do unitário, e congelá-los nos dois lugares é pagar duas vezes por uma prova só. O que
+ * se afirma é *diferença* e *não-é-a-face*.
+ *
+ * O que ele **não** afirma, de propósito: os quatro valores de `Tipo` ao mesmo tempo, os três de
+ * `Severidade`, os três de `Rota`. Que todos se distingam é do CA-1, no unitário, onde a prova é
+ * completa e barata; aqui prova-se que a cascata **entrega**, e para isso dois valores bastam.
+ */
+test('CA-6: a etiqueta de cada campo sai colorida, e dois valores não saem da mesma cor', async () => {
+  // A face do cartão — o `bg-secondary-background` que a variante `neutral` deixaria de pé se a
+  // classe do campo não vencesse. É o "branco" do critério, lido da tela em vez de digitado.
+  const face = await corDeFundo(window.getByTestId('board-card').first())
+
+  for (const field of CARD_FIELDS) {
+    const [um, outro] = doisCartoesQueDiferemEm(field)
+
+    const cor = await corDeFundo(etiquetaDe(um, field))
+    const outraCor = await corDeFundo(etiquetaDe(outro, field))
+
+    // Primeiro o não-branco, e nos dois cartões: se o `twMerge` não resolvesse, as duas cairiam na
+    // face **juntas** e a asserção de diferença sozinha passaria a acusar o sintoma errado.
+    for (const [numero, medida] of [
+      [um, cor],
+      [outro, outraCor],
+    ] as const) {
+      expect(
+        medida,
+        `a etiqueta ${field} do cartão #${numero} saiu com o fundo da face do cartão`,
+      ).not.toBe(face)
+    }
+
+    expect(
+      cor,
+      `os cartões #${um} e #${outro} têm ${field} diferente e a etiqueta saiu da mesma cor`,
+    ).not.toBe(outraCor)
+  }
+})
+
+/** O `optionId` que o item tem no campo, ou `undefined` se ele não tiver aquele campo. */
+function optionIdEm(node: FixtureNode, field: string): string | undefined {
+  return node.fieldValues.nodes.find((value) => value.field?.name === field)?.optionId
+}
+
 /** O `optionId` do `Status` do item, ou `undefined` se ele não estiver em coluna nenhuma. */
 function statusOptionId(node: FixtureNode): string | undefined {
-  return node.fieldValues.nodes.find((value) => value.field?.name === STATUS_FIELD)?.optionId
+  return optionIdEm(node, STATUS_FIELD)
+}
+
+/**
+ * Dois cartões **na tela** cujo valor daquele campo difere — derivados da fixture, nunca digitados.
+ *
+ * Escolher `#1` e `#901` a dedo faria o teste mentir no dia em que a fixture fosse recapturada com
+ * outros valores: ou ficaria verde comparando duas etiquetas que passaram a ser iguais, ou vermelho
+ * por um cartão que sumiu. O `throw` é o vermelho honesto desse dia — a fixture perdeu a borda que
+ * este critério precisa, e ele diz qual campo a perdeu.
+ */
+function doisCartoesQueDiferemEm(field: string): readonly [number, number] {
+  const primeiroCartaoDeCadaValor = new Map<string, number>()
+
+  for (const node of NODES) {
+    const card = toExpectedCard(node)
+    const optionId = optionIdEm(node, field)
+    if (card === null || optionId === undefined) continue
+    // O **primeiro** de cada valor, e não o último: assim a escolha é estável na ordem da fixture.
+    if (!primeiroCartaoDeCadaValor.has(optionId)) {
+      primeiroCartaoDeCadaValor.set(optionId, card.number)
+    }
+  }
+
+  const [um, outro] = [...primeiroCartaoDeCadaValor.values()]
+  if (um === undefined || outro === undefined) {
+    throw new Error(`a fixture não tem dois cartões na tela com ${field} diferente`)
+  }
+
+  return [um, outro]
 }
 
 /**
@@ -309,7 +517,7 @@ function statusOptionId(node: FixtureNode): string | undefined {
  */
 function toExpectedCard(node: FixtureNode): ExpectedCard | null {
   const columnId = statusOptionId(node)
-  const { __typename, number, title, closed, repository, assignees } = node.content
+  const { __typename, number, title, closed, repository, assignees, parent } = node.content
 
   if (__typename !== 'Issue' || number === undefined || columnId === undefined) return null
 
@@ -320,7 +528,41 @@ function toExpectedCard(node: FixtureNode): ExpectedCard | null {
     closed: closed === true,
     repository: repository?.nameWithOwner ?? '',
     assignees: (assignees?.nodes ?? []).map((assignee) => assignee.login),
+    parent: toExpectedParent(parent),
   }
+}
+
+/**
+ * O pai do envelope, com as mesmas tolerâncias do `readParent` do core: sem número não há pai, e
+ * `title`/`repository` ausentes viram `''` em vez de matar o vínculo.
+ */
+function toExpectedParent(parent: FixtureNode['content']['parent']): ExpectedParent | null {
+  if (parent?.number === undefined) return null
+
+  return {
+    number: parent.number,
+    title: parent.title ?? '',
+    repository: parent.repository?.nameWithOwner ?? '',
+  }
+}
+
+/** O nome da estação de um `optionId` — tirado das colunas do board, nunca digitado. */
+function nomeDaColuna(columnId: string): string {
+  return COLUMNS.find((column) => column.id === columnId)?.name ?? ''
+}
+
+/**
+ * A borda que o teste exige, ou vermelho na carga do módulo.
+ *
+ * Sem ela, a asserção que dependeria da borda passaria a provar outra coisa em silêncio — e um
+ * smoke que muda de assunto sozinho é pior que um que não roda.
+ */
+function required<T>(value: T | undefined, missing: string): T {
+  if (value === undefined) {
+    throw new Error(`a fixture do board não tem ${missing} — sem isso este smoke prova menos`)
+  }
+
+  return value
 }
 
 function cardsIn(columnId: string): readonly ExpectedCard[] {
@@ -366,6 +608,17 @@ function columnLocator(columnId: string): Locator {
 
 function cardLocator(number: number): Locator {
   return window.locator(cardSelector(number))
+}
+
+/**
+ * A etiqueta de um campo dentro de um cartão, pelo `data-field` que o `FieldBadge` declara.
+ *
+ * Pela âncora do campo e **não** pelo texto da opção: assim a fixture pode renomear `✨ Melhoria`
+ * sem levar este teste junto — o que importa aqui é qual campo a etiqueta desenha, não como ele se
+ * chama hoje no board.
+ */
+function etiquetaDe(number: number, field: string): Locator {
+  return cardLocator(number).locator(`[data-field="${field}"]`)
 }
 
 /**

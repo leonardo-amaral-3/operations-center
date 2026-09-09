@@ -42,6 +42,7 @@ fragment BoardFields on ProjectV2 {
           closed
           repository { nameWithOwner }
           assignees(first: 10) { nodes { login } }
+          parent { number title repository { nameWithOwner } }
         }
       }
       fieldValues(first: 30) {

@@ -1,8 +1,8 @@
 /**
  * A matemática de cor do processo main: converte a folha do design system para sRGB e mede
  * contraste. Puro, sem imports, e de propósito sem biblioteca — são ~35 linhas de matéria conhecida,
- * e uma dependência de cor traria um `package.json` a auditar e um espaço de API a aprender por três
- * funções.
+ * e uma dependência de cor traria um `package.json` a auditar e um espaço de API a aprender por
+ * quatro funções.
  *
  * Mora em `src/main/` e não em `src/shared/` porque o único consumidor de produção é o main: o
  * renderer não converte cor nenhuma, ele deixa o Chromium fazer isso. Pôr aqui evita que o renderer
@@ -16,6 +16,15 @@
 
 /** Um pixel em sRGB de 8 bits. */
 export type Rgb8 = readonly [number, number, number]
+
+/**
+ * Uma cor da folha, na ordem em que ela a escreve e em que `parseOklch` a devolve: luminosidade
+ * em porcentagem, croma absoluto, matiz em graus.
+ *
+ * Declarado aqui e não importado de `sheet.ts` pela mesma razão que este arquivo não importa nada:
+ * a matemática não deve depender do leitor. Os dois são a mesma forma, e é estrutural.
+ */
+export type Oklch = readonly [number, number, number]
 
 /**
  * A folga aceita ao testar se um canal linear cabe no sRGB.
@@ -47,6 +56,18 @@ function oitoBits(linear: number): number {
 }
 
 /**
+ * Croma e matiz viram os dois eixos cromáticos de OKLab.
+ *
+ * Extraído porque **duas** funções daqui precisam do mesmo passo — a conversão para sRGB e a
+ * distância —, e um par de linhas repetido a três de distância é como as duas começam a divergir.
+ */
+function eixosDeOklab(c: number, h: number): readonly [number, number] {
+  const radianos = (h * Math.PI) / 180
+
+  return [c * Math.cos(radianos), c * Math.sin(radianos)]
+}
+
+/**
  * Converte uma cor da folha para sRGB de 8 bits. `l` em porcentagem (0–100, como a folha escreve),
  * `c` em croma absoluto, `h` em graus.
  *
@@ -58,9 +79,7 @@ function oitoBits(linear: number): number {
  */
 export function oklchToSrgb(l: number, c: number, h: number): Rgb8 {
   const luz = l / 100
-  const radianos = (h * Math.PI) / 180
-  const eixoA = c * Math.cos(radianos)
-  const eixoB = c * Math.sin(radianos)
+  const [eixoA, eixoB] = eixosDeOklab(c, h)
 
   // OKLab → LMS não-linear.
   const lLinha = luz + 0.3963377774 * eixoA + 0.2158037573 * eixoB
@@ -109,4 +128,27 @@ export function contrastRatio(a: Rgb8, b: Rgb8): number {
   const yb = luminancia(b)
 
   return (Math.max(ya, yb) + 0.05) / (Math.min(ya, yb) + 0.05)
+}
+
+/**
+ * A distância euclidiana em OKLab entre duas cores da folha — a régua do CA-1 do #44.
+ *
+ * **Em OKLab, e não no cilíndrico em que a folha escreve.** Lá a distância não é euclidiana: 60° de
+ * matiz separam muito num croma alto e quase nada num croma baixo, e subtrair graus diria a mesma
+ * coisa nos dois casos. Passar pelos eixos `a`/`b` antes de subtrair é o que faz o limiar de 0.05
+ * significar a mesma coisa em qualquer canto do círculo.
+ *
+ * **A luminosidade entra como fração**, e não como a porcentagem que a folha escreve: os três eixos
+ * têm de estar na mesma unidade, senão a raiz quadrada mistura décimos com centésimos e o número
+ * que sai não é distância de nada.
+ *
+ * **Nasce sem consumidor de produção, e tem precedente:** `contrastRatio` também não tem. Este
+ * arquivo é a matemática da folha, e a folha é cobrada por teste; a alternativa — uma cópia da
+ * fórmula dentro da canária — é a forma de a régua do teste divergir da régua do app em silêncio.
+ */
+export function oklabDistance([l1, c1, h1]: Oklch, [l2, c2, h2]: Oklch): number {
+  const [a1, b1] = eixosDeOklab(c1, h1)
+  const [a2, b2] = eixosDeOklab(c2, h2)
+
+  return Math.hypot((l1 - l2) / 100, a1 - a2, b1 - b2)
 }

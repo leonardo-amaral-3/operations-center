@@ -13,7 +13,9 @@ export type {
   Board,
   BoardCard,
   BoardCardField,
+  BoardCardParent,
   BoardColumn,
+  BoardPhase,
   CardComment,
   CardContent,
 } from '../../shared/board'

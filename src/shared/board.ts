@@ -36,6 +36,43 @@ export interface BoardCardField {
   optionId: string
 }
 
+/**
+ * O épico de que este cartão é fase, como a API o devolve.
+ *
+ * Vem do `parent` da issue, e não da varredura do retrato, porque um épico pode estar **fora do
+ * board** — e a fase precisa saber nomeá-lo do mesmo jeito.
+ */
+export interface BoardCardParent {
+  number: number
+  title: string
+  /** `owner/name`. É o que desempata número igual em repos diferentes no mesmo board. */
+  repository: string
+}
+
+/**
+ * Uma fase daquele épico **que está neste board**. Derivada por inversão, no core.
+ *
+ * Fase fora do board, em outra aba, ou que não vira cartão não entra aqui — os três casos estão
+ * nomeados no Technical Overview da spec do #41.
+ */
+export interface BoardPhase {
+  /** Chave de render, e a mesma chave estável do `BoardCard`. */
+  itemId: string
+  number: number
+  /** Só para o `title` do hover; a linha desenha o número e a estação. */
+  title: string
+  /** optionId da coluna onde a fase está — a verdade, e a âncora do smoke. */
+  columnId: string
+  /**
+   * O nome da estação, já resolvido pelo core contra as `columns` do mesmo retrato.
+   *
+   * Resolvido aqui, e não na tela, pelo mesmo argumento do `conversable`: o core tem as colunas em
+   * mãos no instante da leitura, e mandar a tela refazer o cruzamento criaria uma segunda cópia da
+   * regra. `''` quando o board não declara a opção.
+   */
+  columnName: string
+}
+
 export interface BoardCard {
   /** id do item no Project (`PVTI_…`). Chave de render: estável mesmo se a issue mudar de repo. */
   itemId: string
@@ -50,6 +87,13 @@ export interface BoardCard {
   columnId: string
   /** Na ordem de `CARD_FIELDS`. Campo vazio no board simplesmente não entra na lista. */
   fields: readonly BoardCardField[]
+  /** O épico de que este cartão é fase, ou `null` — que é o caso da maioria. */
+  parent: BoardCardParent | null
+  /**
+   * As fases deste cartão **que estão neste board**, em ordem crescente de número. Vazia para a
+   * maioria, e é a lista vazia que faz o cartão comum desenhar exatamente como hoje (CA-3).
+   */
+  phases: readonly BoardPhase[]
 }
 
 export interface Board {
