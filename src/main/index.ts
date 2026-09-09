@@ -129,6 +129,13 @@ function createWindow(theme: Theme): BrowserWindow {
     // é a união desses mesmos nomes, então a chave sempre existe. A reserva é a default, e não um
     // `throw`, porque daqui para baixo já se roda dentro do `whenReady`.
     backgroundColor: CORES_DE_JANELA.get(theme) ?? windowBackground(THEME_DEFAULT),
+    // Sem moldura do sistema: a barra de título, os três botões e o recorte da janela passam a ser
+    // desenhados pelo renderer, com os tokens da combinação corrente. É o card #21 inteiro.
+    frame: false,
+    // Canto de 90°, contra os cantos arredondados que o Windows 11 aplica por padrão. Medido: sem
+    // esta linha uma janela `frame: false` continua arredondada; com ela, os quatro cantos são
+    // retos. A tipagem fala em "frameless window" e é literal — não há efeito com `frame: true`.
+    roundedCorners: false,
     show: false,
     autoHideMenuBar: true,
     title: 'Operations Center',

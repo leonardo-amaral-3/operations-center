@@ -10,6 +10,8 @@
  * janela desconhecida — o exige explicitamente.
  */
 
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 
 const { handlers, janelasPorSender } = vi.hoisted(() => ({
@@ -237,5 +239,49 @@ describe('o observador publica o estado da janela', () => {
     bancada.disparar('unmaximize')
 
     expect(bancada.publicados).toEqual([])
+  })
+})
+
+describe('a janela continua nascendo sem a moldura do sistema', () => {
+  // Canária de fonte, no molde de `markdown-nas-duas-telas.test.ts` ("a guarda de navegação
+  // continua pendurada no main") e pela mesma razão: o canto reto e a ausência de barra de título
+  // são desenho do Electron e do DWM, fora do alcance de qualquer dublê. O que dá para vigiar é a
+  // linha que os pede — e ela se desfaz em silêncio, porque uma refatoração do `createWindow` que
+  // leve as duas chaves junto não é erro de compilação, nem de lint, nem de unitário. Sem elas o
+  // app volta a se apresentar como duas coisas (CA-1 e CA-2), com os testes todos verdes.
+  const CHAVES = ['frame: false', 'roundedCorners: false'] as const
+
+  /**
+   * Só o corpo do `createWindow` conta: a afirmação é sobre a janela que sobe, e não sobre o arquivo.
+   */
+  function lerCreateWindow(): string {
+    const fonte = readFileSync(
+      fileURLToPath(new URL('../../src/main/index.ts', import.meta.url)),
+      'utf8',
+    )
+    const abertura = fonte.indexOf('function createWindow(')
+
+    // Sanidade do recorte, como na varredura do markdown: uma função renomeada daria `-1` aqui e um
+    // trecho vazio passaria verde contra o nada, que é o modo de falha exato que esta canária existe
+    // para não ter.
+    expect(abertura).toBeGreaterThan(-1)
+
+    // O `}` na coluna zero é o fim da função: é o que o Prettier garante neste repo, e é mais barato
+    // do que contar chaves.
+    const corpo = fonte.slice(abertura)
+    const fechamento = corpo.search(/^}/m)
+
+    expect(fechamento).toBeGreaterThan(0)
+
+    return corpo.slice(0, fechamento)
+  }
+
+  it('`createWindow` declara `frame: false` e `roundedCorners: false`', () => {
+    const corpo = lerCreateWindow()
+
+    // As duas na mesma asserção, e a lista do que falta em vez do booleano: `roundedCorners` sem
+    // `frame` não tem efeito nenhum, e `frame` sem `roundedCorners` deixa os cantos arredondados do
+    // Windows 11 de pé. Faltando uma, a falha já diz qual.
+    expect(CHAVES.filter((chave) => !corpo.includes(chave))).toEqual([])
   })
 })
