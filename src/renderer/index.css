@@ -393,6 +393,39 @@ body,
  */
 body {
   background-color: var(--background);
+
+  /* A janela também é superfície do design system, e por isso também é recortada. 2px de
+     `--border`, como toda casca — e `--border` é preto nas três combinações, então a moldura não
+     muda de cor: o que ela faz é deixar de ser do sistema.
+
+     No `body` e não numa div do React: o preflight do Tailwind põe `box-sizing: border-box` em
+     tudo, então os 2px saem da altura de 100% que `html, body, #root` declaram logo acima, e o
+     `#root` continua medindo contra a caixa de conteúdo. Uma div faria o mesmo desenho e deixaria
+     de fora justamente a área que o overscroll pinta.
+
+     A linha de 1px que o DWM desenha continua existindo, por fora destes 2px — não há API no
+     Electron para a cor dela (medido, card #21). Encostada num preto de 2px ela deixa de ler como
+     chrome do sistema, que é o que o card pede. */
+  border: 2px solid var(--border);
+}
+
+/*
+ * A região de arrasto da janela, agora que não há barra de título do sistema para arrastar.
+ *
+ * `@utility` do Tailwind v4 e não a propriedade arbitrária `[-webkit-app-region:drag]`: são duas
+ * classes usadas quatro vezes num arquivo só, e o nome é o que diz o que elas fazem — a forma
+ * arbitrária diria a mesma coisa em cima do JSX e não teria onde pendurar este comentário.
+ *
+ * **A que nega é obrigatória, e não decorativa.** Um elemento dentro de uma região de arrasto para
+ * de receber clique: sem `nao-arrasta-a-janela`, os três botões da faixa seriam alça de arrastar e
+ * nenhum deles funcionaria.
+ */
+@utility arrasta-a-janela {
+  -webkit-app-region: drag;
+}
+
+@utility nao-arrasta-a-janela {
+  -webkit-app-region: no-drag;
 }
 
 /*
