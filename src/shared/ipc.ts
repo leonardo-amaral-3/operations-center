@@ -57,6 +57,24 @@ export const IPC_INVOKE = {
    * escapar — `theme:` já não colide com prefixo nenhum que fale com a rede.
    */
   setTheme: 'theme:set',
+  /**
+   * A janela: o retrato dela e os três comandos da faixa que substituiu a barra de título do
+   * sistema.
+   *
+   * **O prefixo `window:` é família nova.** Não é `ui:` — aquele nasceu, por comentário logo acima,
+   * para tirar uma escrita solta de dentro de `boards:`, e aqui não há de que escapar. E não cabe
+   * em `session:`: o `close` de lá já é `'session:close'`, e é justamente por isso que estes se
+   * chamam `closeWindow`/`minimizeWindow`/`toggleMaximizeWindow` — a janela e a sessão não podem
+   * ter nomes que se confundam, porque fechar uma não é fechar a outra.
+   *
+   * **Os três comandos são `invoke` apesar de não serem perguntas.** É a convenção que
+   * `activateBoard` e `setTheme` já estabeleceram: toda escrita da ponte é `invoke`, e abrir uma
+   * segunda forma para três canais custaria mais do que o `Promise<void>` que ninguém espera.
+   */
+  readWindow: 'window:read',
+  minimizeWindow: 'window:minimize',
+  toggleMaximizeWindow: 'window:toggle-maximize',
+  closeWindow: 'window:close',
 } as const
 
 /** Main → renderer. Avisos de mão única, disparados pelo `core` quando a sessão se mexe. */
@@ -89,6 +107,13 @@ export const IPC_EVENT = {
    * humano nesta janela: o retrato volta a todos os assinantes, inclusive a quem pediu.
    */
   theme: 'theme:changed',
+  /**
+   * A janela maximizou ou restaurou. Canal próprio pela mesma razão de `theme`, `dangerous` e
+   * `conversations` — é estado do app, tem de aparecer na hora, e nada tem a ver com o throttle de
+   * 10s do board. Ele existe porque a janela muda **por fora** da faixa: duplo clique, `Win+↑`,
+   * arrastar para o topo. Sem o evento, o botão do meio mentiria em todos esses caminhos.
+   */
+  window: 'window:changed',
 } as const
 
 /**
@@ -316,6 +341,14 @@ export interface SetThemeRequest {
 }
 
 /**
+ * Se a janela está maximizada. Um campo só, e retrato inteiro mesmo assim — a mesma postura do
+ * `ThemeSnapshot`: o que atravessa a ponte é o estado, nunca um delta.
+ */
+export interface WindowSnapshot {
+  maximized: boolean
+}
+
+/**
  * A superfície inteira que o renderer enxerga, exposta como `window.oc` pelo preload. O que não
  * está aqui não existe do lado de lá — não há `ipcRenderer`, não há `require`, não há Node.
  *
@@ -430,6 +463,25 @@ export interface OcApi {
   setTheme(request: SetThemeRequest): Promise<void>
   /** Toda troca de combinação, inclusive a que esta janela pediu. */
   onTheme(listener: (snapshot: ThemeSnapshot) => void): () => void
+
+  /**
+   * O estado da janela agora — e, como `readTheme`, **também é a assinatura**: quem lê entra no
+   * conjunto que recebe `onWindow`.
+   */
+  readWindow(): Promise<WindowSnapshot>
+  /** Toda maximização e toda restauração, inclusive as que não vieram da faixa. */
+  onWindow(listener: (snapshot: WindowSnapshot) => void): () => void
+  minimizeWindow(): Promise<void>
+  /**
+   * Maximiza ou restaura — e **quem decide qual é o main**, não esta chamada. O renderer manda a
+   * intenção; o estado é da janela, que muda por caminhos que o renderer não vê.
+   */
+  toggleMaximizeWindow(): Promise<void>
+  /**
+   * Fecha a janela. Encerrar o app segue sendo consequência do `window-all-closed` do main, e não
+   * desta chamada.
+   */
+  closeWindow(): Promise<void>
 }
 
 declare global {

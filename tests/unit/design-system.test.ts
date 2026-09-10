@@ -1049,6 +1049,119 @@ describe('a barra não decide cor', () => {
 })
 
 /**
+ * O CA-3: a moldura da janela sai da paleta.
+ *
+ * Mesmo molde da canária acima, mesmo argumento — a casca do app é do tema, não do arquivo — e outro
+ * sujeito: ali o bloco `::-webkit-scrollbar`, aqui a regra `body`, que desde o #21 recorta a janela
+ * inteira em 2px agora que a moldura deixou de ser a do sistema.
+ *
+ * **Existência e cor na mesma lista, e é de propósito.** O modo de falha desta feature não é escrever
+ * `#000` — é a regra `border` **sumir** numa recomposição da folha, e a janela voltar a não ter
+ * moldura nenhuma sem um vermelho em lugar nenhum, exatamente como o rollback pela metade que a
+ * primeira canária da barra cobre. `[]` diz "a moldura sumiu" e `['#000']` diz "a cor foi escrita à
+ * mão": são consertos diferentes, e a lista os distingue enquanto um booleano os confundiria.
+ *
+ * **Sem opinião sobre geometria, como a canária da barra.** Só o que não é espessura nem traço chega
+ * à asserção, então trocar os 2px por 3 é ajuste de design e não violação — o que não passa é a cor
+ * deixar de ser `var(--border)`. A verificação a olho nas três combinações e com a janela maximizada
+ * é bloqueante na validação em dev: nenhum teste enxerga o que o DWM desenha por fora destes 2px.
+ */
+
+/** O vocabulário não-cromático de uma borda: espessura e traço. O que sobrar é a cor. */
+const VALOR_SEM_COR_DA_BORDA = /^(?:\d+(?:\.\d+)?(?:px|rem|em|%)|solid|dashed|dotted|none)$/
+
+describe('a moldura da janela não decide cor', () => {
+  it('a regra `body` declara `border`, e a cor dela é `var(--border)`', () => {
+    const corpo = [...lerFolhaSemComentarios().matchAll(REGRA)].find(
+      (regra) => (regra.groups?.['seletor'] ?? '').trim() === 'body',
+    )?.groups?.['corpo']
+
+    // A existência da regra primeiro, e separada: uma folha sem `body` nenhum não tem declaração para
+    // reclamar, e o vermelho da lista lá embaixo mandaria procurar uma cor num lugar que não existe.
+    expect(corpo).toBeDefined()
+
+    const cores = (corpo ?? '')
+      .split(';')
+      .map((declaracao) => declaracao.trim())
+      .filter((declaracao) => /^border\s*:/.test(declaracao))
+      .flatMap((declaracao) =>
+        (declaracao.split(/\s*:\s*/, 2)[1] ?? '')
+          .split(/\s+/)
+          .filter((token) => !VALOR_SEM_COR_DA_BORDA.test(token)),
+      )
+
+    expect(cores).toEqual(['var(--border)'])
+  })
+})
+
+/**
+ * O outro lado do CA-2: a faixa arrasta a janela, e os botões dela não.
+ *
+ * Duas afirmações num par, e é o par que vale. A folha declara as duas `@utility` — a que arrasta e
+ * a que **nega** — e a faixa usa uma vez a primeira e três vezes a segunda, uma por botão.
+ *
+ * **A que nega é o sujeito desta canária.** Um elemento dentro de uma região de arrasto para de
+ * receber clique: apagar `nao-arrasta-a-janela` de um botão o transforma em alça de arrastar, ele
+ * deixa de responder, e **nada** fica vermelho — não é erro de tipo, não é erro de lint, e o teste de
+ * renderer continua verde porque `-webkit-app-region` não existe em `jsdom`. É um defeito que só a
+ * janela de verdade mostra, e é por isso que a contagem mora aqui.
+ *
+ * **Os dois lados lidos sem comentário**, como as canárias da barra fazem com a folha — e aqui não
+ * é zelo hipotético: o parágrafo que explica as duas utilidades cita as duas pelo nome dos dois
+ * lados, na folha e no JSX. Sobre o texto cru, esta contagem acharia a classe num comentário e
+ * passaria verde sobre um arquivo que a tivesse perdido do botão.
+ *
+ * Apagar comentário de linha por regex erra por excesso em arquivo com `//` dentro de string — e
+ * **é o erro que se quer**, porque ele só pode apagar uso de verdade e derrubar a canária. O erro na
+ * outra direção é que seria caro: verde sobre um botão que virou alça de arrasto.
+ *
+ * **Na ordem de declaração, e não ordenada.** A primeira ocorrência ser a que arrasta é a própria
+ * estrutura da faixa: a região é o contêiner, as negações são os botões dentro dela. Uma lista
+ * ordenada diria a mesma contagem e deixaria passar o inverso — os botões arrastando e a faixa não.
+ */
+const CAMINHO_DA_FAIXA = fileURLToPath(
+  new URL('../../src/renderer/components/WindowBar.tsx', import.meta.url),
+)
+
+/** O comentário de linha, que a folha não tem e o TSX tem — o de bloco já é o `COMENTARIO` acima. */
+const COMENTARIO_DE_LINHA = /\/\/[^\n]*/g
+
+/** A faixa sem comentário nenhum: o de bloco do JSX cai no `COMENTARIO`, e o de linha neste. */
+function lerFaixaSemComentarios(): string {
+  return readFileSync(CAMINHO_DA_FAIXA, 'utf8')
+    .replace(COMENTARIO, '')
+    .replace(COMENTARIO_DE_LINHA, '')
+}
+
+/** As duas classes de arrasto, e só elas: o prefixo que nega é grupo, para não contar duas vezes. */
+const CLASSE_DE_ARRASTO = /(?<![\w-])(nao-)?arrasta-a-janela(?![\w-])/g
+
+describe('a faixa arrasta a janela, e os três botões dela não', () => {
+  it('a folha declara as duas `@utility` de arrasto', () => {
+    const declaradas = [...lerFolhaSemComentarios().matchAll(/@utility\s+([\w-]+)/g)].map(
+      ([, nome]) => nome,
+    )
+
+    // A existência primeiro, e separada da contagem — o mesmo arranjo das duas canárias da barra:
+    // sem a folha, a contagem do arquivo passaria verde sobre classes que não existem em lugar
+    // nenhum, e o JSX ficaria decorando o nome de uma utilidade apagada.
+    expect(declaradas).toContain('arrasta-a-janela')
+    expect(declaradas).toContain('nao-arrasta-a-janela')
+  })
+
+  it('`WindowBar.tsx` arrasta uma vez e nega três', () => {
+    const usos = [...lerFaixaSemComentarios().matchAll(CLASSE_DE_ARRASTO)].map(([uso]) => uso)
+
+    expect(usos).toEqual([
+      'arrasta-a-janela',
+      'nao-arrasta-a-janela',
+      'nao-arrasta-a-janela',
+      'nao-arrasta-a-janela',
+    ])
+  })
+})
+
+/**
  * A guarda das varreduras: cada raiz varrida tem de devolver ao menos um arquivo.
  *
  * Sem ela, renomear `src/renderer/` — ou mudar a extensão da fonte — deixaria as varreduras **verdes

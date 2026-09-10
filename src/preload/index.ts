@@ -27,6 +27,7 @@ import type {
   StartResult,
   StopRequest,
   ThemeSnapshot,
+  WindowSnapshot,
 } from '../shared/ipc'
 import { isTheme, THEME_DEFAULT, THEME_FLAG } from '../shared/theme'
 import type { Theme } from '../shared/theme'
@@ -130,6 +131,11 @@ const api: OcApi = {
   setTheme: (request: SetThemeRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.setTheme, request) as Promise<void>,
   onTheme: (listener) => subscribe<ThemeSnapshot>(IPC_EVENT.theme, listener),
+  readWindow: () => ipcRenderer.invoke(IPC_INVOKE.readWindow) as Promise<WindowSnapshot>,
+  onWindow: (listener) => subscribe<WindowSnapshot>(IPC_EVENT.window, listener),
+  minimizeWindow: () => ipcRenderer.invoke(IPC_INVOKE.minimizeWindow) as Promise<void>,
+  toggleMaximizeWindow: () => ipcRenderer.invoke(IPC_INVOKE.toggleMaximizeWindow) as Promise<void>,
+  closeWindow: () => ipcRenderer.invoke(IPC_INVOKE.closeWindow) as Promise<void>,
 }
 
 contextBridge.exposeInMainWorld('oc', api)
