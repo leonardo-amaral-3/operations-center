@@ -98,16 +98,16 @@ vazia e ninguém é avisado. Confira com `gh auth status`; se faltar, `gh auth r
 
 ## Comandos
 
-| Comando          | O que faz                                                                                                                                                                                                                                                                                                                                            |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `yarn dev`       | sobe o app com hot reload do renderer                                                                                                                                                                                                                                                                                                                |
-| `yarn build`     | compila os três bundles (main, preload, renderer) em `out/`                                                                                                                                                                                                                                                                                          |
-| `yarn package`   | compila e empacota o executável em `dist/win-unpacked/` (Windows; ver `## Executável`)                                                                                                                                                                                                                                                               |
-| `yarn test`      | Vitest — as unidades do core. Sem rede, sem credencial, determinístico                                                                                                                                                                                                                                                                               |
-| `yarn smoke`     | compila e roda os oito smokes de ponta a ponta (Playwright + Electron): os **quatro que leem fixture** e não tocam a rede — o do kanban, o do conteúdo do cartão, o do tema e o da triagem —, e os **quatro que sobem sessão real** — o da fatia vertical, o do cartão-chat, o da retomada e o das abas —, que precisam do login e **consomem cota** |
-| `yarn lint`      | ESLint                                                                                                                                                                                                                                                                                                                                               |
-| `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                                                                                                                        |
-| `yarn format`    | Prettier                                                                                                                                                                                                                                                                                                                                             |
+| Comando          | O que faz                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yarn dev`       | sobe o app com hot reload do renderer                                                                                                                                                                                                                                                                                                                            |
+| `yarn build`     | compila os três bundles (main, preload, renderer) em `out/`                                                                                                                                                                                                                                                                                                      |
+| `yarn package`   | compila e empacota o executável em `dist/win-unpacked/` (Windows; ver `## Executável`)                                                                                                                                                                                                                                                                           |
+| `yarn test`      | Vitest — as unidades do core. Sem rede, sem credencial, determinístico                                                                                                                                                                                                                                                                                           |
+| `yarn smoke`     | compila e roda os nove smokes de ponta a ponta (Playwright + Electron): os **cinco que leem fixture** e não tocam a rede — o do kanban, o do conteúdo do cartão, o do tema, o da triagem e o da janela —, e os **quatro que sobem sessão real** — o da fatia vertical, o do cartão-chat, o da retomada e o das abas —, que precisam do login e **consomem cota** |
+| `yarn lint`      | ESLint                                                                                                                                                                                                                                                                                                                                                           |
+| `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                                                                                                                                    |
+| `yarn format`    | Prettier                                                                                                                                                                                                                                                                                                                                                         |
 
 `yarn lint`, `yarn typecheck` e `yarn test` formam o portão de qualidade, e são exatamente o que o
 CI roda a cada PR para `dev` e `main`. Os smokes ficam de fora do CI de propósito: o runner nem
@@ -193,15 +193,16 @@ chat — e agora **um clique num cartão já é um pedido**, porque a sessão da
 cartão aberto e esquecido não gasta nada enquanto ninguém fala com ele, mas dez cartões conversando
 são dez sessões disputando a mesma cota.
 
-**Quatro dos oito smokes sobem sessão real e consomem cota**: o da fatia vertical, o do cartão-chat,
+**Quatro dos nove smokes sobem sessão real e consomem cota**: o da fatia vertical, o do cartão-chat,
 o da retomada e o das abas. O do cartão-chat é o mais caro — ele levanta uma sessão para conversar e
 outra ao provar que abrir um segundo cartão colapsa o primeiro —, o da retomada gasta dois turnos,
 um em cada ciclo de vida do app, e o das abas é o mais barato dos quatro: levanta duas sessões, uma
 por aba, e só uma delas chega a falar. Os quatro escapam do pior somando as mesmas duas coisas:
 `OC_MODEL` num modelo barato e `OC_ISOLATED=1` — este último é o que mais pesa, porque a maior parte
-daqueles 20 centavos era carregamento de contexto. Os outros quatro não custam nada: o do kanban, o
-do conteúdo do cartão, o do tema e o da triagem leem fixture e nunca sobem sessão — este último
-porque a aba da fixture tem cartões de dois repos, e sem repo unânime a triagem nem tenta subir.
+daqueles 20 centavos era carregamento de contexto. Os outros cinco não custam nada: o do kanban, o
+do conteúdo do cartão, o do tema, o da triagem e o da janela leem fixture e nunca sobem sessão — o
+da triagem porque a aba da fixture tem cartões de dois repos, e sem repo unânime a triagem nem
+tenta subir.
 
 **E há um preço que não é de cota.** Cada cartão pode ser marcado para rodar _sem pedir permissão_:
 naquele chat as ferramentas do Claude Code executam sozinhas, e escrever no repo do cartão deixa de
