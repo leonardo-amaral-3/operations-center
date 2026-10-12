@@ -2,7 +2,13 @@ import { scopeKey } from '../../src/shared/ipc'
 import type {
   ChooseFolderResult,
   CloseRequest,
+  CreateFreeResult,
+  FreeSnapshot,
+  LayoutSnapshot,
   OcApi,
+  OpenTerminalRequest,
+  OpenTerminalResult,
+  TerminalPresetsSnapshot,
   SessionActivityEvent,
   SessionInitEvent,
   SessionMessageEvent,
@@ -13,6 +19,13 @@ import type {
   WindowSnapshot,
 } from '../../src/shared/ipc'
 import { IDLE_ACTIVITY } from '../../src/shared/session'
+
+/** A mesa de quem nunca abriu nada: dock fechado e vazio, painel fechado, nenhum perfil lembrado. */
+const LAYOUT_VAZIO: LayoutSnapshot = {
+  dock: { open: false, height: 280, terminals: [], active: null },
+  side: { open: false, width: 480, active: null },
+  lastPreset: null,
+}
 
 /**
  * O falso da ponte `window.oc`, para os testes que precisam de `useEffect` rodando de verdade.
@@ -52,15 +65,21 @@ export interface OcFake {
    * afirmada em vez de suposta.
    */
   readonly pedidosDaJanela: readonly string[]
+  /** Os membros da mesa que a tela chamou (`createFree`, `openTerminal`…), na ordem e pelo nome. */
+  readonly pedidosDaMesa: readonly string[]
+  /** Os pedidos de `openTerminal` inteiros — o perfil e o escopo que a tela escolheu. */
+  readonly terminaisAbertos: readonly OpenTerminalRequest[]
   /** Publica um retrato da janela aos assinantes de `onWindow`, como o observador do main faz. */
   publicarJanela(snapshot: WindowSnapshot): void
 }
 
 /** Instala o falso em `window.oc` e devolve o registro do que a tela pediu. */
-export function instalarOc(): OcFake {
+export function instalarOc(layout: LayoutSnapshot = LAYOUT_VAZIO): OcFake {
   const fechadas: string[] = []
   const entregues: string[] = []
   const pedidosDaJanela: string[] = []
+  const pedidosDaMesa: string[] = []
+  const terminaisAbertos: OpenTerminalRequest[] = []
 
   // As sessões vivas por escopo, que é o que faz o `start` ser idempotente. Um `Map`, e não um id
   // só, porque a mesma tela pode ter dois escopos em cena ao mesmo tempo.
@@ -191,6 +210,59 @@ export function instalarOc(): OcFake {
 
       return Promise.resolve()
     },
+
+    // A mesa (#74) também só registra: o layout que ela lê é o que o teste semeou, e o PTY que ela
+    // abre é um id fixo — quem fala com um shell de verdade é o smoke, não este falso.
+    readLayout(): Promise<LayoutSnapshot> {
+      pedidosDaMesa.push('readLayout')
+
+      return Promise.resolve(layout)
+    },
+
+    setLayout(): Promise<void> {
+      pedidosDaMesa.push('setLayout')
+
+      return Promise.resolve()
+    },
+
+    readTerminalPresets(): Promise<TerminalPresetsSnapshot> {
+      return Promise.resolve({
+        presets: [
+          { id: 'powershell', label: 'PowerShell', group: 'shell' },
+          { id: 'git-bash', label: 'Git Bash', group: 'shell' },
+        ],
+      })
+    },
+
+    openTerminal(request: OpenTerminalRequest): Promise<OpenTerminalResult> {
+      pedidosDaMesa.push('openTerminal')
+      terminaisAbertos.push(request)
+
+      return Promise.resolve({
+        opened: true,
+        terminal: { id: `pty_${terminaisAbertos.length}`, preset: request.preset, title: request.preset },
+      })
+    },
+
+    closeTerminal(): Promise<void> {
+      pedidosDaMesa.push('closeTerminal')
+
+      return Promise.resolve()
+    },
+
+    readFree(): Promise<FreeSnapshot> {
+      return Promise.resolve({ sessions: [] })
+    },
+
+    createFree(): Promise<CreateFreeResult> {
+      pedidosDaMesa.push('createFree')
+
+      return Promise.resolve({ created: false })
+    },
+
+    onFree(): () => void {
+      return () => undefined
+    },
   }
 
   // A asserção mora aqui, e não no descritor: o `value` de um `PropertyDescriptor` é `any` e
@@ -206,6 +278,8 @@ export function instalarOc(): OcFake {
     fechadas,
     entregues,
     pedidosDaJanela,
+    pedidosDaMesa,
+    terminaisAbertos,
     // Cópia do registro antes de percorrer, como o `close` acima: um ouvinte que se cancele ao
     // receber o retrato não pode furar a iteração de quem ainda não recebeu.
     publicarJanela(snapshot: WindowSnapshot): void {

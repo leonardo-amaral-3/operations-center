@@ -3,8 +3,14 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { contrastRatio, oklabDistance, oklchToSrgb, type Rgb8 } from '../../src/main/color'
-import { parseOklch, parseThemes } from '../../src/main/sheet'
+import {
+  contrastRatio,
+  oklabDistance,
+  oklchToSrgb,
+  parseOklch,
+  type Rgb8,
+} from '../../src/shared/color'
+import { parseThemes } from '../../src/main/sheet'
 import { fieldLook, LOOKS } from '../../src/renderer/components/fieldLook'
 import type { BoardCardField } from '../../src/shared/board'
 import { THEME_DEFAULT, THEMES, type Theme } from '../../src/shared/theme'
@@ -335,9 +341,11 @@ const ANCORAS = [
   'data-permission-mode',
   'data-phase-column',
   'data-phase-number',
+  'data-preset',
   'data-question',
   'data-queued',
   'data-read-at',
+  'data-reason',
   'data-request',
   'data-role',
   'data-selected',
