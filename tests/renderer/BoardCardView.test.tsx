@@ -134,3 +134,80 @@ describe('CA-3 — o cartão comum não muda', () => {
     expect(html).not.toContain('card-phase')
   })
 })
+
+interface ExpandidoOpts {
+  card?: Partial<BoardCard>
+  conversable?: boolean
+  expanded?: boolean
+  maximized?: boolean
+  semBotao?: boolean
+}
+
+/** O cartão aberto (#28), com os três modos que a spec distingue: fechado, aberto e expandido. */
+function aberto({
+  card = {},
+  conversable = true,
+  expanded = true,
+  maximized = false,
+  semBotao = false,
+}: ExpandidoOpts = {}): string {
+  return renderToStaticMarkup(
+    <BoardCardView
+      card={{ ...COMUM, ...card }}
+      conversable={conversable}
+      expanded={expanded}
+      session={undefined}
+      dormant={false}
+      dangerous={false}
+      onToggle={() => {}}
+      onSession={() => {}}
+      onToggleDangerous={() => {}}
+      maximized={maximized}
+      onMaximize={semBotao ? undefined : () => {}}
+      onRestore={semBotao ? undefined : () => {}}
+    />,
+  )
+}
+
+describe('#28 CA-1 e CA-3 — o modo expandido', () => {
+  it('cartão fechado não tem o botão `card-maximize`', () => {
+    expect(aberto({ expanded: false })).not.toContain('card-maximize')
+  })
+
+  it('aberto e não expandido: botão "Expandir", sem `absolute` e sem grade', () => {
+    const html = aberto()
+
+    expect(html).toContain('data-testid="card-maximize"')
+    expect(html).toContain('aria-pressed="false"')
+    expect(html).toContain('Expandir')
+    expect(html).not.toContain('absolute')
+    expect(html).not.toMatch(/data-testid="card-open-body"[^>]*class="[^"]*grid/)
+  })
+
+  it('expandido: botão "Recolher", `article` cobrindo a tela e duas colunas com conversa', () => {
+    const html = aberto({ maximized: true })
+
+    expect(html).toContain('aria-pressed="true"')
+    expect(html).toContain('Recolher')
+    expect(html).toMatch(/<article[^>]*class="[^"]*absolute inset-0/)
+    expect(html).toMatch(/data-testid="card-open-body"[^>]*class="[^"]*grid-cols-2/)
+  })
+
+  it('expandido sem conversa: coluna única', () => {
+    const html = aberto({ maximized: true, conversable: false })
+
+    expect(html).toMatch(/data-testid="card-open-body"[^>]*class="[^"]*grid-cols-1/)
+    expect(html).not.toContain('grid-cols-2')
+  })
+
+  it('expandido e fechado no GitHub: opaco, sem `opacity-60`', () => {
+    const html = aberto({ maximized: true, card: { closed: true } })
+
+    expect(html).toMatch(/<article[^>]*class="[^"]*opacity-100/)
+    expect(html).not.toContain('opacity-60')
+  })
+
+  it('aberto sem `onMaximize`: nenhum `card-maximize`', () => {
+    expect(aberto({ semBotao: true })).not.toContain('card-maximize')
+  })
+})

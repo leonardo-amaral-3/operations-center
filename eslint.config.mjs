@@ -22,6 +22,11 @@ const coreBoundary = {
               'O core é agnóstico de casca: nada de `electron` aqui. Quem fala com o Electron é src/main/.',
           },
           {
+            group: ['node-pty', 'node-pty/*'],
+            message:
+              'O core não conhece o node-pty: o spawner chega injetado no TerminalHost. Quem carrega o módulo é src/main/terminal.ts.',
+          },
+          {
             group: [
               '**/main/**',
               '**/renderer/**',

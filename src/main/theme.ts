@@ -1,7 +1,7 @@
 import folha from '../renderer/index.css?raw'
 import { isTheme, THEME_DEFAULT, type Theme } from '../shared/theme'
-import { oklchToSrgb, toHex } from './color'
-import { parseOklch, parseThemes } from './sheet'
+import { oklchToSrgb, parseOklch, toHex } from '../shared/color'
+import { parseThemes } from './sheet'
 
 /**
  * A folha do design system vista pelo processo main: qual combinação vale nesta subida e de que cor

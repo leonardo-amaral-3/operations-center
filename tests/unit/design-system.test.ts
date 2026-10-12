@@ -3,8 +3,14 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { contrastRatio, oklabDistance, oklchToSrgb, type Rgb8 } from '../../src/main/color'
-import { parseOklch, parseThemes } from '../../src/main/sheet'
+import {
+  contrastRatio,
+  oklabDistance,
+  oklchToSrgb,
+  parseOklch,
+  type Rgb8,
+} from '../../src/shared/color'
+import { parseThemes } from '../../src/main/sheet'
 import { fieldLook, LOOKS } from '../../src/renderer/components/fieldLook'
 import type { BoardCardField } from '../../src/shared/board'
 import { THEME_DEFAULT, THEMES, type Theme } from '../../src/shared/theme'
@@ -325,6 +331,7 @@ const ANCORAS = [
   // etiqueta de `Tipo`" sem afirmar que ela diz `🐞 Bug` nem que ela é `bg-tipo-bug` — as duas
   // coisas que ele existe justamente para medir do outro lado da cascata.
   'data-field',
+  'data-free-id',
   'data-label',
   'data-parent',
   // As três do card #41, e a ordem aqui é a do `sort()`, não a da leitura. `data-parent-number` é o
@@ -335,9 +342,12 @@ const ANCORAS = [
   'data-permission-mode',
   'data-phase-column',
   'data-phase-number',
+  'data-preset',
   'data-question',
   'data-queued',
   'data-read-at',
+  'data-reason',
+  'data-recoverable',
   'data-request',
   'data-role',
   'data-selected',
@@ -1136,7 +1146,7 @@ function lerFaixaSemComentarios(): string {
 /** As duas classes de arrasto, e só elas: o prefixo que nega é grupo, para não contar duas vezes. */
 const CLASSE_DE_ARRASTO = /(?<![\w-])(nao-)?arrasta-a-janela(?![\w-])/g
 
-describe('a faixa arrasta a janela, e os três botões dela não', () => {
+describe('a faixa arrasta a janela, e os sete botões dela não', () => {
   it('a folha declara as duas `@utility` de arrasto', () => {
     const declaradas = [...lerFolhaSemComentarios().matchAll(/@utility\s+([\w-]+)/g)].map(
       ([, nome]) => nome,
@@ -1149,15 +1159,14 @@ describe('a faixa arrasta a janela, e os três botões dela não', () => {
     expect(declaradas).toContain('nao-arrasta-a-janela')
   })
 
-  it('`WindowBar.tsx` arrasta uma vez e nega três', () => {
+  // Sete negações, declaradas (#74 §8): minimizar, maximizar, fechar, `▣ Terminal`, o `▾` de perfis,
+  // `✦ Sessão livre` e o `▾` de sessões. Os quatro da mesa nasceram dentro da mesma região de
+  // arrasto e, sem a negação, não receberiam clique. A lista que cai deles (`MesaMenu.tsx`) leva a
+  // sua própria negação na raiz e, por ser outro arquivo, não entra nesta contagem.
+  it('`WindowBar.tsx` arrasta uma vez e nega sete', () => {
     const usos = [...lerFaixaSemComentarios().matchAll(CLASSE_DE_ARRASTO)].map(([uso]) => uso)
 
-    expect(usos).toEqual([
-      'arrasta-a-janela',
-      'nao-arrasta-a-janela',
-      'nao-arrasta-a-janela',
-      'nao-arrasta-a-janela',
-    ])
+    expect(usos).toEqual(['arrasta-a-janela', ...Array<string>(7).fill('nao-arrasta-a-janela')])
   })
 })
 

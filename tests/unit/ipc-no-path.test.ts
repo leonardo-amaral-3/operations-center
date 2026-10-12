@@ -163,12 +163,13 @@ describe('nenhum caminho de disco atravessa a ponte', () => {
     expect(pedido?.campos).toEqual(['scope'])
   })
 
-  it('o escopo diz de quem é a sessão, e nada mais: cartão ou aba, nunca onde', () => {
+  it('o escopo diz de quem é a sessão, e nada mais: cartão, aba ou sessão livre, nunca onde', () => {
     // O ponto exato em que a invariante quase caiu: a triagem precisa de uma pasta que não sai de
     // cartão nenhum, e o atalho seria mandá-la daqui. Quem a resolve é o main, com a `key` da aba —
-    // que para o renderer é string opaca, como o `itemId` sempre foi.
+    // que para o renderer é string opaca, como o `itemId` sempre foi. A sessão livre repete a
+    // lição: o `id` é opaco, e a pasta que o humano escolheu no seletor fica no `free-sessions.json`.
     const escopo = cargas.find((carga) => carga.nome === 'SessionScope')
 
-    expect(escopo?.campos).toEqual(['kind', 'itemId', 'kind', 'boardKey'])
+    expect(escopo?.campos).toEqual(['kind', 'itemId', 'kind', 'boardKey', 'kind', 'id'])
   })
 })

@@ -5,6 +5,7 @@ import type { SessionScope } from '../../shared/ipc'
 import type { SessionState } from '../../shared/session'
 import { useSessionView } from '../session/useSessionView'
 import { Button } from '../ui/button'
+import { cn } from '../ui/cn'
 import { Textarea } from '../ui/textarea'
 import { isFala, MessageBubble } from './MessageBubble'
 import { PermissionPrompt } from './PermissionPrompt'
@@ -53,6 +54,22 @@ interface ChatProps {
   onSession?: (session: CardSession) => void
   /** Recebe o valor **final**, não um "alterne" — quem inverte é este componente. */
   onToggleDangerous: (dangerous: boolean) => void
+  /**
+   * Verdadeiro → a caixa de texto recebe o foco ao montar (CA-7 do #74: criar uma sessão livre põe o
+   * cursor nela). O cartão e a triagem não passam: abrir um cartão não pode roubar o teclado.
+   */
+  autoFocus?: boolean
+  /**
+   * "Abrir um terminal na pasta desta conversa" (#74 §11). Presente, o rodapé mostra `▣ Terminal
+   * aqui`; quem passa sabe traduzir este escopo em terminal, e o `Chat` só o dispara.
+   */
+  onOpenTerminal?: () => void
+  /**
+   * Verdadeiro → a conversa ocupa a altura toda de quem a contém, com o histórico esticando até a
+   * caixa. É o painel lateral (#74 §10); o cartão e a triagem vivem numa coluna e mantêm o teto de
+   * 320px do histórico.
+   */
+  preencher?: boolean
 }
 
 /**
@@ -81,6 +98,9 @@ export function Chat({
   onEnded,
   onSession,
   onToggleDangerous,
+  autoFocus,
+  onOpenTerminal,
+  preencher = false,
 }: ChatProps): JSX.Element {
   const { view, send, decide, answer, stop, end, restart } = useSessionView({
     // O escopo vem montado no JSX, então é objeto novo a cada render — e é seguro: o hook depende da
@@ -90,6 +110,7 @@ export function Chat({
   })
   const [draft, setDraft] = useState(rascunhoInicial ?? '')
   const history = useRef<HTMLDivElement>(null)
+  const caixa = useRef<HTMLTextAreaElement>(null)
   // O "uma vez" do `onEnded` abaixo. Num ref porque `onEnded` é arrow nova a cada render do pai: sem
   // ele, o efeito reentraria a cada quadro enquanto a sessão estivesse `closed`.
   const saiu = useRef(false)
@@ -111,6 +132,21 @@ export function Chat({
     saiu.current = true
     onEnded()
   }, [view.state.kind, onEnded])
+
+  // O foco é intenção de quem criou a conversa, consumida **uma vez**: reafirmá-lo a cada render
+  // roubaria o cursor de quem foi clicar em outra coisa. E não basta focar ao montar — a caixa nasce
+  // desabilitada até a sessão subir (`view.id === null` é `morta`), e `focus()` num campo
+  // desabilitado é no-op silencioso. Por isso o efeito reage ao estado e pergunta ao DOM.
+  // `autoFocus` é lido **só no monte**: quem o passa o zera assim que consome a intenção, e isso não
+  // pode desfazer o pedido antes de a caixa habilitar.
+  const queroFoco = useRef(autoFocus === true)
+  useEffect(() => {
+    const node = caixa.current
+    if (!queroFoco.current || node === null || node.disabled) return
+
+    queroFoco.current = false
+    node.focus()
+  }, [view.id, view.state.kind, view.question])
 
   // O scroll é do próprio histórico, e não um `scrollIntoView`: dentro de um cartão, pedir ao
   // navegador que traga o fim da conversa à vista arrastaria junto a coluna e o kanban inteiro.
@@ -210,8 +246,19 @@ export function Chat({
   }
 
   return (
-    <div data-testid="card-chat" className="mt-3 border-t-2 border-border pt-3">
-      <div ref={history} className="max-h-80 space-y-2 overflow-y-auto">
+    <div
+      data-testid="card-chat"
+      className={cn(
+        'mt-3 border-t-2 border-border pt-3',
+        preencher && 'flex min-h-0 flex-1 flex-col',
+      )}
+    >
+      {/* Preenchendo, só o histórico tem `min-h-0`: é ele que cede quando a altura aperta, e a
+          caixa, os prompts e o rodapé ficam no tamanho natural. */}
+      <div
+        ref={history}
+        className={cn('space-y-2 overflow-y-auto', preencher ? 'min-h-0 flex-1' : 'max-h-80')}
+      >
         {view.messages.length === 0 ? (
           <p className="text-xs text-foreground/60">
             A sessão está de pé. Escreva a primeira mensagem.
@@ -261,6 +308,7 @@ export function Chat({
           aquela altura mínima estouraria a coluna de 288px que o CA-3 defende. Quem manda na
           altura aqui continua sendo o `rows`. */}
       <Textarea
+        ref={caixa}
         data-testid="card-chat-input"
         value={draft}
         disabled={mute}
@@ -346,6 +394,20 @@ export function Chat({
           >
             {dangerous ? 'Voltar a pedir' : 'Rodar sem pedir permissão'}
           </Button>
+          {/* Sem cor: abrir um shell na pasta da conversa não é interrupção nem destruição.
+              Condicional, e não `disabled`, pelo mesmo motivo do "Parar". */}
+          {onOpenTerminal ? (
+            <Button
+              type="button"
+              data-testid="chat-open-terminal"
+              variant="neutral"
+              size="xs"
+              title="Abrir um terminal na pasta desta conversa"
+              onClick={onOpenTerminal}
+            >
+              ▣ Terminal aqui
+            </Button>
+          ) : null}
           {/* Ausente na triagem, que não colapsa: ou está aberta conversando, ou não existe
               (Decisão 4 do #27). Renderização condicional, e não `disabled`, pela mesma razão do
               "Parar" acima. */}

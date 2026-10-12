@@ -44,6 +44,8 @@ export type { RepoIndexDeps, SessionFolder } from './repos/RepoIndex'
 
 export { ConversationIndex } from './session/ConversationIndex'
 export type { ConversationIndexDeps, Restoration } from './session/ConversationIndex'
+export { FreeIndex } from './session/FreeIndex'
+export type { FreeEntry, FreeIndexDeps } from './session/FreeIndex'
 
 export { DangerIndex } from './session/DangerIndex'
 export type { DangerIndexDeps } from './session/DangerIndex'
@@ -71,3 +73,8 @@ export type {
   ToolStatus,
   TurnActivity,
 } from './session/types'
+
+export { parseAwsConfig } from './terminal/awsProfiles'
+export { TerminalHost } from './terminal/TerminalHost'
+export type { AwsProfile } from './terminal/awsProfiles'
+export type { LoadSpawn, PtyProcess, PtySpawner } from './terminal/TerminalHost'

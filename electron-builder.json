@@ -3,8 +3,12 @@
   "appId": "com.leonardo-amaral-3.operations-center",
   "productName": "Operations Center",
   "directories": { "output": "dist" },
+  "asar": false,
+  "npmRebuild": false,
   "files": [
     "!**/node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/**",
+    "!**/node_modules/node-pty/prebuilds/**/*.pdb",
+    "!**/node_modules/node-pty/prebuilds/{darwin-*,win32-arm64}/**",
     "!src/**",
     "!tests/**",
     "!out/**/*.map",

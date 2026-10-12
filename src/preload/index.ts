@@ -10,10 +10,17 @@ import type {
   ChooseFolderResult,
   CloseRequest,
   ConversationsSnapshot,
+  CreateFreeResult,
   DangerousSnapshot,
+  ForgetFreeRequest,
+  FreeSnapshot,
+  LayoutSnapshot,
+  OpenTerminalRequest,
+  OpenTerminalResult,
   OcApi,
   ReadCardRequest,
   ReadCardResult,
+  RenameFreeRequest,
   RespondPermissionRequest,
   Screen,
   SendRequest,
@@ -26,6 +33,12 @@ import type {
   StartRequest,
   StartResult,
   StopRequest,
+  TerminalCloseRequest,
+  TerminalDataEvent,
+  TerminalExitEvent,
+  TerminalInputRequest,
+  TerminalPresetsSnapshot,
+  TerminalResizeRequest,
   ThemeSnapshot,
   WindowSnapshot,
 } from '../shared/ipc'
@@ -136,6 +149,28 @@ const api: OcApi = {
   minimizeWindow: () => ipcRenderer.invoke(IPC_INVOKE.minimizeWindow) as Promise<void>,
   toggleMaximizeWindow: () => ipcRenderer.invoke(IPC_INVOKE.toggleMaximizeWindow) as Promise<void>,
   closeWindow: () => ipcRenderer.invoke(IPC_INVOKE.closeWindow) as Promise<void>,
+  readTerminalPresets: () =>
+    ipcRenderer.invoke(IPC_INVOKE.readTerminalPresets) as Promise<TerminalPresetsSnapshot>,
+  openTerminal: (request: OpenTerminalRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.openTerminal, request) as Promise<OpenTerminalResult>,
+  writeTerminal: (request: TerminalInputRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.writeTerminal, request) as Promise<void>,
+  resizeTerminal: (request: TerminalResizeRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.resizeTerminal, request) as Promise<void>,
+  closeTerminal: (request: TerminalCloseRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.closeTerminal, request) as Promise<void>,
+  onTerminalData: (listener) => subscribe<TerminalDataEvent>(IPC_EVENT.terminalData, listener),
+  onTerminalExit: (listener) => subscribe<TerminalExitEvent>(IPC_EVENT.terminalExit, listener),
+  readFree: () => ipcRenderer.invoke(IPC_INVOKE.readFree) as Promise<FreeSnapshot>,
+  createFree: () => ipcRenderer.invoke(IPC_INVOKE.createFree) as Promise<CreateFreeResult>,
+  renameFree: (request: RenameFreeRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.renameFree, request) as Promise<void>,
+  forgetFree: (request: ForgetFreeRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.forgetFree, request) as Promise<void>,
+  onFree: (listener) => subscribe<FreeSnapshot>(IPC_EVENT.free, listener),
+  readLayout: () => ipcRenderer.invoke(IPC_INVOKE.readLayout) as Promise<LayoutSnapshot>,
+  setLayout: (snapshot: LayoutSnapshot) =>
+    ipcRenderer.invoke(IPC_INVOKE.setLayout, snapshot) as Promise<void>,
 }
 
 contextBridge.exposeInMainWorld('oc', api)

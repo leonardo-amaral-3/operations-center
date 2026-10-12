@@ -2,9 +2,11 @@ import { useEffect, useRef } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardCard } from '../../shared/board'
+import type { SessionScope } from '../../shared/ipc'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Card } from '../ui/card'
+import { cn } from '../ui/cn'
 import { Chat } from './Chat'
 import type { CardSession } from './Chat'
 import { CardContent } from './CardContent'
@@ -38,6 +40,16 @@ interface BoardCardViewProps {
   onSession: (itemId: string, session: CardSession) => void
   /** Só de passagem para o `Chat`, que é filho deste componente e não da `Column`. */
   onToggleDangerous: (itemId: string, dangerous: boolean) => void
+  /** Só de passagem para o `Chat`: o terminal abre no repo deste card. Ausente = sem botão. */
+  onOpenTerminal?: (scope: SessionScope) => void
+  /**
+   * Este cartão está expandido (#28): cobre a tela do kanban, com o conteúdo e a conversa lado a
+   * lado. Só tem efeito no ramo `expanded`.
+   */
+  maximized?: boolean
+  /** Ausente = sem o botão `card-maximize`, como o `onOpenTerminal` sem o dele. */
+  onMaximize?: (itemId: string) => void
+  onRestore?: () => void
 }
 
 /**
@@ -61,6 +73,10 @@ export function BoardCardView({
   onToggle,
   onSession,
   onToggleDangerous,
+  onOpenTerminal,
+  maximized = false,
+  onMaximize,
+  onRestore,
 }: BoardCardViewProps): JSX.Element {
   const open = useRef<HTMLElement>(null)
 
@@ -75,12 +91,46 @@ export function BoardCardView({
    * `nearest` nos dois eixos, e não `center`: o mínimo para caber é o que preserva o resto do board
    * onde o olho o deixou. Sem `behavior: 'smooth'` de propósito — o smoke da task 7 lê posição, e
    * animação em curso é vermelho intermitente.
+   *
+   * Roda também ao **recolher** (#28): expandido, o `article` sai do fluxo da lista da coluna, a
+   * lista encolhe e o navegador corta o `scrollTop` dela — sem isto, um cartão do fim da coluna
+   * voltaria fora da vista. Expandido, o cartão já cobre a tela, e não há o que trazer.
    */
   useEffect(() => {
-    if (!expanded) return
+    if (!expanded || maximized) return
 
     open.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [expanded])
+  }, [expanded, maximized])
+
+  /**
+   * `Esc` recolhe o cartão expandido (CA-2 do #28). Só registra com ele expandido.
+   *
+   * A tecla é do cartão apenas quando o foco está dentro dele ou em lugar nenhum (`document.body`):
+   * terminal do dock, painel lateral e menu da mesa ficam com a deles. E um `Esc` que alguém já
+   * tratou (`defaultPrevented`) não é nosso.
+   */
+  useEffect(() => {
+    if (!maximized) return
+
+    const h = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      if (
+        event.target instanceof Node &&
+        event.target !== document.body &&
+        !open.current?.contains(event.target)
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      onRestore?.()
+    }
+
+    window.addEventListener('keydown', h)
+    return () => {
+      window.removeEventListener('keydown', h)
+    }
+  }, [maximized, onRestore])
 
   const anchors = {
     'data-testid': 'board-card',
@@ -243,57 +293,115 @@ export function BoardCardView({
    * trancar a conversa que o levou até lá só porque o app foi reiniciado no caminho (CA-1 do #22).
    */
   if (expanded) {
-    return (
-      <Card asChild className={skin}>
-        <article ref={open} {...anchors}>
-          {body}
+    const temConversa = conversable || live !== null || dormant
 
-          {/* Acima da conversa, e dentro do próprio cartão: o conteúdo é o assunto, e a conversa
+    return (
+      // O `opacity-100` vence o `opacity-60` do cartão fechado no GitHub: expandido, ele deixaria o
+      // kanban aparecer por baixo. O `shadow-none` evita que a sombra dura vaze sobre o painel
+      // lateral e o dock. O `mb-0` anula o `space-y-2` da lista da coluna, que segue dando 8px de
+      // margem a um filho já fora do fluxo e o deixaria 8px mais curto que a tela. O bloco de
+      // contenção do `absolute` é a raiz do `KanbanScreen`.
+      <Card
+        asChild
+        className={cn(
+          skin,
+          maximized && 'absolute inset-0 z-20 mb-0 overflow-hidden opacity-100 shadow-none',
+        )}
+      >
+        <article ref={open} {...anchors}>
+          <div className="flex shrink-0 items-start gap-2">
+            <div className="min-w-0 flex-1">{body}</div>
+            {onMaximize ? (
+              <Button
+                type="button"
+                data-testid="card-maximize"
+                variant="neutral"
+                size="xs"
+                aria-pressed={maximized}
+                title={maximized ? 'Recolher o cartão (Esc)' : 'Expandir o cartão'}
+                onClick={() => {
+                  if (maximized) onRestore?.()
+                  else onMaximize(card.itemId)
+                }}
+              >
+                {maximized ? 'Recolher' : 'Expandir'}
+              </Button>
+            ) : null}
+          </div>
+
+          {/* O invólucro existe nos dois modos, e é isso que impede o desmonte: a árvore do React
+              não muda ao expandir, então o `Chat` (rascunho, sessão) e o `CardContent` (conteúdo
+              carregado) sobrevivem sem código de preservação. Só a classe muda. */}
+          <div
+            data-testid="card-open-body"
+            className={
+              maximized
+                ? cn(
+                    'grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-4',
+                    temConversa ? 'grid-cols-2' : 'grid-cols-1',
+                  )
+                : undefined
+            }
+          >
+            {/* Acima da conversa, e dentro do próprio cartão: o conteúdo é o assunto, e a conversa
               acontece sobre ele. `hasSession` só escolhe se a seção nasce aberta ou recolhida — e o
               dormente conta como sessão pela regra que o próprio `CardContent` enuncia: quem clica
               num cartão com conversa guardada abriu para falar, não para ler. */}
-          <CardContent itemId={card.itemId} hasSession={live !== null || dormant} />
-
-          {conversable || live || dormant ? (
-            <Chat
-              // O escopo montado aqui é objeto novo a cada render, e é seguro: quem depende dele é
-              // o `useSessionView`, e ele depende da **chave**, não da referência.
-              scope={{ kind: 'card', itemId: card.itemId }}
-              // O CA-6 do #6 em uma linha: colapsar fecha a vista, não a conversa.
-              closeOnUnmount={false}
-              dangerous={dangerous}
-              semPasta="Não sei em que pasta deste computador o repo deste card vive. Aponte-a e a sessão sobe lá."
-              onCollapse={() => {
-                onToggle(card.itemId)
-              }}
-              // O `itemId` entra aqui, e não lá dentro: o `Chat` sabe de escopo, e é este componente
-              // que sabe que este escopo é um cartão do kanban.
-              onSession={(sessao) => {
-                onSession(card.itemId, sessao)
-              }}
-              onToggleDangerous={(sem) => {
-                onToggleDangerous(card.itemId, sem)
-              }}
+            <CardContent
+              itemId={card.itemId}
+              hasSession={live !== null || dormant}
+              preencher={maximized}
             />
-          ) : (
-            // Sem skill, sem sessão e sem conversa guardada: o cartão abriu para ser lido, e a
-            // única ação que ele oferece é fechar. A âncora `card-collapse` é a mesma do `Chat`
-            // de propósito — fechar um cartão é fechar um cartão, e o smoke não deve precisar saber
-            // qual ramo desenhou o botão.
-            <div className="mt-3 flex justify-end border-t-2 border-border pt-3">
-              <Button
-                type="button"
-                data-testid="card-collapse"
-                variant="neutral"
-                size="xs"
-                onClick={() => {
+
+            {temConversa ? (
+              <Chat
+                preencher={maximized}
+                // O escopo montado aqui é objeto novo a cada render, e é seguro: quem depende dele é
+                // o `useSessionView`, e ele depende da **chave**, não da referência.
+                scope={{ kind: 'card', itemId: card.itemId }}
+                // O CA-6 do #6 em uma linha: colapsar fecha a vista, não a conversa.
+                closeOnUnmount={false}
+                dangerous={dangerous}
+                semPasta="Não sei em que pasta deste computador o repo deste card vive. Aponte-a e a sessão sobe lá."
+                onCollapse={() => {
                   onToggle(card.itemId)
                 }}
-              >
-                Fechar
-              </Button>
-            </div>
-          )}
+                // O `itemId` entra aqui, e não lá dentro: o `Chat` sabe de escopo, e é este componente
+                // que sabe que este escopo é um cartão do kanban.
+                onSession={(sessao) => {
+                  onSession(card.itemId, sessao)
+                }}
+                onToggleDangerous={(sem) => {
+                  onToggleDangerous(card.itemId, sem)
+                }}
+                onOpenTerminal={
+                  onOpenTerminal === undefined
+                    ? undefined
+                    : () => {
+                        onOpenTerminal({ kind: 'card', itemId: card.itemId })
+                      }
+                }
+              />
+            ) : (
+              // Sem skill, sem sessão e sem conversa guardada: o cartão abriu para ser lido, e a
+              // única ação que ele oferece é fechar. A âncora `card-collapse` é a mesma do `Chat`
+              // de propósito — fechar um cartão é fechar um cartão, e o smoke não deve precisar saber
+              // qual ramo desenhou o botão.
+              <div className="mt-3 flex justify-end border-t-2 border-border pt-3">
+                <Button
+                  type="button"
+                  data-testid="card-collapse"
+                  variant="neutral"
+                  size="xs"
+                  onClick={() => {
+                    onToggle(card.itemId)
+                  }}
+                >
+                  Fechar
+                </Button>
+              </div>
+            )}
+          </div>
         </article>
       </Card>
     )

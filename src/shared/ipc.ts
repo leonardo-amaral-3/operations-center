@@ -75,6 +75,31 @@ export const IPC_INVOKE = {
   minimizeWindow: 'window:minimize',
   toggleMaximizeWindow: 'window:toggle-maximize',
   closeWindow: 'window:close',
+  /**
+   * O terminal embutido (#74). Família `terminal:` própria: fala com um shell local, e **nenhum
+   * destes canais toca o board**. `readTerminalPresets` lista os perfis (rótulo e grupo, nunca o
+   * executável nem o ambiente); `openTerminal` sobe o PTY já no tamanho que o xterm mediu;
+   * `writeTerminal`/`resizeTerminal`/`closeTerminal` operam sobre o `id` que o `openTerminal` devolveu.
+   */
+  readTerminalPresets: 'terminal:presets',
+  openTerminal: 'terminal:open',
+  writeTerminal: 'terminal:input',
+  resizeTerminal: 'terminal:resize',
+  closeTerminal: 'terminal:close',
+  /**
+   * Sessões livres (#74): conversa sem card. Família `free:` — o estado mora em arquivo do próprio
+   * app em `OC_STATE_DIR`, nunca no GitHub. `readFree` também assina, como `readWindow`.
+   */
+  readFree: 'free:read',
+  createFree: 'free:create',
+  renameFree: 'free:rename',
+  forgetFree: 'free:forget',
+  /**
+   * A disposição da mesa (#74): doca do terminal, lateral das sessões livres, último perfil usado.
+   * Sem evento: a janela é uma só e o renderer é o dono do estado; o main só persiste.
+   */
+  readLayout: 'layout:read',
+  setLayout: 'layout:set',
 } as const
 
 /** Main → renderer. Avisos de mão única, disparados pelo `core` quando a sessão se mexe. */
@@ -114,11 +139,20 @@ export const IPC_EVENT = {
    * arrastar para o topo. Sem o evento, o botão do meio mentiria em todos esses caminhos.
    */
   window: 'window:changed',
+  /**
+   * Saída do PTY e fim dele (#74). Dois canais de mão única, no ritmo do shell e não do board.
+   * **Nenhum toca o board**: o que carregam é o que o processo escreveu.
+   */
+  terminalData: 'terminal:data',
+  terminalExit: 'terminal:exit',
+  /** Mudou o conjunto de sessões livres (#74). Estado do app, em `OC_STATE_DIR`; não toca o board. */
+  free: 'free:changed',
 } as const
 
 /**
- * De quem é a sessão. É a RN-1 do PRD escrita no tipo: não há chat sem card, com a exceção da nova
- * triagem — que existe justamente para criar um.
+ * De quem é a sessão. É a RN-1 do PRD, emendada pelo #74, escrita no tipo: não há chat sem card,
+ * com duas exceções nomeadas — a nova triagem, que existe justamente para criar um, e a sessão
+ * livre, que é trabalho sem card por escolha do humano.
  *
  * Ausente (o `scope` opcional do `StartRequest`) continua sendo a tela de chat da fatia vertical,
  * que roda em `OC_CWD` e não conhece board nenhum.
@@ -127,16 +161,25 @@ export type SessionScope =
   | { kind: 'card'; itemId: string }
   /** A triagem daquela aba. `boardKey` é a `key` opaca da aba, como no `ui:active-board`. */
   | { kind: 'triage'; boardKey: string }
+  /** Uma sessão livre: `id` é a chave do `free-sessions.json`, opaca para o renderer como o `itemId`. */
+  | { kind: 'free'; id: string }
 
 /**
  * A chave única de um escopo, e o **único** lugar que a compõe.
  *
  * O main indexa sessões vivas e partidas em voo por esta string; o renderer a usa como dependência
- * de efeito. Compor `card:` e `triage:` em dois lugares faria os espaços de chave se cruzarem no dia
- * em que um dos dois mudasse de prefixo.
+ * de efeito. Compor `card:`, `triage:` e `free:` em dois lugares faria os espaços de chave se
+ * cruzarem no dia em que um deles mudasse de prefixo.
  */
 export function scopeKey(scope: SessionScope): string {
-  return scope.kind === 'card' ? `card:${scope.itemId}` : `triage:${scope.boardKey}`
+  switch (scope.kind) {
+    case 'card':
+      return `card:${scope.itemId}`
+    case 'triage':
+      return `triage:${scope.boardKey}`
+    case 'free':
+      return `free:${scope.id}`
+  }
 }
 
 /**
@@ -348,6 +391,108 @@ export interface WindowSnapshot {
   maximized: boolean
 }
 
+/** Um perfil visto do renderer: rótulo e grupo, nunca o executável nem o ambiente. */
+export interface TerminalPreset {
+  /** `powershell`, `git-bash` ou `aws:` seguido do nome do perfil AWS. */
+  id: string
+  /** `PowerShell`, `Git Bash` ou `AWS · ` seguido do nome do perfil. */
+  label: string
+  group: 'shell' | 'aws'
+}
+export interface TerminalPresetsSnapshot {
+  presets: readonly TerminalPreset[]
+}
+
+/**
+ * `scope` ausente = pasta do usuário. Presente, a pasta é a do escopo, pelo mesmo `resolveCwd` das
+ * sessões. `cols`/`rows` são o tamanho que o xterm já mediu no contêiner: o PTY nasce do tamanho
+ * certo, sem depender de um `resize` que o `ResizeObserver` só dispararia se o contêiner mudasse depois.
+ */
+export interface OpenTerminalRequest {
+  preset: string
+  scope?: SessionScope
+  cols: number
+  rows: number
+}
+export interface TerminalSnapshot {
+  id: string
+  preset: string
+  title: string
+}
+export type OpenTerminalResult =
+  | { opened: true; terminal: TerminalSnapshot }
+  | {
+      opened: false
+      reason: 'pty-unavailable' | 'shell-missing' | 'unknown-folder'
+      detail: string
+    }
+
+export interface TerminalInputRequest {
+  id: string
+  data: string
+}
+export interface TerminalResizeRequest {
+  id: string
+  cols: number
+  rows: number
+}
+export interface TerminalCloseRequest {
+  id: string
+}
+export interface TerminalDataEvent {
+  id: string
+  data: string
+}
+export interface TerminalExitEvent {
+  id: string
+  exitCode: number
+}
+
+export interface FreeSessionCard {
+  id: string
+  title: string
+  dangerous: boolean
+  /** Há conversa a retomar (o transcript existe), como `ConversationsSnapshot.itemIds` diz do cartão. */
+  recoverable: boolean
+}
+export interface FreeSnapshot {
+  sessions: readonly FreeSessionCard[]
+}
+export type CreateFreeResult = { created: true; id: string } | { created: false }
+export interface RenameFreeRequest {
+  id: string
+  title: string
+}
+export interface ForgetFreeRequest {
+  id: string
+}
+
+/** `key` é a identidade estável da aba no renderer (uuid gerado ao criar); o `id` do PTY muda a cada spawn. */
+export interface LayoutTerminal {
+  key: string
+  preset: string
+  scope?: SessionScope
+  title: string
+}
+export interface LayoutDock {
+  open: boolean
+  height: number
+  terminals: readonly LayoutTerminal[]
+  /** A `key` da aba ativa. */
+  active: string | null
+}
+export interface LayoutSide {
+  open: boolean
+  width: number
+  /** O `id` da sessão livre ativa. */
+  active: string | null
+}
+export interface LayoutSnapshot {
+  dock: LayoutDock
+  side: LayoutSide
+  lastPreset: string | null
+}
+
 /**
  * A superfície inteira que o renderer enxerga, exposta como `window.oc` pelo preload. O que não
  * está aqui não existe do lado de lá — não há `ipcRenderer`, não há `require`, não há Node.
@@ -482,6 +627,26 @@ export interface OcApi {
    * desta chamada.
    */
   closeWindow(): Promise<void>
+  /** Os perfis de terminal disponíveis nesta máquina: rótulo e grupo, nunca executável nem ambiente. */
+  readTerminalPresets(): Promise<TerminalPresetsSnapshot>
+  /** Sobe um PTY no tamanho já medido. Falha esperada volta como `opened: false`, não como exceção. */
+  openTerminal(request: OpenTerminalRequest): Promise<OpenTerminalResult>
+  writeTerminal(request: TerminalInputRequest): Promise<void>
+  resizeTerminal(request: TerminalResizeRequest): Promise<void>
+  closeTerminal(request: TerminalCloseRequest): Promise<void>
+  onTerminalData(listener: (event: TerminalDataEvent) => void): () => void
+  onTerminalExit(listener: (event: TerminalExitEvent) => void): () => void
+
+  /** As sessões livres — e, como `readWindow`, **também é a assinatura** de `onFree`. */
+  readFree(): Promise<FreeSnapshot>
+  createFree(): Promise<CreateFreeResult>
+  renameFree(request: RenameFreeRequest): Promise<void>
+  forgetFree(request: ForgetFreeRequest): Promise<void>
+  onFree(listener: (snapshot: FreeSnapshot) => void): () => void
+
+  /** A disposição da mesa. O renderer é o dono do estado; `setLayout` só pede ao main que persista. */
+  readLayout(): Promise<LayoutSnapshot>
+  setLayout(snapshot: LayoutSnapshot): Promise<void>
 }
 
 declare global {

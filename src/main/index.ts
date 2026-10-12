@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
-import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, shell } from 'electron'
 
 import {
   BoardFinder,
@@ -11,9 +11,11 @@ import {
   CardReader,
   ConversationIndex,
   DangerIndex,
+  FreeIndex,
   RepoIndex,
   SessionHost,
 } from '../core'
+import { TerminalHost } from '../core'
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen, SessionScope } from '../shared/ipc'
@@ -35,7 +37,11 @@ import type { DangerGate } from './danger'
 import { createFixtureGraphQL } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
+import { loadFree, registerFreeIpc, saveFree } from './free'
 import { registerSessionIpc } from './ipc'
+import { registerLayoutIpc } from './layout'
+import { loadPty, presetDepsDeProducao, registerTerminalIpc } from './terminal'
+import { buildPresets } from './terminalPresets'
 import { judgeNavigation } from './navigation'
 import { loadActiveBoard, loadTheme, saveActiveBoard } from './preferences'
 import { gitOrigin, scanSessionFolders } from './repos'
@@ -184,6 +190,17 @@ function createWindow(theme: Theme): BrowserWindow {
     if (verdict.kind === 'external') void shell.openExternal(verdict.url)
   })
 
+  // O menu é `null` (spec #74, decisão 23), e o `F12` → DevTools ia junto com ele. Só em `yarn dev`
+  // ele volta, por aqui: no executável o DevTools continua fora de alcance, como sempre esteve.
+  if (devServerUrl) {
+    window.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown' || input.key !== 'F12') return
+
+      event.preventDefault()
+      window.webContents.toggleDevTools()
+    })
+  }
+
   // `loadURL`/`loadFile` são programáticos e **não** disparam `will-navigate`: só o que o renderer
   // inicia passa pela guarda acima.
   if (devServerUrl) {
@@ -307,66 +324,108 @@ function publicarPerigo(): void {
   dangerIpc?.publish()
 }
 
+// O terceiro dado durável (#74 §4): as sessões livres, no `free-sessions.json`. As quatro pontas de
+// IO são as do `ConversationIndex` — o mesmo `inspectSession` e a mesma leitura de transcript.
+const free = new FreeIndex({
+  load: loadFree,
+  save: saveFree,
+  inspect: inspectSession,
+  transcript: readTranscript,
+  onChange: publicarFree,
+})
+
+// **Incondicional**, ao contrário dos de board: a sessão livre não toca o GitHub, e a pasta dela é
+// escolha do humano. O `closeScope` é referência para a frente — o `sessionIpc` nasce mais abaixo, e
+// o `free:forget` só roda muito depois.
+const freeIpc = registerFreeIpc(free, { closeScope: (scope) => sessionIpc.closeScope(scope) })
+freeIpc.refresh()
+
+function publicarFree(): void {
+  freeIpc.publish()
+}
+
 /**
  * O portão visto por escopo. Existe para o `registerSessionIpc` não ter de saber que a marca do
  * cartão mora em disco e a da triagem em memória — a diferença é de durabilidade, não de regra.
  *
  * Fora do kanban (`OC_SCREEN=chat`) não há `dangerIpc` e não há triagem: a marca responde `false` e
- * o `set` é no-op — que é a decisão 13 do #10, a tela de chat mantém o portão sem exceção.
+ * o `set` é no-op — que é a decisão 13 do #10, a tela de chat mantém o portão sem exceção. Isso
+ * vale para a sessão **sem escopo** daquela tela: a sessão livre carrega a própria marca, em disco,
+ * em qualquer tela.
  */
 const dangerGate: DangerGate = {
-  isDangerous: async (scope) =>
-    scope.kind === 'card'
+  isDangerous: async (scope) => {
+    if (scope.kind === 'free') return free.isDangerous(scope.id)
+
+    return scope.kind === 'card'
       ? danger.isDangerous(scope.itemId)
-      : (dangerIpc?.isDangerous(scope.boardKey) ?? false),
+      : (dangerIpc?.isDangerous(scope.boardKey) ?? false)
+  },
   set: (scope, dangerous) => {
-    if (scope.kind === 'card') danger.set(scope.itemId, dangerous)
+    if (scope.kind === 'free') free.setDangerous(scope.id, dangerous)
+    else if (scope.kind === 'card') danger.set(scope.itemId, dangerous)
     else dangerIpc?.setTriage(scope.boardKey, dangerous)
   },
 }
 
+/**
+ * A pasta de cada escopo, uma só função para as sessões e para o terminal "aqui" (spec #74 §3): o
+ * terminal que abre num card tem de cair na mesma pasta onde a sessão do card rodaria.
+ */
+const resolveScopeCwd = async (scope: SessionScope | undefined): Promise<string | null> => {
+  if (scope === undefined) return resolveCwd()
+
+  // A pasta da sessão livre é a que o humano escolheu no seletor, gravada em disco. Sem repo, sem
+  // varredura: a regra "a pasta ainda existe?" mora só aqui.
+  if (scope.kind === 'free') {
+    const cwd = await free.cwdOf(scope.id)
+
+    return cwd !== null && existsSync(cwd) ? cwd : null
+  }
+
+  if (scope.kind === 'triage') {
+    // A escolha do humano vence a descoberta, como o `#declared` do `RepoIndex` — e por isso vem
+    // antes do repo unânime, não depois.
+    const escolhida = triageFolders.get(scope.boardKey)
+    // A pasta pode ter sido movida entre a escolha e o clique. Cair no CA-5 é melhor que mandar o
+    // Claude Code para um caminho que não existe mais — a mesma regra do fim desta função.
+    if (escolhida !== undefined) return existsSync(escolhida) ? escolhida : null
+  }
+
+  // As duas origens do repo, e a única diferença entre os dois escopos daqui para baixo: o do
+  // cartão sai do cartão; o da triagem, do repo unânime da aba. Sem repo, a resposta é a mesma
+  // dos dois lados — "não sei", e o painel pede a pasta.
+  const repository =
+    scope.kind === 'card'
+      ? (boardsIpc?.cardById(scope.itemId)?.repository ?? null)
+      : (boardsIpc?.repoOfBoard(scope.boardKey) ?? null)
+  if (repository === null) return null
+
+  let path = repos.pathFor(repository)
+
+  if (path === null) {
+    // Segunda chance antes de desistir: um repo clonado com o app aberto, ou uma sessão criada
+    // depois da varredura inicial, é achado sem incomodar ninguém. O `refresh()` tem guarda de
+    // concorrência, então um segundo clique durante a varredura pega carona nela.
+    await repos.refresh()
+    path = repos.pathFor(repository)
+  }
+
+  // A pasta pode ter sido movida ou apagada entre a varredura e o clique. Melhor cair no CA-5 e
+  // pedir a pasta do que mandar o Claude Code para um caminho que não existe mais.
+  return path !== null && existsSync(path) ? path : null
+}
+
 const sessionIpc = registerSessionIpc(host, {
   conversations,
+  free,
   danger: dangerGate,
-  resolveCwd: async (scope) => {
-    if (scope === undefined) return resolveCwd()
-
-    if (scope.kind === 'triage') {
-      // A escolha do humano vence a descoberta, como o `#declared` do `RepoIndex` — e por isso vem
-      // antes do repo unânime, não depois.
-      const escolhida = triageFolders.get(scope.boardKey)
-      // A pasta pode ter sido movida entre a escolha e o clique. Cair no CA-5 é melhor que mandar o
-      // Claude Code para um caminho que não existe mais — a mesma regra do fim desta função.
-      if (escolhida !== undefined) return existsSync(escolhida) ? escolhida : null
-    }
-
-    // As duas origens do repo, e a única diferença entre os dois escopos daqui para baixo: o do
-    // cartão sai do cartão; o da triagem, do repo unânime da aba. Sem repo, a resposta é a mesma
-    // dos dois lados — "não sei", e o painel pede a pasta.
-    const repository =
-      scope.kind === 'card'
-        ? (boardsIpc?.cardById(scope.itemId)?.repository ?? null)
-        : (boardsIpc?.repoOfBoard(scope.boardKey) ?? null)
-    if (repository === null) return null
-
-    let path = repos.pathFor(repository)
-
-    if (path === null) {
-      // Segunda chance antes de desistir: um repo clonado com o app aberto, ou uma sessão criada
-      // depois da varredura inicial, é achado sem incomodar ninguém. O `refresh()` tem guarda de
-      // concorrência, então um segundo clique durante a varredura pega carona nela.
-      await repos.refresh()
-      path = repos.pathFor(repository)
-    }
-
-    // A pasta pode ter sido movida ou apagada entre a varredura e o clique. Melhor cair no CA-5 e
-    // pedir a pasta do que mandar o Claude Code para um caminho que não existe mais.
-    return path !== null && existsSync(path) ? path : null
-  },
+  resolveCwd: resolveScopeCwd,
   onTurnEnd: (scope) => {
-    // Sem kanban não há aba a reler, e a tela de chat (`scope === undefined`) não tem board nenhum
-    // por trás: os dois caem no mesmo no-op, e é por isso que a decisão mora aqui e não no `ipc.ts`.
-    if (!boardsIpc || scope === undefined) return
+    // Sem kanban não há aba a reler, a tela de chat (`scope === undefined`) não tem board nenhum
+    // por trás e a sessão livre não move card: os três caem no mesmo no-op, e é por isso que a
+    // decisão mora aqui e não no `ipc.ts`.
+    if (!boardsIpc || scope === undefined || scope.kind === 'free') return
 
     // A triagem já **é** de uma aba; o cartão precisa que alguém diga de qual. Um `itemId` que o
     // retrato não conhece — cartão de board que sumiu, aba ainda não lida — não relê nada, em vez
@@ -443,6 +502,14 @@ function pintarJanela(theme: Theme): void {
  * cartões daquele repo.
  */
 function destinoDaEscolha(scope: SessionScope): ((path: string) => void) | null {
+  // A sessão livre grava a pasta na própria entrada, em disco: ela não tem transcript de onde a
+  // reler antes do primeiro turno.
+  if (scope.kind === 'free') {
+    return (path) => {
+      free.setCwd(scope.id, path)
+    }
+  }
+
   if (scope.kind === 'triage') {
     if (!boardsIpc) return null
 
@@ -480,6 +547,12 @@ void app.whenReady().then(async () => {
   // linha seguinte em diante.
   const observarJanela = registerWindowIpc()
 
+  // Sem menu (spec #74, decisão 23). O app nunca montou um, então valia o **default do Electron**,
+  // cujos aceleradores seguem vivos com a barra escondida pelo `autoHideMenuBar`: `Ctrl+W` fechava o
+  // app, `Ctrl+R` recarregava a janela — e `^W`/`^R` são edição de linha do bash e do PSReadLine.
+  // Com `null` as teclas chegam ao shell.
+  Menu.setApplicationMenu(null)
+
   const window = createWindow(theme)
   janelaViva = window
   observarJanela(window)
@@ -509,7 +582,19 @@ void app.whenReady().then(async () => {
 // pendente e fecha as filas de entrada); o que sobra é aguardar o subprocesso terminar o turno em
 // andamento, e esperar por isso deixaria o app vivo sem janela nenhuma. A spec aceita o preço: um
 // turno em andamento morre.
+// Registro incondicional: nenhum handler spawna nada sozinho, ao contrário dos canais de board.
+const terminalDeps = presetDepsDeProducao()
+const terminalIpc = registerTerminalIpc({
+  presets: () => buildPresets(terminalDeps),
+  resolveCwd: async (scope) => resolveScopeCwd(scope),
+  host: new TerminalHost(loadPty),
+})
+
+// O layout da mesa (#74 §6): só persiste, e por isso também incondicional — não toca o board.
+registerLayoutIpc()
+
 app.on('window-all-closed', () => {
   void sessionIpc.closeAll()
+  terminalIpc.closeAll()
   app.quit()
 })

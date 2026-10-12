@@ -9,6 +9,7 @@ import type { CardSession, CardSessions } from '../components/Chat'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
 import { ThemePicker } from '../components/ThemePicker'
+import { useTerminalAqui } from '../mesa/terminalAqui'
 import { Badge } from '../ui/badge'
 import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
 
@@ -74,6 +75,8 @@ function reduceSessions(sessions: CardSessions, action: SessionsAction): CardSes
  * vista, e o único encerramento é o do CA-6 — o botão do cartão, ou o desligamento do app.
  */
 export function KanbanScreen(): JSX.Element {
+  // O "Terminal aqui" nasce na mesa que envolve a tela; sem mesa, o botão não existe.
+  const terminalAqui = useTerminalAqui()
   const [kanban, dispatch] = useReducer(reduceKanban, INITIAL_KANBAN)
   // Aberto aqui em cima, e não junto do render, porque o `toggle` precisa da `activeKey` para saber
   // de **qual** aba é o cartão que ele alterna.
@@ -176,6 +179,19 @@ export function KanbanScreen(): JSX.Element {
     [activeKey],
   )
 
+  const maximize = useCallback(
+    (itemId: string) => {
+      // Mesma guarda do `toggle`: sem aba ativa não há cartão na tela.
+      if (activeKey === null) return
+      dispatch({ type: 'maximizar', key: activeKey, itemId })
+    },
+    [activeKey],
+  )
+
+  const restore = useCallback(() => {
+    dispatch({ type: 'recolher' })
+  }, [])
+
   const registerSession = useCallback((itemId: string, session: CardSession) => {
     dispatchSession({ type: 'card', itemId, session })
   }, [])
@@ -228,7 +244,12 @@ export function KanbanScreen(): JSX.Element {
   const triagem = kanban.triagem
 
   return (
-    <div className="flex h-full flex-col bg-background font-base text-foreground">
+    // `relative` é o bloco de contenção do cartão expandido (#28): ele cobre esta caixa, e não a
+    // janela, para o painel lateral e o dock continuarem utilizáveis ao lado.
+    <div
+      data-testid="kanban-screen"
+      className="relative flex h-full flex-col bg-background font-base text-foreground"
+    >
       <header className="flex items-center justify-between gap-4 border-b-2 border-border px-4 py-3">
         {/* A barra ocupa o lugar do título, e não um espaço ao lado dele: o rótulo da aba ativa
             já diz **qual** board você olha, e a altura poupada vai para o kanban, que é quem
@@ -283,13 +304,27 @@ export function KanbanScreen(): JSX.Element {
                       onToggleDangerous: (next: boolean) => {
                         toggleTriageDangerous(triagem, next)
                       },
+                      onOpenTerminal:
+                        terminalAqui === undefined
+                          ? undefined
+                          : () => {
+                              terminalAqui({ kind: 'triage', boardKey: triagem })
+                            },
                     }
                   : undefined
               }
               onStartTriage={column.triage && triagem === null ? startTriage : undefined}
+              maximizedItemId={
+                kanban.maximizado !== null && kanban.maximizado.key === activeKey
+                  ? kanban.maximizado.itemId
+                  : null
+              }
+              onMaximize={maximize}
+              onRestore={restore}
               onToggle={toggle}
               onSession={registerSession}
               onToggleDangerous={toggleDangerous}
+              onOpenTerminal={terminalAqui}
             />
           ))}
         </main>
