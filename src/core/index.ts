@@ -44,6 +44,8 @@ export type { RepoIndexDeps, SessionFolder } from './repos/RepoIndex'
 
 export { ConversationIndex } from './session/ConversationIndex'
 export type { ConversationIndexDeps, Restoration } from './session/ConversationIndex'
+export { FreeIndex } from './session/FreeIndex'
+export type { FreeEntry, FreeIndexDeps } from './session/FreeIndex'
 
 export { DangerIndex } from './session/DangerIndex'
 export type { DangerIndexDeps } from './session/DangerIndex'

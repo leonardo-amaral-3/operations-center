@@ -27,7 +27,8 @@ vi.mock('electron', () => ({
 
 import type { WebContents } from 'electron'
 
-import { ConversationIndex, DangerIndex, SessionHost } from '../../src/core'
+import { ConversationIndex, DangerIndex, FreeIndex, SessionHost } from '../../src/core'
+import type { FreeEntry } from '../../src/core'
 import type { QueryFn } from '../../src/core/session/SessionHost'
 import type { DangerGate } from '../../src/main/danger'
 import { oneStartPerScope, registerSessionIpc } from '../../src/main/ipc'
@@ -94,6 +95,8 @@ interface Bancada {
    * abertura do app, e aqui ela é semeada à mão porque só há uma execução.
    */
   triagens?: readonly string[]
+  /** As sessões livres que estavam no `free-sessions.json` quando o app abriu. */
+  livres?: readonly FreeEntry[]
   /**
    * Arranca o `allowDangerouslySkipPermissions` do `query()`, e com ele a única forma de o SDK
    * recusar a troca de modo (M-3) — o mesmo truque do `startSemFlag` de `SessionHost.test.ts`.
@@ -136,13 +139,31 @@ function montar(opcoes: Bancada = {}) {
    * O conjunto é o do main de verdade em espírito: memória pura, sem `load` e sem `save`.
    */
   const triagens = new Set(opcoes.triagens ?? [])
+  const free = new FreeIndex({
+    load: () => Promise.resolve(opcoes.livres ?? []),
+    save: () => Promise.resolve(),
+    inspect: opcoes.inspect ?? (() => Promise.resolve({ cwd: PASTA_DA_CONVERSA })),
+    transcript: () =>
+      Promise.resolve([
+        {
+          type: 'user' as const,
+          uuid: 'u1',
+          message: { role: 'user', content: 'onde parou?' },
+          parent_tool_use_id: null,
+        },
+      ]),
+  })
   const gate: DangerGate = {
-    isDangerous: (scope) =>
-      scope.kind === 'card'
+    isDangerous: (scope) => {
+      if (scope.kind === 'free') return Promise.resolve(free.isDangerous(scope.id))
+
+      return scope.kind === 'card'
         ? danger.isDangerous(scope.itemId)
-        : Promise.resolve(triagens.has(scope.boardKey)),
+        : Promise.resolve(triagens.has(scope.boardKey))
+    },
     set: (scope, dangerous) => {
-      if (scope.kind === 'card') danger.set(scope.itemId, dangerous)
+      if (scope.kind === 'free') free.setDangerous(scope.id, dangerous)
+      else if (scope.kind === 'card') danger.set(scope.itemId, dangerous)
       else if (dangerous) triagens.add(scope.boardKey)
       else triagens.delete(scope.boardKey)
     },
@@ -170,7 +191,7 @@ function montar(opcoes: Bancada = {}) {
    */
   const onTurnEnd = vi.fn()
 
-  const ipc = registerSessionIpc(host, { resolveCwd, conversations, danger: gate, onTurnEnd })
+  const ipc = registerSessionIpc(host, { resolveCwd, conversations, free, danger: gate, onTurnEnd })
 
   const recebidos: string[] = []
   const estados: SessionState[] = []
@@ -200,6 +221,7 @@ function montar(opcoes: Bancada = {}) {
 
   return {
     conversations,
+    free,
     danger,
     /** O que o portão volátil guarda agora. É o `boardKeys` do retrato, do lado do main. */
     triagens,
@@ -685,5 +707,122 @@ describe('registerSessionIpc — a releitura no fim do turno', () => {
     // O escopo atravessa inteiro, e não um `itemId` que a triagem não tem: quem sabe traduzir
     // `boardKey` em aba é o main, e ele precisa do discriminante para escolher o ramo.
     expect(bancada.onTurnEnd.mock.calls).toEqual([[TRIAGEM]])
+  })
+})
+
+describe('registerSessionIpc — o escopo da sessão livre', () => {
+  const LIVRE: SessionScope = { kind: 'free', id: 'livre-1' }
+  const gravada = (over: Partial<FreeEntry> = {}): FreeEntry => ({
+    id: 'livre-1',
+    title: 'notoria',
+    cwd: PASTA_DO_REPO,
+    sessionId: 'sessao-de-ontem',
+    dangerous: false,
+    createdAt: '2026-10-12T14:03:00.000Z',
+    ...over,
+  })
+
+  it('`start` retoma com `history`, na pasta em que a conversa rodou, sem `forkSession`', async () => {
+    const bancada = montar({ livres: [gravada()] })
+
+    const sessao = sessaoDe(await bancada.start(LIVRE))
+
+    expect(bancada.fake.options?.resume).toBe('sessao-de-ontem')
+    expect(bancada.fake.options?.cwd).toBe(PASTA_DA_CONVERSA)
+    expect(bancada.fake.options?.forkSession).toBeUndefined()
+    expect(bancada.resolveCwd).not.toHaveBeenCalled()
+    expect(sessao.scope).toEqual(LIVRE)
+    expect(sessao.messages.some((m) => m.role === 'user' && m.text === 'onde parou?')).toBe(true)
+  })
+
+  it('sem conversa a retomar, sobe nova pelo `resolveCwd`, que responde pela pasta gravada', async () => {
+    const bancada = montar({ livres: [gravada({ sessionId: null })] })
+
+    await bancada.start(LIVRE)
+
+    expect(bancada.resolveCwd).toHaveBeenCalledWith(LIVRE)
+    expect(bancada.fake.options?.resume).toBeUndefined()
+  })
+
+  it('pasta sumida → `unknown-folder`, e nenhuma sessão sobe', async () => {
+    const bancada = montar({
+      livres: [gravada({ sessionId: null })],
+      resolveCwd: () => Promise.resolve(null),
+    })
+
+    expect(await bancada.start(LIVRE)).toEqual({ started: false, reason: 'unknown-folder' })
+    expect(bancada.criadas).not.toHaveBeenCalled()
+  })
+
+  it('o `init` grava o vínculo no índice livre, e não no do cartão', async () => {
+    const bancada = montar({ livres: [gravada({ sessionId: null })] })
+    await bancada.free.refresh()
+
+    await bancada.start(LIVRE)
+    await bancada.ate(IPC_EVENT.init)
+
+    expect(bancada.free.list()[0]?.recoverable).toBe(true)
+    expect(bancada.conversations.recoverable()).toEqual([])
+  })
+
+  it('`close` solta a conversa e MANTÉM a entrada — esquecer é o `free:forget`', async () => {
+    const bancada = montar({ livres: [gravada({ sessionId: null })] })
+    await bancada.free.refresh()
+    const sessao = sessaoDe(await bancada.start(LIVRE))
+    await bancada.ate(IPC_EVENT.init)
+
+    await bancada.close(sessao.id)
+
+    expect(bancada.free.list()).toEqual([
+      { id: 'livre-1', title: 'notoria', dangerous: false, recoverable: false },
+    ])
+    expect(bancada.esquecer).not.toHaveBeenCalled()
+  })
+
+  it('desligar o app não solta: a conversa volta na próxima abertura', async () => {
+    const bancada = montar({ livres: [gravada({ sessionId: null })] })
+    await bancada.free.refresh()
+    await bancada.start(LIVRE)
+    await bancada.ate(IPC_EVENT.init)
+
+    await bancada.ipc.closeAll()
+
+    expect(bancada.free.list()[0]?.recoverable).toBe(true)
+  })
+
+  it('`closeScope` fecha a sessão viva como o `close`; sem sessão viva é no-op', async () => {
+    const bancada = montar({ livres: [gravada({ sessionId: null })] })
+    await bancada.free.refresh()
+    await bancada.ipc.closeScope(LIVRE)
+    await bancada.start(LIVRE)
+    await bancada.ate(IPC_EVENT.init)
+
+    await bancada.ipc.closeScope(LIVRE)
+
+    expect(bancada.free.list()[0]).toMatchObject({ id: 'livre-1', recoverable: false })
+    // Escopo morto: o `start` seguinte sobe uma sessão nova, não reata um cadáver.
+    await bancada.start(LIVRE)
+    expect(bancada.criadas).toHaveBeenCalledTimes(2)
+  })
+
+  it('a marca de perigo é da sessão livre e volta na retomada', async () => {
+    const bancada = montar({ livres: [gravada({ dangerous: true })] })
+
+    await bancada.start(LIVRE)
+
+    expect(bancada.fake.options?.allowDangerouslySkipPermissions).toBe(true)
+
+    await bancada.marcar(LIVRE, false)
+    expect(bancada.free.isDangerous('livre-1')).toBe(false)
+  })
+
+  it('no fim do turno chama `onTurnEnd` com o escopo livre (o main decide ignorar)', async () => {
+    const bancada = montar({ livres: [gravada({ sessionId: null })] })
+    const sessao = sessaoDe(await bancada.start(LIVRE))
+
+    await bancada.enviar(sessao.id, 'oi')
+    await bancada.ateEstado('awaiting_input')
+
+    expect(bancada.onTurnEnd.mock.calls).toEqual([[LIVRE]])
   })
 })

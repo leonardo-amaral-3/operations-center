@@ -150,8 +150,9 @@ export const IPC_EVENT = {
 } as const
 
 /**
- * De quem é a sessão. É a RN-1 do PRD escrita no tipo: não há chat sem card, com a exceção da nova
- * triagem — que existe justamente para criar um.
+ * De quem é a sessão. É a RN-1 do PRD, emendada pelo #74, escrita no tipo: não há chat sem card,
+ * com duas exceções nomeadas — a nova triagem, que existe justamente para criar um, e a sessão
+ * livre, que é trabalho sem card por escolha do humano.
  *
  * Ausente (o `scope` opcional do `StartRequest`) continua sendo a tela de chat da fatia vertical,
  * que roda em `OC_CWD` e não conhece board nenhum.
@@ -160,16 +161,25 @@ export type SessionScope =
   | { kind: 'card'; itemId: string }
   /** A triagem daquela aba. `boardKey` é a `key` opaca da aba, como no `ui:active-board`. */
   | { kind: 'triage'; boardKey: string }
+  /** Uma sessão livre: `id` é a chave do `free-sessions.json`, opaca para o renderer como o `itemId`. */
+  | { kind: 'free'; id: string }
 
 /**
  * A chave única de um escopo, e o **único** lugar que a compõe.
  *
  * O main indexa sessões vivas e partidas em voo por esta string; o renderer a usa como dependência
- * de efeito. Compor `card:` e `triage:` em dois lugares faria os espaços de chave se cruzarem no dia
- * em que um dos dois mudasse de prefixo.
+ * de efeito. Compor `card:`, `triage:` e `free:` em dois lugares faria os espaços de chave se
+ * cruzarem no dia em que um deles mudasse de prefixo.
  */
 export function scopeKey(scope: SessionScope): string {
-  return scope.kind === 'card' ? `card:${scope.itemId}` : `triage:${scope.boardKey}`
+  switch (scope.kind) {
+    case 'card':
+      return `card:${scope.itemId}`
+    case 'triage':
+      return `triage:${scope.boardKey}`
+    case 'free':
+      return `free:${scope.id}`
+  }
 }
 
 /**

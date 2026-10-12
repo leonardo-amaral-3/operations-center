@@ -11,6 +11,7 @@ import {
   CardReader,
   ConversationIndex,
   DangerIndex,
+  FreeIndex,
   RepoIndex,
   SessionHost,
 } from '../core'
@@ -36,6 +37,7 @@ import type { DangerGate } from './danger'
 import { createFixtureGraphQL } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
+import { loadFree, registerFreeIpc, saveFree } from './free'
 import { registerSessionIpc } from './ipc'
 import { loadPty, presetDepsDeProducao, registerTerminalIpc } from './terminal'
 import { buildPresets } from './terminalPresets'
@@ -310,20 +312,46 @@ function publicarPerigo(): void {
   dangerIpc?.publish()
 }
 
+// O terceiro dado durável (#74 §4): as sessões livres, no `free-sessions.json`. As quatro pontas de
+// IO são as do `ConversationIndex` — o mesmo `inspectSession` e a mesma leitura de transcript.
+const free = new FreeIndex({
+  load: loadFree,
+  save: saveFree,
+  inspect: inspectSession,
+  transcript: readTranscript,
+  onChange: publicarFree,
+})
+
+// **Incondicional**, ao contrário dos de board: a sessão livre não toca o GitHub, e a pasta dela é
+// escolha do humano. O `closeScope` é referência para a frente — o `sessionIpc` nasce mais abaixo, e
+// o `free:forget` só roda muito depois.
+const freeIpc = registerFreeIpc(free, { closeScope: (scope) => sessionIpc.closeScope(scope) })
+freeIpc.refresh()
+
+function publicarFree(): void {
+  freeIpc.publish()
+}
+
 /**
  * O portão visto por escopo. Existe para o `registerSessionIpc` não ter de saber que a marca do
  * cartão mora em disco e a da triagem em memória — a diferença é de durabilidade, não de regra.
  *
  * Fora do kanban (`OC_SCREEN=chat`) não há `dangerIpc` e não há triagem: a marca responde `false` e
- * o `set` é no-op — que é a decisão 13 do #10, a tela de chat mantém o portão sem exceção.
+ * o `set` é no-op — que é a decisão 13 do #10, a tela de chat mantém o portão sem exceção. Isso
+ * vale para a sessão **sem escopo** daquela tela: a sessão livre carrega a própria marca, em disco,
+ * em qualquer tela.
  */
 const dangerGate: DangerGate = {
-  isDangerous: async (scope) =>
-    scope.kind === 'card'
+  isDangerous: async (scope) => {
+    if (scope.kind === 'free') return free.isDangerous(scope.id)
+
+    return scope.kind === 'card'
       ? danger.isDangerous(scope.itemId)
-      : (dangerIpc?.isDangerous(scope.boardKey) ?? false),
+      : (dangerIpc?.isDangerous(scope.boardKey) ?? false)
+  },
   set: (scope, dangerous) => {
-    if (scope.kind === 'card') danger.set(scope.itemId, dangerous)
+    if (scope.kind === 'free') free.setDangerous(scope.id, dangerous)
+    else if (scope.kind === 'card') danger.set(scope.itemId, dangerous)
     else dangerIpc?.setTriage(scope.boardKey, dangerous)
   },
 }
@@ -334,6 +362,14 @@ const dangerGate: DangerGate = {
  */
 const resolveScopeCwd = async (scope: SessionScope | undefined): Promise<string | null> => {
   if (scope === undefined) return resolveCwd()
+
+  // A pasta da sessão livre é a que o humano escolheu no seletor, gravada em disco. Sem repo, sem
+  // varredura: a regra "a pasta ainda existe?" mora só aqui.
+  if (scope.kind === 'free') {
+    const cwd = free.cwdOf(scope.id)
+
+    return cwd !== null && existsSync(cwd) ? cwd : null
+  }
 
   if (scope.kind === 'triage') {
     // A escolha do humano vence a descoberta, como o `#declared` do `RepoIndex` — e por isso vem
@@ -370,12 +406,14 @@ const resolveScopeCwd = async (scope: SessionScope | undefined): Promise<string 
 
 const sessionIpc = registerSessionIpc(host, {
   conversations,
+  free,
   danger: dangerGate,
   resolveCwd: resolveScopeCwd,
   onTurnEnd: (scope) => {
-    // Sem kanban não há aba a reler, e a tela de chat (`scope === undefined`) não tem board nenhum
-    // por trás: os dois caem no mesmo no-op, e é por isso que a decisão mora aqui e não no `ipc.ts`.
-    if (!boardsIpc || scope === undefined) return
+    // Sem kanban não há aba a reler, a tela de chat (`scope === undefined`) não tem board nenhum
+    // por trás e a sessão livre não move card: os três caem no mesmo no-op, e é por isso que a
+    // decisão mora aqui e não no `ipc.ts`.
+    if (!boardsIpc || scope === undefined || scope.kind === 'free') return
 
     // A triagem já **é** de uma aba; o cartão precisa que alguém diga de qual. Um `itemId` que o
     // retrato não conhece — cartão de board que sumiu, aba ainda não lida — não relê nada, em vez
@@ -452,6 +490,14 @@ function pintarJanela(theme: Theme): void {
  * cartões daquele repo.
  */
 function destinoDaEscolha(scope: SessionScope): ((path: string) => void) | null {
+  // A sessão livre grava a pasta na própria entrada, em disco: ela não tem transcript de onde a
+  // reler antes do primeiro turno.
+  if (scope.kind === 'free') {
+    return (path) => {
+      free.setCwd(scope.id, path)
+    }
+  }
+
   if (scope.kind === 'triage') {
     if (!boardsIpc) return null
 
