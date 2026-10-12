@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import { WindowBar } from './components/WindowBar'
+import { Mesa } from './mesa/Mesa'
 import { ChatScreen } from './screens/ChatScreen'
 import { KanbanScreen } from './screens/KanbanScreen'
 
@@ -18,16 +18,11 @@ import { KanbanScreen } from './screens/KanbanScreen'
  * tem como esquecer os botões e deixar a janela sem como fechar. As duas telas de hoje não mudam:
  * as duas já abrem com `flex h-full flex-col`, e o `h-full` passa a medir contra a caixa do item de
  * flex em vez da raiz.
+ *
+ * **A mesa (#74) envolve a tela** e é ela quem monta a faixa: os botões de terminal e de sessão livre
+ * acompanham a janela, não uma tela, então moram na mesma raiz — junto do estado do dock e do painel
+ * lateral, que sobrevivem à troca de tela.
  */
 export function App(): JSX.Element {
-  return (
-    <div className="flex h-full flex-col">
-      <WindowBar />
-      {/* `min-h-0` porque o filho é `h-full` e rola por dentro: sem ele o item de flex adota a
-          altura do conteúdo e o kanban empurra a faixa para fora da janela. */}
-      <div className="min-h-0 flex-1">
-        {window.oc.screen === 'chat' ? <ChatScreen /> : <KanbanScreen />}
-      </div>
-    </div>
-  )
+  return <Mesa>{window.oc.screen === 'chat' ? <ChatScreen /> : <KanbanScreen />}</Mesa>
 }

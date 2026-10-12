@@ -39,6 +39,7 @@ import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
 import { loadFree, registerFreeIpc, saveFree } from './free'
 import { registerSessionIpc } from './ipc'
+import { registerLayoutIpc } from './layout'
 import { loadPty, presetDepsDeProducao, registerTerminalIpc } from './terminal'
 import { buildPresets } from './terminalPresets'
 import { judgeNavigation } from './navigation'
@@ -571,6 +572,9 @@ const terminalIpc = registerTerminalIpc({
   resolveCwd: async (scope) => resolveScopeCwd(scope),
   host: new TerminalHost(loadPty),
 })
+
+// O layout da mesa (#74 §6): só persiste, e por isso também incondicional — não toca o board.
+registerLayoutIpc()
 
 app.on('window-all-closed', () => {
   void sessionIpc.closeAll()
