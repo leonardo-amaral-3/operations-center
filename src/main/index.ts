@@ -14,6 +14,7 @@ import {
   RepoIndex,
   SessionHost,
 } from '../core'
+import { TerminalHost } from '../core'
 import type { GraphQLFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen, SessionScope } from '../shared/ipc'
@@ -36,6 +37,8 @@ import { createFixtureGraphQL } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
 import { createGhTokenSource } from './github/token'
 import { registerSessionIpc } from './ipc'
+import { loadPty, presetDepsDeProducao, registerTerminalIpc } from './terminal'
+import { buildPresets } from './terminalPresets'
 import { judgeNavigation } from './navigation'
 import { loadActiveBoard, loadTheme, saveActiveBoard } from './preferences'
 import { gitOrigin, scanSessionFolders } from './repos'
@@ -325,44 +328,50 @@ const dangerGate: DangerGate = {
   },
 }
 
+/**
+ * A pasta de cada escopo, uma só função para as sessões e para o terminal "aqui" (spec #74 §3): o
+ * terminal que abre num card tem de cair na mesma pasta onde a sessão do card rodaria.
+ */
+const resolveScopeCwd = async (scope: SessionScope | undefined): Promise<string | null> => {
+  if (scope === undefined) return resolveCwd()
+
+  if (scope.kind === 'triage') {
+    // A escolha do humano vence a descoberta, como o `#declared` do `RepoIndex` — e por isso vem
+    // antes do repo unânime, não depois.
+    const escolhida = triageFolders.get(scope.boardKey)
+    // A pasta pode ter sido movida entre a escolha e o clique. Cair no CA-5 é melhor que mandar o
+    // Claude Code para um caminho que não existe mais — a mesma regra do fim desta função.
+    if (escolhida !== undefined) return existsSync(escolhida) ? escolhida : null
+  }
+
+  // As duas origens do repo, e a única diferença entre os dois escopos daqui para baixo: o do
+  // cartão sai do cartão; o da triagem, do repo unânime da aba. Sem repo, a resposta é a mesma
+  // dos dois lados — "não sei", e o painel pede a pasta.
+  const repository =
+    scope.kind === 'card'
+      ? (boardsIpc?.cardById(scope.itemId)?.repository ?? null)
+      : (boardsIpc?.repoOfBoard(scope.boardKey) ?? null)
+  if (repository === null) return null
+
+  let path = repos.pathFor(repository)
+
+  if (path === null) {
+    // Segunda chance antes de desistir: um repo clonado com o app aberto, ou uma sessão criada
+    // depois da varredura inicial, é achado sem incomodar ninguém. O `refresh()` tem guarda de
+    // concorrência, então um segundo clique durante a varredura pega carona nela.
+    await repos.refresh()
+    path = repos.pathFor(repository)
+  }
+
+  // A pasta pode ter sido movida ou apagada entre a varredura e o clique. Melhor cair no CA-5 e
+  // pedir a pasta do que mandar o Claude Code para um caminho que não existe mais.
+  return path !== null && existsSync(path) ? path : null
+}
+
 const sessionIpc = registerSessionIpc(host, {
   conversations,
   danger: dangerGate,
-  resolveCwd: async (scope) => {
-    if (scope === undefined) return resolveCwd()
-
-    if (scope.kind === 'triage') {
-      // A escolha do humano vence a descoberta, como o `#declared` do `RepoIndex` — e por isso vem
-      // antes do repo unânime, não depois.
-      const escolhida = triageFolders.get(scope.boardKey)
-      // A pasta pode ter sido movida entre a escolha e o clique. Cair no CA-5 é melhor que mandar o
-      // Claude Code para um caminho que não existe mais — a mesma regra do fim desta função.
-      if (escolhida !== undefined) return existsSync(escolhida) ? escolhida : null
-    }
-
-    // As duas origens do repo, e a única diferença entre os dois escopos daqui para baixo: o do
-    // cartão sai do cartão; o da triagem, do repo unânime da aba. Sem repo, a resposta é a mesma
-    // dos dois lados — "não sei", e o painel pede a pasta.
-    const repository =
-      scope.kind === 'card'
-        ? (boardsIpc?.cardById(scope.itemId)?.repository ?? null)
-        : (boardsIpc?.repoOfBoard(scope.boardKey) ?? null)
-    if (repository === null) return null
-
-    let path = repos.pathFor(repository)
-
-    if (path === null) {
-      // Segunda chance antes de desistir: um repo clonado com o app aberto, ou uma sessão criada
-      // depois da varredura inicial, é achado sem incomodar ninguém. O `refresh()` tem guarda de
-      // concorrência, então um segundo clique durante a varredura pega carona nela.
-      await repos.refresh()
-      path = repos.pathFor(repository)
-    }
-
-    // A pasta pode ter sido movida ou apagada entre a varredura e o clique. Melhor cair no CA-5 e
-    // pedir a pasta do que mandar o Claude Code para um caminho que não existe mais.
-    return path !== null && existsSync(path) ? path : null
-  },
+  resolveCwd: resolveScopeCwd,
   onTurnEnd: (scope) => {
     // Sem kanban não há aba a reler, e a tela de chat (`scope === undefined`) não tem board nenhum
     // por trás: os dois caem no mesmo no-op, e é por isso que a decisão mora aqui e não no `ipc.ts`.
@@ -509,7 +518,16 @@ void app.whenReady().then(async () => {
 // pendente e fecha as filas de entrada); o que sobra é aguardar o subprocesso terminar o turno em
 // andamento, e esperar por isso deixaria o app vivo sem janela nenhuma. A spec aceita o preço: um
 // turno em andamento morre.
+// Registro incondicional: nenhum handler spawna nada sozinho, ao contrário dos canais de board.
+const terminalDeps = presetDepsDeProducao()
+const terminalIpc = registerTerminalIpc({
+  presets: () => buildPresets(terminalDeps),
+  resolveCwd: async (scope) => resolveScopeCwd(scope),
+  host: new TerminalHost(loadPty),
+})
+
 app.on('window-all-closed', () => {
   void sessionIpc.closeAll()
+  terminalIpc.closeAll()
   app.quit()
 })

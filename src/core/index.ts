@@ -71,3 +71,8 @@ export type {
   ToolStatus,
   TurnActivity,
 } from './session/types'
+
+export { parseAwsConfig } from './terminal/awsProfiles'
+export { TerminalHost } from './terminal/TerminalHost'
+export type { AwsProfile } from './terminal/awsProfiles'
+export type { LoadSpawn, PtyProcess, PtySpawner } from './terminal/TerminalHost'
