@@ -9,6 +9,7 @@ import type { CardSession, CardSessions } from '../components/Chat'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
 import { ThemePicker } from '../components/ThemePicker'
+import { useTerminalAqui } from '../mesa/terminalAqui'
 import { Badge } from '../ui/badge'
 import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
 
@@ -74,6 +75,8 @@ function reduceSessions(sessions: CardSessions, action: SessionsAction): CardSes
  * vista, e o único encerramento é o do CA-6 — o botão do cartão, ou o desligamento do app.
  */
 export function KanbanScreen(): JSX.Element {
+  // O "Terminal aqui" nasce na mesa que envolve a tela; sem mesa, o botão não existe.
+  const terminalAqui = useTerminalAqui()
   const [kanban, dispatch] = useReducer(reduceKanban, INITIAL_KANBAN)
   // Aberto aqui em cima, e não junto do render, porque o `toggle` precisa da `activeKey` para saber
   // de **qual** aba é o cartão que ele alterna.
@@ -283,6 +286,12 @@ export function KanbanScreen(): JSX.Element {
                       onToggleDangerous: (next: boolean) => {
                         toggleTriageDangerous(triagem, next)
                       },
+                      onOpenTerminal:
+                        terminalAqui === undefined
+                          ? undefined
+                          : () => {
+                              terminalAqui({ kind: 'triage', boardKey: triagem })
+                            },
                     }
                   : undefined
               }
@@ -290,6 +299,7 @@ export function KanbanScreen(): JSX.Element {
               onToggle={toggle}
               onSession={registerSession}
               onToggleDangerous={toggleDangerous}
+              onOpenTerminal={terminalAqui}
             />
           ))}
         </main>

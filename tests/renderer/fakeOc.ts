@@ -3,11 +3,14 @@ import type {
   ChooseFolderResult,
   CloseRequest,
   CreateFreeResult,
+  ForgetFreeRequest,
+  FreeSessionCard,
   FreeSnapshot,
   LayoutSnapshot,
   OcApi,
   OpenTerminalRequest,
   OpenTerminalResult,
+  RenameFreeRequest,
   TerminalPresetsSnapshot,
   SessionActivityEvent,
   SessionInitEvent,
@@ -74,7 +77,13 @@ export interface OcFake {
 }
 
 /** Instala o falso em `window.oc` e devolve o registro do que a tela pediu. */
-export function instalarOc(layout: LayoutSnapshot = LAYOUT_VAZIO): OcFake {
+export function instalarOc(
+  layout: LayoutSnapshot = LAYOUT_VAZIO,
+  /** As sessões livres que já estão no índice; `criaLivre` faz o `createFree` devolver uma nova. */
+  opcoes: { livres?: FreeSessionCard[]; criaLivre?: boolean } = {},
+): OcFake {
+  const livres = opcoes.livres ?? []
+  const ouvintesDeLivres: ((snapshot: FreeSnapshot) => void)[] = []
   const fechadas: string[] = []
   const entregues: string[] = []
   const pedidosDaJanela: string[] = []
@@ -240,7 +249,11 @@ export function instalarOc(layout: LayoutSnapshot = LAYOUT_VAZIO): OcFake {
 
       return Promise.resolve({
         opened: true,
-        terminal: { id: `pty_${terminaisAbertos.length}`, preset: request.preset, title: request.preset },
+        terminal: {
+          id: `pty_${terminaisAbertos.length}`,
+          preset: request.preset,
+          title: request.preset,
+        },
       })
     },
 
@@ -251,17 +264,42 @@ export function instalarOc(layout: LayoutSnapshot = LAYOUT_VAZIO): OcFake {
     },
 
     readFree(): Promise<FreeSnapshot> {
-      return Promise.resolve({ sessions: [] })
+      return Promise.resolve({ sessions: [...livres] })
     },
 
+    // O diálogo de pasta não é dirigível: `criaLivre` diz se o humano escolheu uma ou cancelou. A
+    // sessão nova é publicada por `onFree` **antes** de a chamada resolver — a ordem em que o main a
+    // anuncia não está garantida, e o painel tem de funcionar nas duas.
     createFree(): Promise<CreateFreeResult> {
       pedidosDaMesa.push('createFree')
+      if (opcoes.criaLivre !== true) return Promise.resolve({ created: false })
 
-      return Promise.resolve({ created: false })
+      const nova: FreeSessionCard = {
+        id: `free_${livres.length + 1}`,
+        title: 'projeto',
+        dangerous: false,
+        recoverable: false,
+      }
+      livres.push(nova)
+      for (const ouvinte of [...ouvintesDeLivres]) ouvinte({ sessions: [...livres] })
+
+      return Promise.resolve({ created: true, id: nova.id })
     },
 
-    onFree(): () => void {
-      return () => undefined
+    renameFree(request: RenameFreeRequest): Promise<void> {
+      pedidosDaMesa.push(`renameFree:${request.id}:${request.title}`)
+
+      return Promise.resolve()
+    },
+
+    forgetFree(request: ForgetFreeRequest): Promise<void> {
+      pedidosDaMesa.push(`forgetFree:${request.id}`)
+
+      return Promise.resolve()
+    },
+
+    onFree(ouvinte: (snapshot: FreeSnapshot) => void): () => void {
+      return assinar(ouvintesDeLivres, ouvinte)
     },
   }
 

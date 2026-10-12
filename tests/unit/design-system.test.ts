@@ -331,6 +331,7 @@ const ANCORAS = [
   // etiqueta de `Tipo`" sem afirmar que ela diz `🐞 Bug` nem que ela é `bg-tipo-bug` — as duas
   // coisas que ele existe justamente para medir do outro lado da cascata.
   'data-field',
+  'data-free-id',
   'data-label',
   'data-parent',
   // As três do card #41, e a ordem aqui é a do `sort()`, não a da leitura. `data-parent-number` é o
@@ -346,6 +347,7 @@ const ANCORAS = [
   'data-queued',
   'data-read-at',
   'data-reason',
+  'data-recoverable',
   'data-request',
   'data-role',
   'data-selected',

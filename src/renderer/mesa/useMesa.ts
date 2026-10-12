@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 
-import type { FreeSessionCard, TerminalPreset } from '../../shared/ipc'
+import type { FreeSessionCard, SessionScope, TerminalPreset } from '../../shared/ipc'
 import { MESA_INICIAL, paraLayout, reduceMesa } from './mesaState'
 import type { MesaAction, MesaState } from './mesaState'
 import { shortcutFor } from './shortcuts'
@@ -18,6 +18,8 @@ export interface Mesa {
   freeSessions: readonly FreeSessionCard[]
   /** Sem `preset`, abre no último perfil usado. */
   newTerminal: (preset?: string) => void
+  /** "Terminal aqui": abre no último perfil, na pasta do escopo (#74 §11). */
+  openTerminalAt: (scope: SessionScope) => void
   newFree: () => void
   openFree: (id: string) => void
   /** Fecha a aba **e** o PTY dela: a aba some do estado, o shell some do main. */
@@ -146,6 +148,19 @@ export function useMesa(): Mesa {
     [guardarFoco],
   )
 
+  const openTerminalAt = useCallback(
+    (scope: SessionScope): void => {
+      guardarFoco()
+      dispatchBruto({
+        type: 'addTerminal',
+        key: crypto.randomUUID(),
+        preset: ultimo.current.lastPreset ?? PERFIL_INICIAL,
+        scope,
+      })
+    },
+    [guardarFoco],
+  )
+
   const openFree = useCallback((id: string): void => {
     dispatchBruto({ type: 'openFree', id })
   }, [])
@@ -225,7 +240,17 @@ export function useMesa(): Mesa {
     }
   }, [closeTab, guardarFoco, newFree, newTerminal])
 
-  return { state, dispatch, presets, freeSessions, newTerminal, newFree, openFree, closeTab }
+  return {
+    state,
+    dispatch,
+    presets,
+    freeSessions,
+    newTerminal,
+    openTerminalAt,
+    newFree,
+    openFree,
+    closeTab,
+  }
 }
 
 /** O layout sem os tamanhos: o que muda aqui é decisão, e grava na hora. */
