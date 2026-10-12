@@ -12,11 +12,12 @@ import {
   ConversationIndex,
   DangerIndex,
   FreeIndex,
+  PullRequestReader,
   RepoIndex,
   SessionHost,
 } from '../core'
 import { TerminalHost } from '../core'
-import type { GraphQLFn } from '../core'
+import type { GraphQLFn, RestGetFn } from '../core'
 import { IPC_INVOKE } from '../shared/ipc'
 import type { ChooseFolderRequest, ChooseFolderResult, Screen, SessionScope } from '../shared/ipc'
 import { THEME_DEFAULT, THEME_FLAG, THEMES } from '../shared/theme'
@@ -24,6 +25,7 @@ import type { Theme } from '../shared/theme'
 import { registerThemeIpc } from './appearance'
 import { registerBoardsIpc } from './boards'
 import { registerCardIpc } from './card'
+import { registerPullRequestIpc } from './pullRequest'
 import { createClaudeBinSource } from './claudeBin'
 import {
   inspectSession,
@@ -34,8 +36,9 @@ import {
 } from './conversations'
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
 import type { DangerGate } from './danger'
-import { createFixtureGraphQL } from './github/fixture'
+import { createFixtureGraphQL, createFixtureRest } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
+import { createGitHubRest } from './github/rest'
 import { createGhTokenSource } from './github/token'
 import { loadFree, registerFreeIpc, saveFree } from './free'
 import { registerSessionIpc } from './ipc'
@@ -89,10 +92,10 @@ function resolveScreen(): Screen {
  * Qual cliente o `core` recebe. `OC_BOARD_FIXTURE` é a porta do smoke: com ela o app lê arquivo e
  * não toca a rede; sem ela, é o GitHub de verdade, com o token do `gh`.
  *
- * `OC_CARD_FIXTURE` e `OC_BOARDS_FIXTURE` são as outras duas metades — o conteúdo do cartão e a
- * descoberta — e **só são consultadas quando a do board existe**: fora do smoke não há fixture
- * nenhuma, e uma delas sozinha só poderia servir cartões ou abas que o board de verdade nunca
- * prometeu. Quem decide fixture-vs-GitHub continua sendo `OC_BOARD_FIXTURE` sozinha.
+ * `OC_CARD_FIXTURE`, `OC_BOARDS_FIXTURE` e `OC_PR_FIXTURE` são as outras três metades — o conteúdo
+ * do cartão, a descoberta e o PR — e **só são consultadas quando a do board existe**: fora do smoke
+ * não há fixture nenhuma, e uma delas sozinha só poderia servir cartões, abas ou PRs que o board de
+ * verdade nunca prometeu. Quem decide fixture-vs-GitHub continua sendo `OC_BOARD_FIXTURE` sozinha.
  */
 function createGraphQL(): GraphQLFn {
   const board = process.env.OC_BOARD_FIXTURE
@@ -102,8 +105,23 @@ function createGraphQL(): GraphQLFn {
         board,
         boards: process.env.OC_BOARDS_FIXTURE,
         cards: process.env.OC_CARD_FIXTURE,
+        pulls: process.env.OC_PR_FIXTURE,
       })
     : createGitHubGraphQL(createGhTokenSource())
+}
+
+/** O transporte REST do PR, com a mesma porta: `OC_BOARD_FIXTURE` decide fixture-vs-GitHub. */
+function createRest(): RestGetFn {
+  const board = process.env.OC_BOARD_FIXTURE
+
+  return board
+    ? createFixtureRest({
+        board,
+        boards: process.env.OC_BOARDS_FIXTURE,
+        cards: process.env.OC_CARD_FIXTURE,
+        pulls: process.env.OC_PR_FIXTURE,
+      })
+    : createGitHubRest(createGhTokenSource())
 }
 
 const screen = resolveScreen()
@@ -254,6 +272,9 @@ if (boardsIpc) {
     // Arrow, e **não** `cardById: boardsIpc.cardById`: o `unbound-method` do ESLint reprova a
     // referência solta a um método — mesmo aqui, onde ela funcionaria, porque `cardById` fecha
     // sobre o retrato e não sobre `this`.
+    cardById: (itemId) => boardsIpc.cardById(itemId),
+  })
+  registerPullRequestIpc(new PullRequestReader({ graphql: createGraphQL(), rest: createRest() }), {
     cardById: (itemId) => boardsIpc.cardById(itemId),
   })
 }

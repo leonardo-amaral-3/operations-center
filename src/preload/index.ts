@@ -20,6 +20,8 @@ import type {
   OcApi,
   ReadCardRequest,
   ReadCardResult,
+  ReadPullRequestRequest,
+  ReadPullRequestResult,
   RenameFreeRequest,
   RespondPermissionRequest,
   Screen,
@@ -132,6 +134,8 @@ const api: OcApi = {
     ipcRenderer.invoke(IPC_INVOKE.activateBoard, request) as Promise<void>,
   readCard: (request: ReadCardRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.readCard, request) as Promise<ReadCardResult>,
+  readPullRequest: (request: ReadPullRequestRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.readPullRequest, request) as Promise<ReadPullRequestResult>,
   readConversations: () =>
     ipcRenderer.invoke(IPC_INVOKE.readConversations) as Promise<ConversationsSnapshot>,
   onConversations: (listener) =>

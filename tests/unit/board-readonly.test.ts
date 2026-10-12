@@ -128,6 +128,7 @@ describe('a superfície de board é somente-leitura', () => {
       readBoards: 'boards:read',
       activateBoard: 'ui:active-board',
       readCard: 'card:read',
+      readPullRequest: 'card:read-pr',
       readConversations: 'conversations:read',
       readDangerous: 'danger:read',
       setDangerous: 'danger:set',
@@ -226,7 +227,32 @@ describe('a superfície de board é somente-leitura', () => {
     )
 
     // A ordem é a de declaração dos mapas: os `invoke` primeiro, o evento depois.
-    expect(canaisDoGitHub).toEqual(['boards:read', 'card:read', 'boards:changed'])
+    expect(canaisDoGitHub).toEqual(['boards:read', 'card:read', 'card:read-pr', 'boards:changed'])
+  })
+
+  it('toda requisição HTTP do app é a do GraphQL ou um GET', () => {
+    // O transporte REST do #82 é o primeiro que não é POST. Em vez de procurar verbo de escrita
+    // solto — que daria falso positivo em `patch`/`deletions` —, a prova é por exclusão: `fetch(` só
+    // existe nos dois clientes, e todo `method:` literal é exatamente o esperado de cada um, com a
+    // comparação diferenciando maiúsculas.
+    const arquivos = ['../../src/main', '../../src/core'].flatMap(lerArquivos)
+    expect(arquivos.length).toBeGreaterThan(0)
+
+    const fetchEm = arquivos
+      .filter(({ conteudo }) => conteudo.includes('fetch('))
+      .map(({ caminho }) => caminho.replaceAll('\\', '/').split('/src/')[1])
+    expect(fetchEm.sort()).toEqual(['main/github/graphql.ts', 'main/github/rest.ts'])
+
+    const metodos = arquivos.flatMap(({ caminho, conteudo }) =>
+      [...conteudo.matchAll(/method:\s*'([A-Za-z]+)'/g)].map((casa) => ({
+        arquivo: caminho.replaceAll('\\', '/').split('/src/')[1],
+        metodo: casa[1],
+      })),
+    )
+    expect(metodos.sort((a, b) => (a.arquivo ?? '').localeCompare(b.arquivo ?? ''))).toEqual([
+      { arquivo: 'main/github/graphql.ts', metodo: 'POST' },
+      { arquivo: 'main/github/rest.ts', metodo: 'GET' },
+    ])
   })
 
   it('nenhum arquivo que escreve ou envia GraphQL contém um documento de escrita', () => {
