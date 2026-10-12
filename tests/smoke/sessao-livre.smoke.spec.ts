@@ -98,6 +98,17 @@ test.beforeAll(() => {
   )
 })
 
+/**
+ * O `getComputedStyle` do navegador, declarado aqui: o tsconfig que compila os smokes não carrega a
+ * lib DOM (mesmo padrão de `kanban.smoke.spec.ts`). O corpo do `evaluate` roda no renderer.
+ */
+declare function getComputedStyle(element: unknown): { backgroundColor: string }
+
+/** O `background-color` computado, que é o que o #78 compara. */
+async function corDeFundo(locator: Locator): Promise<string> {
+  return locator.evaluate((element) => getComputedStyle(element).backgroundColor)
+}
+
 test.afterAll(async () => {
   await app.close()
   rmSync(scenario, { recursive: true, force: true, maxRetries: 3 })
@@ -113,6 +124,12 @@ test('o primeiro ciclo de vida: a conversa acontece e o vínculo vai para o disc
   await expect(aba).toHaveAttribute('data-recoverable', 'false')
 
   await aba.click()
+
+  // #78 CA-2: no painel lateral o chat veste o canvas, o mesmo fundo do cartão aberto.
+  expect(
+    await corDeFundo(window.getByTestId('card-chat')),
+    'o chat do painel não veste o canvas',
+  ).toBe(await corDeFundo(window.locator('body')))
 
   const input = window.getByTestId('card-chat-input')
   await input.fill(PROMPT)
@@ -172,9 +189,7 @@ function lerSessionId(): string | null {
 }
 
 function mensagens(role: 'user' | 'assistant'): Locator {
-  return window
-    .getByTestId('side-panel')
-    .locator(`[data-testid="message"][data-role="${role}"]`)
+  return window.getByTestId('side-panel').locator(`[data-testid="message"][data-role="${role}"]`)
 }
 
 async function launch(): Promise<void> {

@@ -6,6 +6,7 @@ import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
 import { CONVERSABLE_STATIONS, STATUS_FIELD } from '../../src/core/board/query'
+import { THEMES } from '../../src/shared/theme'
 import {
   BOARDS_FIXTURE_PATH,
   BOARD_FIXTURE_PATH,
@@ -495,6 +496,54 @@ test('#28 CA-4: o botão recolhe, e fechar o cartão expandido não o reabre exp
   expect(await card.getAttribute('class')).not.toContain('absolute')
   // Há sessão viva, então a seção de conteúdo nasce recolhida (`CardContent.tsx:44`).
   await expect(card.getByTestId('card-content-body')).toHaveCount(0)
+})
+
+/**
+ * O #78: o chat se separa do conteúdo pela cor. Sem fundo próprio, o `card-chat` herdava a face do
+ * cartão e ficava "tudo junto e grudado"; agora ele veste o canvas (o `body`), nas três combinações,
+ * no cartão aberto e no expandido.
+ *
+ * A troca é por `data-theme` no `<html>`, e não pelo `theme-option`: o trilho do tema já é provado em
+ * `tema.smoke.spec.ts`, e aqui só interessa a cascata, que resolve nesse atributo.
+ */
+test('#78 CA-1 e CA-2: o chat veste o canvas, e não a face, nas três combinações', async () => {
+  const card = cardLocator(CHAT_CARD)
+  if ((await card.getByTestId('card-chat').count()) === 0) await card.click()
+
+  const html = window.locator('html')
+  const original = await html.getAttribute('data-theme')
+  type Raiz = {
+    setAttribute(nome: string, valor: string): void
+    removeAttribute(nome: string): void
+  }
+
+  const medir = async (): Promise<void> => {
+    for (const tema of THEMES) {
+      await html.evaluate((raiz: Raiz, valor) => raiz.setAttribute('data-theme', valor), tema)
+      await expect(html).toHaveAttribute('data-theme', tema)
+
+      const chat = await corDeFundo(card.getByTestId('card-chat'))
+      const face = await corDeFundo(card)
+      const canvas = await corDeFundo(window.locator('body'))
+      expect(chat, `na ${tema}, o chat tem o fundo da face do cartão`).not.toBe(face)
+      expect(chat, `na ${tema}, o chat não tem o fundo do canvas`).toBe(canvas)
+    }
+  }
+
+  try {
+    await medir()
+    await card.getByTestId('card-maximize').click()
+    await medir()
+    await card.getByTestId('card-maximize').click()
+  } finally {
+    await html.evaluate(
+      (raiz: Raiz, valor) =>
+        valor === null
+          ? raiz.removeAttribute('data-theme')
+          : raiz.setAttribute('data-theme', valor),
+      original,
+    )
+  }
 })
 
 test('CA-2: a permissão de escrita aparece no cartão e a decisão destrava o turno', async () => {
@@ -1024,6 +1073,17 @@ function required<T>(value: T | undefined, missing: string): T {
   }
 
   return value
+}
+
+/**
+ * O `getComputedStyle` do navegador, declarado aqui: o tsconfig que compila os smokes não carrega a
+ * lib DOM (mesmo padrão de `kanban.smoke.spec.ts`). O corpo do `evaluate` roda no renderer.
+ */
+declare function getComputedStyle(element: unknown): { backgroundColor: string }
+
+/** O `background-color` computado, que é o que o #78 compara. */
+async function corDeFundo(locator: Locator): Promise<string> {
+  return locator.evaluate((element) => getComputedStyle(element).backgroundColor)
 }
 
 function cardLocator(card: FixtureCard): Locator {

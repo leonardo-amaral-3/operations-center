@@ -245,11 +245,13 @@ export function Chat({
     submit()
   }
 
+  // O fundo é o canvas para separar a conversa da face do cartão pela cor (#78), e é explícito para
+  // valer igual no painel lateral, que já é canvas, em vez de herdado de quem hospeda.
   return (
     <div
       data-testid="card-chat"
       className={cn(
-        'mt-3 border-t-2 border-border pt-3',
+        'mt-3 border-t-2 border-border bg-background p-3',
         preencher && 'flex min-h-0 flex-1 flex-col',
       )}
     >
