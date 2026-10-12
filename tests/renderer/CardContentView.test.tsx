@@ -44,7 +44,7 @@ function comentario(over: Partial<CardComment> = {}): CardComment {
 }
 
 function conteudo(over: Partial<CardContent> = {}): CardContent {
-  return { number: 13, body: CORPO, comments: [], truncated: false, ...over }
+  return { number: 13, body: CORPO, comments: [], truncated: false, pullRequest: null, ...over }
 }
 
 interface RenderOptions {

@@ -18,6 +18,16 @@ export type {
   BoardPhase,
   CardComment,
   CardContent,
+  PrArquivo,
+  PrArquivoStatus,
+  PrAuthor,
+  PrCheck,
+  PrChecks,
+  PrThreadComment,
+  PrTimelineEntry,
+  PullRequestRef,
+  PullRequestState,
+  PullRequestView,
 } from '../../shared/board'
 
 /** O envelope de uma resposta GraphQL. `errors` pode vir **junto** com `data` — ver `BoardReader`. */

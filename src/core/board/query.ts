@@ -107,6 +107,21 @@ fragment ProjectList on ProjectV2Connection {
 `
 
 /**
+ * A parte que acha o PR do card: as referências cruzadas da issue cujo alvo é um PR. Compartilhada
+ * pelo `CARD_QUERY` e pelo `PR_LINK_QUERY`, para a ligação card→PR ter um lugar só.
+ *
+ * `last: 100` porque o PR do card é das referências mais recentes, e uma página só segue a regra 7
+ * do `CardReader`.
+ */
+const PR_LINK_SELECTION = `
+  timelineItems(last: 100, itemTypes: [CROSS_REFERENCED_EVENT]) {
+    nodes { ... on CrossReferencedEvent { source { ... on PullRequest {
+      number url state body repository { nameWithOwner }
+    } } } }
+  }
+`
+
+/**
  * O conteúdo de **uma** issue, pedido sob demanda quando um cartão abre.
  *
  * Documento separado, e não campos a mais no `BOARD_QUERY`, porque o board relê a cada foco de
@@ -128,6 +143,7 @@ query Card($owner: String!, $name: String!, $number: Int!, $comments: Int!) {
         totalCount
         nodes { id author { login } createdAt body }
       }
+      ${PR_LINK_SELECTION}
     }
   }
 }

@@ -37,7 +37,20 @@ export type {
   BoardColumn,
   BoardPhase,
 } from './board/types'
-export type { CardComment, CardContent } from './board/types'
+export type {
+  CardComment,
+  CardContent,
+  PrArquivo,
+  PrArquivoStatus,
+  PrAuthor,
+  PrCheck,
+  PrChecks,
+  PrThreadComment,
+  PrTimelineEntry,
+  PullRequestRef,
+  PullRequestState,
+  PullRequestView,
+} from './board/types'
 
 export { RepoIndex } from './repos/RepoIndex'
 export type { RepoIndexDeps, SessionFolder } from './repos/RepoIndex'

@@ -1,6 +1,7 @@
 import { asArray, asNumber, asRecord, asString } from './narrow'
+import { pickPullRequest } from './pullRequestLink'
 import { CARD_QUERY } from './query'
-import type { CardComment, CardContent, GraphQLFn } from './types'
+import type { CardComment, CardContent, GraphQLError, GraphQLFn } from './types'
 
 export interface CardReaderDeps {
   /**
@@ -59,9 +60,12 @@ export class CardReader {
     })
 
     // Regra 1: sem alias duplo não há erro esperado, e tolerar um faria o app engolir falha de
-    // campo em silêncio.
-    const primeiro = response.errors?.[0]
+    // campo em silêncio. A única exceção é um erro cujo `path` começa em `timelineItems`: é a
+    // cross-reference vinda de repo que o token não enxerga (ou de org com SSO), e a aba do PR é um
+    // acréscimo que não pode derrubar o conteúdo do card. Ali `pullRequest` vira `null`.
+    const primeiro = response.errors?.find((erro) => !naTimeline(erro))
     if (primeiro) throw new Error(primeiro.message)
+    const timelineFalhou = (response.errors?.length ?? 0) > 0
 
     const issue = asRecord(asRecord(asRecord(response.data)?.['repository'])?.['issue'])
 
@@ -85,8 +89,16 @@ export class CardReader {
       comments: lidos,
       // Regra 6: o corte tem de aparecer. `totalCount` ausente não inventa corte nenhum.
       truncated: (asNumber(comments?.['totalCount']) ?? 0) > nodes.length,
+      pullRequest: timelineFalhou ? null : pickPullRequest(issue['timelineItems'], input),
     }
   }
+}
+
+const CAMINHO_DA_TIMELINE = ['repository', 'issue', 'timelineItems']
+
+function naTimeline(erro: GraphQLError): boolean {
+  const path = erro.path
+  return path !== undefined && CAMINHO_DA_TIMELINE.every((passo, i) => path[i] === passo)
 }
 
 /**

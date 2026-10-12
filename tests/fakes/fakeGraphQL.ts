@@ -216,6 +216,11 @@ export interface CardEnvelopeInput {
   totalCount?: number | null
   /** O que a resposta não traz: `'repository'` (repo inacessível) ou `'issue'` (card removido). */
   missing?: 'repository' | 'issue'
+  /**
+   * Os nós de `timelineItems`, como a API os devolve. Ausente (o default) omite a chave inteira, que
+   * é o caso da issue sem referência nenhuma.
+   */
+  timeline?: readonly unknown[]
   /** O `CARD_QUERY` não tem alias duplo, logo não tem erro esperado: o default é **nenhum**. */
   errors?: readonly GraphQLError[]
 }
@@ -235,6 +240,7 @@ export function cardEnvelope(input: CardEnvelopeInput = {}): GraphQLResponse {
     totalCount,
     missing,
     errors,
+    timeline,
   } = input
 
   const issue =
@@ -247,6 +253,7 @@ export function cardEnvelope(input: CardEnvelopeInput = {}): GraphQLResponse {
             ...(totalCount === null ? {} : { totalCount: totalCount ?? comments.length }),
             nodes: comments,
           },
+          ...(timeline ? { timelineItems: { nodes: timeline } } : {}),
         }
 
   return {
@@ -286,4 +293,24 @@ function fieldValueNodes(
       field: { name },
     })),
   ]
+}
+
+/** Um nó de `timelineItems`: a referência cruzada de um PR, com o corpo e o repo que a regra do CA-2 lê. */
+export function prRefNode(input: {
+  number: number
+  body: string
+  state?: string
+  repository?: string
+}): Record<string, unknown> {
+  const { number, body, state = 'MERGED', repository = 'leonardo-amaral-3/operations-center' } = input
+
+  return {
+    source: {
+      number,
+      url: `https://github.com/${repository}/pull/${number}`,
+      state,
+      body,
+      repository: { nameWithOwner: repository },
+    },
+  }
 }
