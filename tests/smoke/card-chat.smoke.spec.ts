@@ -416,6 +416,87 @@ test('#13 CA-5: o conteúdo e a conversa dividem o cartão, e recarregar não to
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
 })
 
+/**
+ * O que o renderer estático não prova: o gesto, o `Esc` e a ausência de remonte. Se o expandir
+ * remontasse o `Chat`, o rascunho e a releitura do conteúdo seriam os dois primeiros a denunciar.
+ */
+test('#28 CA-1 e CA-2: expandir cobre a tela, e Esc devolve o cartão com rascunho, histórico e sessão', async () => {
+  const card = cardLocator(CHAT_CARD)
+  const input = card.getByTestId('card-chat-input')
+
+  await input.fill('rascunho que não foi enviado')
+  const antes = {
+    user: await userMessages(CHAT_CARD).count(),
+    assistant: await assistantMessages(CHAT_CARD).count(),
+    notice: await noticeMessages(CHAT_CARD).count(),
+  }
+
+  await card.getByTestId('card-maximize').click()
+
+  // Cobre a caixa do kanban inteira — cabeçalho das abas incluído —, ±1px nos quatro lados.
+  const tela = await caixaDe(window.getByTestId('kanban-screen'), 'a tela do kanban')
+  const cobre = await caixaDe(card, 'o cartão expandido')
+  expect(Math.abs(cobre.x - tela.x)).toBeLessThanOrEqual(1)
+  expect(Math.abs(cobre.y - tela.y)).toBeLessThanOrEqual(1)
+  expect(Math.abs(cobre.width - tela.width)).toBeLessThanOrEqual(1)
+  expect(Math.abs(cobre.height - tela.height)).toBeLessThanOrEqual(1)
+
+  // A seção estava recolhida (há sessão viva) e abriu sozinha, sem o teto de 26rem.
+  const corpo = card.getByTestId('card-content-body')
+  await expect(corpo).toBeVisible()
+  expect(await corpo.getAttribute('class')).not.toContain('max-h-[26rem]')
+  expect((await caixaDe(corpo, 'o corpo do conteúdo')).height).toBeGreaterThan(416)
+
+  await input.focus()
+  await window.keyboard.press('Escape')
+
+  expect(await card.getAttribute('class')).not.toContain('absolute')
+  const volta = await caixaDe(card, 'o cartão recolhido')
+  const coluna = await caixaDe(columnLocator(CHAT_CARD.columnId), 'a coluna do cartão')
+  expect(volta.x).toBeGreaterThanOrEqual(coluna.x - 1)
+  expect(volta.y).toBeGreaterThanOrEqual(coluna.y - 1)
+  expect(volta.x + volta.width).toBeLessThanOrEqual(coluna.x + coluna.width + 1)
+  // Na vertical só o topo: a seção de conteúdo segue aberta ao recolher (só o expandir a abre), o
+  // cartão passa da altura da coluna de 760px, e é a lista dela que rola. O `scrollIntoView`
+  // `nearest` garante o topo à vista.
+  expect(volta.y).toBeLessThan(coluna.y + coluna.height)
+
+  // Nada remontou: rascunho no lugar, mesmas mensagens, sessão no mesmo estado, conteúdo não relido.
+  await expect(input).toHaveValue('rascunho que não foi enviado')
+  expect(await userMessages(CHAT_CARD).count()).toBe(antes.user)
+  expect(await assistantMessages(CHAT_CARD).count()).toBe(antes.assistant)
+  expect(await noticeMessages(CHAT_CARD).count()).toBe(antes.notice)
+  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
+  await expect(card.getByTestId('card-content-reload')).toBeEnabled()
+  await expect(card.getByText('Lendo o card…')).toHaveCount(0)
+
+  // Devolve o cartão como o #13 CA-5 o deixou, para os testes seguintes.
+  await input.fill('')
+  await card.getByTestId('card-content-toggle').click()
+  await expect(card.getByTestId('card-content-body')).toHaveCount(0)
+})
+
+test('#28 CA-4: o botão recolhe, e fechar o cartão expandido não o reabre expandido', async () => {
+  const card = cardLocator(CHAT_CARD)
+  const botao = card.getByTestId('card-maximize')
+
+  await botao.click()
+  expect(await card.getAttribute('class')).toContain('absolute')
+  await botao.click()
+  expect(await card.getAttribute('class')).not.toContain('absolute')
+
+  await botao.click()
+  await card.getByTestId('card-collapse').click()
+  await expect(card.getByTestId('card-collapse')).toHaveCount(0)
+
+  // Reabrir pelo clique no cartão: volta no lugar, aberto e não expandido.
+  await card.click()
+  await expect(card.getByTestId('card-maximize')).toHaveAttribute('aria-pressed', 'false')
+  expect(await card.getAttribute('class')).not.toContain('absolute')
+  // Há sessão viva, então a seção de conteúdo nasce recolhida (`CardContent.tsx:44`).
+  await expect(card.getByTestId('card-content-body')).toHaveCount(0)
+})
+
 test('CA-2: a permissão de escrita aparece no cartão e a decisão destrava o turno', async () => {
   const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
 

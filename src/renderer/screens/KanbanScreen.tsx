@@ -179,6 +179,19 @@ export function KanbanScreen(): JSX.Element {
     [activeKey],
   )
 
+  const maximize = useCallback(
+    (itemId: string) => {
+      // Mesma guarda do `toggle`: sem aba ativa não há cartão na tela.
+      if (activeKey === null) return
+      dispatch({ type: 'maximizar', key: activeKey, itemId })
+    },
+    [activeKey],
+  )
+
+  const restore = useCallback(() => {
+    dispatch({ type: 'recolher' })
+  }, [])
+
   const registerSession = useCallback((itemId: string, session: CardSession) => {
     dispatchSession({ type: 'card', itemId, session })
   }, [])
@@ -231,7 +244,12 @@ export function KanbanScreen(): JSX.Element {
   const triagem = kanban.triagem
 
   return (
-    <div className="flex h-full flex-col bg-background font-base text-foreground">
+    // `relative` é o bloco de contenção do cartão expandido (#28): ele cobre esta caixa, e não a
+    // janela, para o painel lateral e o dock continuarem utilizáveis ao lado.
+    <div
+      data-testid="kanban-screen"
+      className="relative flex h-full flex-col bg-background font-base text-foreground"
+    >
       <header className="flex items-center justify-between gap-4 border-b-2 border-border px-4 py-3">
         {/* A barra ocupa o lugar do título, e não um espaço ao lado dele: o rótulo da aba ativa
             já diz **qual** board você olha, e a altura poupada vai para o kanban, que é quem
@@ -296,6 +314,13 @@ export function KanbanScreen(): JSX.Element {
                   : undefined
               }
               onStartTriage={column.triage && triagem === null ? startTriage : undefined}
+              maximizedItemId={
+                kanban.maximizado !== null && kanban.maximizado.key === activeKey
+                  ? kanban.maximizado.itemId
+                  : null
+              }
+              onMaximize={maximize}
+              onRestore={restore}
               onToggle={toggle}
               onSession={registerSession}
               onToggleDangerous={toggleDangerous}

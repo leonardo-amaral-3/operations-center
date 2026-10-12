@@ -298,12 +298,14 @@ export function BoardCardView({
     return (
       // O `opacity-100` vence o `opacity-60` do cartão fechado no GitHub: expandido, ele deixaria o
       // kanban aparecer por baixo. O `shadow-none` evita que a sombra dura vaze sobre o painel
-      // lateral e o dock. O bloco de contenção do `absolute` é a raiz do `KanbanScreen`.
+      // lateral e o dock. O `mb-0` anula o `space-y-2` da lista da coluna, que segue dando 8px de
+      // margem a um filho já fora do fluxo e o deixaria 8px mais curto que a tela. O bloco de
+      // contenção do `absolute` é a raiz do `KanbanScreen`.
       <Card
         asChild
         className={cn(
           skin,
-          maximized && 'absolute inset-0 z-20 overflow-hidden opacity-100 shadow-none',
+          maximized && 'absolute inset-0 z-20 mb-0 overflow-hidden opacity-100 shadow-none',
         )}
       >
         <article ref={open} {...anchors}>
