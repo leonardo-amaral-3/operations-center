@@ -57,20 +57,39 @@ export const loadPty: LoadSpawn = async () => {
   }
 }
 
-/** As pontas de IO de produção dos perfis; o `where` é do System32, como em `claudeBin.ts`. */
-export function presetDepsDeProducao(): PresetDeps {
+/** O `where` do System32, como em `claudeBin.ts`: a primeira linha da saída, ou `null`. */
+function rodarWhere(exe: string): string | null {
+  try {
+    return (
+      execFileSync('where', [exe], { encoding: 'utf8' })
+        .split(/\r?\n/)
+        .map((linha) => linha.trim())
+        .find((linha) => linha !== '') ?? null
+    )
+  } catch {
+    return null
+  }
+}
+
+/**
+ * As pontas de IO de produção dos perfis. Os perfis são relidos a cada `terminal:open` e cada
+ * `where` é um processo síncrono no main, então o que **achou** fica memorizado. O `null` não: quem
+ * instala o shell que faltou e clica `Tentar de novo` tem de vê-lo sem reiniciar o app.
+ */
+export function presetDepsDeProducao(
+  where: (exe: string) => string | null = rodarWhere,
+): PresetDeps {
+  const achados = new Map<string, string>()
+
   return {
     which: (exe) => {
-      try {
-        return (
-          execFileSync('where', [exe], { encoding: 'utf8' })
-            .split(/\r?\n/)
-            .map((linha) => linha.trim())
-            .find((linha) => linha !== '') ?? null
-        )
-      } catch {
-        return null
-      }
+      const memorizado = achados.get(exe)
+      if (memorizado !== undefined) return memorizado
+
+      const caminho = where(exe)
+      if (caminho !== null) achados.set(exe, caminho)
+
+      return caminho
     },
     exists: existsSync,
     awsConfig: () => {
