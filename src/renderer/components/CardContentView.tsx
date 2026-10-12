@@ -4,6 +4,7 @@ import type { JSX } from 'react'
 import type { CardComment, CardContent } from '../../shared/board'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
+import { cn } from '../ui/cn'
 import { Markdown } from './Markdown'
 
 /**
@@ -104,6 +105,8 @@ interface CardContentViewProps {
   open: boolean
   onToggle: () => void
   onReload: () => void
+  /** Cartão expandido (#28): o corpo ocupa a altura que sobra, em vez de parar no teto de 26rem. */
+  preencher?: boolean
 }
 
 /**
@@ -120,9 +123,13 @@ export function CardContentView({
   open,
   onToggle,
   onReload,
+  preencher = false,
 }: CardContentViewProps): JSX.Element {
   return (
-    <section data-testid="card-content" className="mt-3 border-t-2 border-border pt-3">
+    <section
+      data-testid="card-content"
+      className={cn('mt-3 border-t-2 border-border pt-3', preencher && 'flex min-h-0 flex-col')}
+    >
       <div className="flex items-center justify-between gap-2">
         {/* Um `<button>` cru, e não a primitiva: `Button` traz casca — borda de 2px e sombra dura —,
             e uma casca aqui desenharia uma segunda caixa dentro do cartão. O que este controle é,
@@ -157,10 +164,14 @@ export function CardContentView({
 
       {/* Teto de altura e rolagem própria: o cartão vive dentro de uma coluna, e sem o teto a spec
           de 44 mil caracteres do card #6 empurraria o cartão seguinte para fora da vista — o kanban
-          deixaria de ser um kanban (CA-4). Quem rola na horizontal é o contêiner de cada tabela e
+          deixaria de ser um kanban (CA-4). O teto vale no kanban e cai no cartão expandido (#28), onde o
+          corpo preenche a altura e rola sozinho. Quem rola na horizontal é o contêiner de cada tabela e
           de cada bloco de código, dentro do `Markdown`; aqui só a vertical. */}
       {open ? (
-        <div data-testid="card-content-body" className="mt-2 max-h-[26rem] overflow-y-auto">
+        <div
+          data-testid="card-content-body"
+          className={cn('mt-2 overflow-y-auto', preencher ? 'min-h-0 flex-1' : 'max-h-[26rem]')}
+        >
           <Corpo state={state} pending={pending} onReload={onReload} />
         </div>
       ) : null}

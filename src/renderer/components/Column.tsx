@@ -39,6 +39,13 @@ interface ColumnProps {
   }
   /** Abre a nova triagem. Ausente = esta coluna não oferece a ação (ou já tem uma aberta). */
   onStartTriage?: () => void
+  /**
+   * O cartão expandido (#28), se for desta aba. Opcionais para que quem monta a coluna sem o
+   * kanban em volta (os testes) continue compilando; o `KanbanScreen` sempre as passa.
+   */
+  maximizedItemId?: string | null
+  onMaximize?: (itemId: string) => void
+  onRestore?: () => void
   onToggle: (itemId: string) => void
   onSession: (itemId: string, session: CardSession) => void
   onToggleDangerous: (itemId: string, dangerous: boolean) => void
@@ -66,6 +73,9 @@ export function Column({
   dangerous,
   triage,
   onStartTriage,
+  maximizedItemId = null,
+  onMaximize,
+  onRestore,
   onToggle,
   onSession,
   onToggleDangerous,
@@ -145,6 +155,9 @@ export function Column({
               // Pelo mesmo caminho e pela mesma razão do `dormant`: o conjunto vem inteiro e a
               // coluna só pergunta por este cartão. A marca é do cartão, e ele anda de coluna.
               dangerous={dangerous.includes(card.itemId)}
+              maximized={maximizedItemId === card.itemId}
+              onMaximize={onMaximize}
+              onRestore={onRestore}
               onToggle={onToggle}
               onSession={onSession}
               onToggleDangerous={onToggleDangerous}

@@ -13,6 +13,8 @@ interface CardContentProps {
    * booleano e não a sessão: o que muda a forma da tela é a existência dela, não o estado dela.
    */
   hasSession: boolean
+  /** Cartão expandido (#28): abre a seção e tira o teto de altura do corpo. */
+  preencher?: boolean
 }
 
 /**
@@ -31,6 +33,7 @@ interface CardContentProps {
 export const CardContent = memo(function CardContent({
   itemId,
   hasSession,
+  preencher = false,
 }: CardContentProps): JSX.Element {
   /**
    * **Quem decide se a seção nasce aberta é a sessão.**
@@ -46,6 +49,12 @@ export const CardContent = memo(function CardContent({
   const [pending, setPending] = useState(true)
   /** Só um contador: o que ele existe para fazer é disparar o efeito de novo. */
   const [reloads, setReloads] = useState(0)
+
+  // Expandir é para ler, então abre a seção que a sessão viva deixou recolhida (#28). Só abre:
+  // recolher o cartão não fecha o que o leitor deixou aberto.
+  useEffect(() => {
+    if (preencher) setOpen(true)
+  }, [preencher])
 
   useEffect(() => {
     /**
@@ -83,6 +92,7 @@ export const CardContent = memo(function CardContent({
       state={state}
       pending={pending}
       open={open}
+      preencher={preencher}
       onToggle={() => {
         setOpen((aberta) => !aberta)
       }}

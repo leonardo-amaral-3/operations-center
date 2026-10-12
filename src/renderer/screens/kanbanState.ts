@@ -32,6 +32,14 @@ export interface KanbanState {
    * A `key` e não um booleano: é ela que compõe o `SessionScope` do painel.
    */
   triagem: string | null
+  /**
+   * O cartão expandido sobre a tela do kanban (#28), ou `null`. **Um no app inteiro**: o expandido
+   * cobre a tela, então dois não caberiam. A `key` porque o cartão é de uma aba.
+   *
+   * Só existe enquanto o cartão está aberto **e** na aba ativa — `conferirMaximizado` zera o campo
+   * nas transições que quebram uma das duas condições, em vez de cada ramo lembrar de fazê-lo.
+   */
+  maximizado: { key: string; itemId: string } | null
 }
 
 export type KanbanAction =
@@ -53,6 +61,13 @@ export type KanbanAction =
   | { type: 'abrir-triagem'; key: string }
   /** Fecha a triagem aberta, seja de que aba for. Sem `key`: há no máximo uma. */
   | { type: 'fechar-triagem' }
+  /**
+   * Expande o cartão `itemId` da aba `key` (#28). Só vale para cartão **aberto**: fora disso o
+   * estado volta intacto, porque expandir um cartão fechado não tem o que mostrar.
+   */
+  | { type: 'maximizar'; key: string; itemId: string }
+  /** Devolve o cartão expandido à coluna. Sem `key`: há no máximo um. */
+  | { type: 'recolher' }
 
 export const INITIAL_KANBAN: KanbanState = {
   // Antes da descoberta a tela não sabe nem quantos boards existem — e `boards: null` é exatamente
@@ -60,6 +75,7 @@ export const INITIAL_KANBAN: KanbanState = {
   snapshot: { boards: null, activeKey: null, discoveryError: null },
   expanded: {},
   triagem: null,
+  maximizado: null,
 }
 
 export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanState {
@@ -68,7 +84,7 @@ export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanSt
     // usuário deixou aberto, nem quando o cartão mudou de coluna (RA-4 do #45) — fechar a conversa
     // no exato evento que este app existe para acompanhar seria o oposto do que ele faz. O que a
     // releitura tira é só o que deixou de existir.
-    return {
+    return conferirMaximizado({
       ...state,
       snapshot: action.snapshot,
       expanded: podar(state.expanded, action.snapshot),
@@ -78,7 +94,7 @@ export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanSt
       // conversa perdida — ao voltar para a aba. Aba que sumiu do retrato cai na mesma linha, porque
       // `activeKey` muda junto.
       triagem: action.snapshot.activeKey === state.triagem ? state.triagem : null,
-    }
+    })
   }
 
   if (action.type === 'abrir-triagem') return { ...state, triagem: action.key }
@@ -87,19 +103,32 @@ export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanSt
   // que tirar a aba, que é justamente o que o campo único compra.
   if (action.type === 'fechar-triagem') return { ...state, triagem: null }
 
+  // Estes dois ramos precisam vir **antes** do que cai no `toggle` por exclusão: `maximizar` tem
+  // `key` e `itemId`, então compilaria como `toggle` e se comportaria como um.
+  if (action.type === 'maximizar') {
+    if (!(state.expanded[action.key] ?? []).includes(action.itemId)) return state
+
+    return conferirMaximizado({
+      ...state,
+      maximizado: { key: action.key, itemId: action.itemId },
+    })
+  }
+
+  if (action.type === 'recolher') return { ...state, maximizado: null }
+
   const abertos = state.expanded[action.key] ?? []
 
   if (abertos.includes(action.itemId)) {
     // Clicar no cartão aberto fecha **só ele** — não os vizinhos de coluna, não os das outras abas,
     // e não a sessão dele, que continua viva atrás do cartão fechado.
-    return {
+    return conferirMaximizado({
       ...state,
       expanded: comLista(
         state.expanded,
         action.key,
         abertos.filter((id) => id !== action.itemId),
       ),
-    }
+    })
   }
 
   const coluna = columnOf(state.snapshot, action.key, action.itemId)
@@ -112,10 +141,29 @@ export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanSt
       : abertos.filter((id) => columnOf(state.snapshot, action.key, id) !== coluna)
 
   // No fim da lista, que é a ordem de abertura.
-  return {
+  return conferirMaximizado({
     ...state,
     expanded: comLista(state.expanded, action.key, [...sobreviventes, action.itemId]),
-  }
+  })
+}
+
+/**
+ * Zera `maximizado` quando ele deixou de descrever um cartão que se possa ver expandido: a aba dele
+ * não é mais a ativa, ou o cartão não está mais aberto (fechado, trocado por um vizinho da coluna,
+ * ou podado do retrato — a poda já o tirou de `expanded`).
+ *
+ * Uma regra só, aplicada ao resultado de cada transição que mexe em `snapshot` ou `expanded`, é o
+ * que cobre o CA-4 inteiro sem cada ramo ter de lembrar. Nada a zerar devolve o **mesmo** estado.
+ */
+function conferirMaximizado(state: KanbanState): KanbanState {
+  const { maximizado } = state
+
+  if (maximizado === null) return state
+
+  const ativo = maximizado.key === state.snapshot.activeKey
+  const aberto = (state.expanded[maximizado.key] ?? []).includes(maximizado.itemId)
+
+  return ativo && aberto ? state : { ...state, maximizado: null }
 }
 
 /** Os cartões daquela aba no retrato, ou `null` se a aba não existe ou ainda não foi lida. */

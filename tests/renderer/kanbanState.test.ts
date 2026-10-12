@@ -344,3 +344,94 @@ describe('reduceKanban — a triagem da aba', () => {
     expect(semAba.triagem).toBeNull()
   })
 })
+
+describe('reduceKanban — o cartão expandido (#28, CA-4)', () => {
+  /** A aba A ativa, com o A1 aberto e já expandido: o ponto de partida de quase todo caso. */
+  const expandido = apply(
+    { type: 'snapshot', snapshot: retrato(A.key) },
+    { type: 'toggle', key: A.key, itemId: 'PVTI_A1' },
+    { type: 'maximizar', key: A.key, itemId: 'PVTI_A1' },
+  )
+
+  it('`maximizar` num cartão aberto grava a `key` e o `itemId`', () => {
+    expect(expandido.maximizado).toEqual({ key: A.key, itemId: 'PVTI_A1' })
+  })
+
+  it('`maximizar` num cartão que não está aberto devolve o mesmo estado', () => {
+    const aberto = apply(
+      { type: 'snapshot', snapshot: retrato(A.key) },
+      { type: 'toggle', key: A.key, itemId: 'PVTI_A1' },
+    )
+
+    // A **referência**, e não só a igualdade: nada mudou, então nada deve re-renderizar.
+    expect(reduceKanban(aberto, { type: 'maximizar', key: A.key, itemId: 'PVTI_A3' })).toBe(aberto)
+  })
+
+  it('fechar o cartão expandido zera — e reabri-lo não o traz expandido', () => {
+    const fechado = reduceKanban(expandido, { type: 'toggle', key: A.key, itemId: 'PVTI_A1' })
+    const reaberto = reduceKanban(fechado, { type: 'toggle', key: A.key, itemId: 'PVTI_A1' })
+
+    expect(fechado.maximizado).toBeNull()
+    expect(reaberto.maximizado).toBeNull()
+  })
+
+  it('abrir um vizinho da mesma coluna zera, porque o expandido foi fechado', () => {
+    const state = reduceKanban(expandido, { type: 'toggle', key: A.key, itemId: 'PVTI_A2' })
+
+    expect(state.expanded).toEqual({ [A.key]: ['PVTI_A2'] })
+    expect(state.maximizado).toBeNull()
+  })
+
+  it('abrir um cartão de outra coluna preserva o expandido', () => {
+    const state = reduceKanban(expandido, { type: 'toggle', key: A.key, itemId: 'PVTI_A3' })
+
+    expect(state.maximizado).toEqual({ key: A.key, itemId: 'PVTI_A1' })
+  })
+
+  it('o retrato com outra aba ativa zera', () => {
+    const state = reduceKanban(expandido, { type: 'snapshot', snapshot: retrato(B.key) })
+
+    expect(state.maximizado).toBeNull()
+  })
+
+  it('o retrato da mesma aba, com o cartão ainda lá, preserva', () => {
+    const state = reduceKanban(expandido, { type: 'snapshot', snapshot: retrato(A.key) })
+
+    expect(state.maximizado).toEqual({ key: A.key, itemId: 'PVTI_A1' })
+  })
+
+  it('`recolher` zera', () => {
+    expect(reduceKanban(expandido, { type: 'recolher' }).maximizado).toBeNull()
+  })
+
+  it('o retrato da mesma aba em que o cartão sumiu zera, pela poda de `expanded`', () => {
+    const semA1 = aba(A.key, A.title, { PVTI_A2: OPT_TRI, PVTI_A3: OPT_IMP })
+    const state = reduceKanban(expandido, {
+      type: 'snapshot',
+      snapshot: retrato(A.key, [semA1, B]),
+    })
+
+    expect(state.expanded).toEqual({})
+    expect(state.maximizado).toBeNull()
+  })
+
+  it('abrir e fechar a triagem não mexem no expandido', () => {
+    const aberta = reduceKanban(expandido, { type: 'abrir-triagem', key: A.key })
+
+    expect(aberta.maximizado).toEqual({ key: A.key, itemId: 'PVTI_A1' })
+    expect(reduceKanban(aberta, { type: 'fechar-triagem' }).maximizado).toEqual({
+      key: A.key,
+      itemId: 'PVTI_A1',
+    })
+  })
+
+  it('`maximizar` com `key` que não é a aba ativa do retrato acaba com `maximizado: null`', () => {
+    const state = apply(
+      { type: 'snapshot', snapshot: retrato(A.key) },
+      { type: 'toggle', key: B.key, itemId: 'PVTI_A1' },
+      { type: 'maximizar', key: B.key, itemId: 'PVTI_A1' },
+    )
+
+    expect(state.maximizado).toBeNull()
+  })
+})
