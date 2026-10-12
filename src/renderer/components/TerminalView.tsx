@@ -113,14 +113,16 @@ export function TerminalView(props: TerminalViewProps): JSX.Element {
         rows: term.rows,
       })
 
-      emVoo.current = false
-
       if (!vivo) {
-        // A aba foi fechada com o pedido em voo: o PTY que acabou de nascer não tem dono.
+        // A aba foi fechada com o pedido em voo: o PTY que acabou de nascer não tem dono. O `emVoo`
+        // **não** se toca aqui: ele já é da montagem seguinte (o cleanup o zerou), que pode ter um
+        // pedido próprio em voo.
         if (result.opened) void window.oc.closeTerminal({ id: result.terminal.id })
 
         return
       }
+
+      emVoo.current = false
 
       if (result.opened) {
         idRef.current = result.terminal.id
@@ -154,7 +156,9 @@ export function TerminalView(props: TerminalViewProps): JSX.Element {
       switch (terminalKeyAction(event, term.hasSelection())) {
         case 'copy':
           event.preventDefault()
-          void navigator.clipboard.writeText(term.getSelection())
+          // `Ctrl+Shift+C` sem seleção ainda é `copy` (não pode virar `^C` no shell), mas não há o
+          // que copiar: escrever a seleção vazia apagaria o que a pessoa tinha na área de transferência.
+          if (term.hasSelection()) void navigator.clipboard.writeText(term.getSelection())
 
           return false
         case 'paste':
@@ -211,6 +215,10 @@ export function TerminalView(props: TerminalViewProps): JSX.Element {
 
     return () => {
       vivo = false
+      // O pedido em voo morre com esta montagem. Sem zerar, a seguinte — a remontagem do StrictMode
+      // em `yarn dev` — acharia o `emVoo` de pé, não pediria o PTY dela, e o da anterior, que chega
+      // depois, é fechado por não ter dono: o terminal nascia em branco.
+      emVoo.current = false
       termo.current = null
       abrirRef.current = () => undefined
       observadorDoTema.disconnect()
