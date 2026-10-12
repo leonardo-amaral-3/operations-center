@@ -378,7 +378,7 @@ const resolveScopeCwd = async (scope: SessionScope | undefined): Promise<string 
   // A pasta da sessão livre é a que o humano escolheu no seletor, gravada em disco. Sem repo, sem
   // varredura: a regra "a pasta ainda existe?" mora só aqui.
   if (scope.kind === 'free') {
-    const cwd = free.cwdOf(scope.id)
+    const cwd = await free.cwdOf(scope.id)
 
     return cwd !== null && existsSync(cwd) ? cwd : null
   }

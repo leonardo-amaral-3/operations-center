@@ -118,7 +118,7 @@ export function registerFreeIpc(index: FreeIndex, options: FreeIpcOptions): Free
 
       if (result.canceled || path === undefined) return { created: false }
 
-      return { created: true, id: index.create({ cwd: path, title: win32.basename(path) }) }
+      return { created: true, id: await index.create({ cwd: path, title: win32.basename(path) }) }
     },
   )
 

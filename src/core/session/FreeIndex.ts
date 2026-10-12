@@ -95,7 +95,13 @@ export class FreeIndex {
     }))
   }
 
-  create({ cwd, title }: { cwd: string; title: string }): string {
+  /**
+   * Espera a carga do boot, como `cwdOf`: criada antes dela, a sessão entraria no topo do painel na
+   * frente das gravadas, e a gravação que ela dispara levaria uma lista sem as do disco.
+   */
+  async create({ cwd, title }: { cwd: string; title: string }): Promise<string> {
+    await this.#pronto()
+
     const id = this.#newId()
 
     this.#entries.set(id, {
@@ -111,8 +117,14 @@ export class FreeIndex {
     return id
   }
 
-  /** A pasta gravada, para quem decide onde a sessão roda quando não há conversa a retomar. */
-  cwdOf(id: string): string | null {
+  /**
+   * A pasta gravada, para quem decide onde a sessão roda quando não há conversa a retomar. Espera a
+   * carga: perguntada antes dela, uma sessão que existe em disco responderia `null`, e o terminal
+   * diria que a pasta não existe mais.
+   */
+  async cwdOf(id: string): Promise<string | null> {
+    await this.#pronto()
+
     return this.#entries.get(id)?.cwd ?? null
   }
 
@@ -169,7 +181,7 @@ export class FreeIndex {
    * nova é o `resolveCwd` do main, com `cwdOf` + `existsSync`.
    */
   async restore(id: string): Promise<Restoration | null> {
-    if (!this.#carregado) await this.refresh()
+    await this.#pronto()
 
     const sessionId = this.#entries.get(id)?.sessionId
     if (sessionId === undefined || sessionId === null) return null
@@ -229,11 +241,21 @@ export class FreeIndex {
     this.#persist()
   }
 
-  /** Enfileira a gravação com a verdade mais recente da vez, nunca um retrato velho. */
+  /**
+   * Enfileira a gravação com a verdade mais recente da vez, nunca um retrato velho — e nunca antes da
+   * carga: gravar só o que nasceu nesta execução sobrescreveria o `free-sessions.json` sem as sessões
+   * que ainda não foram lidas dele.
+   */
   #persist(): void {
     this.#gravando = this.#gravando
+      .then(() => this.#pronto())
       .then(() => this.#save([...this.#entries.values()]))
       .catch(() => undefined)
+  }
+
+  /** A carga do boot, já feita ou feita agora; quem chega com ela em voo pega carona no `refresh`. */
+  async #pronto(): Promise<void> {
+    if (!this.#carregado) await this.refresh()
   }
 
   async #stored(): Promise<readonly FreeEntry[]> {

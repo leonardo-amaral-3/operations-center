@@ -86,7 +86,7 @@ describe('free:create', () => {
     expect(index.list()).toEqual([
       { id: 'livre-1', title: 'notoria', dangerous: false, recoverable: false },
     ])
-    expect(index.cwdOf('livre-1')).toBe('C:\\Users\\lokin\\notoria')
+    expect(await index.cwdOf('livre-1')).toBe('C:\\Users\\lokin\\notoria')
   })
 })
 

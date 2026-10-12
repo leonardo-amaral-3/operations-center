@@ -76,7 +76,7 @@ describe('FreeIndex — o transcript sumiu, a sessão não', () => {
     expect(index.list()).toEqual([
       { id: 'livre-1', title: 'notoria', dangerous: false, recoverable: false },
     ])
-    expect(index.cwdOf('livre-1')).toBe(PASTA)
+    expect(await index.cwdOf('livre-1')).toBe(PASTA)
     await vi.waitFor(() => {
       expect(ultimaGravacao(save)).toEqual([entrada({ sessionId: null })])
     })
@@ -107,7 +107,7 @@ describe('FreeIndex — o transcript sumiu, a sessão não', () => {
 
     expect(await index.restore('livre-1')).toBeNull()
     expect(index.list()[0]).toMatchObject({ title: 'notoria', recoverable: false })
-    expect(index.cwdOf('livre-1')).toBe(PASTA)
+    expect(await index.cwdOf('livre-1')).toBe(PASTA)
   })
 
   it('um `inspect` que rejeita não é "sim": cai no mesmo caminho do transcript sumido', async () => {
@@ -128,22 +128,22 @@ describe('FreeIndex — ciclo de vida', () => {
   it('`create` nasce na pasta, com o título dado, sem conversa, e vai para o disco', async () => {
     const { index, save, onChange } = montar()
 
-    const id = index.create({ cwd: PASTA, title: 'notoria' })
+    const id = await index.create({ cwd: PASTA, title: 'notoria' })
 
     expect(id).toBe('livre-1')
     expect(index.list()).toEqual([
       { id, title: 'notoria', dangerous: false, recoverable: false },
     ])
-    expect(index.cwdOf(id)).toBe(PASTA)
+    expect(await index.cwdOf(id)).toBe(PASTA)
     expect(onChange).toHaveBeenCalled()
     await vi.waitFor(() => {
       expect(ultimaGravacao(save)).toEqual([entrada({ id, sessionId: null })])
     })
   })
 
-  it('`remember` liga a conversa; `release` solta e MANTÉM a entrada; `forget` remove', () => {
+  it('`remember` liga a conversa; `release` solta e MANTÉM a entrada; `forget` remove', async () => {
     const { index } = montar()
-    const id = index.create({ cwd: PASTA, title: 'notoria' })
+    const id = await index.create({ cwd: PASTA, title: 'notoria' })
 
     index.remember(id, SESSAO)
     expect(index.list()[0]?.recoverable).toBe(true)
@@ -154,12 +154,12 @@ describe('FreeIndex — ciclo de vida', () => {
 
     index.forget(id)
     expect(index.list()).toEqual([])
-    expect(index.cwdOf(id)).toBeNull()
+    expect(await index.cwdOf(id)).toBeNull()
   })
 
-  it('repetir o mesmo vínculo não é mudança: não avisa nem regrava', () => {
+  it('repetir o mesmo vínculo não é mudança: não avisa nem regrava', async () => {
     const { index, onChange } = montar()
-    const id = index.create({ cwd: PASTA, title: 'notoria' })
+    const id = await index.create({ cwd: PASTA, title: 'notoria' })
     index.remember(id, SESSAO)
     onChange.mockClear()
 
@@ -168,9 +168,9 @@ describe('FreeIndex — ciclo de vida', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
-  it('`rename` troca o título; vazio ou só espaços é ignorado e o anterior fica', () => {
+  it('`rename` troca o título; vazio ou só espaços é ignorado e o anterior fica', async () => {
     const { index } = montar()
-    const id = index.create({ cwd: PASTA, title: 'notoria' })
+    const id = await index.create({ cwd: PASTA, title: 'notoria' })
 
     index.rename(id, '  api de faturamento ')
     expect(index.list()[0]?.title).toBe('api de faturamento')
@@ -180,12 +180,12 @@ describe('FreeIndex — ciclo de vida', () => {
     expect(index.list()[0]?.title).toBe('api de faturamento')
   })
 
-  it('`setCwd` troca a pasta; id desconhecido é no-op em tudo', () => {
+  it('`setCwd` troca a pasta; id desconhecido é no-op em tudo', async () => {
     const { index, onChange } = montar()
-    const id = index.create({ cwd: PASTA, title: 'notoria' })
+    const id = await index.create({ cwd: PASTA, title: 'notoria' })
 
     index.setCwd(id, 'C:/outra')
-    expect(index.cwdOf(id)).toBe('C:/outra')
+    expect(await index.cwdOf(id)).toBe('C:/outra')
 
     onChange.mockClear()
     index.setCwd('nao-existe', 'C:/x')
@@ -199,7 +199,7 @@ describe('FreeIndex — ciclo de vida', () => {
 
   it('a marca de perigo persiste na entrada e aparece no retrato', async () => {
     const { index, save } = montar()
-    const id = index.create({ cwd: PASTA, title: 'notoria' })
+    const id = await index.create({ cwd: PASTA, title: 'notoria' })
 
     expect(index.isDangerous(id)).toBe(false)
     index.setDangerous(id, true)
@@ -211,23 +211,51 @@ describe('FreeIndex — ciclo de vida', () => {
     })
   })
 
-  it('a ordem do array é a ordem do painel, e entrada criada antes da carga não é pisada por ela', async () => {
+  it('a ordem do array é a ordem do painel: criada durante a carga, a nova entra DEPOIS das gravadas', async () => {
     let liberar!: (entries: readonly FreeEntry[]) => void
     const carga = new Promise<readonly FreeEntry[]>((resolve) => {
       liberar = resolve
     })
     const { index } = montar({ load: () => carga })
 
-    const boot = index.refresh()
-    const nova = index.create({ cwd: 'C:/nova', title: 'nova' })
-    // O disco também tem uma entrada com o id da nova: a de memória vence, a outra entra depois.
-    liberar([
-      entrada({ id: nova, title: 'velha', sessionId: null }),
-      entrada({ id: 'disco-1', sessionId: null }),
-    ])
-    await boot
+    void index.refresh()
+    const criando = index.create({ cwd: 'C:/nova', title: 'nova' })
+    liberar([entrada({ id: 'disco-1', sessionId: null })])
+    await criando
 
-    expect(index.list().map((card) => card.title)).toEqual(['nova', 'notoria'])
+    expect(index.list().map((card) => card.title)).toEqual(['notoria', 'nova'])
+  })
+
+  it('`cwdOf` perguntado antes da carga espera por ela, em vez de dizer que a sessão não existe', async () => {
+    let liberar!: (entries: readonly FreeEntry[]) => void
+    const carga = new Promise<readonly FreeEntry[]>((resolve) => {
+      liberar = resolve
+    })
+    const { index } = montar({ load: () => carga })
+
+    const pasta = index.cwdOf('livre-1')
+    liberar([entrada({ sessionId: null })])
+
+    expect(await pasta).toBe(PASTA)
+  })
+
+  it('nenhuma gravação sai antes da carga: o arquivo nunca perde as sessões ainda não lidas', async () => {
+    let liberar!: (entries: readonly FreeEntry[]) => void
+    const carga = new Promise<readonly FreeEntry[]>((resolve) => {
+      liberar = resolve
+    })
+    const { index, save } = montar({ load: () => carga })
+
+    const criando = index.create({ cwd: 'C:/nova', title: 'nova' })
+    liberar([entrada({ id: 'disco-1', sessionId: null })])
+    await criando
+
+    await vi.waitFor(() => {
+      expect(save).toHaveBeenCalled()
+    })
+    for (const [gravado] of save.mock.calls) {
+      expect(gravado.map((e) => e.id)).toContain('disco-1')
+    }
   })
 
   it('gravação que falha não derruba o que vem depois', async () => {
@@ -246,8 +274,8 @@ describe('FreeIndex — ciclo de vida', () => {
       },
     })
 
-    index.create({ cwd: PASTA, title: 'a' })
-    index.create({ cwd: PASTA, title: 'b' })
+    await index.create({ cwd: PASTA, title: 'a' })
+    await index.create({ cwd: PASTA, title: 'b' })
 
     await vi.waitFor(() => {
       expect(gravados).toEqual([2])
