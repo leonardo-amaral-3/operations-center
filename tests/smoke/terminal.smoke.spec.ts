@@ -137,9 +137,12 @@ test('CA-6: clicar numa URL no terminal entrega ao navegador e não abre segunda
 
   if (stubPegou) {
     await expect
-      .poll(() => app.evaluate(() => (globalThis as { __ocAbertas?: string[] }).__ocAbertas ?? []), {
-        message: 'o clique no link não chegou a shell.openExternal',
-      })
+      .poll(
+        () => app.evaluate(() => (globalThis as { __ocAbertas?: string[] }).__ocAbertas ?? []),
+        {
+          message: 'o clique no link não chegou a shell.openExternal',
+        },
+      )
       .toContain(URL_DO_LINK)
   } else {
     test.info().annotations.push({

@@ -7,10 +7,10 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 
-const { handlers, dialogo, gravado } = vi.hoisted(() => ({
+const { handlers, dialogo, lido } = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, request: unknown) => unknown>(),
   dialogo: { resposta: { canceled: false, filePaths: ['C:\\Users\\lokin\\notoria'] } },
-  gravado: { valor: null as unknown },
+  lido: vi.fn((): unknown => null),
 }))
 
 vi.mock('node:path', async () => {
@@ -30,7 +30,7 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('../../src/main/store', () => ({
-  readState: () => Promise.resolve(gravado.valor),
+  readState: () => Promise.resolve(lido()),
   writeState: () => Promise.resolve(),
 }))
 
@@ -72,7 +72,7 @@ describe('caminho Windows com o node:path do Linux', () => {
   })
 
   it('entrada do disco sem título ganha o nome da pasta', async () => {
-    gravado.valor = { version: 1, sessions: [{ id: 'a', cwd: 'C:\\repos\\notoria' }] }
+    lido.mockReturnValue({ version: 1, sessions: [{ id: 'a', cwd: 'C:\\repos\\notoria' }] })
 
     expect((await loadFree())[0]?.title).toBe('notoria')
   })

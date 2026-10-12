@@ -131,9 +131,7 @@ describe('FreeIndex — ciclo de vida', () => {
     const id = await index.create({ cwd: PASTA, title: 'notoria' })
 
     expect(id).toBe('livre-1')
-    expect(index.list()).toEqual([
-      { id, title: 'notoria', dangerous: false, recoverable: false },
-    ])
+    expect(index.list()).toEqual([{ id, title: 'notoria', dangerous: false, recoverable: false }])
     expect(await index.cwdOf(id)).toBe(PASTA)
     expect(onChange).toHaveBeenCalled()
     await vi.waitFor(() => {

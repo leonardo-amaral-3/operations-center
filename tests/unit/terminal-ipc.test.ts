@@ -216,11 +216,11 @@ describe('terminal:presets', () => {
 
 describe('presetDepsDeProducao — o `where`', () => {
   it('o que achou roda uma vez só; o que não achou é perguntado de novo', () => {
-    const where = vi.fn((exe: string) => (exe === 'pwsh.exe' ? 'C:\pwsh\pwsh.exe' : null))
+    const where = vi.fn((exe: string) => (exe === 'pwsh.exe' ? 'C:\\pwsh\\pwsh.exe' : null))
     const deps = presetDepsDeProducao(where)
 
-    expect(deps.which('pwsh.exe')).toBe('C:\pwsh\pwsh.exe')
-    expect(deps.which('pwsh.exe')).toBe('C:\pwsh\pwsh.exe')
+    expect(deps.which('pwsh.exe')).toBe('C:\\pwsh\\pwsh.exe')
+    expect(deps.which('pwsh.exe')).toBe('C:\\pwsh\\pwsh.exe')
     expect(deps.which('git.exe')).toBeNull()
     expect(deps.which('git.exe')).toBeNull()
 

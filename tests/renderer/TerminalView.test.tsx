@@ -145,6 +145,8 @@ describe('TerminalView no StrictMode (yarn dev)', () => {
     await act(async () => {
       respostas[0]!(aberto('pty-orfao'))
       respostas[1]!(aberto('pty-vivo'))
+      // As duas continuações do `abrir` rodam na fila de microtarefas: o `act` espera elas.
+      await Promise.resolve()
     })
 
     expect(fechados).toEqual(['pty-orfao'])
