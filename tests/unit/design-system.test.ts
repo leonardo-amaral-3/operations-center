@@ -508,7 +508,7 @@ describe('toda cor de toda combinação cabe no sRGB', () => {
  * #36 a mediu: na obsidiana o `/60` cai de AA para abaixo de AA.
  */
 const PARES_AAA = [
-  { tinta: '--foreground', fundo: '--background' }, // o canvas do app, `index.css` no `body`
+  { tinta: '--foreground', fundo: '--background' }, // o canvas do app, `index.css` no `body`, e o fundo do chat (#78)
   { tinta: '--foreground', fundo: '--secondary-background' }, // `input.tsx`, `textarea.tsx`, a face de todo cartão
   { tinta: '--attention-foreground', fundo: '--attention' },
   { tinta: '--warning-foreground', fundo: '--warning' },
@@ -612,6 +612,23 @@ describe('dentro de um campo, dois valores se distinguem', () => {
       .map(({ a, b, distancia }) => `${a} ↔ ${b}: ${distancia.toFixed(4)}`)
 
     expect(perto).toEqual([])
+  })
+})
+
+/**
+ * O CA-3 do #78: com o chat pintado de `--background`, a bolha tem de continuar se recortando dele.
+ * É guarda, e não prova: já passa hoje (a menor distância medida é 0.0661), e protege contra uma
+ * reafinação de cor que apague a bolha do Claude ou a do usuário sobre o fundo do chat.
+ */
+describe('a bolha se distingue do fundo do chat', () => {
+  it.each(
+    THEMES.flatMap((tema) =>
+      ['--secondary-background', '--main'].map((bolha) => ({ tema, bolha })),
+    ),
+  )('na $tema, $bolha se distingue de --background', ({ tema, bolha }) => {
+    const distancia = oklabDistance(valorDoToken(tema, '--background'), valorDoToken(tema, bolha))
+
+    expect(distancia).toBeGreaterThanOrEqual(DISTANCIA_MINIMA_NO_CAMPO)
   })
 })
 
