@@ -171,6 +171,58 @@ test('CA-3: fechar e reabrir devolve a aba com o mesmo preset, e o prompt reapar
   await expect.poll(linhasDoTerminal, { timeout: SHELL_TIMEOUT }).toContainEqual(PROMPT)
 })
 
+test('sem menu, Ctrl+R é do shell; e recarregar a janela mata o shell que ela abriu', async () => {
+  // Decisão 23 da spec: o menu default do Electron, mesmo escondido, recarregava a janela no Ctrl+R.
+  expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu())).toBeNull()
+
+  const teclado = window.locator('.xterm-helper-textarea')
+  await teclado.pressSequentially('$PID')
+  await teclado.press('Enter')
+  let pid = 0
+  await expect
+    .poll(
+      async () => {
+        pid = Number((await linhasDoTerminal()).find((linha) => /^\d+$/.test(linha)) ?? 0)
+
+        return pid
+      },
+      { message: 'o $PID do shell não apareceu', timeout: SHELL_TIMEOUT },
+    )
+    .toBeGreaterThan(0)
+
+  // Com o menu default, a janela recarregaria e a marca sumiria. Sem ele o PSReadLine recebe o ^R e
+  // abre a busca reversa — a prova de que a tecla chegou ao shell, e não só de que nada aconteceu.
+  await window.evaluate(`window.__ocMarca = 1`)
+  await teclado.press('Control+r')
+  await expect
+    .poll(async () => (await linhasDoTerminal()).some((linha) => linha.includes('bck-i-search')), {
+      message: 'o Ctrl+R não chegou ao PSReadLine',
+      timeout: SHELL_TIMEOUT,
+    })
+    .toBe(true)
+  await teclado.press('Escape')
+  expect(await window.evaluate(`window.__ocMarca`)).toBe(1)
+
+  // O reload troca o documento e mantém o `WebContents`: o `destroyed` não dispara, e o shell
+  // ficaria órfão para o `hydrate` subir outro por cima. Quem o mata é o `did-navigate`.
+  await window.reload()
+  await expect
+    .poll(
+      () =>
+        app.evaluate((_electron, alvo) => {
+          try {
+            process.kill(alvo, 0)
+
+            return true
+          } catch {
+            return false
+          }
+        }, pid),
+      { message: `o shell ${pid} sobreviveu ao reload da janela`, timeout: SHELL_TIMEOUT },
+    )
+    .toBe(false)
+})
+
 /** Uma linha de prompt do PowerShell (`PS C:\pasta>`), com ou sem o resto digitado. */
 const PROMPT = expect.stringMatching(/^PS .*>/)
 

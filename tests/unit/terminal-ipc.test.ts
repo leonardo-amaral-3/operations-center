@@ -37,12 +37,16 @@ const ESCOPO: SessionScope = { kind: 'card', itemId: 'PVTI_x' }
 function fakeSender() {
   const enviados: Array<[string, unknown]> = []
   const once = new Map<string, () => void>()
+  const on = new Map<string, Array<() => void>>()
   const sender = {
     isDestroyed: () => false,
     send: (canal: string, carga: unknown) => void enviados.push([canal, carga]),
     once: (evento: string, cb: () => void) => void once.set(evento, cb),
+    on: (evento: string, cb: () => void) => void on.set(evento, [...(on.get(evento) ?? []), cb]),
   } as unknown as WebContents
-  return { sender, enviados, once }
+  /** Dispara um evento `on` como o Electron: todo ouvinte, e de novo a cada vez. */
+  const emitir = (evento: string): void => on.get(evento)?.forEach((cb) => cb())
+  return { sender, enviados, once, emitir }
 }
 
 function montar(
@@ -161,6 +165,33 @@ describe('terminal:open — abrindo', () => {
     a.once.get('destroyed')!()
 
     expect(fake.ptys.map((p) => p.killed)).toEqual([true, false])
+  })
+
+  it('reload do renderer (o mesmo WebContents navega) mata os PTYs dele e só os dele', async () => {
+    const { abrir, fake } = montar()
+    const a = fakeSender()
+    await abrir(a.sender)
+    await abrir(fakeSender().sender)
+
+    a.emitir('did-navigate')
+
+    expect(fake.ptys.map((p) => p.killed)).toEqual([true, false])
+  })
+
+  it('o segundo reload e o segundo crash matam como o primeiro', async () => {
+    const { abrir, fake } = montar()
+    const a = fakeSender()
+
+    await abrir(a.sender)
+    a.emitir('did-navigate')
+    await abrir(a.sender)
+    a.emitir('did-navigate')
+    await abrir(a.sender)
+    a.emitir('render-process-gone')
+    await abrir(a.sender)
+    a.emitir('render-process-gone')
+
+    expect(fake.ptys.map((p) => p.killed)).toEqual([true, true, true, true])
   })
 
   it('closeAll encerra todos os terminais', async () => {

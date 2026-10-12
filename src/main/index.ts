@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
-import { app, BrowserWindow, dialog, ipcMain, powerMonitor, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, shell } from 'electron'
 
 import {
   BoardFinder,
@@ -189,6 +189,17 @@ function createWindow(theme: Theme): BrowserWindow {
     event.preventDefault()
     if (verdict.kind === 'external') void shell.openExternal(verdict.url)
   })
+
+  // O menu é `null` (spec #74, decisão 23), e o `F12` → DevTools ia junto com ele. Só em `yarn dev`
+  // ele volta, por aqui: no executável o DevTools continua fora de alcance, como sempre esteve.
+  if (devServerUrl) {
+    window.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown' || input.key !== 'F12') return
+
+      event.preventDefault()
+      window.webContents.toggleDevTools()
+    })
+  }
 
   // `loadURL`/`loadFile` são programáticos e **não** disparam `will-navigate`: só o que o renderer
   // inicia passa pela guarda acima.
@@ -535,6 +546,12 @@ void app.whenReady().then(async () => {
   // devolve é a outra metade: os eventos `maximize`/`unmaximize` são da janela, e ela só existe da
   // linha seguinte em diante.
   const observarJanela = registerWindowIpc()
+
+  // Sem menu (spec #74, decisão 23). O app nunca montou um, então valia o **default do Electron**,
+  // cujos aceleradores seguem vivos com a barra escondida pelo `autoHideMenuBar`: `Ctrl+W` fechava o
+  // app, `Ctrl+R` recarregava a janela — e `^W`/`^R` são edição de linha do bash e do PSReadLine.
+  // Com `null` as teclas chegam ao shell.
+  Menu.setApplicationMenu(null)
 
   const window = createWindow(theme)
   janelaViva = window

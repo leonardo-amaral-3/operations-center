@@ -119,11 +119,19 @@ export function registerTerminalIpc(options: TerminalIpcOptions): TerminalIpc {
     }
   }
 
+  /**
+   * Um reload não destrói o `WebContents`: o documento troca e o mesmo `sender` continua vivo. Por
+   * isso o gatilho do reload é o `did-navigate` (navegação do frame principal **que comitou** — a
+   * barrada pelo `will-navigate` não chega aqui), e não o `destroyed`. E é `on`, não `once`: o
+   * `WebContents` sobrevive a um crash e a um reload, e o segundo tem de matar os shells como o
+   * primeiro — o `watched` já garante um registro só por `sender`.
+   */
   const watch = (sender: WebContents): void => {
     if (watched.has(sender)) return
     watched.add(sender)
     sender.once('destroyed', () => closeOf(sender))
-    sender.once('render-process-gone', () => closeOf(sender))
+    sender.on('render-process-gone', () => closeOf(sender))
+    sender.on('did-navigate', () => closeOf(sender))
   }
 
   ipcMain.handle(IPC_INVOKE.readTerminalPresets, (): TerminalPresetsSnapshot => ({
