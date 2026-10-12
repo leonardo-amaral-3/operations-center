@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import { join, win32 } from 'node:path'
 import { ipcMain } from 'electron'
 import type { WebContents } from 'electron'
 import type { LoadSpawn, PtySpawner, TerminalHost } from '../core'
@@ -180,7 +180,7 @@ export function registerTerminalIpc(options: TerminalIpcOptions): TerminalIpc {
       })
 
       const title =
-        request.scope === undefined ? preset.label : `${preset.label} · ${basename(cwd)}`
+        request.scope === undefined ? preset.label : `${preset.label} · ${win32.basename(cwd)}`
       return { opened: true, terminal: { id: aberto.id, preset: preset.id, title } }
     },
   )

@@ -8,7 +8,7 @@
  * volta, não um app que não abre.
  */
 
-import { basename } from 'node:path'
+import { win32 } from 'node:path'
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import type { WebContents } from 'electron'
 
@@ -48,7 +48,7 @@ export async function loadFree(): Promise<readonly FreeEntry[]> {
 
     entradas.push({
       id,
-      title: typeof title === 'string' && title.trim() !== '' ? title : basename(cwd),
+      title: typeof title === 'string' && title.trim() !== '' ? title : win32.basename(cwd),
       cwd,
       sessionId: typeof sessionId === 'string' && sessionId !== '' ? sessionId : null,
       dangerous: dangerous === true,
@@ -118,7 +118,7 @@ export function registerFreeIpc(index: FreeIndex, options: FreeIpcOptions): Free
 
       if (result.canceled || path === undefined) return { created: false }
 
-      return { created: true, id: index.create({ cwd: path, title: basename(path) }) }
+      return { created: true, id: index.create({ cwd: path, title: win32.basename(path) }) }
     },
   )
 
