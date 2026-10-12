@@ -348,14 +348,20 @@ export function Chat({
         <p className="mt-2 text-[10px] text-foreground/60">Conectando à sessão do Claude Code…</p>
       )}
 
-      <div className="mt-1.5 flex items-center justify-between gap-2">
-        <div className="min-w-0">
+      {/* Nenhuma largura de host comporta selo e grupo lado a lado (~490–500px de barra contra até
+          546px com o Parar), então a barra quebra linha: o grupo desce, alinhado à direita, em vez de
+          cobrir o selo (#80). */}
+      <div
+        data-testid="card-chat-actions"
+        className="mt-1.5 flex flex-wrap items-center justify-between gap-2"
+      >
+        <div className="max-w-full">
           <StateBadge state={view.state} />
         </div>
 
         {/* Duas ações distintas no cartão, e é o CA-6 inteiro: colapsar devolve o cartão fechado
             com a sessão viva; encerrar mata a sessão. O app nunca faz o segundo por conta própria. */}
-        <div className="flex shrink-0 gap-2">
+        <div className="ml-auto flex min-w-0 flex-wrap justify-end gap-2">
           {/* Renderização condicional, e não `disabled`: o botão ausente é a afirmação que um teste
               faz sem ambiguidade, e o olho não precisa distinguir dois cinzas. A ação do turno vem
               antes das ações da sessão. */}
