@@ -112,6 +112,11 @@ describe('a superfície de board é somente-leitura', () => {
     // `toggleMaximizeWindow` e não `close`/`minimize` porque `close` já é `'session:close'` — fechar
     // a janela e encerrar uma sessão são coisas diferentes, e dois `close` na mesma superfície é
     // como alguém liga o botão errado.
+    //
+    // **E a dos onze canais do #74** (terminal embutido, sessão livre, disposição da mesa).
+    // **Nenhum toca o board, nem para ler**: `terminal:*` fala com um shell local; `free:*` e
+    // `layout:*` falam com arquivos do próprio app em `OC_STATE_DIR`. Os prefixos são famílias novas,
+    // então o filtro de `boards:`/`card:` da asserção seguinte segue intocado, sem exceção nominal.
     expect(IPC_INVOKE).toEqual({
       start: 'session:start',
       send: 'session:send',
@@ -132,6 +137,17 @@ describe('a superfície de board é somente-leitura', () => {
       minimizeWindow: 'window:minimize',
       toggleMaximizeWindow: 'window:toggle-maximize',
       closeWindow: 'window:close',
+      readTerminalPresets: 'terminal:presets',
+      openTerminal: 'terminal:open',
+      writeTerminal: 'terminal:input',
+      resizeTerminal: 'terminal:resize',
+      closeTerminal: 'terminal:close',
+      readFree: 'free:read',
+      createFree: 'free:create',
+      renameFree: 'free:rename',
+      forgetFree: 'free:forget',
+      readLayout: 'layout:read',
+      setLayout: 'layout:set',
     })
   })
 
@@ -168,6 +184,9 @@ describe('a superfície de board é somente-leitura', () => {
     // do app: duplo clique na faixa, `Win+↑`, arrastar para o topo. Sem o evento, o botão do meio
     // continuaria dizendo "Maximizar" numa janela já maximizada. **Não toca o board**, nem para ler:
     // o valor é `window.isMaximized()`, lido da própria `BrowserWindow` no instante da publicação.
+    //
+    // E a dos três do #74: `terminalData`/`terminalExit` levam o que o PTY escreveu e o fim dele;
+    // `free` avisa que mudou o conjunto de sessões livres. **Nenhum toca o board, nem para ler.**
     expect(IPC_EVENT).toEqual({
       init: 'session:init',
       message: 'session:message',
@@ -178,6 +197,9 @@ describe('a superfície de board é somente-leitura', () => {
       dangerous: 'danger:changed',
       theme: 'theme:changed',
       window: 'window:changed',
+      terminalData: 'terminal:data',
+      terminalExit: 'terminal:exit',
+      free: 'free:changed',
     })
   })
 
