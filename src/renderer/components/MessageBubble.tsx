@@ -67,9 +67,9 @@ interface BubbleSkin {
  * tudo em `em` e herda a daqui.
  *
  * **Quem fala é a cor da face**, e é ela que substitui os dois cinzas de antes: o usuário na
- * `bg-main` do sistema, o Claude na face branca de todo cartão. O rótulo não precisa mais de um
- * terceiro tom — `text-foreground/60` é o mesmo preto rebaixado nas duas faces, que é o que
- * sobrevive num tema de uma cor de texto só.
+ * `bg-main` do sistema, o Claude na `bg-secondary-background`, que se recorta sobre o canvas do
+ * chat (#78). O rótulo não precisa mais de um terceiro tom — `text-foreground/60` é o mesmo preto
+ * rebaixado nas duas faces, que é o que sobrevive num tema de uma cor de texto só.
  */
 const SKINS: Record<BubbleScale, BubbleSkin> = {
   sm: {
