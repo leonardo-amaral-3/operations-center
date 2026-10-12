@@ -50,9 +50,13 @@ function conteudo(over: Partial<CardContent> = {}): CardContent {
 interface RenderOptions {
   pending?: boolean
   open?: boolean
+  preencher?: boolean
 }
 
-function render(state: ContentState, { pending = false, open = true }: RenderOptions = {}): string {
+function render(
+  state: ContentState,
+  { pending = false, open = true, preencher }: RenderOptions = {},
+): string {
   return renderToStaticMarkup(
     <CardContentView
       state={state}
@@ -60,6 +64,7 @@ function render(state: ContentState, { pending = false, open = true }: RenderOpt
       open={open}
       onToggle={() => undefined}
       onReload={() => undefined}
+      preencher={preencher}
     />,
   )
 }
@@ -280,5 +285,19 @@ describe('os estados que não são conteúdo', () => {
     })
 
     expect(html).not.toContain('Mostrando os primeiros')
+  })
+})
+
+describe('#28 — o teto de altura cai no cartão expandido', () => {
+  it('sem `preencher`, o corpo mantém o teto de 26rem', () => {
+    const html = render({ kind: 'loaded', content: conteudo() })
+    expect(html).toContain('max-h-[26rem]')
+    expect(html).not.toContain('flex-1')
+  })
+
+  it('com `preencher`, o corpo ocupa a altura que sobra e perde o teto', () => {
+    const html = render({ kind: 'loaded', content: conteudo() }, { preencher: true })
+    expect(html).toContain('min-h-0 flex-1')
+    expect(html).not.toContain('max-h-[26rem]')
   })
 })
