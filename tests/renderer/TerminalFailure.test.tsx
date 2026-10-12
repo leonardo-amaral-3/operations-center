@@ -50,8 +50,11 @@ describe('CA-8 — `pty-unavailable`', () => {
     )
     expect(texto()).toBe(
       'O terminal não abriu: o módulo nativo node-pty não carregou. Cannot find module pty.node ' +
-        'Na pasta do app, rode yarn install --force para reinstalar os binários pré-compilados. ' +
-        'Se continuar, npx @electron/rebuild -f -w node-pty recompila contra este Electron.',
+        'Rodando pelo código, rode yarn install --force na pasta do projeto para reinstalar os ' +
+        'binários pré-compilados; se continuar, npx @electron/rebuild -f -w node-pty recompila ' +
+        'contra este Electron. No executável empacotado, o binário faltou no pacote ' +
+        '(resources\\app\\node_modules\\node-pty\\prebuilds\\win32-x64): faça o mesmo no projeto ' +
+        'e empacote de novo com yarn package.',
     )
   })
 
@@ -67,6 +70,8 @@ describe('CA-8 — `pty-unavailable`', () => {
       'Cannot find module pty.node',
       'yarn install --force',
       'npx @electron/rebuild -f -w node-pty',
+      'resources\\app\\node_modules\\node-pty\\prebuilds\\win32-x64',
+      'yarn package',
     ])
   })
 })

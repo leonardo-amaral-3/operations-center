@@ -107,10 +107,12 @@ function texto(
       return (
         <>
           O terminal não abriu: o módulo nativo <code>node-pty</code> não carregou.{' '}
-          <code data-testid="terminal-failure-detail">{detail}</code> Na pasta do app, rode{' '}
-          <code>yarn install --force</code> para reinstalar os binários pré-compilados. Se
-          continuar, <code>npx @electron/rebuild -f -w node-pty</code> recompila contra este
-          Electron.
+          <code data-testid="terminal-failure-detail">{detail}</code> Rodando pelo código, rode{' '}
+          <code>yarn install --force</code> na pasta do projeto para reinstalar os binários
+          pré-compilados; se continuar, <code>npx @electron/rebuild -f -w node-pty</code> recompila
+          contra este Electron. No executável empacotado, o binário faltou no pacote (
+          <code>resources\app\node_modules\node-pty\prebuilds\win32-x64</code>): faça o mesmo no
+          projeto e empacote de novo com <code>yarn package</code>.
         </>
       )
 
