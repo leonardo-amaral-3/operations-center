@@ -1,8 +1,10 @@
 import { memo, useEffect, useState } from 'react'
 import type { JSX } from 'react'
 
+import type { PullRequestRef } from '../../shared/board'
 import { CardContentView } from './CardContentView'
-import type { ContentState } from './CardContentView'
+import type { AbaDoCartao, ContentState } from './CardContentView'
+import { PullRequest } from './PullRequest'
 
 interface CardContentProps {
   itemId: string
@@ -49,11 +51,32 @@ export const CardContent = memo(function CardContent({
   const [pending, setPending] = useState(true)
   /** Só um contador: o que ele existe para fazer é disparar o efeito de novo. */
   const [reloads, setReloads] = useState(0)
+  const [aba, setAba] = useState<AbaDoCartao>('card')
+  const [prMontado, setPrMontado] = useState(false)
+  /**
+   * O PR do card, como a **última leitura bem-sucedida** o conhece. Leitura que falha não mexe
+   * aqui: é isso que impede um ⟳ falho de tirar as abas e desmontar o painel do PR.
+   */
+  const [prConhecido, setPrConhecido] = useState<PullRequestRef | null>(null)
 
   // Expandir é para ler, então abre a seção que a sessão viva deixou recolhida (#28). Só abre:
   // recolher o cartão não fecha o que o leitor deixou aberto.
   useEffect(() => {
     if (preencher) setOpen(true)
+  }, [preencher])
+
+  // As abas (#83) vivem só no cartão expandido. Recolher descarta a aba, o painel do PR e o PR
+  // conhecido; expandir não relê (CA-2 do #28), então o PR conhecido vem do que já está carregado.
+  useEffect(() => {
+    if (!preencher) {
+      setAba('card')
+      setPrMontado(false)
+      setPrConhecido(null)
+    } else if (state.kind === 'loaded') {
+      setPrConhecido(state.content.pullRequest)
+    }
+    // `state` fica de fora de propósito: a leitura que aterrissa já atualiza `prConhecido` no
+    // `.then`; este efeito só reage à expansão e ao recolhimento.
   }, [preencher])
 
   useEffect(() => {
@@ -79,6 +102,7 @@ export const CardContent = memo(function CardContent({
           ? { kind: 'loaded', content: result.content }
           : { kind: 'failed', reason: result.reason },
       )
+      if (result.ok) setPrConhecido(result.content.pullRequest)
       setPending(false)
     })
 
@@ -87,12 +111,27 @@ export const CardContent = memo(function CardContent({
     }
   }, [itemId, reloads])
 
+  const abasVisiveis = preencher && prConhecido !== null
+
   return (
     <CardContentView
       state={state}
       pending={pending}
       open={open}
       preencher={preencher}
+      abas={
+        abasVisiveis
+          ? {
+              ativa: aba,
+              numero: prConhecido.number,
+              onSelecionar: (escolhida) => {
+                setAba(escolhida)
+                if (escolhida === 'pr') setPrMontado(true)
+              },
+            }
+          : null
+      }
+      prPanel={abasVisiveis && prMontado ? <PullRequest itemId={itemId} /> : null}
       onToggle={() => {
         setOpen((aberta) => !aberta)
       }}

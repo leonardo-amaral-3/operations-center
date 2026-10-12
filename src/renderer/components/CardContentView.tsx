@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { JSX } from 'react'
+import type { JSX, ReactNode } from 'react'
 
 import type { CardComment, CardContent } from '../../shared/board'
 import { Badge } from '../ui/badge'
@@ -98,6 +98,16 @@ export const CardCommentView = memo(function CardCommentView({
   )
 })
 
+/** As duas abas do cartão expandido que tem PR (#83). */
+export type AbaDoCartao = 'card' | 'pr'
+
+/** O tablist: a aba ativa, o número que rotula a aba PR e o aviso de clique. */
+export interface AbasDoCartao {
+  ativa: AbaDoCartao
+  numero: number
+  onSelecionar: (aba: AbaDoCartao) => void
+}
+
 interface CardContentViewProps {
   state: ContentState
   /** `true` enquanto uma recarga está em voo — o conteúdo antigo fica na tela e o ⟳ desabilita. */
@@ -107,6 +117,13 @@ interface CardContentViewProps {
   onReload: () => void
   /** Cartão expandido (#28): o corpo ocupa a altura que sobra, em vez de parar no teto de 26rem. */
   preencher?: boolean
+  /**
+   * Presente só no cartão expandido que tem PR. Troca o disclosure "Conteúdo" pelo tablist; sem
+   * ele (ausente ou `null`) a vista desenha exatamente o que desenhava antes.
+   */
+  abas?: AbasDoCartao | null
+  /** O painel do PR, já montado pelo contêiner. `null` até a primeira seleção da aba PR. */
+  prPanel?: ReactNode
 }
 
 /**
@@ -124,7 +141,14 @@ export function CardContentView({
   onToggle,
   onReload,
   preencher = false,
+  abas = null,
+  prPanel = null,
 }: CardContentViewProps): JSX.Element {
+  // Com abas não há disclosure para reabrir uma seção recolhida durante o carregamento, e a aba
+  // Card ficaria vazia: o corpo é desenhado como se `open` fosse `true`, ignorando o prop.
+  const aberta = abas !== null || open
+  const naAbaPr = abas?.ativa === 'pr'
+
   return (
     <section
       data-testid="card-content"
@@ -134,32 +158,62 @@ export function CardContentView({
         {/* Um `<button>` cru, e não a primitiva: `Button` traz casca — borda de 2px e sombra dura —,
             e uma casca aqui desenharia uma segunda caixa dentro do cartão. O que este controle é,
             é um disclosure: o rótulo, o chevron e o `aria-expanded`. */}
-        <button
-          type="button"
-          data-testid="card-content-toggle"
-          aria-expanded={open}
-          onClick={onToggle}
-          className="flex cursor-pointer items-center gap-1 text-[11px] tracking-wide text-foreground/70 uppercase"
-        >
-          <span aria-hidden="true">{open ? '▾' : '▸'}</span>
-          Conteúdo
-        </button>
+        {abas === null ? (
+          <button
+            type="button"
+            data-testid="card-content-toggle"
+            aria-expanded={open}
+            onClick={onToggle}
+            className="flex cursor-pointer items-center gap-1 text-[11px] tracking-wide text-foreground/70 uppercase"
+          >
+            <span aria-hidden="true">{open ? '▾' : '▸'}</span>
+            Conteúdo
+          </button>
+        ) : (
+          <div role="tablist" aria-label="Card e PR" className="flex items-center gap-2">
+            <Button
+              type="button"
+              role="tab"
+              aria-selected={abas.ativa === 'card'}
+              data-testid="card-tab-card"
+              variant={abas.ativa === 'card' ? 'default' : 'neutral'}
+              size="xs"
+              onClick={() => abas.onSelecionar('card')}
+            >
+              Card
+            </Button>
+            <Button
+              type="button"
+              role="tab"
+              aria-selected={abas.ativa === 'pr'}
+              data-testid="card-tab-pr"
+              variant={abas.ativa === 'pr' ? 'default' : 'neutral'}
+              size="xs"
+              onClick={() => abas.onSelecionar('pr')}
+            >
+              PR #{abas.numero}
+            </Button>
+          </div>
+        )}
 
         {/* Fica no cabeçalho, e portanto **também quando a seção está recolhida**: recarregar é o
             CA-7, e quem acabou de pedir um comentário à sessão não deveria ter de abrir a seção
             para trazê-lo. */}
-        <Button
-          type="button"
-          data-testid="card-content-reload"
-          aria-label="Recarregar o conteúdo"
-          title="Recarregar o conteúdo"
-          variant="neutral"
-          size="xs"
-          disabled={pending}
-          onClick={onReload}
-        >
-          <span aria-hidden="true">⟳</span>
-        </Button>
+        {/* Com a aba PR ativa o ⟳ do card sai: a aba PR tem o seu. */}
+        {naAbaPr ? null : (
+          <Button
+            type="button"
+            data-testid="card-content-reload"
+            aria-label="Recarregar o conteúdo"
+            title="Recarregar o conteúdo"
+            variant="neutral"
+            size="xs"
+            disabled={pending}
+            onClick={onReload}
+          >
+            <span aria-hidden="true">⟳</span>
+          </Button>
+        )}
       </div>
 
       {/* Teto de altura e rolagem própria: o cartão vive dentro de uma coluna, e sem o teto a spec
@@ -167,14 +221,27 @@ export function CardContentView({
           deixaria de ser um kanban (CA-4). O teto vale no kanban e cai no cartão expandido (#28), onde o
           corpo preenche a altura e rola sozinho. Quem rola na horizontal é o contêiner de cada tabela e
           de cada bloco de código, dentro do `Markdown`; aqui só a vertical. */}
-      {open ? (
+      {aberta ? (
         <div
           data-testid="card-content-body"
+          hidden={naAbaPr}
           className={cn('mt-2 overflow-y-auto', preencher ? 'min-h-0 flex-1' : 'max-h-[26rem]')}
         >
           <Corpo state={state} pending={pending} onReload={onReload} />
         </div>
       ) : null}
+
+      {/* Montado na primeira seleção da aba PR e escondido com CSS depois, para trocar de aba não
+          reler nem desmontar (CA-2 do #28). */}
+      {prPanel === null ? null : (
+        <div
+          data-testid="card-pr-body"
+          hidden={!naAbaPr}
+          className="mt-2 min-h-0 flex-1 overflow-y-auto"
+        >
+          {prPanel}
+        </div>
+      )}
     </section>
   )
 }
