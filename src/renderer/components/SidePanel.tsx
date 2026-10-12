@@ -216,7 +216,7 @@ export function SidePanel({
         })}
       </nav>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3">
         {ativa === null ? null : (
           <>
             {/* Sessão sem transcript (criada e fechada sem turno): o título e a pasta bastam, e o
@@ -242,6 +242,7 @@ export function SidePanel({
               }}
               onOpenTerminal={() => onOpenTerminal({ kind: 'free', id: ativa.id })}
               autoFocus={focus === 'free'}
+              preencher
             />
           </>
         )}

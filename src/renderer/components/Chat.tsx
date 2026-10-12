@@ -5,6 +5,7 @@ import type { SessionScope } from '../../shared/ipc'
 import type { SessionState } from '../../shared/session'
 import { useSessionView } from '../session/useSessionView'
 import { Button } from '../ui/button'
+import { cn } from '../ui/cn'
 import { Textarea } from '../ui/textarea'
 import { isFala, MessageBubble } from './MessageBubble'
 import { PermissionPrompt } from './PermissionPrompt'
@@ -63,6 +64,12 @@ interface ChatProps {
    * aqui`; quem passa sabe traduzir este escopo em terminal, e o `Chat` só o dispara.
    */
   onOpenTerminal?: () => void
+  /**
+   * Verdadeiro → a conversa ocupa a altura toda de quem a contém, com o histórico esticando até a
+   * caixa. É o painel lateral (#74 §10); o cartão e a triagem vivem numa coluna e mantêm o teto de
+   * 320px do histórico.
+   */
+  preencher?: boolean
 }
 
 /**
@@ -93,6 +100,7 @@ export function Chat({
   onToggleDangerous,
   autoFocus,
   onOpenTerminal,
+  preencher = false,
 }: ChatProps): JSX.Element {
   const { view, send, decide, answer, stop, end, restart } = useSessionView({
     // O escopo vem montado no JSX, então é objeto novo a cada render — e é seguro: o hook depende da
@@ -238,8 +246,19 @@ export function Chat({
   }
 
   return (
-    <div data-testid="card-chat" className="mt-3 border-t-2 border-border pt-3">
-      <div ref={history} className="max-h-80 space-y-2 overflow-y-auto">
+    <div
+      data-testid="card-chat"
+      className={cn(
+        'mt-3 border-t-2 border-border pt-3',
+        preencher && 'flex min-h-0 flex-1 flex-col',
+      )}
+    >
+      {/* Preenchendo, só o histórico tem `min-h-0`: é ele que cede quando a altura aperta, e a
+          caixa, os prompts e o rodapé ficam no tamanho natural. */}
+      <div
+        ref={history}
+        className={cn('space-y-2 overflow-y-auto', preencher ? 'min-h-0 flex-1' : 'max-h-80')}
+      >
         {view.messages.length === 0 ? (
           <p className="text-xs text-foreground/60">
             A sessão está de pé. Escreva a primeira mensagem.
