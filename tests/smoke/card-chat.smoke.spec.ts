@@ -1173,7 +1173,10 @@ async function barraSemSobreposicao(card: FixtureCard, onde: string): Promise<vo
     clientWidth: number
     disabled: boolean
     children: ArrayLike<No>
-    ownerDocument: { elementFromPoint(x: number, y: number): No | null }
+    ownerDocument: {
+      elementFromPoint(x: number, y: number): No | null
+      defaultView: { innerWidth: number } | null
+    }
     querySelector(seletor: string): No | null
     querySelectorAll(seletor: string): ArrayLike<No>
     closest(seletor: string): No | null
@@ -1196,6 +1199,7 @@ async function barraSemSobreposicao(card: FixtureCard, onde: string): Promise<vo
         const selo = el.querySelector('[data-testid="state-badge"]')
 
         return {
+          janela: el.ownerDocument.defaultView?.innerWidth ?? -1,
           barra: retangulo(el),
           filhos: Array.from(el.children).map(retangulo),
           selo:
@@ -1217,7 +1221,9 @@ async function barraSemSobreposicao(card: FixtureCard, onde: string): Promise<vo
       })
 
       const em = `${onde}, no tema ${tema}`
-      const { barra: caixa, selo, botoes } = medida
+      const { barra: caixa, selo, botoes, janela } = medida
+      // Diagnóstico da falha intermitente do CA-2 (#80): em que largura de janela e de barra ela veio.
+      const diag = `janela ${janela}px, barra ${caixa.left.toFixed(1)}–${caixa.right.toFixed(1)}`
       const area = (a: Retangulo, b: Retangulo): number =>
         Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) *
         Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
@@ -1227,7 +1233,9 @@ async function barraSemSobreposicao(card: FixtureCard, onde: string): Promise<vo
 
       // CA-1: o selo inteiro, sem sobreposição.
       for (const b of botoes) {
-        expect(area(selo, b), `CA-1, ${em}: o selo é coberto por «${b.id}»`).toBeLessThanOrEqual(0.5)
+        expect(area(selo, b), `CA-1, ${em}: o selo é coberto por «${b.id}»`).toBeLessThanOrEqual(
+          0.5,
+        )
       }
       expect(selo.scrollWidth, `CA-1, ${em}: o selo está truncado`).toBeLessThanOrEqual(
         selo.clientWidth,
@@ -1236,12 +1244,14 @@ async function barraSemSobreposicao(card: FixtureCard, onde: string): Promise<vo
 
       // CA-2: tudo dentro da barra, tudo acionável.
       const dentro = (r: Retangulo, quem: string): void => {
-        expect(r.left, `CA-2, ${em}: «${quem}» vaza pela esquerda`).toBeGreaterThanOrEqual(
-          caixa.left - 0.5,
-        )
-        expect(r.right, `CA-2, ${em}: «${quem}» vaza pela direita`).toBeLessThanOrEqual(
-          caixa.right + 0.5,
-        )
+        expect(
+          r.left,
+          `CA-2, ${em}: «${quem}» vaza pela esquerda (${diag}; ${r.left.toFixed(1)}–${r.right.toFixed(1)})`,
+        ).toBeGreaterThanOrEqual(caixa.left - 0.5)
+        expect(
+          r.right,
+          `CA-2, ${em}: «${quem}» vaza pela direita (${diag}; ${r.left.toFixed(1)}–${r.right.toFixed(1)})`,
+        ).toBeLessThanOrEqual(caixa.right + 0.5)
       }
       medida.filhos.forEach((f, i) => dentro(f, `filho ${i} da barra`))
       for (const b of botoes) {
