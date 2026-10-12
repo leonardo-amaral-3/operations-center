@@ -342,6 +342,10 @@ test('CA-1 e CA-2: o cartão vira chat no próprio lugar, e a sessão responde',
   await expect(columnLocator(CHAT_CARD.columnId).getByTestId('card-chat')).toHaveCount(1)
   await expect(window.getByTestId('card-chat')).toHaveCount(1)
 
+  // O estado ao abrir (`starting` na sonda do #80) não se afirma: a corrida com o `init` não é
+  // deste critério.
+  await barraSemSobreposicao(CHAT_CARD, 'aberto, ao abrir')
+
   const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
 
   // Ler e digitar: a mensagem atravessa renderer → main → core → SDK e a resposta volta renderizada
@@ -353,10 +357,12 @@ test('CA-1 e CA-2: o cartão vira chat no próprio lugar, e a sessão responde',
     timeout: TURN_TIMEOUT,
   })
 
+  await barraSemSobreposicao(CHAT_CARD, 'aberto, sua vez')
+
   // O CA-3 do card #8, de carona nesta sessão viva: a borda de 2px e a sombra de 4px do design
-  // system comem largura útil dentro da coluna de 288px, e o sinal de estado é o que mais cresce
-  // aqui dentro. **Nos quatro lados**, e não só pela direita: na barra de ações ele divide a linha
-  // com três botões, e um estouro por cima ou por baixo seria clipado pelo scroll do mesmo jeito.
+  // system comem largura útil dentro da coluna de 36rem (`Column.tsx:95`), e o sinal de estado é o
+  // que mais cresce aqui dentro. **Nos quatro lados**, e não só pela direita: na barra de ações ele
+  // divide a linha com até cinco botões, e um estouro por cima ou por baixo seria clipado pelo scroll do mesmo jeito.
   //
   // Medido aqui e não em teste próprio porque um teste novo custaria um turno novo — e a asserção
   // não precisa de um: o que ela lê é geometria, e a geometria já está na tela.
@@ -441,6 +447,8 @@ test('#28 CA-1 e CA-2: expandir cobre a tela, e Esc devolve o cartão com rascun
   expect(Math.abs(cobre.y - tela.y)).toBeLessThanOrEqual(1)
   expect(Math.abs(cobre.width - tela.width)).toBeLessThanOrEqual(1)
   expect(Math.abs(cobre.height - tela.height)).toBeLessThanOrEqual(1)
+
+  await barraSemSobreposicao(CHAT_CARD, 'expandido, sua vez')
 
   // A seção estava recolhida (há sessão viva) e abriu sozinha, sem o teto de 26rem.
   const corpo = card.getByTestId('card-content-body')
@@ -564,6 +572,7 @@ test('CA-2: a permissão de escrita aparece no cartão e a decisão destrava o t
     timeout: TURN_TIMEOUT,
   })
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_decision')
+  await barraSemSobreposicao(CHAT_CARD, 'aberto, decisão pendente')
 
   // A decisão humana destrava o turno. O que vem **depois** dela não se afirma aqui: com a fila do
   // #11, o estado seguinte tanto pode ser `working` quanto o próximo pedido, ao sabor de quantas
@@ -709,6 +718,12 @@ test('#45 RA-2: o cartão da mesma coluna fecha o vizinho dela, e só ele', asyn
 })
 
 test('#12: parar o turno corta a vez, deixa a nota e devolve a sessão viva', async () => {
+  // Os testes do #45 que vêm antes mexem nos cartões abertos; se o CHAT_CARD já está aberto, a
+  // guarda não faz nada (mesma do #78).
+  if ((await cardLocator(CHAT_CARD).getByTestId('card-chat').count()) === 0) {
+    await cardLocator(CHAT_CARD).click()
+  }
+
   const stopButton = cardLocator(CHAT_CARD).getByTestId('card-stop-turn')
   const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
 
@@ -725,6 +740,19 @@ test('#12: parar o turno corta a vez, deixa a nota e devolve a sessão viva', as
     timeout: DECISION_TIMEOUT,
   })
   await expect(stopButton).toBeVisible()
+
+  // O #80 no pior caso: com o Parar real o grupo chega a 546px contra uma barra de ~500px. A janela
+  // é a do LONG_PROMPT; cada `expect` antes da medição faz um turno que acabou cedo demais falhar
+  // dizendo isso, e não com uma geometria confusa.
+  await barraSemSobreposicao(CHAT_CARD, 'aberto, trabalhando')
+  await cardLocator(CHAT_CARD).getByTestId('card-maximize').click()
+  await expect(stopButton).toBeVisible()
+  await barraSemSobreposicao(CHAT_CARD, 'expandido, trabalhando')
+  await cardLocator(CHAT_CARD).getByTestId('card-maximize').click()
+  await expect(cardLocator(CHAT_CARD).getByTestId('card-maximize')).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
 
   await stopButton.click()
 
@@ -806,6 +834,8 @@ test('CA-6: encerrar é ação minha — e o botão mata a sessão', async () =>
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'closed', {
     timeout: DECISION_TIMEOUT,
   })
+
+  await barraSemSobreposicao(CHAT_CARD, 'aberto, encerrada')
 })
 
 /**
@@ -1109,6 +1139,138 @@ async function caixaDe(locator: Locator, oQue: string): Promise<Caixa> {
   if (caixa === null) throw new Error(`${oQue}: sem caixa — fora do layout`)
 
   return caixa
+}
+
+/**
+ * O #80: a barra de ações do chat mostra o selo inteiro e deixa todo botão acionável, nos três
+ * temas. Mede por retângulo (`getBoundingClientRect`) e por acerto (`elementFromPoint`): a
+ * interseção prova «sem sobreposição», e o acerto central prova que nenhuma camada cobre o botão —
+ * a metade do critério que um retângulo sozinho não vê.
+ *
+ * O botão desabilitado fica fora do teste de acerto: `ui/button.tsx` aplica
+ * `disabled:pointer-events-none`, então o ponto atravessa o botão por desenho (Decisão 11 do #27).
+ * Ele continua obrigado a ficar dentro da barra e sem cobrir o selo.
+ */
+async function barraSemSobreposicao(card: FixtureCard, onde: string): Promise<void> {
+  const barra = cardLocator(card).getByTestId('card-chat-actions')
+  await expect(barra).toBeVisible()
+  // `elementFromPoint` só enxerga o que está na viewport.
+  await barra.scrollIntoViewIfNeeded()
+
+  const html = window.locator('html')
+  const original = await html.getAttribute('data-theme')
+  type Raiz = {
+    setAttribute(nome: string, valor: string): void
+    removeAttribute(nome: string): void
+  }
+  type Retangulo = { left: number; right: number; top: number; bottom: number }
+  // O tsconfig dos testes não tem a lib `dom`: o pedaço do DOM que a medição toca vai tipado à mão.
+  type No = {
+    getBoundingClientRect(): Retangulo & { width: number; height: number }
+    getAttribute(nome: string): string | null
+    textContent: string | null
+    scrollWidth: number
+    clientWidth: number
+    disabled: boolean
+    children: ArrayLike<No>
+    ownerDocument: {
+      elementFromPoint(x: number, y: number): No | null
+      defaultView: { innerWidth: number } | null
+    }
+    querySelector(seletor: string): No | null
+    querySelectorAll(seletor: string): ArrayLike<No>
+    closest(seletor: string): No | null
+  }
+
+  try {
+    for (const tema of THEMES) {
+      await html.evaluate((raiz: Raiz, valor) => raiz.setAttribute('data-theme', valor), tema)
+      await expect(html).toHaveAttribute('data-theme', tema)
+
+      const medida = await barra.evaluate((el: No) => {
+        const retangulo = (e: No): Retangulo => {
+          const r = e.getBoundingClientRect()
+          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }
+        }
+        const centro = (e: No): No | null => {
+          const r = e.getBoundingClientRect()
+          return e.ownerDocument.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+        }
+        const selo = el.querySelector('[data-testid="state-badge"]')
+
+        return {
+          janela: el.ownerDocument.defaultView?.innerWidth ?? -1,
+          barra: retangulo(el),
+          filhos: Array.from(el.children).map(retangulo),
+          selo:
+            selo === null
+              ? null
+              : {
+                  ...retangulo(selo),
+                  scrollWidth: selo.scrollWidth,
+                  clientWidth: selo.clientWidth,
+                  acertou: centro(selo) === selo,
+                },
+          botoes: Array.from(el.querySelectorAll('button')).map((b) => ({
+            id: b.getAttribute('data-testid') ?? b.textContent ?? '?',
+            disabled: b.disabled,
+            ...retangulo(b),
+            acertou: centro(b)?.closest('button') === b,
+          })),
+        }
+      })
+
+      const em = `${onde}, no tema ${tema}`
+      const { barra: caixa, selo, botoes, janela } = medida
+      // Diagnóstico da falha intermitente do CA-2 (#80): em que largura de janela e de barra ela veio.
+      const diag = `janela ${janela}px, barra ${caixa.left.toFixed(1)}–${caixa.right.toFixed(1)}`
+      const area = (a: Retangulo, b: Retangulo): number =>
+        Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) *
+        Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
+
+      expect(selo, `CA-1, ${em}: a barra não tem selo de estado`).not.toBeNull()
+      if (selo === null) continue
+
+      // CA-1: o selo inteiro, sem sobreposição.
+      for (const b of botoes) {
+        expect(area(selo, b), `CA-1, ${em}: o selo é coberto por «${b.id}»`).toBeLessThanOrEqual(
+          0.5,
+        )
+      }
+      expect(selo.scrollWidth, `CA-1, ${em}: o selo está truncado`).toBeLessThanOrEqual(
+        selo.clientWidth,
+      )
+      expect(selo.acertou, `CA-1, ${em}: o ponto central do selo devolve outro elemento`).toBe(true)
+
+      // CA-2: tudo dentro da barra, tudo acionável.
+      const dentro = (r: Retangulo, quem: string): void => {
+        expect(
+          r.left,
+          `CA-2, ${em}: «${quem}» vaza pela esquerda (${diag}; ${r.left.toFixed(1)}–${r.right.toFixed(1)})`,
+        ).toBeGreaterThanOrEqual(caixa.left - 0.5)
+        expect(
+          r.right,
+          `CA-2, ${em}: «${quem}» vaza pela direita (${diag}; ${r.left.toFixed(1)}–${r.right.toFixed(1)})`,
+        ).toBeLessThanOrEqual(caixa.right + 0.5)
+      }
+      medida.filhos.forEach((f, i) => dentro(f, `filho ${i} da barra`))
+      for (const b of botoes) {
+        dentro(b, b.id)
+        expect(b.right - b.left, `CA-2, ${em}: «${b.id}» sem largura`).toBeGreaterThan(0)
+        if (!b.disabled) {
+          expect(b.acertou, `CA-2, ${em}: o centro de «${b.id}» está coberto`).toBe(true)
+        }
+      }
+    }
+  } finally {
+    await html.evaluate(
+      (raiz: Raiz, valor) =>
+        valor === null
+          ? raiz.removeAttribute('data-theme')
+          : raiz.setAttribute('data-theme', valor),
+      original,
+    )
+  }
 }
 
 function assistantMessages(card: FixtureCard): Locator {
