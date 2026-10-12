@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 
 import type { BoardCard, BoardColumn } from '../../shared/board'
+import type { SessionScope } from '../../shared/ipc'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Card } from '../ui/card'
@@ -34,12 +35,15 @@ interface ColumnProps {
     dangerous: boolean
     onEnd: () => void
     onToggleDangerous: (dangerous: boolean) => void
+    onOpenTerminal?: () => void
   }
   /** Abre a nova triagem. Ausente = esta coluna não oferece a ação (ou já tem uma aberta). */
   onStartTriage?: () => void
   onToggle: (itemId: string) => void
   onSession: (itemId: string, session: CardSession) => void
   onToggleDangerous: (itemId: string, dangerous: boolean) => void
+  /** "Terminal aqui" dos cartões desta coluna; só de passagem. Ausente = sem mesa em volta. */
+  onOpenTerminal?: (scope: SessionScope) => void
 }
 
 /**
@@ -65,10 +69,12 @@ export function Column({
   onToggle,
   onSession,
   onToggleDangerous,
+  onOpenTerminal,
 }: ColumnProps): JSX.Element {
   // O painel alarga a coluna pelo mesmo motivo que um cartão aberto — 288px não sustentam prompt de
   // permissão legível —, e por isso entra no mesmo `hosting` em vez de ganhar uma largura própria.
-  const hosting = triage !== undefined || cards.some((card) => expandedItemIds.includes(card.itemId))
+  const hosting =
+    triage !== undefined || cards.some((card) => expandedItemIds.includes(card.itemId))
 
   return (
     // A raia não se separa do canvas pela cor — as duas são `bg-background`, que é o que a `Card` já
@@ -142,6 +148,7 @@ export function Column({
               onToggle={onToggle}
               onSession={onSession}
               onToggleDangerous={onToggleDangerous}
+              onOpenTerminal={onOpenTerminal}
             />
           ))}
         </div>

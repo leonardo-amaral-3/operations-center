@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { WindowBar } from '../../src/renderer/components/WindowBar'
+import type { WindowBarProps } from '../../src/renderer/components/WindowBar'
 import { instalarOc } from './fakeOc'
 import type { OcFake } from './fakeOc'
 
@@ -40,8 +41,18 @@ beforeEach(() => {
  * resposta cairia fora de `act`, e o primeiro caso afirmaria sobre uma faixa que ainda não recebeu
  * retrato nenhum — verde ou vermelho por acidente de agendamento.
  */
-async function montar(): Promise<void> {
-  render(<WindowBar />)
+async function montar(mesa: Partial<WindowBarProps> = {}): Promise<void> {
+  // As props da mesa são obrigatórias (#74 §8); estes casos são da janela, e a mesa entra vazia.
+  render(
+    <WindowBar
+      presets={[]}
+      freeSessions={[]}
+      onNewTerminal={() => undefined}
+      onNewFree={() => undefined}
+      onOpenFree={() => undefined}
+      {...mesa}
+    />,
+  )
   await act(async () => {})
 }
 
@@ -117,5 +128,78 @@ describe('CA-2 — o botão do meio diz a verdade', () => {
     // fora da faixa (duplo clique nela mesma, `Win+↑`, arrasto ao topo), porque nenhum desses
     // caminhos manda `toggleMaximizeWindow`. O renderer manda a intenção; o estado é da janela.
     expect(meio()).toEqual({ rotulo: 'Maximizar', glifo: '□' })
+  })
+})
+
+describe('#74 CA-5 — os botões da mesa dizem o atalho no `title`', () => {
+  it('cada um dos quatro botões traz o atalho do que faz', async () => {
+    await montar()
+
+    // O atalho está escrito onde o mouse vai passar: sem isso ele só existe na cabeça de quem leu a
+    // spec. Os dois botões de abrir carregam o seu próprio atalho; os dois `▾` carregam o que
+    // alterna a coisa que eles listam.
+    const titulo = (id: string): string => screen.getByTestId(id).getAttribute('title') ?? ''
+
+    expect(titulo('mesa-new-terminal')).toContain('Ctrl+Shift+`')
+    expect(titulo('mesa-presets')).toContain('Ctrl+`')
+    expect(titulo('mesa-new-free')).toContain('Ctrl+Shift+N')
+    expect(titulo('mesa-free-list')).toContain('Ctrl+Shift+L')
+  })
+})
+
+describe('#74 CA-5 — abrir é um clique', () => {
+  it('`▣ Terminal` abre sem perguntar perfil, e o `▾` escolhe um e fecha a lista', async () => {
+    const abertos: (string | undefined)[] = []
+    await montar({
+      presets: [
+        { id: 'powershell', label: 'PowerShell', group: 'shell' },
+        { id: 'aws:dev', label: 'AWS · dev', group: 'aws' },
+      ],
+      onNewTerminal: (preset) => abertos.push(preset),
+    })
+
+    fireEvent.click(screen.getByTestId('mesa-new-terminal'))
+    expect(abertos).toEqual([undefined])
+
+    fireEvent.click(screen.getByTestId('mesa-presets'))
+    // O grupo AWS vem sob o cabeçalho, e o `shell` sem cabeçalho nenhum.
+    expect(screen.getByText('AWS')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'AWS · dev' }))
+    expect(abertos).toEqual([undefined, 'aws:dev'])
+    expect(screen.queryByTestId('mesa-presets-menu')).toBeNull()
+  })
+
+  it('a lista fecha em `Escape` e em clique fora, e o botão que a abriu a fecha de volta', async () => {
+    await montar()
+
+    fireEvent.click(screen.getByTestId('mesa-free-list'))
+    expect(screen.getByTestId('mesa-free-menu')).toBeTruthy()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('mesa-free-menu')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('mesa-free-list'))
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByTestId('mesa-free-menu')).toBeNull()
+
+    // Clicar de novo no botão com a lista aberta fecha — não fecha-e-reabre.
+    fireEvent.click(screen.getByTestId('mesa-free-list'))
+    fireEvent.mouseDown(screen.getByTestId('mesa-free-list'))
+    fireEvent.click(screen.getByTestId('mesa-free-list'))
+    expect(screen.queryByTestId('mesa-free-menu')).toBeNull()
+  })
+
+  it('o `▾` das sessões livres lista as existentes e escolher uma chama `onOpenFree`', async () => {
+    const abertas: string[] = []
+    await montar({
+      freeSessions: [{ id: 'f1', title: 'meu-projeto', dangerous: false, recoverable: true }],
+      onOpenFree: (id) => abertas.push(id),
+    })
+
+    fireEvent.click(screen.getByTestId('mesa-free-list'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'meu-projeto' }))
+
+    expect(abertas).toEqual(['f1'])
   })
 })

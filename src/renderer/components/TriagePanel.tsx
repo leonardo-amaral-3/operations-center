@@ -11,6 +11,8 @@ interface TriagePanelProps {
   /** O painel deve sair da coluna: a sessão morreu, ou nunca chegou a subir. */
   onEnd: () => void
   onToggleDangerous: (dangerous: boolean) => void
+  /** "Terminal aqui" na pasta da triagem desta aba. Ausente = sem mesa em volta. */
+  onOpenTerminal?: () => void
 }
 
 /**
@@ -31,6 +33,7 @@ export function TriagePanel({
   dangerous,
   onEnd,
   onToggleDangerous,
+  onOpenTerminal,
 }: TriagePanelProps): JSX.Element {
   return (
     <Card asChild className="bg-secondary-background px-3 py-2.5">
@@ -52,6 +55,7 @@ export function TriagePanel({
           dangerous={dangerous}
           onEnded={onEnd}
           onToggleDangerous={onToggleDangerous}
+          onOpenTerminal={onOpenTerminal}
         />
       </section>
     </Card>

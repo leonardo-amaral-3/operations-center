@@ -2,8 +2,14 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { contrastRatio, oklabDistance, oklchToSrgb, toHex } from '../../src/main/color'
-import { parseOklch, parseThemes } from '../../src/main/sheet'
+import {
+  contrastRatio,
+  oklabDistance,
+  oklchToSrgb,
+  parseOklch,
+  toHex,
+} from '../../src/shared/color'
+import { parseThemes } from '../../src/main/sheet'
 import { resolveTheme, resolveThemeEnv, windowBackground } from '../../src/main/theme'
 
 /**

@@ -1,12 +1,12 @@
 /**
- * A matemática de cor do processo main: converte a folha do design system para sRGB e mede
- * contraste. Puro, sem imports, e de propósito sem biblioteca — são ~35 linhas de matéria conhecida,
+ * A matemática de cor: lê a folha do design system, converte para sRGB e mede contraste. Puro,
+ * sem imports, e de propósito sem biblioteca — são ~35 linhas de matéria conhecida,
  * e uma dependência de cor traria um `package.json` a auditar e um espaço de API a aprender por
  * quatro funções.
  *
- * Mora em `src/main/` e não em `src/shared/` porque o único consumidor de produção é o main: o
- * renderer não converte cor nenhuma, ele deixa o Chromium fazer isso. Pôr aqui evita que o renderer
- * compile código que nunca chama.
+ * Mora em `src/shared/` desde o terminal (#74 §9): o main converte a cor da janela, e o renderer
+ * converte as variáveis do tema para o xterm, que não entende a sintaxe. Sem imports, o que a
+ * `sharedBoundary` do lint exige.
  *
  * **Convenção deste arquivo:** a sequência "oklch" nunca aparece seguida de parêntese, nem em
  * exemplo, nem em mensagem de erro. A canária que proíbe cor literal em `src/**` varre o texto e não
@@ -151,4 +151,27 @@ export function oklabDistance([l1, c1, h1]: Oklch, [l2, c2, h2]: Oklch): number 
   const [a2, b2] = eixosDeOklab(c2, h2)
 
   return Math.hypot((l1 - l2) / 100, a1 - a2, b1 - b2)
+}
+
+/** O único formato de cor que as combinações usam: luminosidade em %, croma, matiz. */
+const COR = /^oklch\(\s*(?<l>[\d.]+)%\s+(?<c>[\d.]+)\s+(?<h>[\d.]+)\s*\)$/
+
+/**
+ * O valor cru de um token vira `[l, c, h]`.
+ *
+ * Exportada porque tem três consumidores — a cor da janela, as canárias de gamut e contraste, e o
+ * smoke. Uma segunda cópia que aceitasse um formato ligeiramente diferente é exatamente como um valor
+ * inválido passa pelo teste e falha no app.
+ */
+export function parseOklch(value: string): readonly [number, number, number] {
+  const grupos = COR.exec(value)?.groups
+
+  if (grupos === undefined) {
+    // O valor cru na mensagem: quem encontra este vermelho precisa saber qual declaração da folha
+    // não está no formato, sem ter de adivinhar entre onze.
+    throw new Error(`valor de cor não reconhecido na folha: ${value}`)
+  }
+
+  // Os três grupos são obrigatórios no padrão: se o casamento aconteceu, os três participaram.
+  return [Number(grupos['l']), Number(grupos['c']), Number(grupos['h'])]
 }

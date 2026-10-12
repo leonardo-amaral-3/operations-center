@@ -45,6 +45,26 @@ describe('empacotamento', () => {
     expect(builder.files).toContain(NEGACAO_DO_BINARIO)
   })
 
+  it('`files` só tem negações', () => {
+    // Uma inclusão substituiria o glob default e derrubaria `node_modules/` inteiro (ver acima).
+    for (const entrada of builder.files as string[]) expect(entrada.startsWith('!')).toBe(true)
+  })
+
+  it('sem asar: o worker do ConPTY do node-pty só reescreve `node_modules.asar`, nunca `app.asar`', () => {
+    // Spec #74 §12. Empacotado em asar, o `Worker` não acharia o script e o terminal morreria só no
+    // artefato — por isso a verificação pós-deploy é bloqueante.
+    expect(builder.asar).toBe(false)
+  })
+
+  it('não recompila o node-pty: o prebuilt N-API serve e o rebuild exigiria toolchain C++', () => {
+    expect(builder.npmRebuild).toBe(false)
+  })
+
+  it('as duas negações do node-pty tiram os ~55 MB de .pdb e de outras plataformas', () => {
+    expect(builder.files).toContain('!**/node_modules/node-pty/prebuilds/**/*.pdb')
+    expect(builder.files).toContain('!**/node_modules/node-pty/prebuilds/{darwin-*,win32-arm64}/**')
+  })
+
   it('o alvo do Windows é `dir`', () => {
     // D3. `portable` seria "um executável" ao pé da letra, mas descomprime ~370 MB no `%TEMP%` a
     // cada abertura — segundos de espera num app que se abre dezenas de vezes por dia. `dir` abre

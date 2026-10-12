@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 
+import type { FreeSessionCard, TerminalPreset } from '../../shared/ipc'
+import { SHORTCUT_LABEL } from '../mesa/shortcuts'
 import { Button } from '../ui/button'
+import { MesaMenu } from './MesaMenu'
 
 /**
- * A faixa que tomou o lugar da barra de título do sistema: a alça de arrasto da janela e os três
- * botões que a comandam.
+ * A faixa que tomou o lugar da barra de título do sistema: a alça de arrasto da janela, os três
+ * botões que a comandam e — à esquerda — os quatro que abrem a mesa (#74 §8): terminal, perfis,
+ * sessão livre e a lista delas.
  *
  * **O nome é `WindowBar` e não `TitleBar`** porque não há título nela. O nome do app não volta para
  * a tela — a barra de tarefas e o `Alt+Tab` já o dizem, e o `title` continua declarado em
@@ -17,7 +21,31 @@ import { Button } from '../ui/button'
  * toda vez que a janela mudasse por fora — duplo clique na própria faixa, `Win+↑`, arrasto para o
  * topo —, porque nenhum desses caminhos passa por este componente.
  */
-export function WindowBar(): JSX.Element {
+export interface WindowBarProps {
+  presets: readonly TerminalPreset[]
+  freeSessions: readonly FreeSessionCard[]
+  /** Sem `preset`, abre no último perfil usado; com ele, naquele. */
+  onNewTerminal: (preset?: string) => void
+  onNewFree: () => void
+  onOpenFree: (id: string) => void
+}
+
+/**
+ * As props da mesa são **obrigatórias**, e não opcionais: uma tela que montasse a faixa sem elas
+ * ficaria sem os botões em silêncio, e é o compilador quem a impede.
+ */
+export function WindowBar({
+  presets,
+  freeSessions,
+  onNewTerminal,
+  onNewFree,
+  onOpenFree,
+}: WindowBarProps): JSX.Element {
+  // Uma lista aberta por vez: abrir a de sessões fecha a de perfis, como num menu de verdade.
+  const [menu, setMenu] = useState<'presets' | 'free' | null>(null)
+  const presetsRef = useRef<HTMLDivElement>(null)
+  const freeRef = useRef<HTMLDivElement>(null)
+
   /**
    * A semente é `false`, e não há semente melhor: ao contrário do tema, o preload não carrega a
    * resposta por `additionalArguments`, e a janela **nasce restaurada** — `createWindow` não chama
@@ -53,68 +81,169 @@ export function WindowBar(): JSX.Element {
       // `WM_NCHITTEST` reserva para `HTTOP`: medido, é o que faz a faixa arrastar sem tirar o
       // redimensionamento pela borda de cima.
       //
-      // `justify-end` e nada à esquerda: a faixa é alça de arrastar e mais nada. O separador
-      // `border-b-2 border-border` é o mesmo de todo cabeçalho do app, e o fundo é canvas, como o
-      // cabeçalho logo abaixo dela.
-      className="arrasta-a-janela flex h-10 shrink-0 items-center justify-end gap-2 border-b-2 border-border bg-background px-2"
+      // `justify-between`: os botões da mesa à esquerda e os da janela à direita, e o vão entre eles
+      // continua sendo alça de arrastar. O separador `border-b-2 border-border` é o mesmo de todo
+      // cabeçalho do app, e o fundo é canvas, como o cabeçalho logo abaixo dela.
+      className="arrasta-a-janela flex h-10 shrink-0 items-center justify-between gap-2 border-b-2 border-border bg-background px-2"
     >
-      {/*
-       * `nao-arrasta-a-janela` nos três, e ela é obrigatória e não decorativa: um elemento dentro de
-       * uma região de arrasto para de receber clique, então sem ela os botões seriam alça de
-       * arrastar e nenhum deles funcionaria. Quem vigia isso é a canária de `design-system.test.ts`,
-       * que conta um arrasto e três negações neste arquivo.
-       *
-       * Os glifos são texto em `<span aria-hidden>`, que é o idioma do projeto — `TurnPulse.tsx:71`,
-       * `CardContentView.tsx:137`, `ToolEntry.tsx:22-24`, de onde o `✕` já vem. Não há biblioteca de
-       * ícone no `package.json` e não há um `<svg>` em `src/renderer/` inteiro.
-       */}
-      <Button
-        type="button"
-        variant="neutral"
-        size="xs"
-        data-testid="window-minimize"
-        aria-label="Minimizar"
-        className="nao-arrasta-a-janela"
-        onClick={() => {
-          void window.oc.minimizeWindow()
-        }}
-      >
-        <span aria-hidden>—</span>
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="neutral"
+          size="xs"
+          data-testid="mesa-new-terminal"
+          title={`Novo terminal no último perfil (${SHORTCUT_LABEL['new-terminal']})`}
+          className="nao-arrasta-a-janela"
+          onClick={() => {
+            onNewTerminal()
+          }}
+        >
+          <span aria-hidden>▣</span> Terminal
+        </Button>
 
-      <Button
-        type="button"
-        variant="neutral"
-        size="xs"
-        data-testid="window-maximize"
-        // O botão **diz a verdade**: o rótulo e o glifo saem do retrato da janela, e não da última
-        // intenção enviada. `□` (U+25A1) e não `▢` (U+25A2), que tem canto arredondado — e este card
-        // existe justamente para acabar com canto arredondado.
-        aria-label={maximizada ? 'Restaurar' : 'Maximizar'}
-        className="nao-arrasta-a-janela"
-        onClick={() => {
-          void window.oc.toggleMaximizeWindow()
-        }}
-      >
-        <span aria-hidden>{maximizada ? '❐' : '□'}</span>
-      </Button>
+        <div ref={presetsRef} className="relative">
+          <Button
+            type="button"
+            variant="neutral"
+            size="xs"
+            data-testid="mesa-presets"
+            aria-label="Escolher o perfil do terminal"
+            aria-haspopup="menu"
+            aria-expanded={menu === 'presets'}
+            title={`Escolher o perfil do terminal (${SHORTCUT_LABEL['toggle-dock']} mostra ou esconde o dock)`}
+            className="nao-arrasta-a-janela"
+            onClick={() => {
+              setMenu(menu === 'presets' ? null : 'presets')
+            }}
+          >
+            <span aria-hidden>▾</span>
+          </Button>
 
-      <Button
-        type="button"
-        variant="neutral"
-        size="xs"
-        data-testid="window-close"
-        aria-label="Fechar"
-        // O mesmo par que `card-end-session` usa nas suas duas ocorrências (`Chat.tsx:155-158` e
-        // `:375-378`): é assim que este app pinta ação destrutiva sem inventar variante nova na
-        // primitiva. E fechar **é** destrutivo aqui — leva junto toda sessão viva.
-        className="nao-arrasta-a-janela bg-danger text-danger-foreground"
-        onClick={() => {
-          void window.oc.closeWindow()
-        }}
-      >
-        <span aria-hidden>✕</span>
-      </Button>
+          {menu === 'presets' ? (
+            <MesaMenu
+              label="Lista de perfis"
+              testId="mesa-presets-menu"
+              empty="Nenhum perfil disponível"
+              anchor={presetsRef}
+              items={presets.map((preset) => ({
+                id: preset.id,
+                label: preset.label,
+                ...(preset.group === 'aws' ? { group: 'AWS' } : {}),
+              }))}
+              onChoose={onNewTerminal}
+              onClose={() => {
+                setMenu(null)
+              }}
+            />
+          ) : null}
+        </div>
+
+        <Button
+          type="button"
+          variant="neutral"
+          size="xs"
+          data-testid="mesa-new-free"
+          title={`Nova sessão livre (${SHORTCUT_LABEL['new-free']})`}
+          className="nao-arrasta-a-janela"
+          onClick={onNewFree}
+        >
+          <span aria-hidden>✦</span> Sessão livre
+        </Button>
+
+        <div ref={freeRef} className="relative">
+          <Button
+            type="button"
+            variant="neutral"
+            size="xs"
+            data-testid="mesa-free-list"
+            aria-label="Lista de sessões livres"
+            aria-haspopup="menu"
+            aria-expanded={menu === 'free'}
+            title={`Sessões livres (${SHORTCUT_LABEL['toggle-side']} abre ou fecha o painel)`}
+            className="nao-arrasta-a-janela"
+            onClick={() => {
+              setMenu(menu === 'free' ? null : 'free')
+            }}
+          >
+            <span aria-hidden>▾</span>
+          </Button>
+
+          {menu === 'free' ? (
+            <MesaMenu
+              label="Lista de sessões livres"
+              testId="mesa-free-menu"
+              empty="Nenhuma sessão livre ainda"
+              anchor={freeRef}
+              items={freeSessions.map((session) => ({ id: session.id, label: session.title }))}
+              onChoose={onOpenFree}
+              onClose={() => {
+                setMenu(null)
+              }}
+            />
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {/*
+         * `nao-arrasta-a-janela` nos sete (estes três e os quatro da mesa à esquerda), e ela é
+         * obrigatória e não decorativa: um elemento dentro de uma região de arrasto para de receber
+         * clique, então sem ela os botões seriam alça de arrastar e nenhum deles funcionaria. Quem
+         * vigia isso é a canária de `design-system.test.ts`, que conta um arrasto e sete negações
+         * neste arquivo.
+         *
+         * Os glifos são texto em `<span aria-hidden>`, que é o idioma do projeto — `TurnPulse.tsx:71`,
+         * `CardContentView.tsx:137`, `ToolEntry.tsx:22-24`, de onde o `✕` já vem. Não há biblioteca de
+         * ícone no `package.json` e não há um `<svg>` em `src/renderer/` inteiro.
+         */}
+        <Button
+          type="button"
+          variant="neutral"
+          size="xs"
+          data-testid="window-minimize"
+          aria-label="Minimizar"
+          className="nao-arrasta-a-janela"
+          onClick={() => {
+            void window.oc.minimizeWindow()
+          }}
+        >
+          <span aria-hidden>—</span>
+        </Button>
+
+        <Button
+          type="button"
+          variant="neutral"
+          size="xs"
+          data-testid="window-maximize"
+          // O botão **diz a verdade**: o rótulo e o glifo saem do retrato da janela, e não da última
+          // intenção enviada. `□` (U+25A1) e não `▢` (U+25A2), que tem canto arredondado — e este card
+          // existe justamente para acabar com canto arredondado.
+          aria-label={maximizada ? 'Restaurar' : 'Maximizar'}
+          className="nao-arrasta-a-janela"
+          onClick={() => {
+            void window.oc.toggleMaximizeWindow()
+          }}
+        >
+          <span aria-hidden>{maximizada ? '❐' : '□'}</span>
+        </Button>
+
+        <Button
+          type="button"
+          variant="neutral"
+          size="xs"
+          data-testid="window-close"
+          aria-label="Fechar"
+          // O mesmo par que `card-end-session` usa nas suas duas ocorrências (`Chat.tsx:155-158` e
+          // `:375-378`): é assim que este app pinta ação destrutiva sem inventar variante nova na
+          // primitiva. E fechar **é** destrutivo aqui — leva junto toda sessão viva.
+          className="nao-arrasta-a-janela bg-danger text-danger-foreground"
+          onClick={() => {
+            void window.oc.closeWindow()
+          }}
+        >
+          <span aria-hidden>✕</span>
+        </Button>
+      </div>
     </div>
   )
 }

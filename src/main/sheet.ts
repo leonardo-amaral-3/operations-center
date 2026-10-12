@@ -39,12 +39,9 @@ const BLOCO = /\[data-theme=['"](?<nome>[a-z-]+)['"]\]\s*\{(?<corpo>[^}]*)\}/g
  */
 const DECLARACAO = /(?<token>--[a-z0-9-]+)\s*:\s*(?<valor>[^;]+);/g
 
-/** O único formato de cor que as combinações usam: luminosidade em %, croma, matiz. */
-const COR = /^oklch\(\s*(?<l>[\d.]+)%\s+(?<c>[\d.]+)\s+(?<h>[\d.]+)\s*\)$/
-
 /**
  * As combinações da folha, cada uma com o mapa dos seus tokens. Chave e valor crus — quem precisa dos
- * números chama `parseOklch`.
+ * números chama `parseOklch` (`src/shared/color.ts`).
  */
 export function parseThemes(sheet: string): Map<Theme, Map<string, string>> {
   // Apagar os comentários **antes de qualquer outra coisa**: um `}` dentro de comentário fecharia um
@@ -76,24 +73,4 @@ export function parseThemes(sheet: string): Map<Theme, Map<string, string>> {
   }
 
   return combinacoes
-}
-
-/**
- * O valor cru de um token vira `[l, c, h]`.
- *
- * Exportada porque tem três consumidores — a cor da janela, as canárias de gamut e contraste, e o
- * smoke. Uma segunda cópia que aceitasse um formato ligeiramente diferente é exatamente como um valor
- * inválido passa pelo teste e falha no app.
- */
-export function parseOklch(value: string): readonly [number, number, number] {
-  const grupos = COR.exec(value)?.groups
-
-  if (grupos === undefined) {
-    // O valor cru na mensagem: quem encontra este vermelho precisa saber qual declaração da folha
-    // não está no formato, sem ter de adivinhar entre onze.
-    throw new Error(`valor de cor não reconhecido na folha: ${value}`)
-  }
-
-  // Os três grupos são obrigatórios no padrão: se o casamento aconteceu, os três participaram.
-  return [Number(grupos['l']), Number(grupos['c']), Number(grupos['h'])]
 }

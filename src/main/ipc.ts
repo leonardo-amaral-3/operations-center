@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import type { WebContents } from 'electron'
 
-import type { ConversationIndex, SessionHandle, SessionHost } from '../core'
+import type { ConversationIndex, FreeIndex, SessionHandle, SessionHost } from '../core'
 import { IPC_EVENT, IPC_INVOKE, scopeKey } from '../shared/ipc'
 import type {
   AnswerQuestionRequest,
@@ -29,6 +29,8 @@ export interface SessionIpcOptions {
   resolveCwd(scope: SessionScope | undefined): Promise<string | null>
   /** O vínculo durável. Consultado antes de criar; alimentado pelo `init`; podado pelo `close`. */
   conversations: ConversationIndex
+  /** As sessões livres (#74): o segundo dono de vínculo durável, ao lado do cartão. */
+  free: FreeIndex
   /**
    * A marca do modo *dangerously*, por **escopo**. Lida no nascimento de toda sessão e escrita pelo
    * handler `setDangerous` — e **nunca** pelo `close`/`closeAll`: a marca é decisão sobre o cartão,
@@ -55,6 +57,11 @@ export interface SessionIpcOptions {
 export interface SessionIpc {
   /** Encerra tudo que está vivo. É o que o desligamento do app chama. */
   closeAll(): Promise<void>
+  /**
+   * Fecha a sessão viva daquele escopo com a semântica do handler `close` — sem passar pelo
+   * `ipcMain`. É o que `free:forget` chama antes de remover a entrada; sem sessão viva é no-op.
+   */
+  closeScope(scope: SessionScope): Promise<void>
 }
 
 /**
@@ -157,7 +164,15 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     sessions.set(session.id, session)
     if (scope !== undefined) owners.set(scopeKey(scope), { sessionId: session.id, scope })
     // Os eventos vão para a janela que pediu a sessão, não para todas: é ela quem a está mostrando.
-    forwardEvents(session, sender, pulses, scope, options.conversations, options.onTurnEnd)
+    forwardEvents(
+      session,
+      sender,
+      pulses,
+      scope,
+      options.conversations,
+      options.free,
+      options.onTurnEnd,
+    )
 
     return snapshot(session, scope, activityOf(session.id))
   }
@@ -179,14 +194,17 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     // pergunta —, e quem sabe a diferença é o `DangerGate`.
     const dangerous = scope === undefined ? false : await options.danger.isDangerous(scope)
 
-    // A retomada é **só do cartão**: sem card não há vínculo durável a guardar, e um vínculo
-    // sintético seria justamente o rastro que uma triagem não pode deixar para trás.
-    if (scope?.kind === 'card') {
+    // A retomada é do cartão **e** da sessão livre, porque os dois têm vínculo durável. A triagem
+    // não tem: um vínculo sintético seria justamente o rastro que ela não pode deixar para trás.
+    if (scope?.kind === 'card' || scope?.kind === 'free') {
       // A retomada vem **antes** do `resolveCwd`, e essa ordem é a regra: a pasta de uma conversa
       // que existe é a pasta em que ela rodou, não a que o índice de repos apontaria agora. Um
       // clone novo virando "a pasta daquele repo" não pode mudar onde uma conversa em curso
       // continua.
-      const restoration = await options.conversations.restore(scope.itemId)
+      const restoration =
+        scope.kind === 'card'
+          ? await options.conversations.restore(scope.itemId)
+          : await options.free.restore(scope.id)
       if (restoration) {
         const session = host.start({
           cwd: restoration.cwd,
@@ -275,18 +293,19 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
     },
   )
 
-  ipcMain.handle(IPC_INVOKE.close, async (_event, request: CloseRequest): Promise<void> => {
-    const session = sessions.get(request.sessionId)
+  /** O corpo do `close`, por id de sessão: o handler e o `closeScope` fecham do mesmo jeito. */
+  async function closeSession(sessionId: string): Promise<void> {
+    const session = sessions.get(sessionId)
     if (!session) return
 
-    sessions.delete(request.sessionId)
+    sessions.delete(sessionId)
     // O relógio morre com a sessão: registro órfão faria o retrato do próximo clique naquele
     // cartão nascer com a idade de um turno que já acabou.
-    pulses.delete(request.sessionId)
+    pulses.delete(sessionId)
     // Dos **três** mapas: deixar o escopo apontando para uma sessão que já não existe faria o
     // clique seguinte cair no `livingSessionFor` de um fantasma.
     for (const [chave, entry] of owners) {
-      if (entry.sessionId === request.sessionId) {
+      if (entry.sessionId === sessionId) {
         // O CA-4: encerrar é definitivo. É o **único** lugar que esquece — `closeAll()` não esquece
         // nada, e é justamente essa diferença que o card do #22 existe para criar.
         //
@@ -297,14 +316,25 @@ export function registerSessionIpc(host: SessionHost, options: SessionIpcOptions
         // Só o cartão tem o que esquecer: uma triagem nunca gravou vínculo nenhum, e mandar esquecer
         // uma chave que não é cartão seria inventar entrada em índice alheio.
         if (entry.scope.kind === 'card') options.conversations.forget(entry.scope.itemId)
+        // A sessão livre solta a conversa e **mantém a entrada**: encerrar não é esquecer, e
+        // esquecer é o `free:forget`. A pasta e o título ainda valem.
+        if (entry.scope.kind === 'free') options.free.release(entry.scope.id)
         owners.delete(chave)
       }
     }
 
     await session.close()
-  })
+  }
+
+  ipcMain.handle(IPC_INVOKE.close, (_event, request: CloseRequest): Promise<void> =>
+    closeSession(request.sessionId),
+  )
 
   return {
+    async closeScope(scope: SessionScope): Promise<void> {
+      const session = livingSessionFor(scope)
+      if (session) await closeSession(session.id)
+    },
     async closeAll(): Promise<void> {
       const living = [...sessions.values()]
       sessions.clear()
@@ -389,6 +419,7 @@ function forwardEvents(
   pulses: Map<string, Pulse>,
   scope: SessionScope | undefined,
   conversations: ConversationIndex,
+  free: FreeIndex,
   onTurnEnd: (scope: SessionScope | undefined) => void,
 ): void {
   const emit = (channel: string, payload: unknown): void => {
@@ -428,6 +459,8 @@ function forwardEvents(
     // **Só o cartão vincula.** O índice de conversas é o vínculo `cartão → sessão`; uma triagem não
     // tem cartão a que se ligar, e gravá-la ali deixaria um crachá de conversa órfão no kanban.
     if (scope?.kind === 'card') conversations.remember(scope.itemId, init.sessionId)
+    // A sessão livre também vincula, no índice dela: o `session_id` do SDK só aparece aqui.
+    if (scope?.kind === 'free') free.remember(scope.id, init.sessionId)
 
     emit(IPC_EVENT.init, { sessionId: session.id, init })
     publish()

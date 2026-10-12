@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardCard } from '../../shared/board'
+import type { SessionScope } from '../../shared/ipc'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Card } from '../ui/card'
@@ -38,6 +39,8 @@ interface BoardCardViewProps {
   onSession: (itemId: string, session: CardSession) => void
   /** Só de passagem para o `Chat`, que é filho deste componente e não da `Column`. */
   onToggleDangerous: (itemId: string, dangerous: boolean) => void
+  /** Só de passagem para o `Chat`: o terminal abre no repo deste card. Ausente = sem botão. */
+  onOpenTerminal?: (scope: SessionScope) => void
 }
 
 /**
@@ -61,6 +64,7 @@ export function BoardCardView({
   onToggle,
   onSession,
   onToggleDangerous,
+  onOpenTerminal,
 }: BoardCardViewProps): JSX.Element {
   const open = useRef<HTMLElement>(null)
 
@@ -274,6 +278,13 @@ export function BoardCardView({
               onToggleDangerous={(sem) => {
                 onToggleDangerous(card.itemId, sem)
               }}
+              onOpenTerminal={
+                onOpenTerminal === undefined
+                  ? undefined
+                  : () => {
+                      onOpenTerminal({ kind: 'card', itemId: card.itemId })
+                    }
+              }
             />
           ) : (
             // Sem skill, sem sessão e sem conversa guardada: o cartão abriu para ser lido, e a
