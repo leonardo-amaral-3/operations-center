@@ -343,7 +343,7 @@ export function diffOf(result: unknown): FileDiff | null {
     aproveitados.push(lines)
   }
 
-  if (aproveitados.length > 0) return capped(aproveitados, additions, deletions)
+  if (aproveitados.length > 0) return capDiff(aproveitados, additions, deletions)
 
   // Arquivo novo: sem patch aproveitável, o tamanho é o que há para dizer. Medido: o `Write` de
   // criação vem com `structuredPatch` vazio em 86 de 86 casos, e com `content` sempre string.
@@ -404,7 +404,7 @@ function hunkLines(raws: readonly unknown[], novoStart: number, velhoStart: numb
  * trecho inteiro por não caber jogaria fora linhas que cabiam. Os totais são os do patch **inteiro**
  * — o número que informa é o tamanho da mudança, não o do pedaço que coube.
  */
-function capped(
+export function capDiff(
   aproveitados: readonly DiffLine[][],
   additions: number,
   deletions: number,

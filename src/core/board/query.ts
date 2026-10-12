@@ -209,3 +209,60 @@ export const ESTEIRA_STATIONS = [
  * ser lida por gente, não indexada por código que quebraria em silêncio se alguém a reordenasse.
  */
 export const TRIAGE_STATION = 'Triagem'
+
+/**
+ * A issue só para achar o PR do card, usada pelo `PullRequestReader` antes de ler o PR em si. É o
+ * mesmo trecho do `CARD_QUERY`, para a ligação card→PR ter um lugar só.
+ */
+export const PR_LINK_QUERY = `
+query PrLink($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      number
+      ${PR_LINK_SELECTION}
+    }
+  }
+}
+`
+
+/**
+ * O PR inteiro numa consulta: cabeçalho, mergeabilidade, conversa (comentários, reviews e comentários
+ * de linha) e o rollup de CI do último commit. O patch não está aqui: a GraphQL não o entrega, e
+ * quem o traz é a REST. Os tetos são de uma página só, como a regra 7 do `CardReader`, e cada
+ * `totalCount` existe para o corte aparecer.
+ */
+export const PR_QUERY = `
+query Pr($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      number title url state isDraft mergedAt body baseRefName headRefName changedFiles mergeable
+      comments(first: 100) { totalCount nodes { id author { login __typename } createdAt body } }
+      reviews(first: 100) { totalCount nodes { id author { login __typename } state submittedAt body } }
+      reviewThreads(first: 50) {
+        totalCount
+        nodes {
+          id isResolved isOutdated path line originalLine
+          comments(first: 20) { totalCount nodes { id author { login __typename } createdAt body } }
+        }
+      }
+      commits(last: 1) {
+        nodes {
+          commit {
+            statusCheckRollup {
+              state
+              contexts(first: 50) {
+                totalCount
+                nodes {
+                  __typename
+                  ... on CheckRun { name status conclusion detailsUrl }
+                  ... on StatusContext { context state targetUrl }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+`

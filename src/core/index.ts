@@ -15,6 +15,7 @@ export { BoardFinder, pickActive } from './board/BoardFinder'
 export { BoardReader } from './board/BoardReader'
 export { CardReader, MAX_COMMENTS } from './board/CardReader'
 export { MAX_PAGES } from './board/envelope'
+export { PR_MAX_FILES, PullRequestReader } from './board/PullRequestReader'
 export {
   BOARD_QUERY,
   CARD_QUERY,
@@ -22,13 +23,16 @@ export {
   CONVERSABLE_STATIONS,
   ESTEIRA_STATIONS,
   OWNERS_QUERY,
+  PR_LINK_QUERY,
+  PR_QUERY,
   PROJECTS_QUERY,
 } from './board/query'
 export { runsEsteira } from './board/stations'
 export type { DiscoveredBoard, Discovery } from './board/BoardFinder'
 export type { BoardReaderDeps, ReadBoardInput } from './board/BoardReader'
 export type { CardReaderDeps, ReadCardInput } from './board/CardReader'
-export type { GraphQLFn, GraphQLResponse } from './board/types'
+export type { PullRequestReaderDeps, ReadPullRequestInput } from './board/PullRequestReader'
+export type { GraphQLFn, GraphQLResponse, RestGetFn } from './board/types'
 export type {
   Board,
   BoardCard,
