@@ -81,12 +81,29 @@ function marcaDoResultado(result: string): string {
   return ['NEUTRAL', 'SKIPPED', 'STALE'].includes(result) ? '–' : '◷'
 }
 
-const ESTADO_DA_REVISAO = {
-  APPROVED: 'aprovou',
-  CHANGES_REQUESTED: 'pediu mudanças',
-  COMMENTED: 'comentou',
-  DISMISSED: 'descartada',
+/** O veredito da revisão: verde = bom, vermelho = quebrou, o resto neutro. */
+const VEREDITO = {
+  APPROVED: { texto: 'aprovou', glifo: '✓', className: 'bg-attention text-attention-foreground' },
+  CHANGES_REQUESTED: {
+    texto: 'pediu mudanças',
+    glifo: '✕',
+    className: 'bg-danger text-danger-foreground',
+  },
+  COMMENTED: { texto: 'comentou', glifo: undefined, className: '' },
+  DISMISSED: { texto: 'descartada', glifo: undefined, className: 'text-foreground/60' },
 } as const
+
+/**
+ * Faixa de cada tipo de entrada. A revisão é a esteira (violeta); o autor dela fica fora da faixa
+ * porque a tinta rebaixada `/60` sobre `--main` não é par medido.
+ */
+const FAIXA = {
+  comment: 'text-foreground/60',
+  review: 'bg-main text-main-foreground',
+  thread: 'bg-background text-foreground/60',
+} as const
+
+const ROTULO = { comment: 'Comentário', review: 'Revisão', thread: 'Linha' } as const
 
 /** Link que sai para o navegador: o `setWindowOpenHandler` do main cuida do `_blank`. */
 function Externo({ href, children }: { href: string; children: string }): JSX.Element {
@@ -191,28 +208,28 @@ function Autor({ author }: { author: PrAuthor }): JSX.Element {
   )
 }
 
-function Cabecalho({
-  autor,
-  at,
-  children,
-}: {
-  autor: PrAuthor
-  at: string
-  children?: JSX.Element | null
-}): JSX.Element {
+/** Autor · data, em linha: a faixa do comentário e o `Cabecalho` da revisão usam o mesmo trecho. */
+function AutorEData({ autor, at }: { autor: PrAuthor; at: string }): JSX.Element {
   return (
-    <header className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px] text-foreground/60">
+    <>
       <Autor author={autor} />
       <span aria-hidden="true">·</span>
       <time dateTime={at}>{formatarData(at)}</time>
-      {children}
+    </>
+  )
+}
+
+function Cabecalho({ autor, at }: { autor: PrAuthor; at: string }): JSX.Element {
+  return (
+    <header className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px] text-foreground/60">
+      <AutorEData autor={autor} at={at} />
     </header>
   )
 }
 
 function ComentarioDoThread({ comment }: { comment: PrThreadComment }): JSX.Element {
   return (
-    <div className="mt-1 border-l-2 border-border pl-2">
+    <div className="mt-1 border-l-2 border-border pl-2 first:mt-0">
       <Cabecalho autor={comment.author} at={comment.createdAt} />
       <div className="text-xs">
         <Markdown text={comment.body} />
@@ -222,40 +239,77 @@ function ComentarioDoThread({ comment }: { comment: PrThreadComment }): JSX.Elem
 }
 
 const Entrada = memo(function Entrada({ entry }: { entry: PrTimelineEntry }): JSX.Element {
+  let marca: JSX.Element
+  let corpo: JSX.Element
+
   if (entry.kind === 'thread') {
-    return (
-      <article data-testid="pr-entry" data-kind="thread" className="border-t-2 border-border pt-2">
-        <p className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px] text-foreground/60">
-          <span data-testid="pr-thread-loc" className="font-mono">
-            {entry.line === null ? entry.caminho : `${entry.caminho}:${entry.line}`}
-          </span>
-          {entry.resolved ? (
-            <span data-testid="pr-thread-resolved">
-              <Etiqueta>Resolvido</Etiqueta>
-            </span>
-          ) : null}
-          {entry.outdated ? <Etiqueta>Desatualizado</Etiqueta> : null}
-        </p>
+    marca = (
+      <>
+        <span data-testid="pr-thread-loc" className="font-mono">
+          {entry.line === null ? entry.caminho : `${entry.caminho}:${entry.line}`}
+        </span>
+        {entry.resolved ? (
+          <Selo data-testid="pr-thread-resolved" glifo="✓">
+            Resolvido
+          </Selo>
+        ) : null}
+        {entry.outdated ? <Selo>Desatualizado</Selo> : null}
+      </>
+    )
+    corpo = (
+      <>
         {entry.comments.map((comment) => (
           <ComentarioDoThread key={comment.id} comment={comment} />
         ))}
-      </article>
+      </>
     )
-  }
+  } else if (entry.kind === 'review') {
+    const veredito = VEREDITO[entry.state]
 
-  return (
-    <article
-      data-testid="pr-entry"
-      data-kind={entry.kind}
-      className="border-t-2 border-border pt-2"
-    >
-      <Cabecalho autor={entry.author} at={entry.at}>
-        {entry.kind === 'review' ? <Etiqueta>{ESTADO_DA_REVISAO[entry.state]}</Etiqueta> : null}
-      </Cabecalho>
+    marca = (
+      <Selo
+        data-testid="pr-review-veredito"
+        data-state={entry.state}
+        glifo={veredito.glifo}
+        className={veredito.className}
+      >
+        {veredito.texto}
+      </Selo>
+    )
+    corpo = (
+      <>
+        <Cabecalho autor={entry.author} at={entry.at} />
+        <div className="text-xs">
+          <Markdown text={entry.body} />
+        </div>
+      </>
+    )
+  } else {
+    marca = <AutorEData autor={entry.author} at={entry.at} />
+    corpo = (
       <div className="text-xs">
         <Markdown text={entry.body} />
       </div>
-    </article>
+    )
+  }
+
+  // `className` na `Card`, nunca no filho: com `asChild` o `Slot` não faz `twMerge` (ver `ui/card.tsx`).
+  return (
+    <Card asChild className="bg-secondary-background">
+      <article data-testid="pr-entry" data-kind={entry.kind}>
+        <div
+          data-testid="pr-entry-faixa"
+          className={cn(
+            'flex flex-wrap items-center gap-1.5 border-b-2 border-border px-2 py-1 text-[10px]',
+            FAIXA[entry.kind]
+          )}
+        >
+          <span className="font-heading tracking-wide uppercase">{ROTULO[entry.kind]}</span>
+          {marca}
+        </div>
+        <div className="px-2 py-1.5">{corpo}</div>
+      </article>
+    </Card>
   )
 })
 

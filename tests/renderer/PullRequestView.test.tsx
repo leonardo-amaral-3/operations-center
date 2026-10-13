@@ -403,3 +403,63 @@ describe('selo do CI', () => {
     expect(glifos).toEqual(['✓', '✕', '◷', '–'])
   })
 })
+
+describe('tipos de entrada', () => {
+  const AT = '2026-10-01T10:00:00Z'
+  const revisao = (state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED') =>
+    ({ kind: 'review', id: `r-${state}`, author: AUTOR, at: AT, state, body: 'ok' }) as const
+
+  /** A faixa da entrada desse tipo: a primeira `pr-entry-faixa` depois do `data-kind`. */
+  const faixaDe = (html: string, kind: string): string =>
+    abertura(html.slice(html.indexOf(`data-kind="${kind}"`)), 'pr-entry-faixa')
+
+  it('cada tipo leva a faixa e o rótulo do seu tratamento', () => {
+    const html = carregado({
+      timeline: [
+        { kind: 'comment', id: 'c1', author: AUTOR, at: AT, body: 'oi' },
+        revisao('APPROVED'),
+        {
+          kind: 'thread',
+          id: 't1',
+          at: AT,
+          caminho: 'src/a.ts',
+          line: 3,
+          resolved: false,
+          outdated: false,
+          comments: [],
+        },
+      ],
+    })
+
+    const entradas = [...html.matchAll(/<[^>]*data-testid="pr-entry"[^>]*>/g)].map((m) => m[0])
+
+    expect(entradas).toHaveLength(3)
+    for (const entrada of entradas) {
+      expect(entrada).toContain('data-slot="card"')
+      expect(entrada).toContain('bg-secondary-background')
+    }
+
+    const comentario = faixaDe(html, 'comment')
+    expect(comentario).not.toContain('bg-main')
+    expect(comentario).not.toContain('bg-background')
+    expect(faixaDe(html, 'review')).toContain('bg-main')
+    expect(faixaDe(html, 'thread')).toContain('bg-background')
+    for (const rotulo of ['Comentário', 'Revisão', 'Linha']) expect(html).toContain(`>${rotulo}<`)
+    expect(html).toContain('pr-thread-loc')
+  })
+
+  it.each([
+    ['APPROVED', 'bg-attention'],
+    ['CHANGES_REQUESTED', 'bg-danger'],
+    ['COMMENTED', null],
+    ['DISMISSED', null],
+  ] as const)('veredito %s', (state, fundo) => {
+    const selo = abertura(carregado({ timeline: [revisao(state)] }), 'pr-review-veredito')
+
+    expect(selo).toContain(`data-state="${state}"`)
+    for (const classe of ['bg-attention', 'bg-danger']) {
+      if (classe === fundo) expect(selo).toContain(classe)
+      else expect(selo).not.toContain(classe)
+    }
+  })
+})
