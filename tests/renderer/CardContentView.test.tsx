@@ -367,3 +367,34 @@ describe('#83 CA-1 — abas Card e PR no cartão expandido', () => {
     expect(html).toContain('card-content-body')
   })
 })
+
+describe('#92 CA-3 — cabeçalho forte e divisor dos comentários', () => {
+  const dois = (): ContentState => ({
+    kind: 'loaded',
+    content: conteudo({
+      comments: [comentario({ id: 'IC_1', kind: 'spec' }), comentario({ id: 'IC_2', kind: null })],
+    }),
+  })
+
+  it('o divisor conta os comentários que vieram', () => {
+    const html = render(dois())
+
+    expect(html).toContain('data-testid="card-comments-start"')
+    expect(semTags(html)).toContain('Comentários · 2')
+  })
+
+  it('a etiqueta é um Badge `default` (bg-main) e o cabeçalho tem faixa própria', () => {
+    const html = render(dois())
+    const badge = html.match(/<[^>]*data-slot="badge"[^>]*>/)?.[0] ?? ''
+    const header = html.match(/<header[^>]*>/)?.[0] ?? ''
+
+    expect(badge).toContain('bg-main')
+    expect(header).toContain('border-2')
+  })
+
+  it('sem comentários não há divisor', () => {
+    const html = render({ kind: 'loaded', content: conteudo() })
+
+    expect(html).not.toContain('card-comments-start')
+  })
+})

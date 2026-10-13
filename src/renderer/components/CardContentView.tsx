@@ -63,26 +63,29 @@ export const CardCommentView = memo(function CardCommentView({
       // Vazio quando sem marcador, e não ausente: é o que deixa o teste afirmar "este comentário
       // não tem etiqueta" em vez de só não achar o atributo. Mesma escolha do `data-card-assignees`.
       data-comment-kind={comment.kind ?? ''}
-      className="border-t-2 border-border pt-2"
+      className="pt-1"
     >
-      <header className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px] text-foreground/60">
-        {/* Conta removida devolve `author: null` na API. O rótulo diz isso em vez de mostrar um
-            espaço vazio, que se leria como bug. */}
-        <span className="font-mono">{comment.author ?? 'autor removido'}</span>
-        <span aria-hidden="true">·</span>
-        <time dateTime={comment.createdAt}>{formatarData(comment.createdAt)}</time>
-
-        {/* A mesma pílula das etiquetas de campo do cartão, com as mesmas classes: aberto ou
-            fechado, o cartão continua parecendo um cartão só. */}
+      {/* Faixa própria, e a etiqueta vem primeiro: numa spec de 44 mil caracteres o olho que rola
+          procura o tipo do trecho antes de procurar o autor. A faixa é a fronteira entre
+          comentários, no lugar do filete que havia no `article`. */}
+      <header className="mb-1.5 flex flex-wrap items-center gap-1.5 rounded-base border-2 border-border bg-secondary-background px-2 py-1 text-[11px] text-foreground">
         {comment.kind === null ? null : (
           <Badge
-            variant="neutral"
+            variant="default"
             title={`marcador da esteira: gm:${comment.kind}`}
-            className="rounded-base px-1.5 py-0 text-[10px] font-normal"
+            className="rounded-base px-1.5 py-0 text-[11px] font-heading"
           >
             {comment.kind}
           </Badge>
         )}
+
+        {/* Conta removida devolve `author: null` na API. O rótulo diz isso em vez de mostrar um
+            espaço vazio, que se leria como bug. */}
+        <span className="font-mono font-heading">{comment.author ?? 'autor removido'}</span>
+        <span aria-hidden="true">·</span>
+        <time dateTime={comment.createdAt} className="text-foreground/70">
+          {formatarData(comment.createdAt)}
+        </time>
       </header>
 
       {/* `div` e não `p`: markdown produz blocos (`<p>`, `<table>`, `<pre>`), e bloco dentro de
@@ -283,6 +286,17 @@ function Corpo({
         <div className="text-xs">
           <Markdown text={content.body} />
         </div>
+      )}
+
+      {/* Onde o corpo acaba e a conversa começa: sem ele, a descrição e o primeiro comentário são
+          dois blocos de markdown colados. */}
+      {content.comments.length === 0 ? null : (
+        <h3
+          data-testid="card-comments-start"
+          className="border-t-2 border-border pt-2 font-heading text-[11px] tracking-wide uppercase"
+        >
+          Comentários · {content.comments.length}
+        </h3>
       )}
 
       {content.comments.map((comment) => (
