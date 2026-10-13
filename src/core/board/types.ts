@@ -18,7 +18,23 @@ export type {
   BoardPhase,
   CardComment,
   CardContent,
+  PrArquivo,
+  PrArquivoStatus,
+  PrAuthor,
+  PrCheck,
+  PrChecks,
+  PrThreadComment,
+  PrTimelineEntry,
+  PullRequestRef,
+  PullRequestState,
+  PullRequestView,
 } from '../../shared/board'
+
+/**
+ * O cliente REST injetado. O caminho é relativo a `https://api.github.com/`, e o método é sempre
+ * GET, porque não existe parâmetro para outro: a garantia de somente leitura é do tipo.
+ */
+export type RestGetFn = (path: string) => Promise<unknown>
 
 /** O envelope de uma resposta GraphQL. `errors` pode vir **junto** com `data` — ver `BoardReader`. */
 export interface GraphQLResponse {

@@ -2,13 +2,15 @@
  * O vocabulário do board, do lado de cá da ponte.
  *
  * Mora ao lado de `src/shared/session.ts` e pela mesma razão: é o único jeito de o renderer
- * compilar contra os mesmos tipos que o main. Como aquele, este arquivo **não importa nada** — nem
+ * compilar contra os mesmos tipos que o main. Como aquele, este arquivo só importa o vizinho `./session` — nem
  * `electron`, nem o SDK, nem `node:*`, nem outra camada — e precisa continuar assim; o ESLint
  * impõe.
  *
  * O que está aqui é o board *já traduzido*: o envelope cru do GraphQL não atravessa a ponte, e o
  * renderer não sabe que GitHub existe. Ele recebe colunas, cartões e um carimbo de frescor.
  */
+
+import type { FileDiff } from './session'
 
 /** Uma estação da esteira, como o board a declara. `id` é o optionId do campo Status. */
 export interface BoardColumn {
@@ -136,6 +138,112 @@ export interface CardContent {
   comments: readonly CardComment[]
   /** `true` quando a issue tem mais comentários que `MAX_COMMENTS` — a tela precisa dizer isso. */
   truncated: boolean
+  /** O PR do card (CA-2 da spec do #82), ou `null` quando não há. Decide se o cartão expandido ganha abas. */
+  pullRequest: PullRequestRef | null
+}
+
+export type PullRequestState = 'OPEN' | 'CLOSED' | 'MERGED'
+
+/** O PR achado para o card. Leve: só o que decide as abas e o link. */
+export interface PullRequestRef {
+  number: number
+  url: string
+  state: PullRequestState
+}
+
+export interface PrAuthor {
+  /** `null` para conta removida (`author: null` na API). */
+  login: string | null
+  bot: boolean
+}
+
+export interface PrThreadComment {
+  id: string
+  author: PrAuthor
+  createdAt: string
+  body: string
+}
+
+export type PrTimelineEntry =
+  | { kind: 'comment'; id: string; author: PrAuthor; at: string; body: string }
+  | {
+      kind: 'review'
+      id: string
+      author: PrAuthor
+      at: string
+      state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED'
+      body: string
+    }
+  | {
+      kind: 'thread'
+      id: string
+      /** `createdAt` do primeiro comentário do thread. */
+      at: string
+      /** O `path` do thread. Nome em pt-BR por causa da canária `ipc-no-path`. */
+      caminho: string
+      /** `line`; quando `null` (thread desatualizado), `originalLine`; os dois nulos → `null`. */
+      line: number | null
+      resolved: boolean
+      outdated: boolean
+      comments: readonly PrThreadComment[]
+    }
+
+export interface PrCheck {
+  name: string
+  /** `conclusion` do CheckRun quando houver; senão `status`; para StatusContext, `state`. */
+  result: string
+  url: string | null
+}
+
+export interface PrChecks {
+  /** `statusCheckRollup.state`, ou `null` sem commit ou sem rollup. */
+  state: 'EXPECTED' | 'ERROR' | 'FAILURE' | 'PENDING' | 'SUCCESS' | null
+  checks: readonly PrCheck[]
+  /** `contexts.totalCount` maior que os nós lidos. */
+  truncated: boolean
+}
+
+export type PrArquivoStatus = 'added' | 'removed' | 'modified' | 'renamed' | 'copied' | 'changed' | 'unchanged'
+
+/**
+ * Um arquivo do PR. **Nenhum nome de campo com `path`/`file`/`dir`**: a canária
+ * `tests/unit/ipc-no-path.test.ts` proíbe esse vocabulário na carga da ponte, que existe para
+ * caminho do disco local. Aqui é caminho dentro do repo no GitHub, e o nome em pt-BR evita a colisão
+ * sem abrir exceção na canária.
+ */
+export interface PrArquivo {
+  caminho: string
+  /** `previous_filename` da REST, só em `renamed`; senão `null`. */
+  caminhoAnterior: string | null
+  status: PrArquivoStatus
+  additions: number
+  deletions: number
+  /** `blob_url` da REST, ou `null` quando ausente. */
+  url: string | null
+  /** `null` quando a REST não trouxe `patch`. */
+  diff: FileDiff | null
+}
+
+export interface PullRequestView {
+  number: number
+  title: string
+  url: string
+  state: PullRequestState
+  isDraft: boolean
+  mergedAt: string | null
+  baseRef: string
+  headRef: string
+  body: string
+  mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
+  timeline: readonly PrTimelineEntry[]
+  /** Algum `totalCount` (comentários, reviews, threads, comentários de um thread) passou do teto. */
+  timelineTruncated: boolean
+  checks: PrChecks
+  arquivos: readonly PrArquivo[]
+  /** `changedFiles` da GraphQL: o total, para o aviso "Mostrando 100 de N". */
+  totalDeArquivos: number
+  /** `changedFiles` maior que o número de itens que a REST devolveu (antes de descartar malformados). */
+  arquivosCortados: boolean
 }
 
 /**

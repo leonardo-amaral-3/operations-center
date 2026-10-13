@@ -308,6 +308,8 @@ const ANCORAS = [
   // Entrou com o card #32: a barra de abas nasceu depois desta rede, e o `data-board-key` é por
   // onde o smoke pergunta **qual** board cada aba abre sem escrever o título de nenhum.
   'data-board-key',
+  // Entrou com o card #83: o caminho do arquivo do PR, por onde o smoke acha o arquivo sem ler texto.
+  'data-caminho',
   'data-card-assignees',
   'data-card-closed',
   'data-card-column',
@@ -332,6 +334,8 @@ const ANCORAS = [
   // coisas que ele existe justamente para medir do outro lado da cascata.
   'data-field',
   'data-free-id',
+  // Entrou com o card #83: a espécie da entrada da conversa do PR (comment, review, thread).
+  'data-kind',
   'data-label',
   'data-parent',
   // As três do card #41, e a ordem aqui é a do `sort()`, não a da leitura. `data-parent-number` é o

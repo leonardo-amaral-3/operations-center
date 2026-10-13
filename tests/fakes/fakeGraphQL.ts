@@ -216,6 +216,11 @@ export interface CardEnvelopeInput {
   totalCount?: number | null
   /** O que a resposta não traz: `'repository'` (repo inacessível) ou `'issue'` (card removido). */
   missing?: 'repository' | 'issue'
+  /**
+   * Os nós de `timelineItems`, como a API os devolve. Ausente (o default) omite a chave inteira, que
+   * é o caso da issue sem referência nenhuma.
+   */
+  timeline?: readonly unknown[]
   /** O `CARD_QUERY` não tem alias duplo, logo não tem erro esperado: o default é **nenhum**. */
   errors?: readonly GraphQLError[]
 }
@@ -235,6 +240,7 @@ export function cardEnvelope(input: CardEnvelopeInput = {}): GraphQLResponse {
     totalCount,
     missing,
     errors,
+    timeline,
   } = input
 
   const issue =
@@ -247,6 +253,7 @@ export function cardEnvelope(input: CardEnvelopeInput = {}): GraphQLResponse {
             ...(totalCount === null ? {} : { totalCount: totalCount ?? comments.length }),
             nodes: comments,
           },
+          ...(timeline ? { timelineItems: { nodes: timeline } } : {}),
         }
 
   return {
@@ -286,4 +293,113 @@ function fieldValueNodes(
       field: { name },
     })),
   ]
+}
+
+/** Um nó de `timelineItems`: a referência cruzada de um PR, com o corpo e o repo que a regra do CA-2 lê. */
+export function prRefNode(input: {
+  number: number
+  body: string
+  state?: string
+  repository?: string
+}): Record<string, unknown> {
+  const { number, body, state = 'MERGED', repository = 'leonardo-amaral-3/operations-center' } = input
+
+  return {
+    source: {
+      number,
+      url: `https://github.com/${repository}/pull/${number}`,
+      state,
+      body,
+      repository: { nameWithOwner: repository },
+    },
+  }
+}
+
+/** Uma conexão da GraphQL: `totalCount` default é "todos couberam"; passe o número para simular corte. */
+function conexao(nodes: readonly unknown[], totalCount?: number): Record<string, unknown> {
+  return { totalCount: totalCount ?? nodes.length, nodes }
+}
+
+/** Um autor como a consulta o pede. `null` é conta removida. */
+export function prAuthor(
+  login: string | null,
+  tipo: 'User' | 'Bot' = 'User',
+): Record<string, unknown> | null {
+  return login === null ? null : { login, __typename: tipo }
+}
+
+export interface PrEnvelopeInput {
+  /** Reproduz o `pullRequest` ausente. */
+  missing?: boolean
+  mergeable?: string
+  state?: string
+  changedFiles?: number
+  comments?: readonly unknown[]
+  commentsTotal?: number
+  reviews?: readonly unknown[]
+  reviewsTotal?: number
+  threads?: readonly unknown[]
+  threadsTotal?: number
+  /** `null` = PR sem commit; um nó = o `statusCheckRollup` do último commit. */
+  rollup?: Record<string, unknown> | null
+  errors?: readonly GraphQLError[]
+}
+
+/** Uma resposta do `PR_QUERY` na forma em que a API a devolve. */
+export function prEnvelope(input: PrEnvelopeInput = {}): GraphQLResponse {
+  const { mergeable = 'MERGEABLE', state = 'OPEN', changedFiles = 1, rollup = null, errors } = input
+
+  const pullRequest = input.missing
+    ? null
+    : {
+        number: 76,
+        title: 'Ver o PR',
+        url: 'https://github.com/leonardo-amaral-3/operations-center/pull/76',
+        state,
+        isDraft: false,
+        mergedAt: state === 'MERGED' ? '2026-10-12T10:00:00Z' : null,
+        body: 'corpo do PR',
+        baseRefName: 'dev',
+        headRefName: 'feat/76-x',
+        changedFiles,
+        mergeable,
+        comments: conexao(input.comments ?? [], input.commentsTotal),
+        reviews: conexao(input.reviews ?? [], input.reviewsTotal),
+        reviewThreads: conexao(input.threads ?? [], input.threadsTotal),
+        commits: { nodes: rollup === null ? [] : [{ commit: { statusCheckRollup: rollup } }] },
+      }
+
+  return { data: { repository: { pullRequest } }, ...(errors ? { errors } : {}) }
+}
+
+/** O `statusCheckRollup` de um commit. */
+export function rollupNode(
+  state: string,
+  nodes: readonly unknown[],
+  totalCount?: number,
+): Record<string, unknown> {
+  return { state, contexts: conexao(nodes, totalCount) }
+}
+
+/** Um `reviewThread` com os comentários dados; `conexao` aqui fica por conta do `comments`. */
+export function threadNode(input: {
+  id: string
+  path?: string
+  line?: number | null
+  originalLine?: number | null
+  isResolved?: boolean
+  isOutdated?: boolean
+  comments: readonly unknown[]
+  commentsTotal?: number
+}): Record<string, unknown> {
+  const { id, path = 'src/a.ts', line = 10, originalLine = 8, isResolved = false, isOutdated = false } = input
+  return {
+    id,
+    isResolved,
+    isOutdated,
+    path,
+    line,
+    originalLine,
+    comments: conexao(input.comments, input.commentsTotal),
+  }
 }
