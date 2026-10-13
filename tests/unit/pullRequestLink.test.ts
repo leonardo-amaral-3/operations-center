@@ -52,6 +52,10 @@ describe('pickPullRequest — a regra do CA-2: qual PR é o do card', () => {
     expect(escolhido([{ number: 90, body: 'Card: #280' }])).toBeNull()
   })
 
+  it('zero à esquerda não casa: `#028` não é o #28', () => {
+    expect(escolhido([{ number: 90, body: '**Card:** #028' }])).toBeNull()
+  })
+
   it('pula linhas vazias antes do `Card:`', () => {
     expect(escolhido([{ number: 76, body: '\n  \n\n**Card:** #28' }])).toBe(76)
   })

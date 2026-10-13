@@ -4,9 +4,10 @@ import type { PullRequestRef, PullRequestState } from './types'
 /**
  * A primeira linha não vazia do corpo do PR declara de qual card ele é. Aceita `**Card:** #n`, a
  * forma medida em todos os PRs de card, e `Card: #n`, a forma da norma. O `\b` é a fronteira que
- * impede `#280` de passar por `#28`.
+ * impede `#280` de passar por `#28`, e o `[1-9]` à frente impede `#028`: a regra é o grupo **igual**
+ * a `n`, e o `Number` que o converte apagaria o zero à esquerda.
  */
-const CARD_LINE = /^(\*\*)?Card:(\*\*)?\s*#(\d+)\b/
+const CARD_LINE = /^(\*\*)?Card:(\*\*)?\s*#([1-9]\d*)\b/
 
 /** O BOM que alguns editores põem no início do corpo, montado por código porque o literal é invisível. */
 const BOM = String.fromCharCode(0xfeff)
