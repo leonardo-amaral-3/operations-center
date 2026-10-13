@@ -62,7 +62,7 @@ interface FixtureCard {
 type CardFixture = Record<string, { data: { repository: { issue: Record<string, unknown> } } }>
 
 interface PullFixture {
-  pulls: Record<string, { data: { repository: { pullRequest: { title: string } } } }>
+  pulls: Record<string, { data: { repository: { pullRequest: { title: string; state: string } } } }>
   files: Record<string, unknown>
 }
 
@@ -203,7 +203,55 @@ test('5: o ⟳ do PR relê e traz o título novo', async () => {
   await expect(card.getByTestId('pr-reload')).toBeEnabled()
 })
 
-test('6: trocar de aba não relê nem desmonta nenhuma das duas', async () => {
+test('6: aberto e ainda calculando, o selo do merge quebra a linha num cartão estreito', async () => {
+  const card = cardLocator(PR_CARD)
+
+  // O `mergeable` da fixture já é `UNKNOWN`; só falta o PR estar aberto para o selo aparecer.
+  rewritePulls((fixture) => {
+    required(
+      fixture.pulls[String(PR_NUMBER)],
+      `o PR #${PR_NUMBER} na cópia`,
+    ).data.repository.pullRequest.state = 'OPEN'
+  })
+  await card.getByTestId('pr-reload').click()
+  await expect(card.getByTestId('pr-merge')).toContainText('calculando')
+
+  // 300px de janela deixam ~200px para a coluna do título, menos que os 214px do texto numa linha.
+  const tamanho = await app.evaluate(({ BrowserWindow }) => {
+    const janela = BrowserWindow.getAllWindows()[0]!
+    const anterior = janela.getSize()
+    janela.setSize(300, anterior[1]!)
+    return anterior
+  })
+
+  // O tsconfig dos testes não tem a lib `dom`: o pedaço do DOM que a medição toca vai tipado à mão.
+  type No = {
+    getBoundingClientRect(): { right: number }
+    scrollWidth: number
+    clientWidth: number
+    parentElement: No | null
+  }
+
+  try {
+    await expect
+      .poll(() =>
+        card.getByTestId('pr-merge').evaluate((selo: No) => {
+          const coluna = selo.parentElement!.getBoundingClientRect()
+          return {
+            cortado: selo.scrollWidth > selo.clientWidth,
+            vaza: selo.getBoundingClientRect().right > coluna.right + 0.5,
+          }
+        }),
+      )
+      .toEqual({ cortado: false, vaza: false })
+  } finally {
+    await app.evaluate(({ BrowserWindow }, [largura, altura]) => {
+      BrowserWindow.getAllWindows()[0]!.setSize(largura!, altura!)
+    }, tamanho)
+  }
+})
+
+test('7:trocar de aba não relê nem desmonta nenhuma das duas', async () => {
   const card = cardLocator(PR_CARD)
 
   await card.getByTestId('card-tab-card').click()
@@ -215,7 +263,7 @@ test('6: trocar de aba não relê nem desmonta nenhuma das duas', async () => {
   await expect(card.getByText('Lendo o PR…')).toHaveCount(0)
 })
 
-test('7: falha ao reler o PR fica dentro da aba PR e não afeta a aba Card', async () => {
+test('8: falha ao reler o PR fica dentro da aba PR e não afeta a aba Card', async () => {
   const card = cardLocator(PR_CARD)
 
   rewritePulls((fixture) => {
@@ -230,7 +278,7 @@ test('7: falha ao reler o PR fica dentro da aba PR e não afeta a aba Card', asy
   await expect(card.getByTestId('card-content-body')).not.toContainText('Não consegui ler o PR')
 })
 
-test('8: recolher e expandir de novo volta com a aba Card selecionada', async () => {
+test('9: recolher e expandir de novo volta com a aba Card selecionada', async () => {
   const card = cardLocator(PR_CARD)
 
   await card.getByTestId('card-tab-pr').click()
@@ -240,7 +288,7 @@ test('8: recolher e expandir de novo volta com a aba Card selecionada', async ()
   await expect(card.getByTestId('card-tab-card')).toHaveAttribute('aria-selected', 'true')
 })
 
-test('9: cartão expandido sem PR não tem abas (CA-1)', async () => {
+test('10: cartão expandido sem PR não tem abas (CA-1)', async () => {
   await cardLocator(PR_CARD).getByTestId('card-collapse').click()
 
   const card = cardLocator(SEM_PR_CARD)
@@ -274,8 +322,8 @@ function rewritePulls(change: (fixture: PullFixture) => void): void {
  */
 function withTimeline(card: FixtureCard): CardFixture {
   const mapa = JSON.parse(readFileSync(CARD_FIXTURE_PATH, 'utf8')) as CardFixture
-  const issue = required(mapa[String(card.number)], `entrada do card #${card.number}`).data.repository
-    .issue
+  const issue = required(mapa[String(card.number)], `entrada do card #${card.number}`).data
+    .repository.issue
 
   const referencia = (number: number, state: string, body: string): unknown => ({
     source: {
@@ -299,8 +347,9 @@ function withTimeline(card: FixtureCard): CardFixture {
 }
 
 function toFixtureCard(node: FixtureNode): FixtureCard | null {
-  const columnId = node.fieldValues.nodes.find((value) => value.field?.name === STATUS_FIELD)
-    ?.optionId
+  const columnId = node.fieldValues.nodes.find(
+    (value) => value.field?.name === STATUS_FIELD,
+  )?.optionId
   const { __typename, number, repository } = node.content
   const repo = repository?.nameWithOwner
 
