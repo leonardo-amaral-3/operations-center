@@ -4,7 +4,11 @@ import { describe, expect, it } from 'vitest'
 import type { CardComment, CardContent } from '../../src/shared/board'
 import type { ReactNode } from 'react'
 
-import { CardContentView } from '../../src/renderer/components/CardContentView'
+import {
+  CardContentView,
+  deslocamentoAte,
+  indiceDoConteudo,
+} from '../../src/renderer/components/CardContentView'
 import type { AbasDoCartao, ContentState } from '../../src/renderer/components/CardContentView'
 
 /**
@@ -396,5 +400,72 @@ describe('#92 CA-3 — cabeçalho forte e divisor dos comentários', () => {
     const html = render({ kind: 'loaded', content: conteudo() })
 
     expect(html).not.toContain('card-comments-start')
+  })
+})
+
+describe('#92 CA-1/CA-2/CA-4 — o índice do conteúdo', () => {
+  const marcados = (): CardContent =>
+    conteudo({
+      comments: [
+        comentario({ id: 'a', kind: 'spec' }),
+        comentario({ id: 'b', kind: null }),
+        comentario({ id: 'c', kind: 'decisao' }),
+        comentario({ id: 'd', kind: null }),
+        comentario({ id: 'e', kind: 'decisao' }),
+      ],
+    })
+
+  it('lista a descrição e as etiquetas na ordem da primeira aparição', () => {
+    expect(indiceDoConteudo(marcados())).toEqual([
+      { chave: 'descricao', rotulo: 'Descrição', contagem: null },
+      { chave: 'spec', rotulo: 'spec', contagem: 1 },
+      { chave: '', rotulo: 'comentários', contagem: 2 },
+      { chave: 'decisao', rotulo: 'decisao', contagem: 2 },
+    ])
+  })
+
+  it('corpo vazio não tem item de Descrição', () => {
+    const itens = indiceDoConteudo({ ...marcados(), body: '' })
+
+    expect(itens.map((i) => i.chave)).toEqual(['spec', '', 'decisao'])
+  })
+
+  it('sem comentários não há índice nem divisor', () => {
+    expect(indiceDoConteudo(conteudo())).toEqual([])
+
+    const html = render({ kind: 'loaded', content: conteudo() })
+
+    expect(html).not.toContain('card-content-index')
+    expect(html).not.toContain('card-comments-start')
+  })
+
+  it.each([false, true])('o índice vem antes da caixa que rola (preencher=%s)', (preencher) => {
+    const html = render({ kind: 'loaded', content: marcados() }, { preencher })
+
+    expect(html.indexOf('card-content-index')).toBeGreaterThan(-1)
+    expect(html.indexOf('card-content-index')).toBeLessThan(html.indexOf('card-content-body'))
+    expect(html.match(/data-testid="card-index-item"/g)).toHaveLength(4)
+    expect(html).toContain('data-index-kind="descricao"')
+    expect(html).toContain('data-index-count="2"')
+  })
+
+  it('a seção recolhida não desenha o índice', () => {
+    const html = render({ kind: 'loaded', content: marcados() }, { open: false })
+
+    expect(html).not.toContain('card-content-index')
+  })
+
+  it('com a aba PR ativa o índice fica `hidden`', () => {
+    const html = render(
+      { kind: 'loaded', content: marcados() },
+      { open: false, abas: { ativa: 'pr', numero: 76, onSelecionar: () => undefined } },
+    )
+
+    expect(html.match(/<nav[^>]*>/)?.[0]).toContain('hidden')
+  })
+
+  it('`deslocamentoAte` leva o topo do alvo ao topo da caixa', () => {
+    expect(deslocamentoAte(100, 50, 350)).toBe(400)
+    expect(deslocamentoAte(0, 50, 50)).toBe(0)
   })
 })

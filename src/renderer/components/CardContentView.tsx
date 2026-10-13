@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { JSX, ReactNode } from 'react'
+import type { JSX, MouseEvent, ReactNode } from 'react'
 
 import type { CardComment, CardContent } from '../../shared/board'
 import { Badge } from '../ui/badge'
@@ -100,6 +100,124 @@ export const CardCommentView = memo(function CardCommentView({
     </article>
   )
 })
+
+/** Uma entrada do índice: o que o leitor pode procurar dentro da caixa de conteúdo. */
+export interface ItemDoIndice {
+  /** 'descricao' para o corpo; a etiqueta crua para comentários marcados; '' para os sem etiqueta. */
+  chave: string
+  /** 'Descrição' | kind | 'comentários'. */
+  rotulo: string
+  /** `null` só na Descrição. */
+  contagem: number | null
+}
+
+/**
+ * Os itens do índice: a descrição, depois um por etiqueta na ordem da **primeira aparição**.
+ *
+ * O rótulo é a etiqueta crua, e não um nome traduzido: `kind` é uma string solta de propósito, e
+ * um mapa para plurais quebraria em silêncio no próximo marcador da esteira. Sem comentário não há
+ * o que indexar, então a lista é vazia — o índice não existe para apontar para uma descrição só.
+ */
+export function indiceDoConteudo(content: CardContent): ItemDoIndice[] {
+  if (content.comments.length === 0) return []
+
+  const itens: ItemDoIndice[] = []
+
+  if (content.body !== '') itens.push({ chave: 'descricao', rotulo: 'Descrição', contagem: null })
+
+  const porChave = new Map<string, ItemDoIndice>()
+
+  for (const { kind } of content.comments) {
+    const chave = kind ?? ''
+    const existente = porChave.get(chave)
+
+    if (existente === undefined) {
+      const item = { chave, rotulo: kind ?? 'comentários', contagem: 1 }
+      porChave.set(chave, item)
+      itens.push(item)
+    } else {
+      existente.contagem = (existente.contagem ?? 0) + 1
+    }
+  }
+
+  return itens
+}
+
+/** O `scrollTop` que leva o topo do alvo ao topo da caixa; o navegador limita ao intervalo válido. */
+export function deslocamentoAte(
+  scrollTopAtual: number,
+  topoDaCaixa: number,
+  topoDoAlvo: number,
+): number {
+  return scrollTopAtual + (topoDoAlvo - topoDaCaixa)
+}
+
+/** O primeiro trecho daquela chave dentro da caixa. A etiqueta casa `[a-z0-9-]`: sem escape. */
+function seletorDoAlvo(chave: string): string {
+  return chave === 'descricao'
+    ? '[data-testid="card-content-description"]'
+    : `[data-testid="card-comment"][data-comment-kind="${chave}"]`
+}
+
+/**
+ * Os atalhos para cada trecho do conteúdo, **fora** da caixa que rola: o índice nunca rola para
+ * longe, e saltar de um trecho a outro não obriga a voltar ao topo.
+ *
+ * Rola só a caixa, por conta: `scrollIntoView` rolaria também a coluna e a janela, e o cartão sairia
+ * do lugar. Sem estado nem hook — o componente continua puro no sentido do `CardContentView`.
+ */
+function IndiceDoConteudo({
+  itens,
+  hidden,
+}: {
+  itens: ItemDoIndice[]
+  hidden: boolean
+}): JSX.Element {
+  const irPara = (event: MouseEvent<HTMLButtonElement>, chave: string): void => {
+    const caixa = event.currentTarget
+      .closest('[data-testid="card-content"]')
+      ?.querySelector<HTMLElement>('[data-testid="card-content-body"]')
+    const alvo = caixa?.querySelector<HTMLElement>(seletorDoAlvo(chave))
+
+    if (!caixa || !alvo) return
+
+    caixa.scrollTop = deslocamentoAte(
+      caixa.scrollTop,
+      caixa.getBoundingClientRect().top,
+      alvo.getBoundingClientRect().top,
+    )
+  }
+
+  return (
+    <nav
+      data-testid="card-content-index"
+      aria-label="Índice do card"
+      hidden={hidden}
+      className="mt-2 flex shrink-0 flex-wrap gap-1.5"
+    >
+      {itens.map(({ chave, rotulo, contagem }) => (
+        <Button
+          key={chave}
+          type="button"
+          variant="neutral"
+          size="xs"
+          data-testid="card-index-item"
+          data-index-kind={chave}
+          data-index-count={contagem ?? ''}
+          onClick={(event) => irPara(event, chave)}
+        >
+          {rotulo}
+          {contagem === null ? null : (
+            <>
+              {' '}
+              <span className="font-heading">{contagem}</span>
+            </>
+          )}
+        </Button>
+      ))}
+    </nav>
+  )
+}
 
 /** As duas abas do cartão expandido que tem PR (#83). */
 export type AbaDoCartao = 'card' | 'pr'
@@ -224,6 +342,10 @@ export function CardContentView({
           deixaria de ser um kanban (CA-4). O teto vale no kanban e cai no cartão expandido (#28), onde o
           corpo preenche a altura e rola sozinho. Quem rola na horizontal é o contêiner de cada tabela e
           de cada bloco de código, dentro do `Markdown`; aqui só a vertical. */}
+      {aberta && state.kind === 'loaded' && state.content.comments.length > 0 ? (
+        <IndiceDoConteudo itens={indiceDoConteudo(state.content)} hidden={naAbaPr} />
+      ) : null}
+
       {aberta ? (
         <div
           data-testid="card-content-body"
@@ -283,7 +405,7 @@ function Corpo({
   return (
     <div className="space-y-3">
       {content.body === '' ? null : (
-        <div className="text-xs">
+        <div data-testid="card-content-description" className="text-xs">
           <Markdown text={content.body} />
         </div>
       )}
