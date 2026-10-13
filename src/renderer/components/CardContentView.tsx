@@ -295,6 +295,8 @@ export function CardContentView({
   // Card ficaria vazia: o corpo é desenhado como se `open` fosse `true`, ignorando o prop.
   const aberta = abas !== null || open
   const naAbaPr = abas?.ativa === 'pr'
+  // Quem decide se há índice é só o `indiceDoConteudo`: sem comentário ele devolve `[]`.
+  const itensDoIndice = state.kind === 'loaded' ? indiceDoConteudo(state.content) : []
 
   return (
     <section
@@ -363,8 +365,8 @@ export function CardContentView({
         )}
       </div>
 
-      {aberta && state.kind === 'loaded' && state.content.comments.length > 0 ? (
-        <IndiceDoConteudo itens={indiceDoConteudo(state.content)} hidden={naAbaPr} />
+      {aberta && itensDoIndice.length > 0 ? (
+        <IndiceDoConteudo itens={itensDoIndice} hidden={naAbaPr} />
       ) : null}
 
       {/* Teto de altura e rolagem própria: o cartão vive dentro de uma coluna, e sem o teto a spec
