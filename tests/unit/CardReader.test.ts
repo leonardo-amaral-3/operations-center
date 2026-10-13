@@ -228,6 +228,29 @@ describe('CardReader — o PR do card', () => {
     expect(content).toMatchObject({ body: 'o card segue de pé', pullRequest: null })
   })
 
+  it('erro na própria conexão anula a issue (timelineItems é não-nulo): relê sem a timeline', async () => {
+    // O que o GitHub devolve quando o erro cai em `timelineItems`, e não num nó: o `null` sobe até a
+    // `issue`, que é o primeiro campo anulável acima dela.
+    const anulada: GraphQLResponse = {
+      data: { repository: { issue: null } },
+      errors: [{ message: 'timeline indisponível', path: ['repository', 'issue', 'timelineItems'] }],
+    }
+    const fake = createFakeGraphQL(anulada, cardEnvelope({ body: 'o card segue de pé' }))
+
+    const content = await new CardReader({ graphql: fake.graphql }).read(INPUT)
+
+    expect(content).toMatchObject({ body: 'o card segue de pé', pullRequest: null })
+    expect(fake.calls).toHaveLength(2)
+    expect(fake.calls[1]?.variables).toMatchObject({ comPr: false })
+  })
+
+  it('issue nula sem erro de timeline não relê: é o repo inacessível da regra 2', async () => {
+    const fake = createFakeGraphQL({ data: { repository: { issue: null } } })
+
+    await expect(new CardReader({ graphql: fake.graphql }).read(INPUT)).rejects.toThrow('repo inacessível')
+    expect(fake.calls).toHaveLength(1)
+  })
+
   it('continua fatal com `errors` de outro `path`, mesmo ao lado de um erro de timeline', async () => {
     const quebrado = cardEnvelope({
       errors: [

@@ -131,10 +131,13 @@ const PR_LINK_SELECTION = `
  * **Sem alias duplo**, ao contrário do `BOARD_QUERY`: `repository(owner:, name:)` resolve igual para
  * usuário e organização — a ambiguidade que obriga os dois aliases lá é do `projectV2`, não do repo.
  * Logo este documento não tem erro esperado, e **qualquer** `errors` nele é fatal (regra 1 do
- * `CardReader`).
+ * `CardReader`) — salvo os da timeline.
+ *
+ * `$comPr` existe para a releitura sem a timeline: `Issue.timelineItems` é não-nulo no schema, então
+ * um erro **na própria conexão** anula a `issue` inteira, e a única saída é pedir de novo sem ela.
  */
 export const CARD_QUERY = `
-query Card($owner: String!, $name: String!, $number: Int!, $comments: Int!) {
+query Card($owner: String!, $name: String!, $number: Int!, $comments: Int!, $comPr: Boolean = true) {
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
       number
@@ -143,7 +146,9 @@ query Card($owner: String!, $name: String!, $number: Int!, $comments: Int!) {
         totalCount
         nodes { id author { login } createdAt body }
       }
-      ${PR_LINK_SELECTION}
+      ... @include(if: $comPr) {
+        ${PR_LINK_SELECTION}
+      }
     }
   }
 }
