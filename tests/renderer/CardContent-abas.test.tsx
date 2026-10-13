@@ -99,4 +99,19 @@ describe('o painel do PR acompanha o PR que a aba nomeia', () => {
     expect(screen.queryByTestId('card-pr-body')).toBeNull()
     expect(readPullRequest).toHaveBeenCalledTimes(1)
   })
+
+  it('⟳ do card que falha não tira as abas nem desmonta o painel do PR (CA-6)', async () => {
+    await montar(lido(PR_87))
+    fireEvent.click(screen.getByTestId('card-tab-pr'))
+    fireEvent.click(screen.getByTestId('card-tab-card'))
+    await waitFor(() => expect(readPullRequest).toHaveBeenCalledTimes(1))
+
+    await recarregar({ ok: false, reason: 'o GitHub não respondeu' })
+
+    expect(screen.getByTestId('card-tab-pr').textContent).toBe('PR #87')
+    expect(screen.getByTestId('card-pr-body')).not.toBeNull()
+    fireEvent.click(screen.getByTestId('card-tab-pr'))
+    expect(screen.getByTestId('card-pr-body')).not.toBeNull()
+    expect(readPullRequest).toHaveBeenCalledTimes(1)
+  })
 })
