@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { CardReader, MAX_COMMENTS } from '../../src/core/board/CardReader'
 import { CARD_QUERY } from '../../src/core/board/query'
 import type { CardContent, GraphQLResponse } from '../../src/core/board/types'
-import { cardEnvelope, commentNode, createFakeGraphQL } from '../fakes/fakeGraphQL'
+import { cardEnvelope, commentNode, createFakeGraphQL, prRefNode } from '../fakes/fakeGraphQL'
 
 const INPUT = { owner: 'leonardo-amaral-3', name: 'operations-center', number: 13 }
 
@@ -186,5 +186,79 @@ describe('CardReader — regras 6 e 7: o corte aparece, e a página é uma só',
         },
       },
     ])
+  })
+})
+
+describe('CardReader — o PR do card', () => {
+  const doCard = prRefNode({ number: 76, body: '**Card:** #13', state: 'OPEN' })
+
+  it('preenche `pullRequest` quando a timeline tem o PR do card', async () => {
+    const content = await read(cardEnvelope({ timeline: [doCard] }))
+
+    expect(content.pullRequest).toEqual({
+      number: 76,
+      url: 'https://github.com/leonardo-amaral-3/operations-center/pull/76',
+      state: 'OPEN',
+    })
+  })
+
+  it('devolve `null` sem `timelineItems`, e o resto do conteúdo fica igual', async () => {
+    const content = await read(cardEnvelope({ number: 6, body: 'texto' }))
+
+    expect(content).toEqual({
+      number: 6,
+      body: 'texto',
+      comments: [],
+      truncated: false,
+      pullRequest: null,
+    })
+  })
+
+  it('tolera `errors` com `path` em `timelineItems`: devolve o card e `pullRequest: null`', async () => {
+    const content = await read(
+      cardEnvelope({
+        body: 'o card segue de pé',
+        timeline: [doCard],
+        errors: [
+          { message: 'Resource not accessible', path: ['repository', 'issue', 'timelineItems', 'nodes', 0] },
+        ],
+      }),
+    )
+
+    expect(content).toMatchObject({ body: 'o card segue de pé', pullRequest: null })
+  })
+
+  it('erro na própria conexão anula a issue (timelineItems é não-nulo): relê sem a timeline', async () => {
+    // O que o GitHub devolve quando o erro cai em `timelineItems`, e não num nó: o `null` sobe até a
+    // `issue`, que é o primeiro campo anulável acima dela.
+    const anulada: GraphQLResponse = {
+      data: { repository: { issue: null } },
+      errors: [{ message: 'timeline indisponível', path: ['repository', 'issue', 'timelineItems'] }],
+    }
+    const fake = createFakeGraphQL(anulada, cardEnvelope({ body: 'o card segue de pé' }))
+
+    const content = await new CardReader({ graphql: fake.graphql }).read(INPUT)
+
+    expect(content).toMatchObject({ body: 'o card segue de pé', pullRequest: null })
+    expect(fake.calls).toHaveLength(2)
+    expect(fake.calls[1]?.variables).toMatchObject({ comPr: false })
+  })
+
+  it('issue nula sem erro de timeline não relê: é o repo inacessível da regra 2', async () => {
+    const fake = createFakeGraphQL({ data: { repository: { issue: null } } })
+
+    await expect(new CardReader({ graphql: fake.graphql }).read(INPUT)).rejects.toThrow('repo inacessível')
+    expect(fake.calls).toHaveLength(1)
+  })
+
+  it('continua fatal com `errors` de outro `path`, mesmo ao lado de um erro de timeline', async () => {
+    const quebrado = cardEnvelope({
+      errors: [
+        { message: 'na timeline', path: ['repository', 'issue', 'timelineItems'] },
+        { message: 'no corpo', path: ['repository', 'issue', 'body'] },
+      ],
+    })
+
+    await expect(read(quebrado)).rejects.toThrow('no corpo')
   })
 })

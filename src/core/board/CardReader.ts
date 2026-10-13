@@ -1,6 +1,7 @@
 import { asArray, asNumber, asRecord, asString } from './narrow'
+import { pickPullRequest } from './pullRequestLink'
 import { CARD_QUERY } from './query'
-import type { CardComment, CardContent, GraphQLFn } from './types'
+import type { CardComment, CardContent, GraphQLError, GraphQLFn, GraphQLResponse } from './types'
 
 export interface CardReaderDeps {
   /**
@@ -51,19 +52,30 @@ export class CardReader {
   }
 
   async read(input: ReadCardInput): Promise<CardContent> {
-    const response = await this.#graphql(CARD_QUERY, {
+    const variables = {
       owner: input.owner,
       name: input.name,
       number: input.number,
       comments: MAX_COMMENTS,
-    })
+    }
+    let response = await this.#graphql(CARD_QUERY, variables)
 
     // Regra 1: sem alias duplo não há erro esperado, e tolerar um faria o app engolir falha de
-    // campo em silêncio.
-    const primeiro = response.errors?.[0]
-    if (primeiro) throw new Error(primeiro.message)
+    // campo em silêncio. A única exceção é um erro cujo `path` começa em `timelineItems`: é a
+    // cross-reference vinda de repo que o token não enxerga (ou de org com SSO), e a aba do PR é um
+    // acréscimo que não pode derrubar o conteúdo do card. Ali `pullRequest` vira `null`.
+    lancarErroForaDaTimeline(response)
+    const timelineFalhou = (response.errors?.length ?? 0) > 0
 
-    const issue = asRecord(asRecord(asRecord(response.data)?.['repository'])?.['issue'])
+    // Erro na própria conexão, e não num nó dela: `timelineItems` é não-nulo, o `null` sobe até a
+    // `issue` e o card cairia pela regra 2. Relê sem a timeline — dois pontos no lugar de um, só
+    // neste caso — para a aba do PR continuar sendo a única coisa que a falha leva.
+    if (timelineFalhou && !issueDe(response)) {
+      response = await this.#graphql(CARD_QUERY, { ...variables, comPr: false })
+      lancarErroForaDaTimeline(response)
+    }
+
+    const issue = issueDe(response)
 
     // Regra 2: é o caminho do card de repo forasteiro e o do token sem acesso a repo privado.
     if (!issue) {
@@ -85,8 +97,25 @@ export class CardReader {
       comments: lidos,
       // Regra 6: o corte tem de aparecer. `totalCount` ausente não inventa corte nenhum.
       truncated: (asNumber(comments?.['totalCount']) ?? 0) > nodes.length,
+      pullRequest: timelineFalhou ? null : pickPullRequest(issue['timelineItems'], input),
     }
   }
+}
+
+function issueDe(response: GraphQLResponse): Record<string, unknown> | null {
+  return asRecord(asRecord(asRecord(response.data)?.['repository'])?.['issue'])
+}
+
+function lancarErroForaDaTimeline(response: GraphQLResponse): void {
+  const primeiro = response.errors?.find((erro) => !naTimeline(erro))
+  if (primeiro) throw new Error(primeiro.message)
+}
+
+const CAMINHO_DA_TIMELINE = ['repository', 'issue', 'timelineItems']
+
+function naTimeline(erro: GraphQLError): boolean {
+  const path = erro.path
+  return path !== undefined && CAMINHO_DA_TIMELINE.every((passo, i) => path[i] === passo)
 }
 
 /**

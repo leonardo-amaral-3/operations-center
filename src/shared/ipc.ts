@@ -7,7 +7,7 @@
  * só os tipos de dado que o `core` publica.
  */
 
-import type { BoardsSnapshot, CardContent } from './board'
+import type { BoardsSnapshot, CardContent, PullRequestView } from './board'
 import type {
   ChatMessage,
   PermissionDecision,
@@ -46,6 +46,8 @@ export const IPC_INVOKE = {
    */
   activateBoard: 'ui:active-board',
   readCard: 'card:read',
+  /** O PR do card. O prefixo `card:` o põe no filtro "todo canal que toca o GitHub é de leitura". */
+  readPullRequest: 'card:read-pr',
   readConversations: 'conversations:read',
   readDangerous: 'danger:read',
   setDangerous: 'danger:set',
@@ -291,6 +293,15 @@ export interface ReadCardRequest {
  * que o kanban mostra.
  */
 export type ReadCardResult = { ok: true; content: CardContent } | { ok: false; reason: string }
+
+/** De qual cartão. Mesma regra do `ReadCardRequest`: cartão, nunca coordenada. */
+export interface ReadPullRequestRequest {
+  itemId: string
+}
+
+/** Falha não rejeita, pelo mesmo motivo de `ReadCardResult`. */
+export type ReadPullRequestResult =
+  { ok: true; pullRequest: PullRequestView } | { ok: false; reason: string }
 
 /**
  * Todo evento diz de qual sessão veio. Hoje há uma só na tela; o `sessionId` é o que faz o kanban
@@ -572,6 +583,9 @@ export interface OcApi {
 
   /** Lê o que está escrito naquele card: o corpo e os comentários. Não toca sessão nenhuma. */
   readCard(request: ReadCardRequest): Promise<ReadCardResult>
+
+  /** Lê o PR daquele card: cabeçalho, conversa, CI e diff. Só leitura do GitHub. */
+  readPullRequest(request: ReadPullRequestRequest): Promise<ReadPullRequestResult>
 
   /** Os cartões com conversa recuperável. Pode voltar vazio se a verificação do boot não terminou. */
   readConversations(): Promise<ConversationsSnapshot>

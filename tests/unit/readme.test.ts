@@ -135,6 +135,7 @@ describe('README', () => {
       'OC_BOARD_FIXTURE',
       'OC_BOARDS_FIXTURE',
       'OC_CARD_FIXTURE',
+      'OC_PR_FIXTURE',
       'OC_CLAUDE_PROJECTS',
       'OC_STATE_DIR',
       'OC_CLAUDE_BIN',

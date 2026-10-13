@@ -9,8 +9,8 @@
 
 import { readFile } from 'node:fs/promises'
 
-import { CARD_QUERY, OWNERS_QUERY, PROJECTS_QUERY } from '../../core'
-import type { GraphQLFn, GraphQLResponse } from '../../core'
+import { CARD_QUERY, OWNERS_QUERY, PR_LINK_QUERY, PR_QUERY, PROJECTS_QUERY } from '../../core'
+import type { GraphQLFn, GraphQLResponse, RestGetFn } from '../../core'
 
 export interface FixtureFiles {
   /** Mapa `"owner/number"` → envelope do `BOARD_QUERY`, sob a chave `boards`. */
@@ -22,6 +22,11 @@ export interface FixtureFiles {
   boards?: string
   /** Mapa `número da issue` → envelope do `CARD_QUERY`. Ausente = nenhum card tem conteúdo. */
   cards?: string
+  /**
+   * `{ "pulls": { "<pr>": envelope do PR_QUERY }, "files": { "<pr>": [itens da REST] } }`. A ligação
+   * card→PR **não** mora aqui: vem de `cards`, o mesmo envelope do `CARD_QUERY`.
+   */
+  pulls?: string
 }
 
 /**
@@ -39,6 +44,10 @@ export interface FixtureFiles {
 export function createFixtureGraphQL(files: FixtureFiles): GraphQLFn {
   return async (document, variables) => {
     if (document === CARD_QUERY) return readCard(files.cards, variables['number'])
+    // O envelope do card já carrega `timelineItems`, que é tudo que o leitor de PR lê da ligação:
+    // ela existe num lugar só da fixture e não tem como divergir.
+    if (document === PR_LINK_QUERY) return readCard(files.cards, variables['number'])
+    if (document === PR_QUERY) return readPull(files.pulls, variables['number'])
     if (document === OWNERS_QUERY) return readOwners(files.boards)
     if (document === PROJECTS_QUERY) return readProjects(files.boards, variables['owner'])
 
@@ -104,6 +113,39 @@ async function readCard(path: string | undefined, number: unknown): Promise<Grap
   if (envelope === undefined) throw new Error(faltou)
 
   return narrow(envelope)
+}
+
+/** Pelo mesmo motivo do card: PR sem fixture lança, em vez de virar uma aba vazia. */
+async function readPull(path: string | undefined, number: unknown): Promise<GraphQLResponse> {
+  const faltou = `sem fixture de PR para o #${String(number)}`
+
+  if (path === undefined) throw new Error(faltou)
+
+  const envelope = (await readMap(path, 'pulls'))[String(number)]
+
+  if (envelope === undefined) throw new Error(faltou)
+
+  return narrow(envelope)
+}
+
+/**
+ * A `RestGetFn` de fixture. Só entende a lista de arquivos do PR — o único GET que o app faz — e
+ * qualquer outro caminho lança, para uma leitura nova não passar calada pela fixture.
+ */
+export function createFixtureRest(files: FixtureFiles): RestGetFn {
+  return async (path) => {
+    const pr = /^repos\/[^/]+\/[^/]+\/pulls\/(\d+)\/files\b/.exec(path)?.[1]
+    if (pr === undefined) throw new Error(`sem fixture REST para o caminho ${path}`)
+
+    if (files.pulls === undefined) throw new Error(`sem fixture de arquivos para o PR #${pr}`)
+
+    const lista = (await readJson(files.pulls))['files']
+    const itens = (lista as Record<string, unknown> | undefined)?.[pr]
+
+    if (itens === undefined) throw new Error(`sem fixture de arquivos para o PR #${pr}`)
+
+    return itens
+  }
 }
 
 async function readJson(path: string): Promise<Record<string, unknown>> {

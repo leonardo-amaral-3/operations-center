@@ -11,6 +11,22 @@ export interface CardIpcDeps {
 }
 
 /**
+ * `owner/name`, como o board entrega o repo do card. Formato inesperado vira recusa, e não um
+ * pedido torto à API.
+ */
+export function coordenadasDe(
+  card: BoardCard,
+): { owner: string; name: string } | { reason: string } {
+  const partes = card.repository.split('/')
+  const [owner, name] = partes
+  if (partes.length !== 2 || !owner || !name) {
+    return { reason: `repo em formato inesperado: ${card.repository}` }
+  }
+
+  return { owner, name }
+}
+
+/**
  * O canal de leitura do conteúdo de um card.
  *
  * Arquivo próprio, e não dentro de `registerBoardsIpc`: aquele registro existe para guardar o
@@ -31,14 +47,11 @@ export function registerCardIpc(reader: CardReader, deps: CardIpcDeps): void {
 
       // `owner/name`, como o board o entrega. Formato inesperado vira recusa, e não um pedido torto
       // à API.
-      const partes = card.repository.split('/')
-      const [owner, name] = partes
-      if (partes.length !== 2 || !owner || !name) {
-        return { ok: false, reason: `repo em formato inesperado: ${card.repository}` }
-      }
+      const coordenadas = coordenadasDe(card)
+      if ('reason' in coordenadas) return { ok: false, reason: coordenadas.reason }
 
       try {
-        return { ok: true, content: await reader.read({ owner, name, number: card.number }) }
+        return { ok: true, content: await reader.read({ ...coordenadas, number: card.number }) }
       } catch (error: unknown) {
         // Falha **não rejeita**: o motivo é texto que a tela desenha dentro do cartão, e rejeitar
         // obrigaria o renderer a farejar mensagem de erro para distinguir um caso do outro.

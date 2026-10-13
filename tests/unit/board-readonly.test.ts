@@ -51,6 +51,34 @@ function lerArquivos(diretorioRelativo: string): Arquivo[] {
     })
 }
 
+/**
+ * O verbo de cada `fetch(` do texto, lido da chamada inteira (parênteses balanceados).
+ *
+ * Aceita qualquer aspa no literal, e devolve marcadores que nunca são um verbo esperado para o que
+ * não dá para provar estaticamente: `'spread'` quando a chamada tem `...` (um spread pode sobrescrever
+ * o `method` literal), `'nao-literal'` quando o `method` não é uma string (variável, shorthand) e
+ * `'sem-method'` quando não há `method` nenhum.
+ */
+function verbosDoFetch(conteudo: string): string[] {
+  const verbos: string[] = []
+
+  for (const inicio of [...conteudo.matchAll(/\bfetch\(/g)].map((casa) => casa.index)) {
+    let fim = inicio + 'fetch('.length
+    for (let nivel = 1; nivel > 0 && fim < conteudo.length; fim++) {
+      if (conteudo[fim] === '(') nivel++
+      if (conteudo[fim] === ')') nivel--
+    }
+    const chamada = conteudo.slice(inicio, fim)
+
+    if (chamada.includes('...')) verbos.push('spread')
+    const metodos = [...chamada.matchAll(/\bmethod\b(\s*:\s*(['"`])([A-Za-z]+)\2)?/g)]
+    if (metodos.length === 0) verbos.push('sem-method')
+    for (const casa of metodos) verbos.push(casa[3] ?? 'nao-literal')
+  }
+
+  return verbos
+}
+
 describe('a superfície de board é somente-leitura', () => {
   it('IPC_INVOKE é exatamente os canais de sessão mais a leitura do board', () => {
     // **A declaração dos dois canais do cartão-chat**, que é o que esta canária cobra de quem os
@@ -128,6 +156,7 @@ describe('a superfície de board é somente-leitura', () => {
       readBoards: 'boards:read',
       activateBoard: 'ui:active-board',
       readCard: 'card:read',
+      readPullRequest: 'card:read-pr',
       readConversations: 'conversations:read',
       readDangerous: 'danger:read',
       setDangerous: 'danger:set',
@@ -226,7 +255,42 @@ describe('a superfície de board é somente-leitura', () => {
     )
 
     // A ordem é a de declaração dos mapas: os `invoke` primeiro, o evento depois.
-    expect(canaisDoGitHub).toEqual(['boards:read', 'card:read', 'boards:changed'])
+    expect(canaisDoGitHub).toEqual(['boards:read', 'card:read', 'card:read-pr', 'boards:changed'])
+  })
+
+  it('toda requisição HTTP do app é a do GraphQL ou um GET', () => {
+    // O transporte REST do #82 é o primeiro que não é POST. Em vez de procurar verbo de escrita
+    // solto — que daria falso positivo em `patch`/`deletions` —, a prova é por exclusão: `fetch(` só
+    // existe nos dois clientes, e o verbo de cada chamada é exatamente o esperado de cada um, com a
+    // comparação diferenciando maiúsculas. O verbo é lido da chamada inteira por `verbosDoFetch`,
+    // que não deixa passar aspa dupla, spread nem `method` não literal (o caso seguinte o prova).
+    const arquivos = ['../../src/main', '../../src/core'].flatMap(lerArquivos)
+    expect(arquivos.length).toBeGreaterThan(0)
+
+    const fetchEm = arquivos
+      .filter(({ conteudo }) => conteudo.includes('fetch('))
+      .map(({ caminho }) => caminho.replaceAll('\\', '/').split('/src/')[1])
+    expect(fetchEm.sort()).toEqual(['main/github/graphql.ts', 'main/github/rest.ts'])
+
+    const metodos = arquivos.flatMap(({ caminho, conteudo }) =>
+      verbosDoFetch(conteudo).map((metodo) => ({
+        arquivo: caminho.replaceAll('\\', '/').split('/src/')[1],
+        metodo,
+      })),
+    )
+    expect(metodos.sort((a, b) => (a.arquivo ?? '').localeCompare(b.arquivo ?? ''))).toEqual([
+      { arquivo: 'main/github/graphql.ts', metodo: 'POST' },
+      { arquivo: 'main/github/rest.ts', metodo: 'GET' },
+    ])
+  })
+
+  it('a leitura do verbo não deixa passar aspa dupla, spread nem verbo em variável', () => {
+    // As mutações que a revisão do PR #87 aplicou à canária antiga e que ela deixou verdes.
+    expect(verbosDoFetch(`fetch(url, { method: "DELETE" })`)).toEqual(['DELETE'])
+    expect(verbosDoFetch(`fetch(url, { method: 'GET', ...init })`)).toEqual(['spread', 'GET'])
+    expect(verbosDoFetch(`fetch(url, { method })`)).toEqual(['nao-literal'])
+    expect(verbosDoFetch(`fetch(url, init)`)).toEqual(['sem-method'])
+    expect(verbosDoFetch(`fetch(\`\${BASE}\${path}\`, { method: 'GET', headers: h(x) })`)).toEqual(['GET'])
   })
 
   it('nenhum arquivo que escreve ou envia GraphQL contém um documento de escrita', () => {

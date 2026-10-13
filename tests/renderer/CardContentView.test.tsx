@@ -2,8 +2,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import type { CardComment, CardContent } from '../../src/shared/board'
+import type { ReactNode } from 'react'
+
 import { CardContentView } from '../../src/renderer/components/CardContentView'
-import type { ContentState } from '../../src/renderer/components/CardContentView'
+import type { AbasDoCartao, ContentState } from '../../src/renderer/components/CardContentView'
 
 /**
  * O CA-1 e o CA-2 do card #13 pelo lado da tela, mais a linha do CA-7 que se prova sem sessão.
@@ -44,18 +46,20 @@ function comentario(over: Partial<CardComment> = {}): CardComment {
 }
 
 function conteudo(over: Partial<CardContent> = {}): CardContent {
-  return { number: 13, body: CORPO, comments: [], truncated: false, ...over }
+  return { number: 13, body: CORPO, comments: [], truncated: false, pullRequest: null, ...over }
 }
 
 interface RenderOptions {
   pending?: boolean
   open?: boolean
   preencher?: boolean
+  abas?: AbasDoCartao | null
+  prPanel?: ReactNode
 }
 
 function render(
   state: ContentState,
-  { pending = false, open = true, preencher }: RenderOptions = {},
+  { pending = false, open = true, preencher, abas, prPanel }: RenderOptions = {},
 ): string {
   return renderToStaticMarkup(
     <CardContentView
@@ -65,6 +69,8 @@ function render(
       onToggle={() => undefined}
       onReload={() => undefined}
       preencher={preencher}
+      abas={abas}
+      prPanel={prPanel}
     />,
   )
 }
@@ -299,5 +305,65 @@ describe('#28 — o teto de altura cai no cartão expandido', () => {
     const html = render({ kind: 'loaded', content: conteudo() }, { preencher: true })
     expect(html).toContain('min-h-0 flex-1')
     expect(html).not.toContain('max-h-[26rem]')
+  })
+})
+
+describe('#83 CA-1 — abas Card e PR no cartão expandido', () => {
+  const carregado: ContentState = { kind: 'loaded', content: conteudo() }
+  const abas = (ativa: 'card' | 'pr'): AbasDoCartao => ({
+    ativa,
+    numero: 76,
+    onSelecionar: () => undefined,
+  })
+  const painel = <p>painel do pr</p>
+
+  /** A tag de abertura do elemento com aquele `data-testid`, para afirmar sobre os atributos dele. */
+  function tag(html: string, testid: string): string {
+    return new RegExp(`<[a-z]+[^>]*data-testid="${testid}"[^>]*>`).exec(html)?.[0] ?? ''
+  }
+
+  it('com `abas`, o tablist traz Card selecionada e PR #76', () => {
+    const html = render(carregado, { preencher: true, abas: abas('card') })
+
+    expect(html).toContain('role="tablist"')
+    expect(tag(html, 'card-tab-card')).toContain('aria-selected="true"')
+    expect(tag(html, 'card-tab-pr')).toContain('aria-selected="false"')
+    expect(html).toContain('PR #76')
+    expect(html).not.toContain('card-content-toggle')
+  })
+
+  it.each([undefined, null])('com `abas` = %s, o markup é o de hoje', (valor) => {
+    const html = render(carregado, { preencher: true, abas: valor })
+
+    expect(html).not.toContain('role="tablist"')
+    expect(html).toContain('card-content-toggle')
+    expect(html).not.toContain('card-pr-body')
+  })
+
+  it('com a aba PR ativa, o corpo do card fica `hidden` e o painel do PR não', () => {
+    const html = render(carregado, { preencher: true, abas: abas('pr'), prPanel: painel })
+
+    expect(tag(html, 'card-content-body')).toContain('hidden=""')
+    expect(tag(html, 'card-pr-body')).not.toContain('hidden')
+    expect(html).toContain('painel do pr')
+    expect(html).not.toContain('card-content-reload')
+  })
+
+  it('com a aba Card ativa, o painel do PR montado fica `hidden`', () => {
+    const html = render(carregado, { preencher: true, abas: abas('card'), prPanel: painel })
+
+    expect(tag(html, 'card-content-body')).not.toContain('hidden')
+    expect(tag(html, 'card-pr-body')).toContain('hidden=""')
+    expect(html).toContain('card-content-reload')
+  })
+
+  it('sem `prPanel`, o `card-pr-body` não existe', () => {
+    expect(render(carregado, { preencher: true, abas: abas('card') })).not.toContain('card-pr-body')
+  })
+
+  it('com `abas` e `open=false`, o corpo do card é desenhado mesmo assim', () => {
+    const html = render(carregado, { preencher: true, open: false, abas: abas('card') })
+
+    expect(html).toContain('card-content-body')
   })
 })

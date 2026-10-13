@@ -107,6 +107,21 @@ fragment ProjectList on ProjectV2Connection {
 `
 
 /**
+ * A parte que acha o PR do card: as referências cruzadas da issue cujo alvo é um PR. Compartilhada
+ * pelo `CARD_QUERY` e pelo `PR_LINK_QUERY`, para a ligação card→PR ter um lugar só.
+ *
+ * `last: 100` porque o PR do card é das referências mais recentes, e uma página só segue a regra 7
+ * do `CardReader`.
+ */
+const PR_LINK_SELECTION = `
+  timelineItems(last: 100, itemTypes: [CROSS_REFERENCED_EVENT]) {
+    nodes { ... on CrossReferencedEvent { source { ... on PullRequest {
+      number url state body repository { nameWithOwner }
+    } } } }
+  }
+`
+
+/**
  * O conteúdo de **uma** issue, pedido sob demanda quando um cartão abre.
  *
  * Documento separado, e não campos a mais no `BOARD_QUERY`, porque o board relê a cada foco de
@@ -116,10 +131,13 @@ fragment ProjectList on ProjectV2Connection {
  * **Sem alias duplo**, ao contrário do `BOARD_QUERY`: `repository(owner:, name:)` resolve igual para
  * usuário e organização — a ambiguidade que obriga os dois aliases lá é do `projectV2`, não do repo.
  * Logo este documento não tem erro esperado, e **qualquer** `errors` nele é fatal (regra 1 do
- * `CardReader`).
+ * `CardReader`) — salvo os da timeline.
+ *
+ * `$comPr` existe para a releitura sem a timeline: `Issue.timelineItems` é não-nulo no schema, então
+ * um erro **na própria conexão** anula a `issue` inteira, e a única saída é pedir de novo sem ela.
  */
 export const CARD_QUERY = `
-query Card($owner: String!, $name: String!, $number: Int!, $comments: Int!) {
+query Card($owner: String!, $name: String!, $number: Int!, $comments: Int!, $comPr: Boolean = true) {
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
       number
@@ -127,6 +145,9 @@ query Card($owner: String!, $name: String!, $number: Int!, $comments: Int!) {
       comments(first: $comments) {
         totalCount
         nodes { id author { login } createdAt body }
+      }
+      ... @include(if: $comPr) {
+        ${PR_LINK_SELECTION}
       }
     }
   }
@@ -193,3 +214,60 @@ export const ESTEIRA_STATIONS = [
  * ser lida por gente, não indexada por código que quebraria em silêncio se alguém a reordenasse.
  */
 export const TRIAGE_STATION = 'Triagem'
+
+/**
+ * A issue só para achar o PR do card, usada pelo `PullRequestReader` antes de ler o PR em si. É o
+ * mesmo trecho do `CARD_QUERY`, para a ligação card→PR ter um lugar só.
+ */
+export const PR_LINK_QUERY = `
+query PrLink($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      number
+      ${PR_LINK_SELECTION}
+    }
+  }
+}
+`
+
+/**
+ * O PR inteiro numa consulta: cabeçalho, mergeabilidade, conversa (comentários, reviews e comentários
+ * de linha) e o rollup de CI do último commit. O patch não está aqui: a GraphQL não o entrega, e
+ * quem o traz é a REST. Os tetos são de uma página só, como a regra 7 do `CardReader`, e cada
+ * `totalCount` existe para o corte aparecer.
+ */
+export const PR_QUERY = `
+query Pr($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      number title url state isDraft mergedAt body baseRefName headRefName changedFiles mergeable
+      comments(first: 100) { totalCount nodes { id author { login __typename } createdAt body } }
+      reviews(first: 100) { totalCount nodes { id author { login __typename } state submittedAt body } }
+      reviewThreads(first: 50) {
+        totalCount
+        nodes {
+          id isResolved isOutdated path line originalLine
+          comments(first: 20) { totalCount nodes { id author { login __typename } createdAt body } }
+        }
+      }
+      commits(last: 1) {
+        nodes {
+          commit {
+            statusCheckRollup {
+              state
+              contexts(first: 50) {
+                totalCount
+                nodes {
+                  __typename
+                  ... on CheckRun { name status conclusion detailsUrl }
+                  ... on StatusContext { context state targetUrl }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+`
