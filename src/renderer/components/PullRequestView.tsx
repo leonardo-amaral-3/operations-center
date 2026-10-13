@@ -301,7 +301,7 @@ const Entrada = memo(function Entrada({ entry }: { entry: PrTimelineEntry }): JS
           data-testid="pr-entry-faixa"
           className={cn(
             'flex flex-wrap items-center gap-1.5 border-b-2 border-border px-2 py-1 text-[10px]',
-            FAIXA[entry.kind]
+            FAIXA[entry.kind],
           )}
         >
           <span className="font-heading tracking-wide uppercase">{ROTULO[entry.kind]}</span>
