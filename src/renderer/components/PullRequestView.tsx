@@ -50,6 +50,37 @@ const ESTADO_DO_CI: Record<NonNullable<PrChecks['state']>, string> = {
   EXPECTED: 'CI esperado',
 }
 
+type LadoDoCi = 'passou' | 'falhou' | 'pendente' | 'sem-checks'
+
+/** Glifo e cor do selo do CI. Pendente é neutro: âmbar pede ação, e CI rodando não pede. */
+const CI: Record<LadoDoCi, { glifo: string; className: string }> = {
+  passou: { glifo: '✓', className: 'bg-attention text-attention-foreground' },
+  falhou: { glifo: '✕', className: 'bg-danger text-danger-foreground' },
+  pendente: { glifo: '◷', className: '' },
+  'sem-checks': { glifo: '–', className: 'text-foreground/60' },
+}
+
+function ladoDoCi(state: PrChecks['state']): LadoDoCi {
+  if (state === null) return 'sem-checks'
+  if (state === 'SUCCESS') return 'passou'
+
+  return state === 'FAILURE' || state === 'ERROR' ? 'falhou' : 'pendente'
+}
+
+/** O glifo de um check avulso: o `result` vem cru do GitHub, e o que não se conhece ainda roda. */
+function marcaDoResultado(result: string): string {
+  if (result === 'SUCCESS') return '✓'
+  if (
+    ['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'STARTUP_FAILURE', 'ACTION_REQUIRED'].includes(
+      result,
+    )
+  ) {
+    return '✕'
+  }
+
+  return ['NEUTRAL', 'SKIPPED', 'STALE'].includes(result) ? '–' : '◷'
+}
+
 const ESTADO_DA_REVISAO = {
   APPROVED: 'aprovou',
   CHANGES_REQUESTED: 'pediu mudanças',
@@ -329,6 +360,21 @@ function Bloco({
   )
 }
 
+function SeloDoCi({ state }: { state: PrChecks['state'] }): JSX.Element {
+  const lado = ladoDoCi(state)
+
+  return (
+    <Selo
+      data-testid="pr-ci-status"
+      data-state={lado}
+      glifo={CI[lado].glifo}
+      className={CI[lado].className}
+    >
+      {state === null ? 'Sem checks' : ESTADO_DO_CI[state]}
+    </Selo>
+  )
+}
+
 function Carregado({
   pr,
   arquivoAberto,
@@ -338,18 +384,16 @@ function Carregado({
 }): JSX.Element {
   return (
     <div className="space-y-3">
-      <Bloco id="pr-checks" titulo="CI/CD">
-        {pr.checks.state === null ? (
-          <p className="text-xs">Sem checks</p>
-        ) : (
-          <p className="text-xs">{ESTADO_DO_CI[pr.checks.state]}</p>
-        )}
+      <Bloco id="pr-checks" titulo="CI/CD" resumo={<SeloDoCi state={pr.checks.state} />}>
         {pr.checks.checks.length === 0 && pr.checks.state !== null ? (
           <p className="text-xs">Sem checks</p>
         ) : null}
         <ul className="text-xs">
           {pr.checks.checks.map((check, i) => (
             <li key={`${check.name}-${i}`} className="flex gap-1.5">
+              <span aria-hidden="true" className="w-3 shrink-0">
+                {marcaDoResultado(check.result)}
+              </span>
               <span className="min-w-0 truncate">
                 {check.url === null ? check.name : <Externo href={check.url}>{check.name}</Externo>}
               </span>

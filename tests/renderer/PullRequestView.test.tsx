@@ -365,3 +365,41 @@ describe('blocos', () => {
     expect(abertura(carregado(), 'pr-state')).not.toContain('bg-main')
   })
 })
+
+describe('selo do CI', () => {
+  it.each([
+    ['SUCCESS', 'passou', '✓', 'CI passou', 'bg-attention'],
+    ['FAILURE', 'falhou', '✕', 'CI falhou', 'bg-danger'],
+    ['ERROR', 'falhou', '✕', 'CI com erro', 'bg-danger'],
+    ['PENDING', 'pendente', '◷', 'CI em andamento', null],
+    ['EXPECTED', 'pendente', '◷', 'CI esperado', null],
+    [null, 'sem-checks', '–', 'Sem checks', null],
+  ] as const)('%s → %s', (state, lado, glifo, texto, fundo) => {
+    const html = carregado({ checks: { state, checks: [], truncated: false } })
+    const selo = abertura(html, 'pr-ci-status')
+
+    expect(selo).toContain(`data-state="${lado}"`)
+    for (const classe of ['bg-attention', 'bg-danger']) {
+      if (classe === fundo) expect(selo).toContain(classe)
+      else expect(selo).not.toContain(classe)
+    }
+    expect(html).toContain(`>${glifo}</span>${texto}`)
+  })
+
+  it('glifo por check', () => {
+    const html = carregado({
+      checks: {
+        state: 'FAILURE',
+        truncated: false,
+        checks: ['SUCCESS', 'FAILURE', 'IN_PROGRESS', 'SKIPPED'].map((result) => ({
+          name: `c-${result}`,
+          result,
+          url: null,
+        })),
+      },
+    })
+    const glifos = [...html.matchAll(/class="w-3 shrink-0"[^>]*>([^<]*)</g)].map((m) => m[1])
+
+    expect(glifos).toEqual(['✓', '✕', '◷', '–'])
+  })
+})
