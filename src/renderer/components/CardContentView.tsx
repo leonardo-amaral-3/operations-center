@@ -363,15 +363,15 @@ export function CardContentView({
         )}
       </div>
 
+      {aberta && state.kind === 'loaded' && state.content.comments.length > 0 ? (
+        <IndiceDoConteudo itens={indiceDoConteudo(state.content)} hidden={naAbaPr} />
+      ) : null}
+
       {/* Teto de altura e rolagem própria: o cartão vive dentro de uma coluna, e sem o teto a spec
           de 44 mil caracteres do card #6 empurraria o cartão seguinte para fora da vista — o kanban
           deixaria de ser um kanban (CA-4). O teto vale no kanban e cai no cartão expandido (#28), onde o
           corpo preenche a altura e rola sozinho. Quem rola na horizontal é o contêiner de cada tabela e
           de cada bloco de código, dentro do `Markdown`; aqui só a vertical. */}
-      {aberta && state.kind === 'loaded' && state.content.comments.length > 0 ? (
-        <IndiceDoConteudo itens={indiceDoConteudo(state.content)} hidden={naAbaPr} />
-      ) : null}
-
       {aberta ? (
         <div
           data-testid="card-content-body"
