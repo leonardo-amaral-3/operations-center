@@ -12,6 +12,7 @@ import type {
 } from '../../shared/board'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
+import { Card } from '../ui/card'
 import { cn } from '../ui/cn'
 import { formatarData } from './CardContentView'
 import { DiffView } from './DiffView'
@@ -73,6 +74,34 @@ function Etiqueta({ children }: { children: string }): JSX.Element {
   )
 }
 
+/**
+ * Selo com glifo e cor. `variant="neutral"` sempre, como o `StateBadge`: a cor vem do `className`,
+ * nunca do `bg-main` da variante default (que só o selo de PR mergeado usa, sem passar por aqui).
+ */
+function Selo({
+  className,
+  glifo,
+  children,
+  ...data
+}: {
+  className?: string
+  glifo?: string
+  children: string
+  'data-testid'?: string
+  'data-state'?: string
+}): JSX.Element {
+  return (
+    <Badge
+      variant="neutral"
+      className={cn('rounded-base px-1.5 py-0 text-[10px] font-normal', className)}
+      {...data}
+    >
+      {glifo === undefined ? null : <span aria-hidden="true">{glifo}</span>}
+      {children}
+    </Badge>
+  )
+}
+
 function estadoDoPr(pr: PullRequestData): string {
   if (pr.state === 'MERGED') {
     return pr.mergedAt === null ? 'Mergeado' : `Mergeado em ${formatarData(pr.mergedAt)}`
@@ -87,6 +116,38 @@ const MERGEAVEL: Record<PullRequestData['mergeable'], string> = {
   MERGEABLE: 'Mergeável',
   CONFLICTING: 'Com conflito',
   UNKNOWN: 'O GitHub ainda está calculando — recarregue',
+}
+
+/** Mergeado é a esteira (violeta): exatamente o `Badge` default, sem `variant` nem cor à mão. */
+function SeloDeEstado({ pr }: { pr: PullRequestData }): JSX.Element {
+  if (pr.state === 'MERGED') {
+    return (
+      <Badge data-testid="pr-state" className="rounded-base px-1.5 py-0 text-[10px] font-normal">
+        {estadoDoPr(pr)}
+      </Badge>
+    )
+  }
+
+  return <Selo data-testid="pr-state">{estadoDoPr(pr)}</Selo>
+}
+
+function SeloDeMerge({ mergeable }: { mergeable: PullRequestData['mergeable'] }): JSX.Element {
+  if (mergeable === 'CONFLICTING') {
+    return (
+      <Selo data-testid="pr-merge" glifo="✕" className="bg-danger text-danger-foreground">
+        {MERGEAVEL[mergeable]}
+      </Selo>
+    )
+  }
+
+  return (
+    <Selo
+      data-testid="pr-merge"
+      className={mergeable === 'UNKNOWN' ? 'text-foreground/60' : undefined}
+    >
+      {MERGEAVEL[mergeable]}
+    </Selo>
+  )
 }
 
 function Autor({ author }: { author: PrAuthor }): JSX.Element {
@@ -194,7 +255,7 @@ function Arquivo({
   )
 
   return (
-    <li className="border-t-2 border-border py-1">
+    <li className="border-t-2 border-border py-1 first:border-t-0">
       {/* Sem patch (binário ou grande demais) o arquivo não tem o que abrir (CA-5): a linha não é
           botão, não tem `aria-expanded` nem ▸, e o que fica é o link. */}
       {arquivo.diff === null ? (
@@ -227,10 +288,10 @@ function Arquivo({
       ) : null}
 
       {aberto && arquivo.diff !== null ? (
-        <div className="mt-1 ml-4 font-mono text-[10px]">
+        <div className="mt-1 ml-4 overflow-hidden rounded-base border-2 border-border bg-secondary-background font-mono text-[10px]">
           <DiffView diff={arquivo.diff} />
           {arquivo.diff.truncated > 0 && arquivo.url !== null ? (
-            <p>
+            <p className="px-1">
               <Externo href={arquivo.url}>Ver no GitHub</Externo>
             </p>
           ) : null}
@@ -240,20 +301,31 @@ function Arquivo({
   )
 }
 
-function Secao({
+/**
+ * Um bloco da aba: `Card` com faixa de título e um slot de resumo à direita. A face é a default da
+ * `Card` (`bg-background`) — quem separa o bloco do vizinho é a borda e a sombra, não um `bg-*`.
+ */
+function Bloco({
   id,
   titulo,
+  resumo,
   children,
 }: {
   id: string
   titulo: string
+  resumo?: ReactNode
   children: ReactNode
 }): JSX.Element {
   return (
-    <section data-testid={id} className="space-y-1">
-      <h3 className="text-[11px] tracking-wide text-foreground/70 uppercase">{titulo}</h3>
-      {children}
-    </section>
+    <Card asChild>
+      <section data-testid={id}>
+        <header className="flex items-center justify-between gap-2 border-b-2 border-border px-2 py-1">
+          <h3 className="text-[11px] font-heading tracking-wide uppercase">{titulo}</h3>
+          {resumo}
+        </header>
+        <div className="space-y-1 p-2">{children}</div>
+      </section>
+    </Card>
   )
 }
 
@@ -266,13 +338,7 @@ function Carregado({
 }): JSX.Element {
   return (
     <div className="space-y-3">
-      {pr.state === 'OPEN' ? (
-        <p data-testid="pr-merge" className="text-xs">
-          {MERGEAVEL[pr.mergeable]}
-        </p>
-      ) : null}
-
-      <Secao id="pr-checks" titulo="CI">
+      <Bloco id="pr-checks" titulo="CI/CD">
         {pr.checks.state === null ? (
           <p className="text-xs">Sem checks</p>
         ) : (
@@ -296,9 +362,9 @@ function Carregado({
             <Externo href={pr.url}>Há mais checks no GitHub</Externo>
           </p>
         ) : null}
-      </Secao>
+      </Bloco>
 
-      <Secao id="pr-body" titulo="Descrição">
+      <Bloco id="pr-body" titulo="Descrição">
         {pr.body.trim() === '' ? (
           <p className="text-xs text-foreground/60">Sem descrição</p>
         ) : (
@@ -306,9 +372,13 @@ function Carregado({
             <Markdown text={pr.body} />
           </div>
         )}
-      </Secao>
+      </Bloco>
 
-      <Secao id="pr-timeline" titulo="Conversa">
+      <Bloco
+        id="pr-timeline"
+        titulo="Conversa"
+        resumo={<Etiqueta>{`${pr.timeline.length}${pr.timelineTruncated ? '+' : ''}`}</Etiqueta>}
+      >
         {pr.timeline.length === 0 ? (
           <p className="text-xs text-foreground/60">Sem comentários</p>
         ) : (
@@ -319,9 +389,13 @@ function Carregado({
             <Externo href={pr.url}>Há mais comentários no GitHub</Externo>
           </p>
         ) : null}
-      </Secao>
+      </Bloco>
 
-      <Secao id="pr-files" titulo="Arquivos">
+      <Bloco
+        id="pr-files"
+        titulo="Arquivos"
+        resumo={<Etiqueta>{`${pr.totalDeArquivos} arquivos`}</Etiqueta>}
+      >
         <ul>
           {pr.arquivos.map((arquivo) => (
             <Arquivo
@@ -337,7 +411,7 @@ function Carregado({
             {`Mostrando ${pr.arquivos.length} de ${pr.totalDeArquivos} arquivos`}
           </p>
         ) : null}
-      </Secao>
+      </Bloco>
     </div>
   )
 }
@@ -357,33 +431,43 @@ export function PullRequestView({
   const pr = state.kind === 'loaded' ? state.pr : null
 
   return (
-    <section data-testid="pr-view" className="space-y-3">
-      <header data-testid="pr-header" className="flex items-start justify-between gap-2">
-        <div className="min-w-0 space-y-0.5">
-          {pr === null ? null : (
-            <>
-              <h2 className="text-xs font-semibold break-words">{`#${pr.number} ${pr.title}`}</h2>
-              <p className="flex flex-wrap items-center gap-1.5 text-[10px] text-foreground/60">
-                <Etiqueta>{estadoDoPr(pr)}</Etiqueta>
-                <span className="font-mono">{`${pr.baseRef} ← ${pr.headRef}`}</span>
-                <Externo href={pr.url}>Abrir no GitHub</Externo>
-              </p>
-            </>
-          )}
-        </div>
-        <Button
-          type="button"
-          data-testid="pr-reload"
-          aria-label="Recarregar o PR"
-          title="Recarregar o PR"
-          variant="neutral"
-          size="xs"
-          disabled={pending}
-          onClick={onReload}
-        >
-          <span aria-hidden="true">⟳</span>
-        </Button>
-      </header>
+    // O `pr-1 pb-1` é a folga da sombra dura (4px) dentro do `overflow-y-auto` do `card-pr-body`,
+    // que força `overflow-x: auto` e cortaria a sombra das `Card` de largura cheia.
+    <section data-testid="pr-view" className="space-y-3 pr-1 pb-1">
+      {/* Toda classe na `Card`, nenhuma no filho: com `asChild` o `Slot` empilha os dois
+          `className` sem `twMerge`, e o `flex-col` da casca empilharia o título e o ⟳. */}
+      <Card
+        asChild
+        className="flex-row items-start justify-between gap-2 bg-secondary-background p-2.5"
+      >
+        <header data-testid="pr-header">
+          <div className="min-w-0 space-y-0.5">
+            {pr === null ? null : (
+              <>
+                <h2 className="text-xs font-heading break-words">{`#${pr.number} ${pr.title}`}</h2>
+                <p className="flex flex-wrap items-center gap-1.5 text-[10px] text-foreground/60">
+                  <SeloDeEstado pr={pr} />
+                  {pr.state === 'OPEN' ? <SeloDeMerge mergeable={pr.mergeable} /> : null}
+                  <span className="font-mono">{`${pr.baseRef} ← ${pr.headRef}`}</span>
+                  <Externo href={pr.url}>Abrir no GitHub</Externo>
+                </p>
+              </>
+            )}
+          </div>
+          <Button
+            type="button"
+            data-testid="pr-reload"
+            aria-label="Recarregar o PR"
+            title="Recarregar o PR"
+            variant="neutral"
+            size="xs"
+            disabled={pending}
+            onClick={onReload}
+          >
+            <span aria-hidden="true">⟳</span>
+          </Button>
+        </header>
+      </Card>
 
       {state.kind === 'loading' ? <p className="text-xs text-foreground/60">Lendo o PR…</p> : null}
       {state.kind === 'failed' ? (

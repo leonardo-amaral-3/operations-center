@@ -324,3 +324,44 @@ describe('arquivos', () => {
     expect(carregado({ arquivos: cem, totalDeArquivos: 100 })).not.toContain('Mostrando')
   })
 })
+
+/** A tag de abertura do elemento com esse `data-testid` — onde moram as classes que ele carrega. */
+function abertura(html: string, testid: string): string {
+  const achou = new RegExp(`<[^>]*data-testid="${testid}"[^>]*>`).exec(html)
+  if (achou === null) throw new Error(`sem ${testid} no html`)
+
+  return achou[0]
+}
+
+describe('blocos', () => {
+  it('cada seção é uma Card; só o cabeçalho tem a face branca', () => {
+    const html = carregado()
+
+    for (const id of ['pr-header', 'pr-checks', 'pr-body', 'pr-timeline', 'pr-files']) {
+      expect(abertura(html, id)).toContain('data-slot="card"')
+    }
+    expect(abertura(html, 'pr-header')).toContain('bg-secondary-background')
+    for (const id of ['pr-checks', 'pr-body', 'pr-timeline', 'pr-files']) {
+      expect(abertura(html, id)).not.toContain('bg-secondary-background')
+    }
+  })
+
+  it('o merge mora no cabeçalho e o conflito é vermelho', () => {
+    const html = carregado({ mergeable: 'CONFLICTING' })
+    const cabecalho = html.slice(
+      html.indexOf('data-testid="pr-header"'),
+      html.indexOf('data-testid="pr-checks"'),
+    )
+
+    expect(cabecalho).toContain('data-testid="pr-merge"')
+    expect(abertura(html, 'pr-merge')).toContain('bg-danger')
+  })
+
+  it('mergeado leva o violeta da esteira; aberto, o selo neutro', () => {
+    const mergeado = carregado({ state: 'MERGED', mergedAt: '2026-10-12T21:40:00Z' })
+
+    expect(abertura(mergeado, 'pr-state')).toContain('bg-main')
+    expect(mergeado).not.toContain('data-testid="pr-merge"')
+    expect(abertura(carregado(), 'pr-state')).not.toContain('bg-main')
+  })
+})
