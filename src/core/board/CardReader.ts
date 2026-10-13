@@ -154,6 +154,6 @@ function readComments(nodes: readonly unknown[]): readonly CardComment[] {
  * `rehype-sanitize` descarta nós de comentário. Removê-lo aqui faria o core mutilar o texto que o
  * GitHub tem.
  */
-function readKind(body: string): string | null {
+export function readKind(body: string): string | null {
   return MARCADOR.exec(body.trimStart())?.[1] ?? null
 }

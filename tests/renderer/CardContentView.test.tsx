@@ -4,7 +4,12 @@ import { describe, expect, it } from 'vitest'
 import type { CardComment, CardContent } from '../../src/shared/board'
 import type { ReactNode } from 'react'
 
-import { CardContentView } from '../../src/renderer/components/CardContentView'
+import {
+  alvoNaCaixa,
+  CardContentView,
+  deslocamentoAte,
+  indiceDoConteudo,
+} from '../../src/renderer/components/CardContentView'
 import type { AbasDoCartao, ContentState } from '../../src/renderer/components/CardContentView'
 
 /**
@@ -365,5 +370,154 @@ describe('#83 CA-1 — abas Card e PR no cartão expandido', () => {
     const html = render(carregado, { preencher: true, open: false, abas: abas('card') })
 
     expect(html).toContain('card-content-body')
+  })
+})
+
+describe('#92 CA-3 — cabeçalho forte e divisor dos comentários', () => {
+  const dois = (): ContentState => ({
+    kind: 'loaded',
+    content: conteudo({
+      comments: [comentario({ id: 'IC_1', kind: 'spec' }), comentario({ id: 'IC_2', kind: null })],
+    }),
+  })
+
+  it('o divisor conta os comentários que vieram', () => {
+    const html = render(dois())
+
+    expect(html).toContain('data-testid="card-comments-start"')
+    expect(semTags(html)).toContain('Comentários · 2')
+  })
+
+  it('a etiqueta é um Badge `default` (bg-main) e o cabeçalho tem faixa própria', () => {
+    const html = render(dois())
+    const badge = html.match(/<[^>]*data-slot="badge"[^>]*>/)?.[0] ?? ''
+    const header = html.match(/<header[^>]*>/)?.[0] ?? ''
+
+    expect(badge).toContain('bg-main')
+    expect(header).toContain('border-2')
+  })
+
+  it('sem comentários não há divisor', () => {
+    const html = render({ kind: 'loaded', content: conteudo() })
+
+    expect(html).not.toContain('card-comments-start')
+  })
+})
+
+/** A descrição que a `caixaFalsa` devolve; sem jsdom, a caixa é só o que `alvoNaCaixa` consulta. */
+const DESCRICAO = { dataset: {} } as unknown as HTMLElement
+
+/** Uma caixa com a descrição e um comentário por etiqueta dada, nessa ordem. */
+function caixaFalsa(...kinds: string[]) {
+  const comentarios = kinds.map(
+    (commentKind) => ({ dataset: { commentKind } }) as unknown as HTMLElement,
+  )
+
+  return {
+    comentarios,
+    querySelector: ((seletor: string) =>
+      seletor === '[data-testid="card-content-description"]'
+        ? DESCRICAO
+        : null) as ParentNode['querySelector'],
+    querySelectorAll: ((seletor: string) =>
+      seletor === '[data-testid="card-comment"]'
+        ? comentarios
+        : []) as unknown as ParentNode['querySelectorAll'],
+  }
+}
+
+describe('#92 CA-1/CA-2/CA-4 — o índice do conteúdo', () => {
+  const marcados = (): CardContent =>
+    conteudo({
+      comments: [
+        comentario({ id: 'a', kind: 'spec' }),
+        comentario({ id: 'b', kind: null }),
+        comentario({ id: 'c', kind: 'decisao' }),
+        comentario({ id: 'd', kind: null }),
+        comentario({ id: 'e', kind: 'decisao' }),
+      ],
+    })
+
+  it('lista a descrição e as etiquetas na ordem da primeira aparição', () => {
+    expect(indiceDoConteudo(marcados())).toEqual([
+      { alvo: 'descricao', chave: 'descricao', rotulo: 'Descrição', contagem: null },
+      { alvo: 'comentario', chave: 'spec', rotulo: 'spec', contagem: 1 },
+      { alvo: 'comentario', chave: '', rotulo: 'comentários', contagem: 2 },
+      { alvo: 'comentario', chave: 'decisao', rotulo: 'decisao', contagem: 2 },
+    ])
+  })
+
+  it('um comentário `gm:descricao` não se confunde com a Descrição', () => {
+    const content = conteudo({ comments: [comentario({ id: 'a', kind: 'descricao' })] })
+    const [corpo, comentarioDescricao] = indiceDoConteudo(content)
+
+    expect(corpo).toMatchObject({ alvo: 'descricao', chave: 'descricao', contagem: null })
+    expect(comentarioDescricao).toMatchObject({
+      alvo: 'comentario',
+      chave: 'descricao',
+      contagem: 1,
+    })
+    expect(alvoNaCaixa(caixaFalsa(), corpo!)).toBe(DESCRICAO)
+    expect(alvoNaCaixa(caixaFalsa('descricao'), comentarioDescricao!)?.dataset.commentKind).toBe(
+      'descricao',
+    )
+
+    const html = render({ kind: 'loaded', content })
+
+    expect(html).toContain('data-index-target="descricao"')
+    expect(html).toContain('data-index-target="comentario"')
+  })
+
+  it('corpo vazio não tem item de Descrição', () => {
+    const itens = indiceDoConteudo({ ...marcados(), body: '' })
+
+    expect(itens.map((i) => i.chave)).toEqual(['spec', '', 'decisao'])
+  })
+
+  it('sem comentários não há índice nem divisor', () => {
+    expect(indiceDoConteudo(conteudo())).toEqual([])
+
+    const html = render({ kind: 'loaded', content: conteudo() })
+
+    expect(html).not.toContain('card-content-index')
+    expect(html).not.toContain('card-comments-start')
+  })
+
+  it.each([false, true])('o índice vem antes da caixa que rola (preencher=%s)', (preencher) => {
+    const html = render({ kind: 'loaded', content: marcados() }, { preencher })
+
+    expect(html.indexOf('card-content-index')).toBeGreaterThan(-1)
+    expect(html.indexOf('card-content-index')).toBeLessThan(html.indexOf('card-content-body'))
+    expect(html.match(/data-testid="card-index-item"/g)).toHaveLength(4)
+    expect(html).toContain('data-index-kind="descricao"')
+    expect(html).toContain('data-index-count="2"')
+  })
+
+  it('a seção recolhida não desenha o índice', () => {
+    const html = render({ kind: 'loaded', content: marcados() }, { open: false })
+
+    expect(html).not.toContain('card-content-index')
+  })
+
+  it('com a aba PR ativa o índice fica `hidden`', () => {
+    const html = render(
+      { kind: 'loaded', content: marcados() },
+      { open: false, abas: { ativa: 'pr', numero: 76, onSelecionar: () => undefined } },
+    )
+
+    expect(html.match(/<nav[^>]*>/)?.[0]).toContain('hidden')
+  })
+
+  it('`alvoNaCaixa` acha o primeiro comentário da etiqueta sem montar seletor com ela', () => {
+    const caixa = caixaFalsa('spec', '', 'a"]b', '')
+
+    expect(alvoNaCaixa(caixa, { alvo: 'comentario', chave: '' })).toBe(caixa.comentarios[1])
+    expect(alvoNaCaixa(caixa, { alvo: 'comentario', chave: 'a"]b' })).toBe(caixa.comentarios[2])
+    expect(alvoNaCaixa(caixa, { alvo: 'comentario', chave: 'tasks' })).toBeNull()
+  })
+
+  it('`deslocamentoAte` leva o topo do alvo ao topo da caixa', () => {
+    expect(deslocamentoAte(100, 50, 350)).toBe(400)
+    expect(deslocamentoAte(0, 50, 50)).toBe(0)
   })
 })

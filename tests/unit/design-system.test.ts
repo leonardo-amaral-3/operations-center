@@ -334,6 +334,11 @@ const ANCORAS = [
   // coisas que ele existe justamente para medir do outro lado da cascata.
   'data-field',
   'data-free-id',
+  // As três do card #92: o item do índice diz se leva ao corpo ou a um comentário, a que etiqueta
+  // e quantos há.
+  'data-index-count',
+  'data-index-kind',
+  'data-index-target',
   // Entrou com o card #83: a espécie da entrada da conversa do PR (comment, review, thread).
   'data-kind',
   'data-label',

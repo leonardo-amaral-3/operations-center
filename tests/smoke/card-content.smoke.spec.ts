@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
+import { readKind } from '../../src/core/board/CardReader'
 import { CONVERSABLE_STATIONS, STATUS_FIELD } from '../../src/core/board/query'
 import {
   BOARDS_FIXTURE_PATH,
@@ -134,6 +135,7 @@ interface Rolagem {
   clientWidth: number
   scrollHeight: number
   clientHeight: number
+  scrollTop: number
 }
 
 /** O board que o app desenha: o primeiro da ordem da descoberta, derivado da fixture. */
@@ -320,6 +322,64 @@ test('CA-4: o conteúdo rola dentro da própria caixa, e o cartão continua dent
 })
 
 /**
+ * O CA-1 e o CA-2 do #92: o índice está na vista sem rolar, e clicar nele rola só a caixa.
+ *
+ * Os valores saem da fixture pelo `readKind` do próprio `CardReader`: escrever `spec` à mão aqui
+ * provaria a fixture de hoje, e uma cópia do regex provaria a cópia, e não o leitor.
+ */
+test('CA-1/CA-2 do #92: o índice aparece sem rolar e leva a caixa até a spec', async () => {
+  const kinds = CARD_ISSUE.comments.nodes.map((c) => readKind(c.body) ?? '')
+  const primeira = kinds.find((kind) => kind !== '')
+
+  if (primeira === undefined) {
+    throw new Error(`o card #${READ_CARD.number} não tem comentário com marcador na fixture`)
+  }
+
+  const esperado = [
+    ...((CARD_ISSUE.body ?? '') === '' ? [] : [{ kind: 'descricao', count: '' }]),
+    ...[...new Set(kinds)].map((kind) => ({
+      kind,
+      count: String(kinds.filter((k) => k === kind).length),
+    })),
+  ]
+
+  const indice = cardLocator(READ_CARD).getByTestId('card-content-index')
+  const itens = indice.getByTestId('card-index-item')
+  const corpo = cardLocator(READ_CARD).getByTestId('card-content-body')
+
+  await corpo.evaluate((el) => {
+    ;(el as unknown as { scrollTop: number }).scrollTop = 0
+  })
+  await expect(indice).toBeVisible()
+  await expect(itens).toHaveCount(esperado.length)
+
+  for (const [i, { kind, count }] of esperado.entries()) {
+    await expect(itens.nth(i)).toHaveAttribute('data-index-kind', kind)
+    await expect(itens.nth(i)).toHaveAttribute('data-index-count', count)
+  }
+
+  const antes = await caixaDe(cardLocator(READ_CARD), `o cartão #${READ_CARD.number}`)
+
+  await itens.and(window.locator(`[data-index-kind="${primeira}"]`)).click()
+
+  const alvo = commentLocator(READ_CARD)
+    .and(window.locator(`[data-comment-kind="${primeira}"]`))
+    .first()
+  const topoDoAlvo = (await caixaDe(alvo, `o primeiro comentário ${primeira}`)).y
+  const topoDaCaixa = (await caixaDe(corpo, 'a caixa de conteúdo')).y
+  const medidas = await rolagemDe(corpo)
+  const depois = await caixaDe(cardLocator(READ_CARD), `o cartão #${READ_CARD.number}`)
+  const noFim = medidas.scrollTop + medidas.clientHeight >= medidas.scrollHeight - 1
+
+  expect(medidas.scrollTop, 'a caixa não rolou').toBeGreaterThan(0)
+  expect(
+    noFim || Math.abs(topoDoAlvo - topoDaCaixa) <= 1,
+    'o comentário não encostou no topo da caixa nem a caixa chegou ao fim',
+  ).toBe(true)
+  expect(Math.abs(depois.y - antes.y), 'o cartão saiu do lugar').toBeLessThanOrEqual(1)
+})
+
+/**
  * O CA-7 provado sem rede, sem sessão e sem cota.
  *
  * `createFixtureGraphQL` **relê e reparseia o arquivo a cada chamada**, e isso é propriedade
@@ -432,6 +492,7 @@ async function rolagemDe(locator: Locator): Promise<Rolagem> {
       clientWidth: caixa.clientWidth,
       scrollHeight: caixa.scrollHeight,
       clientHeight: caixa.clientHeight,
+      scrollTop: caixa.scrollTop,
     }
   })
 }

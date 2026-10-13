@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { JSX, ReactNode } from 'react'
+import type { JSX, MouseEvent, ReactNode } from 'react'
 
 import type { CardComment, CardContent } from '../../shared/board'
 import { Badge } from '../ui/badge'
@@ -63,26 +63,29 @@ export const CardCommentView = memo(function CardCommentView({
       // Vazio quando sem marcador, e não ausente: é o que deixa o teste afirmar "este comentário
       // não tem etiqueta" em vez de só não achar o atributo. Mesma escolha do `data-card-assignees`.
       data-comment-kind={comment.kind ?? ''}
-      className="border-t-2 border-border pt-2"
+      className="pt-1"
     >
-      <header className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px] text-foreground/60">
-        {/* Conta removida devolve `author: null` na API. O rótulo diz isso em vez de mostrar um
-            espaço vazio, que se leria como bug. */}
-        <span className="font-mono">{comment.author ?? 'autor removido'}</span>
-        <span aria-hidden="true">·</span>
-        <time dateTime={comment.createdAt}>{formatarData(comment.createdAt)}</time>
-
-        {/* A mesma pílula das etiquetas de campo do cartão, com as mesmas classes: aberto ou
-            fechado, o cartão continua parecendo um cartão só. */}
+      {/* Faixa própria, e a etiqueta vem primeiro: numa spec de 44 mil caracteres o olho que rola
+          procura o tipo do trecho antes de procurar o autor. A faixa é a fronteira entre
+          comentários, no lugar do filete que havia no `article`. */}
+      <header className="mb-1.5 flex flex-wrap items-center gap-1.5 rounded-base border-2 border-border bg-secondary-background px-2 py-1 text-[11px] text-foreground">
         {comment.kind === null ? null : (
           <Badge
-            variant="neutral"
+            variant="default"
             title={`marcador da esteira: gm:${comment.kind}`}
-            className="rounded-base px-1.5 py-0 text-[10px] font-normal"
+            className="rounded-base px-1.5 py-0 text-[11px] font-heading"
           >
             {comment.kind}
           </Badge>
         )}
+
+        {/* Conta removida devolve `author: null` na API. O rótulo diz isso em vez de mostrar um
+            espaço vazio, que se leria como bug. */}
+        <span className="font-mono font-heading">{comment.author ?? 'autor removido'}</span>
+        <span aria-hidden="true">·</span>
+        <time dateTime={comment.createdAt} className="text-foreground/70">
+          {formatarData(comment.createdAt)}
+        </time>
       </header>
 
       {/* `div` e não `p`: markdown produz blocos (`<p>`, `<table>`, `<pre>`), e bloco dentro de
@@ -97,6 +100,150 @@ export const CardCommentView = memo(function CardCommentView({
     </article>
   )
 })
+
+/** Uma entrada do índice: o que o leitor pode procurar dentro da caixa de conteúdo. */
+export interface ItemDoIndice {
+  /**
+   * O que o item procura. É ele, e não a `chave`, que separa o corpo dos comentários: o `MARCADOR`
+   * aceita `gm:descricao`, e um comentário assim teria a mesma `chave` que o item Descrição.
+   */
+  alvo: 'descricao' | 'comentario'
+  /** 'descricao' para o corpo; a etiqueta crua para comentários marcados; '' para os sem etiqueta. */
+  chave: string
+  /** 'Descrição' | kind | 'comentários'. */
+  rotulo: string
+  /** `null` só na Descrição. */
+  contagem: number | null
+}
+
+/**
+ * Os itens do índice: a descrição, depois um por etiqueta na ordem da **primeira aparição**.
+ *
+ * O rótulo é a etiqueta crua, e não um nome traduzido: `kind` é uma string solta de propósito, e
+ * um mapa para plurais quebraria em silêncio no próximo marcador da esteira. Sem comentário não há
+ * o que indexar, então a lista é vazia — o índice não existe para apontar para uma descrição só.
+ */
+export function indiceDoConteudo(content: CardContent): ItemDoIndice[] {
+  if (content.comments.length === 0) return []
+
+  const itens: ItemDoIndice[] = []
+
+  if (content.body !== '') {
+    itens.push({ alvo: 'descricao', chave: 'descricao', rotulo: 'Descrição', contagem: null })
+  }
+
+  const porChave = new Map<string, ItemDoIndice>()
+
+  for (const { kind } of content.comments) {
+    const chave = kind ?? ''
+    const existente = porChave.get(chave)
+
+    if (existente === undefined) {
+      const item: ItemDoIndice = {
+        alvo: 'comentario',
+        chave,
+        rotulo: kind ?? 'comentários',
+        contagem: 1,
+      }
+      porChave.set(chave, item)
+      itens.push(item)
+    } else {
+      existente.contagem = (existente.contagem ?? 0) + 1
+    }
+  }
+
+  return itens
+}
+
+/** O `scrollTop` que leva o topo do alvo ao topo da caixa; o navegador limita ao intervalo válido. */
+export function deslocamentoAte(
+  scrollTopAtual: number,
+  topoDaCaixa: number,
+  topoDoAlvo: number,
+): number {
+  return scrollTopAtual + (topoDoAlvo - topoDaCaixa)
+}
+
+/**
+ * O primeiro trecho daquele item dentro da caixa.
+ *
+ * A etiqueta é comparada pelo `dataset`, e não interpolada num seletor: o regex que garante que ela
+ * dispensa escape mora no `CardReader`, e se ele afrouxasse o `querySelector` lançaria dentro do
+ * `onClick`.
+ */
+export function alvoNaCaixa(
+  caixa: Pick<ParentNode, 'querySelector' | 'querySelectorAll'>,
+  { alvo, chave }: Pick<ItemDoIndice, 'alvo' | 'chave'>,
+): HTMLElement | null {
+  if (alvo === 'descricao') {
+    return caixa.querySelector<HTMLElement>('[data-testid="card-content-description"]')
+  }
+
+  const comentarios = caixa.querySelectorAll<HTMLElement>('[data-testid="card-comment"]')
+
+  return Array.from(comentarios).find((el) => el.dataset.commentKind === chave) ?? null
+}
+
+/**
+ * Os atalhos para cada trecho do conteúdo, **fora** da caixa que rola: o índice nunca rola para
+ * longe, e saltar de um trecho a outro não obriga a voltar ao topo.
+ *
+ * Rola só a caixa, por conta: `scrollIntoView` rolaria também a coluna e a janela, e o cartão sairia
+ * do lugar. Sem estado nem hook — o componente continua puro no sentido do `CardContentView`.
+ */
+function IndiceDoConteudo({
+  itens,
+  hidden,
+}: {
+  itens: ItemDoIndice[]
+  hidden: boolean
+}): JSX.Element {
+  const irPara = (event: MouseEvent<HTMLButtonElement>, item: ItemDoIndice): void => {
+    const caixa = event.currentTarget
+      .closest('[data-testid="card-content"]')
+      ?.querySelector<HTMLElement>('[data-testid="card-content-body"]')
+    const alvo = caixa ? alvoNaCaixa(caixa, item) : null
+
+    if (!caixa || !alvo) return
+
+    caixa.scrollTop = deslocamentoAte(
+      caixa.scrollTop,
+      caixa.getBoundingClientRect().top,
+      alvo.getBoundingClientRect().top,
+    )
+  }
+
+  return (
+    <nav
+      data-testid="card-content-index"
+      aria-label="Índice do card"
+      hidden={hidden}
+      className="mt-2 flex shrink-0 flex-wrap gap-1.5"
+    >
+      {itens.map((item) => (
+        <Button
+          key={`${item.alvo}:${item.chave}`}
+          type="button"
+          variant="neutral"
+          size="xs"
+          data-testid="card-index-item"
+          data-index-target={item.alvo}
+          data-index-kind={item.chave}
+          data-index-count={item.contagem ?? ''}
+          onClick={(event) => irPara(event, item)}
+        >
+          {item.rotulo}
+          {item.contagem === null ? null : (
+            <>
+              {' '}
+              <span className="font-heading">{item.contagem}</span>
+            </>
+          )}
+        </Button>
+      ))}
+    </nav>
+  )
+}
 
 /** As duas abas do cartão expandido que tem PR (#83). */
 export type AbaDoCartao = 'card' | 'pr'
@@ -148,6 +295,8 @@ export function CardContentView({
   // Card ficaria vazia: o corpo é desenhado como se `open` fosse `true`, ignorando o prop.
   const aberta = abas !== null || open
   const naAbaPr = abas?.ativa === 'pr'
+  // Quem decide se há índice é só o `indiceDoConteudo`: sem comentário ele devolve `[]`.
+  const itensDoIndice = state.kind === 'loaded' ? indiceDoConteudo(state.content) : []
 
   return (
     <section
@@ -216,6 +365,10 @@ export function CardContentView({
         )}
       </div>
 
+      {aberta && itensDoIndice.length > 0 ? (
+        <IndiceDoConteudo itens={itensDoIndice} hidden={naAbaPr} />
+      ) : null}
+
       {/* Teto de altura e rolagem própria: o cartão vive dentro de uma coluna, e sem o teto a spec
           de 44 mil caracteres do card #6 empurraria o cartão seguinte para fora da vista — o kanban
           deixaria de ser um kanban (CA-4). O teto vale no kanban e cai no cartão expandido (#28), onde o
@@ -280,9 +433,20 @@ function Corpo({
   return (
     <div className="space-y-3">
       {content.body === '' ? null : (
-        <div className="text-xs">
+        <div data-testid="card-content-description" className="text-xs">
           <Markdown text={content.body} />
         </div>
+      )}
+
+      {/* Onde o corpo acaba e a conversa começa: sem ele, a descrição e o primeiro comentário são
+          dois blocos de markdown colados. */}
+      {content.comments.length === 0 ? null : (
+        <h3
+          data-testid="card-comments-start"
+          className="border-t-2 border-border pt-2 font-heading text-[11px] tracking-wide uppercase"
+        >
+          Comentários · {content.comments.length}
+        </h3>
       )}
 
       {content.comments.map((comment) => (
