@@ -409,9 +409,19 @@ describe('tipos de entrada', () => {
   const revisao = (state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED') =>
     ({ kind: 'review', id: `r-${state}`, author: AUTOR, at: AT, state, body: 'ok' }) as const
 
-  /** A faixa da entrada desse tipo: a primeira `pr-entry-faixa` depois do `data-kind`. */
-  const faixaDe = (html: string, kind: string): string =>
-    abertura(html.slice(html.indexOf(`data-kind="${kind}"`)), 'pr-entry-faixa')
+  /**
+   * A faixa inteira da entrada desse tipo, da abertura ao `</div>`: o `data-kind` até a próxima
+   * `pr-entry` isola a entrada, e a faixa não tem `div` dentro. Procurar no html todo deixaria um
+   * rótulo trocado de tipo passar.
+   */
+  const faixaDe = (html: string, kind: string): string => {
+    const inicio = html.indexOf(`data-kind="${kind}"`)
+    const fim = html.indexOf('data-testid="pr-entry"', inicio)
+    const entrada = html.slice(inicio, fim === -1 ? undefined : fim)
+    const faixa = entrada.slice(entrada.indexOf('data-testid="pr-entry-faixa"'))
+
+    return faixa.slice(0, faixa.indexOf('</div>'))
+  }
 
   it('cada tipo leva a faixa e o rótulo do seu tratamento', () => {
     const html = carregado({
@@ -440,12 +450,31 @@ describe('tipos de entrada', () => {
     }
 
     const comentario = faixaDe(html, 'comment')
+    const revisaoFaixa = faixaDe(html, 'review')
+    const linha = faixaDe(html, 'thread')
+
     expect(comentario).not.toContain('bg-main')
     expect(comentario).not.toContain('bg-background')
-    expect(faixaDe(html, 'review')).toContain('bg-main')
-    expect(faixaDe(html, 'thread')).toContain('bg-background')
-    for (const rotulo of ['Comentário', 'Revisão', 'Linha']) expect(html).toContain(`>${rotulo}<`)
-    expect(html).toContain('pr-thread-loc')
+    expect(comentario).toContain('text-foreground/60')
+    expect(revisaoFaixa).toContain('bg-main text-main-foreground')
+    expect(revisaoFaixa).not.toContain('text-foreground/60')
+    expect(linha).toContain('bg-background text-foreground/60')
+
+    for (const [faixa, rotulo] of [
+      [comentario, 'Comentário'],
+      [revisaoFaixa, 'Revisão'],
+      [linha, 'Linha'],
+    ] as const) {
+      expect(faixa).toContain(`>${rotulo}<`)
+      for (const outro of ['Comentário', 'Revisão', 'Linha'].filter((r) => r !== rotulo)) {
+        expect(faixa).not.toContain(`>${outro}<`)
+      }
+    }
+
+    expect(linha).toContain('data-testid="pr-thread-loc"')
+    expect(linha).toContain('src/a.ts:3')
+    expect(comentario).not.toContain('pr-thread-loc')
+    expect(revisaoFaixa).not.toContain('pr-thread-loc')
   })
 
   it.each([
