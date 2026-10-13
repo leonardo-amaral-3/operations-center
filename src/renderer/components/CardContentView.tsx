@@ -103,6 +103,11 @@ export const CardCommentView = memo(function CardCommentView({
 
 /** Uma entrada do índice: o que o leitor pode procurar dentro da caixa de conteúdo. */
 export interface ItemDoIndice {
+  /**
+   * O que o item procura. É ele, e não a `chave`, que separa o corpo dos comentários: o `MARCADOR`
+   * aceita `gm:descricao`, e um comentário assim teria a mesma `chave` que o item Descrição.
+   */
+  alvo: 'descricao' | 'comentario'
   /** 'descricao' para o corpo; a etiqueta crua para comentários marcados; '' para os sem etiqueta. */
   chave: string
   /** 'Descrição' | kind | 'comentários'. */
@@ -123,7 +128,9 @@ export function indiceDoConteudo(content: CardContent): ItemDoIndice[] {
 
   const itens: ItemDoIndice[] = []
 
-  if (content.body !== '') itens.push({ chave: 'descricao', rotulo: 'Descrição', contagem: null })
+  if (content.body !== '') {
+    itens.push({ alvo: 'descricao', chave: 'descricao', rotulo: 'Descrição', contagem: null })
+  }
 
   const porChave = new Map<string, ItemDoIndice>()
 
@@ -132,7 +139,12 @@ export function indiceDoConteudo(content: CardContent): ItemDoIndice[] {
     const existente = porChave.get(chave)
 
     if (existente === undefined) {
-      const item = { chave, rotulo: kind ?? 'comentários', contagem: 1 }
+      const item: ItemDoIndice = {
+        alvo: 'comentario',
+        chave,
+        rotulo: kind ?? 'comentários',
+        contagem: 1,
+      }
       porChave.set(chave, item)
       itens.push(item)
     } else {
@@ -153,8 +165,8 @@ export function deslocamentoAte(
 }
 
 /** O primeiro trecho daquela chave dentro da caixa. A etiqueta casa `[a-z0-9-]`: sem escape. */
-function seletorDoAlvo(chave: string): string {
-  return chave === 'descricao'
+export function seletorDoAlvo({ alvo, chave }: Pick<ItemDoIndice, 'alvo' | 'chave'>): string {
+  return alvo === 'descricao'
     ? '[data-testid="card-content-description"]'
     : `[data-testid="card-comment"][data-comment-kind="${chave}"]`
 }
@@ -173,11 +185,11 @@ function IndiceDoConteudo({
   itens: ItemDoIndice[]
   hidden: boolean
 }): JSX.Element {
-  const irPara = (event: MouseEvent<HTMLButtonElement>, chave: string): void => {
+  const irPara = (event: MouseEvent<HTMLButtonElement>, item: ItemDoIndice): void => {
     const caixa = event.currentTarget
       .closest('[data-testid="card-content"]')
       ?.querySelector<HTMLElement>('[data-testid="card-content-body"]')
-    const alvo = caixa?.querySelector<HTMLElement>(seletorDoAlvo(chave))
+    const alvo = caixa?.querySelector<HTMLElement>(seletorDoAlvo(item))
 
     if (!caixa || !alvo) return
 
@@ -195,22 +207,23 @@ function IndiceDoConteudo({
       hidden={hidden}
       className="mt-2 flex shrink-0 flex-wrap gap-1.5"
     >
-      {itens.map(({ chave, rotulo, contagem }) => (
+      {itens.map((item) => (
         <Button
-          key={chave}
+          key={`${item.alvo}:${item.chave}`}
           type="button"
           variant="neutral"
           size="xs"
           data-testid="card-index-item"
-          data-index-kind={chave}
-          data-index-count={contagem ?? ''}
-          onClick={(event) => irPara(event, chave)}
+          data-index-target={item.alvo}
+          data-index-kind={item.chave}
+          data-index-count={item.contagem ?? ''}
+          onClick={(event) => irPara(event, item)}
         >
-          {rotulo}
-          {contagem === null ? null : (
+          {item.rotulo}
+          {item.contagem === null ? null : (
             <>
               {' '}
-              <span className="font-heading">{contagem}</span>
+              <span className="font-heading">{item.contagem}</span>
             </>
           )}
         </Button>

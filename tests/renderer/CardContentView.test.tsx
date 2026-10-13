@@ -8,6 +8,7 @@ import {
   CardContentView,
   deslocamentoAte,
   indiceDoConteudo,
+  seletorDoAlvo,
 } from '../../src/renderer/components/CardContentView'
 import type { AbasDoCartao, ContentState } from '../../src/renderer/components/CardContentView'
 
@@ -417,11 +418,26 @@ describe('#92 CA-1/CA-2/CA-4 — o índice do conteúdo', () => {
 
   it('lista a descrição e as etiquetas na ordem da primeira aparição', () => {
     expect(indiceDoConteudo(marcados())).toEqual([
-      { chave: 'descricao', rotulo: 'Descrição', contagem: null },
-      { chave: 'spec', rotulo: 'spec', contagem: 1 },
-      { chave: '', rotulo: 'comentários', contagem: 2 },
-      { chave: 'decisao', rotulo: 'decisao', contagem: 2 },
+      { alvo: 'descricao', chave: 'descricao', rotulo: 'Descrição', contagem: null },
+      { alvo: 'comentario', chave: 'spec', rotulo: 'spec', contagem: 1 },
+      { alvo: 'comentario', chave: '', rotulo: 'comentários', contagem: 2 },
+      { alvo: 'comentario', chave: 'decisao', rotulo: 'decisao', contagem: 2 },
     ])
+  })
+
+  it('um comentário `gm:descricao` não se confunde com a Descrição', () => {
+    const content = conteudo({ comments: [comentario({ id: 'a', kind: 'descricao' })] })
+    const [corpo, comentarioDescricao] = indiceDoConteudo(content)
+
+    expect(corpo).toMatchObject({ alvo: 'descricao', chave: 'descricao', contagem: null })
+    expect(comentarioDescricao).toMatchObject({ alvo: 'comentario', chave: 'descricao', contagem: 1 })
+    expect(seletorDoAlvo(corpo!)).toBe('[data-testid="card-content-description"]')
+    expect(seletorDoAlvo(comentarioDescricao!)).toContain('[data-testid="card-comment"]')
+
+    const html = render({ kind: 'loaded', content })
+
+    expect(html).toContain('data-index-target="descricao"')
+    expect(html).toContain('data-index-target="comentario"')
   })
 
   it('corpo vazio não tem item de Descrição', () => {
