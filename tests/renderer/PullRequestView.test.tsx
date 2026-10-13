@@ -324,3 +324,181 @@ describe('arquivos', () => {
     expect(carregado({ arquivos: cem, totalDeArquivos: 100 })).not.toContain('Mostrando')
   })
 })
+
+/** A tag de abertura do elemento com esse `data-testid` — onde moram as classes que ele carrega. */
+function abertura(html: string, testid: string): string {
+  const achou = new RegExp(`<[^>]*data-testid="${testid}"[^>]*>`).exec(html)
+  if (achou === null) throw new Error(`sem ${testid} no html`)
+
+  return achou[0]
+}
+
+/**
+ * As classes de cor (fundo e tinta) de uma abertura de tag. Neutro se prova pelo par do `Badge`
+ * neutro, não pela ausência de uma lista de cores: um `bg-warning` novo passaria por essa lista.
+ */
+function cores(tag: string): string[] {
+  const classes = /class="([^"]*)"/.exec(tag)?.[1]?.split(' ') ?? []
+  const cor =
+    /^(bg|text)-(main|secondary-background|background|foreground|attention|danger|warning|question)/
+
+  return classes.filter((c) => cor.test(c)).sort()
+}
+
+/** O par do `Badge` neutro, e o mesmo com a tinta rebaixada. */
+const NEUTRO = ['bg-secondary-background', 'text-foreground']
+const REBAIXADO = ['bg-secondary-background', 'text-foreground/60']
+
+describe('blocos', () => {
+  it('cada seção é uma Card; só o cabeçalho tem a face branca', () => {
+    const html = carregado()
+
+    for (const id of ['pr-header', 'pr-checks', 'pr-body', 'pr-timeline', 'pr-files']) {
+      expect(abertura(html, id)).toContain('data-slot="card"')
+    }
+    expect(abertura(html, 'pr-header')).toContain('bg-secondary-background')
+    for (const id of ['pr-checks', 'pr-body', 'pr-timeline', 'pr-files']) {
+      expect(abertura(html, id)).not.toContain('bg-secondary-background')
+    }
+  })
+
+  it('o merge mora no cabeçalho e o conflito é vermelho', () => {
+    const html = carregado({ mergeable: 'CONFLICTING' })
+    const cabecalho = html.slice(
+      html.indexOf('data-testid="pr-header"'),
+      html.indexOf('data-testid="pr-checks"'),
+    )
+
+    expect(cabecalho).toContain('data-testid="pr-merge"')
+    expect(abertura(html, 'pr-merge')).toContain('bg-danger')
+  })
+
+  it('mergeado leva o violeta da esteira; aberto, o selo neutro', () => {
+    const mergeado = carregado({ state: 'MERGED', mergedAt: '2026-10-12T21:40:00Z' })
+
+    expect(abertura(mergeado, 'pr-state')).toContain('bg-main')
+    expect(mergeado).not.toContain('data-testid="pr-merge"')
+    expect(abertura(carregado(), 'pr-state')).not.toContain('bg-main')
+  })
+})
+
+describe('selo do CI', () => {
+  it.each([
+    ['SUCCESS', 'passou', '✓', 'CI passou', ['bg-attention', 'text-attention-foreground']],
+    ['FAILURE', 'falhou', '✕', 'CI falhou', ['bg-danger', 'text-danger-foreground']],
+    ['ERROR', 'falhou', '✕', 'CI com erro', ['bg-danger', 'text-danger-foreground']],
+    ['PENDING', 'pendente', '◷', 'CI em andamento', NEUTRO],
+    ['EXPECTED', 'pendente', '◷', 'CI esperado', NEUTRO],
+    [null, 'sem-checks', '–', 'Sem checks', REBAIXADO],
+  ] as const)('%s → %s', (state, lado, glifo, texto, cor) => {
+    const html = carregado({ checks: { state, checks: [], truncated: false } })
+    const selo = abertura(html, 'pr-ci-status')
+
+    expect(selo).toContain(`data-state="${lado}"`)
+    expect(cores(selo)).toEqual(cor)
+    expect(html).toContain(`>${glifo}</span>${texto}`)
+  })
+
+  it('glifo por check', () => {
+    const html = carregado({
+      checks: {
+        state: 'FAILURE',
+        truncated: false,
+        checks: ['SUCCESS', 'FAILURE', 'IN_PROGRESS', 'SKIPPED'].map((result) => ({
+          name: `c-${result}`,
+          result,
+          url: null,
+        })),
+      },
+    })
+    const glifos = [...html.matchAll(/class="w-3 shrink-0"[^>]*>([^<]*)</g)].map((m) => m[1])
+
+    expect(glifos).toEqual(['✓', '✕', '◷', '–'])
+  })
+})
+
+describe('tipos de entrada', () => {
+  const AT = '2026-10-01T10:00:00Z'
+  const revisao = (state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED') =>
+    ({ kind: 'review', id: `r-${state}`, author: AUTOR, at: AT, state, body: 'ok' }) as const
+
+  /**
+   * A faixa inteira da entrada desse tipo, da abertura ao `</div>`: o `data-kind` até a próxima
+   * `pr-entry` isola a entrada, e a faixa não tem `div` dentro. Procurar no html todo deixaria um
+   * rótulo trocado de tipo passar.
+   */
+  const faixaDe = (html: string, kind: string): string => {
+    const inicio = html.indexOf(`data-kind="${kind}"`)
+    const fim = html.indexOf('data-testid="pr-entry"', inicio)
+    const entrada = html.slice(inicio, fim === -1 ? undefined : fim)
+    const faixa = entrada.slice(entrada.indexOf('data-testid="pr-entry-faixa"'))
+
+    return faixa.slice(0, faixa.indexOf('</div>'))
+  }
+
+  it('cada tipo leva a faixa e o rótulo do seu tratamento', () => {
+    const html = carregado({
+      timeline: [
+        { kind: 'comment', id: 'c1', author: AUTOR, at: AT, body: 'oi' },
+        revisao('APPROVED'),
+        {
+          kind: 'thread',
+          id: 't1',
+          at: AT,
+          caminho: 'src/a.ts',
+          line: 3,
+          resolved: false,
+          outdated: false,
+          comments: [],
+        },
+      ],
+    })
+
+    const entradas = [...html.matchAll(/<[^>]*data-testid="pr-entry"[^>]*>/g)].map((m) => m[0])
+
+    expect(entradas).toHaveLength(3)
+    for (const entrada of entradas) {
+      expect(entrada).toContain('data-slot="card"')
+      expect(entrada).toContain('bg-secondary-background')
+    }
+
+    const comentario = faixaDe(html, 'comment')
+    const revisaoFaixa = faixaDe(html, 'review')
+    const linha = faixaDe(html, 'thread')
+
+    expect(comentario).not.toContain('bg-main')
+    expect(comentario).not.toContain('bg-background')
+    expect(comentario).toContain('text-foreground/60')
+    expect(revisaoFaixa).toContain('bg-main text-main-foreground')
+    expect(revisaoFaixa).not.toContain('text-foreground/60')
+    expect(linha).toContain('bg-background text-foreground/60')
+
+    for (const [faixa, rotulo] of [
+      [comentario, 'Comentário'],
+      [revisaoFaixa, 'Revisão'],
+      [linha, 'Linha'],
+    ] as const) {
+      expect(faixa).toContain(`>${rotulo}<`)
+      for (const outro of ['Comentário', 'Revisão', 'Linha'].filter((r) => r !== rotulo)) {
+        expect(faixa).not.toContain(`>${outro}<`)
+      }
+    }
+
+    expect(linha).toContain('data-testid="pr-thread-loc"')
+    expect(linha).toContain('src/a.ts:3')
+    expect(comentario).not.toContain('pr-thread-loc')
+    expect(revisaoFaixa).not.toContain('pr-thread-loc')
+  })
+
+  it.each([
+    ['APPROVED', ['bg-attention', 'text-attention-foreground']],
+    ['CHANGES_REQUESTED', ['bg-danger', 'text-danger-foreground']],
+    ['COMMENTED', NEUTRO],
+    ['DISMISSED', REBAIXADO],
+  ] as const)('veredito %s', (state, cor) => {
+    const selo = abertura(carregado({ timeline: [revisao(state)] }), 'pr-review-veredito')
+
+    expect(selo).toContain(`data-state="${state}"`)
+    expect(cores(selo)).toEqual(cor)
+  })
+})

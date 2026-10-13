@@ -12,6 +12,7 @@ import type {
 } from '../../shared/board'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
+import { Card } from '../ui/card'
 import { cn } from '../ui/cn'
 import { formatarData } from './CardContentView'
 import { DiffView } from './DiffView'
@@ -49,12 +50,60 @@ const ESTADO_DO_CI: Record<NonNullable<PrChecks['state']>, string> = {
   EXPECTED: 'CI esperado',
 }
 
-const ESTADO_DA_REVISAO = {
-  APPROVED: 'aprovou',
-  CHANGES_REQUESTED: 'pediu mudanças',
-  COMMENTED: 'comentou',
-  DISMISSED: 'descartada',
+type LadoDoCi = 'passou' | 'falhou' | 'pendente' | 'sem-checks'
+
+/** Glifo e cor do selo do CI. Pendente é neutro: âmbar pede ação, e CI rodando não pede. */
+const CI: Record<LadoDoCi, { glifo: string; className: string }> = {
+  passou: { glifo: '✓', className: 'bg-attention text-attention-foreground' },
+  falhou: { glifo: '✕', className: 'bg-danger text-danger-foreground' },
+  pendente: { glifo: '◷', className: '' },
+  'sem-checks': { glifo: '–', className: 'text-foreground/60' },
+}
+
+function ladoDoCi(state: PrChecks['state']): LadoDoCi {
+  if (state === null) return 'sem-checks'
+  if (state === 'SUCCESS') return 'passou'
+
+  return state === 'FAILURE' || state === 'ERROR' ? 'falhou' : 'pendente'
+}
+
+/** O glifo de um check avulso: o `result` vem cru do GitHub, e o que não se conhece ainda roda. */
+function marcaDoResultado(result: string): string {
+  if (result === 'SUCCESS') return '✓'
+  if (
+    ['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'STARTUP_FAILURE', 'ACTION_REQUIRED'].includes(
+      result,
+    )
+  ) {
+    return '✕'
+  }
+
+  return ['NEUTRAL', 'SKIPPED', 'STALE'].includes(result) ? '–' : '◷'
+}
+
+/** O veredito da revisão: verde = bom, vermelho = quebrou, o resto neutro. */
+const VEREDITO = {
+  APPROVED: { texto: 'aprovou', glifo: '✓', className: 'bg-attention text-attention-foreground' },
+  CHANGES_REQUESTED: {
+    texto: 'pediu mudanças',
+    glifo: '✕',
+    className: 'bg-danger text-danger-foreground',
+  },
+  COMMENTED: { texto: 'comentou', glifo: undefined, className: '' },
+  DISMISSED: { texto: 'descartada', glifo: undefined, className: 'text-foreground/60' },
 } as const
+
+/**
+ * Faixa de cada tipo de entrada. A revisão é a esteira (violeta); o autor dela fica fora da faixa
+ * porque a tinta rebaixada `/60` sobre `--main` não é par medido.
+ */
+const FAIXA = {
+  comment: 'text-foreground/60',
+  review: 'bg-main text-main-foreground',
+  thread: 'bg-background text-foreground/60',
+} as const
+
+const ROTULO = { comment: 'Comentário', review: 'Revisão', thread: 'Linha' } as const
 
 /** Link que sai para o navegador: o `setWindowOpenHandler` do main cuida do `_blank`. */
 function Externo({ href, children }: { href: string; children: string }): JSX.Element {
@@ -68,6 +117,34 @@ function Externo({ href, children }: { href: string; children: string }): JSX.El
 function Etiqueta({ children }: { children: string }): JSX.Element {
   return (
     <Badge variant="neutral" className="rounded-base px-1.5 py-0 text-[10px] font-normal">
+      {children}
+    </Badge>
+  )
+}
+
+/**
+ * Selo com glifo e cor. `variant="neutral"` sempre, como o `StateBadge`: a cor vem do `className`,
+ * nunca do `bg-main` da variante default (que só o selo de PR mergeado usa, sem passar por aqui).
+ */
+function Selo({
+  className,
+  glifo,
+  children,
+  ...data
+}: {
+  className?: string
+  glifo?: string
+  children: string
+  'data-testid'?: string
+  'data-state'?: string
+}): JSX.Element {
+  return (
+    <Badge
+      variant="neutral"
+      className={cn('rounded-base px-1.5 py-0 text-[10px] font-normal', className)}
+      {...data}
+    >
+      {glifo === undefined ? null : <span aria-hidden="true">{glifo}</span>}
       {children}
     </Badge>
   )
@@ -89,6 +166,44 @@ const MERGEAVEL: Record<PullRequestData['mergeable'], string> = {
   UNKNOWN: 'O GitHub ainda está calculando — recarregue',
 }
 
+/** Mergeado é a esteira (violeta): exatamente o `Badge` default, sem `variant` nem cor à mão. */
+function SeloDeEstado({ pr }: { pr: PullRequestData }): JSX.Element {
+  if (pr.state === 'MERGED') {
+    return (
+      <Badge data-testid="pr-state" className="rounded-base px-1.5 py-0 text-[10px] font-normal">
+        {estadoDoPr(pr)}
+      </Badge>
+    )
+  }
+
+  return <Selo data-testid="pr-state">{estadoDoPr(pr)}</Selo>
+}
+
+function SeloDeMerge({ mergeable }: { mergeable: PullRequestData['mergeable'] }): JSX.Element {
+  if (mergeable === 'CONFLICTING') {
+    return (
+      <Selo data-testid="pr-merge" glifo="✕" className="bg-danger text-danger-foreground">
+        {MERGEAVEL[mergeable]}
+      </Selo>
+    )
+  }
+
+  // O texto do `UNKNOWN` é uma frase (~214px): o `Badge` é `whitespace-nowrap shrink-0`, e num
+  // cartão estreito ele vazaria a coluna do título em vez de quebrar a linha.
+  return (
+    <Selo
+      data-testid="pr-merge"
+      className={
+        mergeable === 'UNKNOWN'
+          ? 'shrink text-left whitespace-normal text-foreground/60'
+          : undefined
+      }
+    >
+      {MERGEAVEL[mergeable]}
+    </Selo>
+  )
+}
+
 function Autor({ author }: { author: PrAuthor }): JSX.Element {
   return (
     <>
@@ -99,28 +214,28 @@ function Autor({ author }: { author: PrAuthor }): JSX.Element {
   )
 }
 
-function Cabecalho({
-  autor,
-  at,
-  children,
-}: {
-  autor: PrAuthor
-  at: string
-  children?: JSX.Element | null
-}): JSX.Element {
+/** Autor · data, em linha: a faixa do comentário e o `Cabecalho` da revisão usam o mesmo trecho. */
+function AutorEData({ autor, at }: { autor: PrAuthor; at: string }): JSX.Element {
   return (
-    <header className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px] text-foreground/60">
+    <>
       <Autor author={autor} />
       <span aria-hidden="true">·</span>
       <time dateTime={at}>{formatarData(at)}</time>
-      {children}
+    </>
+  )
+}
+
+function Cabecalho({ autor, at }: { autor: PrAuthor; at: string }): JSX.Element {
+  return (
+    <header className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px] text-foreground/60">
+      <AutorEData autor={autor} at={at} />
     </header>
   )
 }
 
 function ComentarioDoThread({ comment }: { comment: PrThreadComment }): JSX.Element {
   return (
-    <div className="mt-1 border-l-2 border-border pl-2">
+    <div className="mt-1 border-l-2 border-border pl-2 first:mt-0">
       <Cabecalho autor={comment.author} at={comment.createdAt} />
       <div className="text-xs">
         <Markdown text={comment.body} />
@@ -130,40 +245,77 @@ function ComentarioDoThread({ comment }: { comment: PrThreadComment }): JSX.Elem
 }
 
 const Entrada = memo(function Entrada({ entry }: { entry: PrTimelineEntry }): JSX.Element {
+  let marca: JSX.Element
+  let corpo: JSX.Element
+
   if (entry.kind === 'thread') {
-    return (
-      <article data-testid="pr-entry" data-kind="thread" className="border-t-2 border-border pt-2">
-        <p className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px] text-foreground/60">
-          <span data-testid="pr-thread-loc" className="font-mono">
-            {entry.line === null ? entry.caminho : `${entry.caminho}:${entry.line}`}
-          </span>
-          {entry.resolved ? (
-            <span data-testid="pr-thread-resolved">
-              <Etiqueta>Resolvido</Etiqueta>
-            </span>
-          ) : null}
-          {entry.outdated ? <Etiqueta>Desatualizado</Etiqueta> : null}
-        </p>
+    marca = (
+      <>
+        <span data-testid="pr-thread-loc" className="font-mono">
+          {entry.line === null ? entry.caminho : `${entry.caminho}:${entry.line}`}
+        </span>
+        {entry.resolved ? (
+          <Selo data-testid="pr-thread-resolved" glifo="✓">
+            Resolvido
+          </Selo>
+        ) : null}
+        {entry.outdated ? <Selo>Desatualizado</Selo> : null}
+      </>
+    )
+    corpo = (
+      <>
         {entry.comments.map((comment) => (
           <ComentarioDoThread key={comment.id} comment={comment} />
         ))}
-      </article>
+      </>
     )
-  }
+  } else if (entry.kind === 'review') {
+    const veredito = VEREDITO[entry.state]
 
-  return (
-    <article
-      data-testid="pr-entry"
-      data-kind={entry.kind}
-      className="border-t-2 border-border pt-2"
-    >
-      <Cabecalho autor={entry.author} at={entry.at}>
-        {entry.kind === 'review' ? <Etiqueta>{ESTADO_DA_REVISAO[entry.state]}</Etiqueta> : null}
-      </Cabecalho>
+    marca = (
+      <Selo
+        data-testid="pr-review-veredito"
+        data-state={entry.state}
+        glifo={veredito.glifo}
+        className={veredito.className}
+      >
+        {veredito.texto}
+      </Selo>
+    )
+    corpo = (
+      <>
+        <Cabecalho autor={entry.author} at={entry.at} />
+        <div className="text-xs">
+          <Markdown text={entry.body} />
+        </div>
+      </>
+    )
+  } else {
+    marca = <AutorEData autor={entry.author} at={entry.at} />
+    corpo = (
       <div className="text-xs">
         <Markdown text={entry.body} />
       </div>
-    </article>
+    )
+  }
+
+  // `className` na `Card`, nunca no filho: com `asChild` o `Slot` não faz `twMerge` (ver `ui/card.tsx`).
+  return (
+    <Card asChild className="bg-secondary-background">
+      <article data-testid="pr-entry" data-kind={entry.kind}>
+        <div
+          data-testid="pr-entry-faixa"
+          className={cn(
+            'flex flex-wrap items-center gap-1.5 border-b-2 border-border px-2 py-1 text-[10px]',
+            FAIXA[entry.kind],
+          )}
+        >
+          <span className="font-heading tracking-wide uppercase">{ROTULO[entry.kind]}</span>
+          {marca}
+        </div>
+        <div className="px-2 py-1.5">{corpo}</div>
+      </article>
+    </Card>
   )
 })
 
@@ -194,7 +346,7 @@ function Arquivo({
   )
 
   return (
-    <li className="border-t-2 border-border py-1">
+    <li className="border-t-2 border-border py-1 first:border-t-0">
       {/* Sem patch (binário ou grande demais) o arquivo não tem o que abrir (CA-5): a linha não é
           botão, não tem `aria-expanded` nem ▸, e o que fica é o link. */}
       {arquivo.diff === null ? (
@@ -227,10 +379,10 @@ function Arquivo({
       ) : null}
 
       {aberto && arquivo.diff !== null ? (
-        <div className="mt-1 ml-4 font-mono text-[10px]">
+        <div className="mt-1 ml-4 overflow-hidden rounded-base border-2 border-border bg-secondary-background font-mono text-[10px]">
           <DiffView diff={arquivo.diff} />
           {arquivo.diff.truncated > 0 && arquivo.url !== null ? (
-            <p>
+            <p className="px-1">
               <Externo href={arquivo.url}>Ver no GitHub</Externo>
             </p>
           ) : null}
@@ -240,20 +392,46 @@ function Arquivo({
   )
 }
 
-function Secao({
+/**
+ * Um bloco da aba: `Card` com faixa de título e um slot de resumo à direita. A face é a default da
+ * `Card` (`bg-background`) — quem separa o bloco do vizinho é a borda e a sombra, não um `bg-*`.
+ */
+function Bloco({
   id,
   titulo,
+  resumo,
   children,
 }: {
   id: string
   titulo: string
+  resumo?: ReactNode
   children: ReactNode
 }): JSX.Element {
   return (
-    <section data-testid={id} className="space-y-1">
-      <h3 className="text-[11px] tracking-wide text-foreground/70 uppercase">{titulo}</h3>
-      {children}
-    </section>
+    <Card asChild>
+      <section data-testid={id}>
+        <header className="flex items-center justify-between gap-2 border-b-2 border-border px-2 py-1">
+          <h3 className="text-[11px] font-heading tracking-wide uppercase">{titulo}</h3>
+          {resumo}
+        </header>
+        <div className="space-y-1 p-2">{children}</div>
+      </section>
+    </Card>
+  )
+}
+
+function SeloDoCi({ state }: { state: PrChecks['state'] }): JSX.Element {
+  const lado = ladoDoCi(state)
+
+  return (
+    <Selo
+      data-testid="pr-ci-status"
+      data-state={lado}
+      glifo={CI[lado].glifo}
+      className={CI[lado].className}
+    >
+      {state === null ? 'Sem checks' : ESTADO_DO_CI[state]}
+    </Selo>
   )
 }
 
@@ -266,24 +444,16 @@ function Carregado({
 }): JSX.Element {
   return (
     <div className="space-y-3">
-      {pr.state === 'OPEN' ? (
-        <p data-testid="pr-merge" className="text-xs">
-          {MERGEAVEL[pr.mergeable]}
-        </p>
-      ) : null}
-
-      <Secao id="pr-checks" titulo="CI">
-        {pr.checks.state === null ? (
-          <p className="text-xs">Sem checks</p>
-        ) : (
-          <p className="text-xs">{ESTADO_DO_CI[pr.checks.state]}</p>
-        )}
+      <Bloco id="pr-checks" titulo="CI/CD" resumo={<SeloDoCi state={pr.checks.state} />}>
         {pr.checks.checks.length === 0 && pr.checks.state !== null ? (
           <p className="text-xs">Sem checks</p>
         ) : null}
         <ul className="text-xs">
           {pr.checks.checks.map((check, i) => (
             <li key={`${check.name}-${i}`} className="flex gap-1.5">
+              <span aria-hidden="true" className="w-3 shrink-0">
+                {marcaDoResultado(check.result)}
+              </span>
               <span className="min-w-0 truncate">
                 {check.url === null ? check.name : <Externo href={check.url}>{check.name}</Externo>}
               </span>
@@ -296,9 +466,9 @@ function Carregado({
             <Externo href={pr.url}>Há mais checks no GitHub</Externo>
           </p>
         ) : null}
-      </Secao>
+      </Bloco>
 
-      <Secao id="pr-body" titulo="Descrição">
+      <Bloco id="pr-body" titulo="Descrição">
         {pr.body.trim() === '' ? (
           <p className="text-xs text-foreground/60">Sem descrição</p>
         ) : (
@@ -306,9 +476,13 @@ function Carregado({
             <Markdown text={pr.body} />
           </div>
         )}
-      </Secao>
+      </Bloco>
 
-      <Secao id="pr-timeline" titulo="Conversa">
+      <Bloco
+        id="pr-timeline"
+        titulo="Conversa"
+        resumo={<Etiqueta>{`${pr.timeline.length}${pr.timelineTruncated ? '+' : ''}`}</Etiqueta>}
+      >
         {pr.timeline.length === 0 ? (
           <p className="text-xs text-foreground/60">Sem comentários</p>
         ) : (
@@ -319,9 +493,13 @@ function Carregado({
             <Externo href={pr.url}>Há mais comentários no GitHub</Externo>
           </p>
         ) : null}
-      </Secao>
+      </Bloco>
 
-      <Secao id="pr-files" titulo="Arquivos">
+      <Bloco
+        id="pr-files"
+        titulo="Arquivos"
+        resumo={<Etiqueta>{`${pr.totalDeArquivos} arquivos`}</Etiqueta>}
+      >
         <ul>
           {pr.arquivos.map((arquivo) => (
             <Arquivo
@@ -337,7 +515,7 @@ function Carregado({
             {`Mostrando ${pr.arquivos.length} de ${pr.totalDeArquivos} arquivos`}
           </p>
         ) : null}
-      </Secao>
+      </Bloco>
     </div>
   )
 }
@@ -357,33 +535,43 @@ export function PullRequestView({
   const pr = state.kind === 'loaded' ? state.pr : null
 
   return (
-    <section data-testid="pr-view" className="space-y-3">
-      <header data-testid="pr-header" className="flex items-start justify-between gap-2">
-        <div className="min-w-0 space-y-0.5">
-          {pr === null ? null : (
-            <>
-              <h2 className="text-xs font-semibold break-words">{`#${pr.number} ${pr.title}`}</h2>
-              <p className="flex flex-wrap items-center gap-1.5 text-[10px] text-foreground/60">
-                <Etiqueta>{estadoDoPr(pr)}</Etiqueta>
-                <span className="font-mono">{`${pr.baseRef} ← ${pr.headRef}`}</span>
-                <Externo href={pr.url}>Abrir no GitHub</Externo>
-              </p>
-            </>
-          )}
-        </div>
-        <Button
-          type="button"
-          data-testid="pr-reload"
-          aria-label="Recarregar o PR"
-          title="Recarregar o PR"
-          variant="neutral"
-          size="xs"
-          disabled={pending}
-          onClick={onReload}
-        >
-          <span aria-hidden="true">⟳</span>
-        </Button>
-      </header>
+    // O `pr-1 pb-1` é a folga da sombra dura (4px) dentro do `overflow-y-auto` do `card-pr-body`,
+    // que força `overflow-x: auto` e cortaria a sombra das `Card` de largura cheia.
+    <section data-testid="pr-view" className="space-y-3 pr-1 pb-1">
+      {/* Toda classe na `Card`, nenhuma no filho: com `asChild` o `Slot` empilha os dois
+          `className` sem `twMerge`, e o `flex-col` da casca empilharia o título e o ⟳. */}
+      <Card
+        asChild
+        className="flex-row items-start justify-between gap-2 bg-secondary-background p-2.5"
+      >
+        <header data-testid="pr-header">
+          <div className="min-w-0 space-y-0.5">
+            {pr === null ? null : (
+              <>
+                <h2 className="text-xs font-heading break-words">{`#${pr.number} ${pr.title}`}</h2>
+                <p className="flex flex-wrap items-center gap-1.5 text-[10px] text-foreground/60">
+                  <SeloDeEstado pr={pr} />
+                  {pr.state === 'OPEN' ? <SeloDeMerge mergeable={pr.mergeable} /> : null}
+                  <span className="font-mono">{`${pr.baseRef} ← ${pr.headRef}`}</span>
+                  <Externo href={pr.url}>Abrir no GitHub</Externo>
+                </p>
+              </>
+            )}
+          </div>
+          <Button
+            type="button"
+            data-testid="pr-reload"
+            aria-label="Recarregar o PR"
+            title="Recarregar o PR"
+            variant="neutral"
+            size="xs"
+            disabled={pending}
+            onClick={onReload}
+          >
+            <span aria-hidden="true">⟳</span>
+          </Button>
+        </header>
+      </Card>
 
       {state.kind === 'loading' ? <p className="text-xs text-foreground/60">Lendo o PR…</p> : null}
       {state.kind === 'failed' ? (
