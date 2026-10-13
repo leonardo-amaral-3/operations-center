@@ -279,6 +279,10 @@ describe('arquivos', () => {
 
     expect(aberto).not.toContain('diff-line')
     expect(aberto).toContain('Ver no GitHub')
+    // Nem aberto ele se diz aberto: não há patch, então não há botão, `aria-expanded` nem ▾ (CA-5).
+    expect(aberto).not.toContain('aria-expanded')
+    expect(aberto).not.toContain('▾')
+    expect(aberto).not.toMatch(/<button[^>]*data-testid="pr-file"/)
 
     const semUrl = carregado({ arquivos: [arquivo({ diff: null, url: null })], totalDeArquivos: 1 })
 

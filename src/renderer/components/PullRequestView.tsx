@@ -182,27 +182,44 @@ function Arquivo({
       ? `${arquivo.caminhoAnterior} → ${arquivo.caminho}`
       : arquivo.caminho
 
+  const linha = (
+    <>
+      <span aria-hidden="true">{arquivo.diff === null ? '·' : aberto ? '▾' : '▸'}</span>
+      <span className="min-w-0 flex-1 truncate font-mono" title={nome}>
+        {nome}
+      </span>
+      <span className="shrink-0 text-foreground/60">{STATUS_DO_ARQUIVO[arquivo.status]}</span>
+      <span className="shrink-0 font-mono text-foreground/60">{totais}</span>
+    </>
+  )
+
   return (
     <li className="border-t-2 border-border py-1">
-      <button
-        type="button"
-        data-testid="pr-file"
-        data-caminho={arquivo.caminho}
-        aria-expanded={aberto}
-        onClick={() => {
-          onArquivo(arquivo.caminho)
-        }}
-        className="flex w-full cursor-pointer items-baseline gap-1.5 text-left text-[11px]"
-      >
-        <span aria-hidden="true">{aberto ? '▾' : '▸'}</span>
-        <span className="min-w-0 flex-1 truncate font-mono" title={nome}>
-          {nome}
-        </span>
-        <span className="shrink-0 text-foreground/60">{STATUS_DO_ARQUIVO[arquivo.status]}</span>
-        <span className="shrink-0 font-mono text-foreground/60">{totais}</span>
-      </button>
+      {/* Sem patch (binário ou grande demais) o arquivo não tem o que abrir (CA-5): a linha não é
+          botão, não tem `aria-expanded` nem ▸, e o que fica é o link. */}
+      {arquivo.diff === null ? (
+        <div
+          data-testid="pr-file"
+          data-caminho={arquivo.caminho}
+          className="flex w-full items-baseline gap-1.5 text-[11px]"
+        >
+          {linha}
+        </div>
+      ) : (
+        <button
+          type="button"
+          data-testid="pr-file"
+          data-caminho={arquivo.caminho}
+          aria-expanded={aberto}
+          onClick={() => {
+            onArquivo(arquivo.caminho)
+          }}
+          className="flex w-full cursor-pointer items-baseline gap-1.5 text-left text-[11px]"
+        >
+          {linha}
+        </button>
+      )}
 
-      {/* Sem patch (binário ou grande demais) o arquivo não tem o que abrir: fica o link. */}
       {arquivo.diff === null && arquivo.url !== null ? (
         <p className="ml-4 text-[10px]">
           <Externo href={arquivo.url}>Ver no GitHub</Externo>

@@ -176,9 +176,8 @@ test('4: um arquivo por vez abre e fecha o patch; sem patch fica o link (CA-5)',
   const comPatch = arquivos.nth(0)
   const semPatch = arquivos.nth(1)
 
-  await comPatch.click()
-  await expect(card.getByTestId('diff-line').first()).toBeVisible()
-
+  // Sem patch não há o que abrir: a linha não se diz expansível, e o que fica é o link.
+  await expect(semPatch).not.toHaveAttribute('aria-expanded')
   await semPatch.click()
   await expect(card.getByTestId('diff-line')).toHaveCount(0)
   await expect(card.getByText('Ver no GitHub')).toBeVisible()
