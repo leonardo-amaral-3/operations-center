@@ -52,7 +52,12 @@ export const CardContent = memo(function CardContent({
   /** Só um contador: o que ele existe para fazer é disparar o efeito de novo. */
   const [reloads, setReloads] = useState(0)
   const [aba, setAba] = useState<AbaDoCartao>('card')
-  const [prMontado, setPrMontado] = useState(false)
+  /**
+   * O **número** do PR cujo painel já foi lido, ou `null`. Número, e não booleano: o painel montado
+   * vale só para o PR que a aba nomeia, e um ⟳ que troca o PR do card não pode deixar o painel do
+   * PR antigo à mostra sob a aba do novo.
+   */
+  const [prMontado, setPrMontado] = useState<number | null>(null)
   /**
    * O PR do card, como a **última leitura bem-sucedida** o conhece. Leitura que falha não mexe
    * aqui: é isso que impede um ⟳ falho de tirar as abas e desmontar o painel do PR.
@@ -70,7 +75,7 @@ export const CardContent = memo(function CardContent({
   useEffect(() => {
     if (!preencher) {
       setAba('card')
-      setPrMontado(false)
+      setPrMontado(null)
       setPrConhecido(null)
     } else if (state.kind === 'loaded') {
       setPrConhecido(state.content.pullRequest)
@@ -102,7 +107,15 @@ export const CardContent = memo(function CardContent({
           ? { kind: 'loaded', content: result.content }
           : { kind: 'failed', reason: result.reason },
       )
-      if (result.ok) setPrConhecido(result.content.pullRequest)
+      if (result.ok) {
+        setPrConhecido(result.content.pullRequest)
+        // O card perdeu o PR: as abas somem, e com elas a aba e o painel. Sem isto, o PR que volta
+        // num ⟳ seguinte remontaria o painel — e o leria — ainda na aba Card (CA-6).
+        if (result.content.pullRequest === null) {
+          setAba('card')
+          setPrMontado(null)
+        }
+      }
       setPending(false)
     })
 
@@ -112,6 +125,16 @@ export const CardContent = memo(function CardContent({
   }, [itemId, reloads])
 
   const abasVisiveis = preencher && prConhecido !== null
+  const numeroDoPr = prConhecido?.number ?? null
+
+  // Na aba PR, o painel montado é sempre o do PR que a aba nomeia: selecionar a aba o monta, e um ⟳
+  // que troca o PR com a aba aberta o remonta pelo `key` abaixo, que relê. Fora da aba PR, um PR
+  // trocado desmonta o painel velho, e o novo só é lido quando a aba for selecionada (CA-6).
+  useEffect(() => {
+    if (aba === 'pr' && numeroDoPr !== null) setPrMontado(numeroDoPr)
+  }, [aba, numeroDoPr])
+
+  const painelDoPr = abasVisiveis && (aba === 'pr' || prMontado === numeroDoPr)
 
   return (
     <CardContentView
@@ -124,14 +147,11 @@ export const CardContent = memo(function CardContent({
           ? {
               ativa: aba,
               numero: prConhecido.number,
-              onSelecionar: (escolhida) => {
-                setAba(escolhida)
-                if (escolhida === 'pr') setPrMontado(true)
-              },
+              onSelecionar: setAba,
             }
           : null
       }
-      prPanel={abasVisiveis && prMontado ? <PullRequest itemId={itemId} /> : null}
+      prPanel={painelDoPr ? <PullRequest key={numeroDoPr} itemId={itemId} /> : null}
       onToggle={() => {
         setOpen((aberta) => !aberta)
       }}
