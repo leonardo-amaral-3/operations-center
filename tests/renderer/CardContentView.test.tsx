@@ -5,10 +5,10 @@ import type { CardComment, CardContent } from '../../src/shared/board'
 import type { ReactNode } from 'react'
 
 import {
+  alvoNaCaixa,
   CardContentView,
   deslocamentoAte,
   indiceDoConteudo,
-  seletorDoAlvo,
 } from '../../src/renderer/components/CardContentView'
 import type { AbasDoCartao, ContentState } from '../../src/renderer/components/CardContentView'
 
@@ -404,6 +404,28 @@ describe('#92 CA-3 — cabeçalho forte e divisor dos comentários', () => {
   })
 })
 
+/** A descrição que a `caixaFalsa` devolve; sem jsdom, a caixa é só o que `alvoNaCaixa` consulta. */
+const DESCRICAO = { dataset: {} } as unknown as HTMLElement
+
+/** Uma caixa com a descrição e um comentário por etiqueta dada, nessa ordem. */
+function caixaFalsa(...kinds: string[]) {
+  const comentarios = kinds.map(
+    (commentKind) => ({ dataset: { commentKind } }) as unknown as HTMLElement,
+  )
+
+  return {
+    comentarios,
+    querySelector: ((seletor: string) =>
+      seletor === '[data-testid="card-content-description"]'
+        ? DESCRICAO
+        : null) as ParentNode['querySelector'],
+    querySelectorAll: ((seletor: string) =>
+      seletor === '[data-testid="card-comment"]'
+        ? comentarios
+        : []) as unknown as ParentNode['querySelectorAll'],
+  }
+}
+
 describe('#92 CA-1/CA-2/CA-4 — o índice do conteúdo', () => {
   const marcados = (): CardContent =>
     conteudo({
@@ -430,9 +452,15 @@ describe('#92 CA-1/CA-2/CA-4 — o índice do conteúdo', () => {
     const [corpo, comentarioDescricao] = indiceDoConteudo(content)
 
     expect(corpo).toMatchObject({ alvo: 'descricao', chave: 'descricao', contagem: null })
-    expect(comentarioDescricao).toMatchObject({ alvo: 'comentario', chave: 'descricao', contagem: 1 })
-    expect(seletorDoAlvo(corpo!)).toBe('[data-testid="card-content-description"]')
-    expect(seletorDoAlvo(comentarioDescricao!)).toContain('[data-testid="card-comment"]')
+    expect(comentarioDescricao).toMatchObject({
+      alvo: 'comentario',
+      chave: 'descricao',
+      contagem: 1,
+    })
+    expect(alvoNaCaixa(caixaFalsa(), corpo!)).toBe(DESCRICAO)
+    expect(alvoNaCaixa(caixaFalsa('descricao'), comentarioDescricao!)?.dataset.commentKind).toBe(
+      'descricao',
+    )
 
     const html = render({ kind: 'loaded', content })
 
@@ -478,6 +506,14 @@ describe('#92 CA-1/CA-2/CA-4 — o índice do conteúdo', () => {
     )
 
     expect(html.match(/<nav[^>]*>/)?.[0]).toContain('hidden')
+  })
+
+  it('`alvoNaCaixa` acha o primeiro comentário da etiqueta sem montar seletor com ela', () => {
+    const caixa = caixaFalsa('spec', '', 'a"]b', '')
+
+    expect(alvoNaCaixa(caixa, { alvo: 'comentario', chave: '' })).toBe(caixa.comentarios[1])
+    expect(alvoNaCaixa(caixa, { alvo: 'comentario', chave: 'a"]b' })).toBe(caixa.comentarios[2])
+    expect(alvoNaCaixa(caixa, { alvo: 'comentario', chave: 'tasks' })).toBeNull()
   })
 
   it('`deslocamentoAte` leva o topo do alvo ao topo da caixa', () => {

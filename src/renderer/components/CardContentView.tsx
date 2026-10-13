@@ -164,11 +164,24 @@ export function deslocamentoAte(
   return scrollTopAtual + (topoDoAlvo - topoDaCaixa)
 }
 
-/** O primeiro trecho daquela chave dentro da caixa. A etiqueta casa `[a-z0-9-]`: sem escape. */
-export function seletorDoAlvo({ alvo, chave }: Pick<ItemDoIndice, 'alvo' | 'chave'>): string {
-  return alvo === 'descricao'
-    ? '[data-testid="card-content-description"]'
-    : `[data-testid="card-comment"][data-comment-kind="${chave}"]`
+/**
+ * O primeiro trecho daquele item dentro da caixa.
+ *
+ * A etiqueta é comparada pelo `dataset`, e não interpolada num seletor: o regex que garante que ela
+ * dispensa escape mora no `CardReader`, e se ele afrouxasse o `querySelector` lançaria dentro do
+ * `onClick`.
+ */
+export function alvoNaCaixa(
+  caixa: Pick<ParentNode, 'querySelector' | 'querySelectorAll'>,
+  { alvo, chave }: Pick<ItemDoIndice, 'alvo' | 'chave'>,
+): HTMLElement | null {
+  if (alvo === 'descricao') {
+    return caixa.querySelector<HTMLElement>('[data-testid="card-content-description"]')
+  }
+
+  const comentarios = caixa.querySelectorAll<HTMLElement>('[data-testid="card-comment"]')
+
+  return Array.from(comentarios).find((el) => el.dataset.commentKind === chave) ?? null
 }
 
 /**
@@ -189,7 +202,7 @@ function IndiceDoConteudo({
     const caixa = event.currentTarget
       .closest('[data-testid="card-content"]')
       ?.querySelector<HTMLElement>('[data-testid="card-content-body"]')
-    const alvo = caixa?.querySelector<HTMLElement>(seletorDoAlvo(item))
+    const alvo = caixa ? alvoNaCaixa(caixa, item) : null
 
     if (!caixa || !alvo) return
 
