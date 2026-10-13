@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
+import { readKind } from '../../src/core/board/CardReader'
 import { CONVERSABLE_STATIONS, STATUS_FIELD } from '../../src/core/board/query'
 import {
   BOARDS_FIXTURE_PATH,
@@ -323,12 +324,11 @@ test('CA-4: o conteúdo rola dentro da própria caixa, e o cartão continua dent
 /**
  * O CA-1 e o CA-2 do #92: o índice está na vista sem rolar, e clicar nele rola só a caixa.
  *
- * Os valores saem da fixture com o mesmo regex do `MARCADOR` do `CardReader`: escrever `spec` à mão
- * aqui provaria a fixture de hoje, e não a regra.
+ * Os valores saem da fixture pelo `readKind` do próprio `CardReader`: escrever `spec` à mão aqui
+ * provaria a fixture de hoje, e uma cópia do regex provaria a cópia, e não o leitor.
  */
 test('CA-1/CA-2 do #92: o índice aparece sem rolar e leva a caixa até a spec', async () => {
-  const marcador = /^<!--\s*gm:([a-z][a-z0-9-]*)\s*-->/
-  const kinds = CARD_ISSUE.comments.nodes.map((c) => marcador.exec(c.body.trimStart())?.[1] ?? '')
+  const kinds = CARD_ISSUE.comments.nodes.map((c) => readKind(c.body) ?? '')
   const primeira = kinds.find((kind) => kind !== '')
 
   if (primeira === undefined) {
