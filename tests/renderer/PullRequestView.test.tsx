@@ -333,6 +333,22 @@ function abertura(html: string, testid: string): string {
   return achou[0]
 }
 
+/**
+ * As classes de cor (fundo e tinta) de uma abertura de tag. Neutro se prova pelo par do `Badge`
+ * neutro, não pela ausência de uma lista de cores: um `bg-warning` novo passaria por essa lista.
+ */
+function cores(tag: string): string[] {
+  const classes = /class="([^"]*)"/.exec(tag)?.[1]?.split(' ') ?? []
+  const cor =
+    /^(bg|text)-(main|secondary-background|background|foreground|attention|danger|warning|question)/
+
+  return classes.filter((c) => cor.test(c)).sort()
+}
+
+/** O par do `Badge` neutro, e o mesmo com a tinta rebaixada. */
+const NEUTRO = ['bg-secondary-background', 'text-foreground']
+const REBAIXADO = ['bg-secondary-background', 'text-foreground/60']
+
 describe('blocos', () => {
   it('cada seção é uma Card; só o cabeçalho tem a face branca', () => {
     const html = carregado()
@@ -368,21 +384,18 @@ describe('blocos', () => {
 
 describe('selo do CI', () => {
   it.each([
-    ['SUCCESS', 'passou', '✓', 'CI passou', 'bg-attention'],
-    ['FAILURE', 'falhou', '✕', 'CI falhou', 'bg-danger'],
-    ['ERROR', 'falhou', '✕', 'CI com erro', 'bg-danger'],
-    ['PENDING', 'pendente', '◷', 'CI em andamento', null],
-    ['EXPECTED', 'pendente', '◷', 'CI esperado', null],
-    [null, 'sem-checks', '–', 'Sem checks', null],
-  ] as const)('%s → %s', (state, lado, glifo, texto, fundo) => {
+    ['SUCCESS', 'passou', '✓', 'CI passou', ['bg-attention', 'text-attention-foreground']],
+    ['FAILURE', 'falhou', '✕', 'CI falhou', ['bg-danger', 'text-danger-foreground']],
+    ['ERROR', 'falhou', '✕', 'CI com erro', ['bg-danger', 'text-danger-foreground']],
+    ['PENDING', 'pendente', '◷', 'CI em andamento', NEUTRO],
+    ['EXPECTED', 'pendente', '◷', 'CI esperado', NEUTRO],
+    [null, 'sem-checks', '–', 'Sem checks', REBAIXADO],
+  ] as const)('%s → %s', (state, lado, glifo, texto, cor) => {
     const html = carregado({ checks: { state, checks: [], truncated: false } })
     const selo = abertura(html, 'pr-ci-status')
 
     expect(selo).toContain(`data-state="${lado}"`)
-    for (const classe of ['bg-attention', 'bg-danger']) {
-      if (classe === fundo) expect(selo).toContain(classe)
-      else expect(selo).not.toContain(classe)
-    }
+    expect(cores(selo)).toEqual(cor)
     expect(html).toContain(`>${glifo}</span>${texto}`)
   })
 
@@ -478,17 +491,14 @@ describe('tipos de entrada', () => {
   })
 
   it.each([
-    ['APPROVED', 'bg-attention'],
-    ['CHANGES_REQUESTED', 'bg-danger'],
-    ['COMMENTED', null],
-    ['DISMISSED', null],
-  ] as const)('veredito %s', (state, fundo) => {
+    ['APPROVED', ['bg-attention', 'text-attention-foreground']],
+    ['CHANGES_REQUESTED', ['bg-danger', 'text-danger-foreground']],
+    ['COMMENTED', NEUTRO],
+    ['DISMISSED', REBAIXADO],
+  ] as const)('veredito %s', (state, cor) => {
     const selo = abertura(carregado({ timeline: [revisao(state)] }), 'pr-review-veredito')
 
     expect(selo).toContain(`data-state="${state}"`)
-    for (const classe of ['bg-attention', 'bg-danger']) {
-      if (classe === fundo) expect(selo).toContain(classe)
-      else expect(selo).not.toContain(classe)
-    }
+    expect(cores(selo)).toEqual(cor)
   })
 })
