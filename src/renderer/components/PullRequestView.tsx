@@ -188,10 +188,16 @@ function SeloDeMerge({ mergeable }: { mergeable: PullRequestData['mergeable'] })
     )
   }
 
+  // O texto do `UNKNOWN` é uma frase (~214px): o `Badge` é `whitespace-nowrap shrink-0`, e num
+  // cartão estreito ele vazaria a coluna do título em vez de quebrar a linha.
   return (
     <Selo
       data-testid="pr-merge"
-      className={mergeable === 'UNKNOWN' ? 'text-foreground/60' : undefined}
+      className={
+        mergeable === 'UNKNOWN'
+          ? 'shrink text-left whitespace-normal text-foreground/60'
+          : undefined
+      }
     >
       {MERGEAVEL[mergeable]}
     </Selo>
