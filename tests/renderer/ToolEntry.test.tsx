@@ -216,6 +216,7 @@ describe('#94 — a trilha se lê', () => {
     ['/c/Users/lokin/x/y.ts', '…/x/y.ts'],
     ['src/core/session/transcript.ts', 'src/core/session/transcript.ts'],
     ['2>/dev/null', '2&gt;/dev/null'],
+    ['**/components/ui/*.tsx', '**/components/ui/*.tsx'],
     ['https://github.com/a/b/c', 'https://github.com/a/b/c'],
     [
       String.raw`tail -5 "C:\Users\lokin\AppData\Local\x.output"`,

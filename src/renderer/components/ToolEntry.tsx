@@ -40,8 +40,8 @@ function totaisDe(diff: FileDiff): string {
   return diff.deletions > 0 ? `+${diff.additions} −${diff.deletions}` : `+${diff.additions}`
 }
 
-/** Caminho absoluto: `C:\`, `C:/` ou `/`, não colado a palavra, `:`, `/`, `.`, `~`, `\` ou `-`. */
-const CAMINHO_ABSOLUTO = /(?<![\w:/.~\\-])(?:[A-Za-z]:[\\/]|\/)(?:[^\s\\/"'`]+[\\/])+[^\s\\/"'`]+/g
+/** Caminho absoluto: `C:\`, `C:/` ou `/`, não colado a palavra, `:`, `/`, `.`, `*`, `~`, `\` ou `-`. */
+const CAMINHO_ABSOLUTO = /(?<![\w:/.*~\\-])(?:[A-Za-z]:[\\/]|\/)(?:[^\s\\/"'`]+[\\/])+[^\s\\/"'`]+/g
 
 /**
  * Encurta cada caminho absoluto do detalhe para `…` + os dois últimos segmentos: o que identifica o
