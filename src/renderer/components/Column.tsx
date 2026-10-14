@@ -1,12 +1,12 @@
 import type { JSX } from 'react'
 
 import type { BoardCard, BoardColumn } from '../../shared/board'
+import type { TerminalState } from '../../shared/claude'
 import type { SessionScope } from '../../shared/ipc'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Card } from '../ui/card'
 import { BoardCardView } from './BoardCardView'
-import type { CardSession, CardSessions } from './Chat'
 import { TriagePanel } from './TriagePanel'
 
 interface ColumnProps {
@@ -20,7 +20,7 @@ interface ColumnProps {
    * faz com `conversations` e `dangerous`.
    */
   expandedItemIds: readonly string[]
-  sessions: CardSessions
+  terminais: Readonly<Record<string, TerminalState>>
   /** Os cartões com conversa a retomar — do kanban inteiro, não só desta coluna. */
   conversations: readonly string[]
   /** Os cartões que rodam sem o portão — também do kanban inteiro (CA-2 do #10). */
@@ -47,7 +47,6 @@ interface ColumnProps {
   onMaximize?: (itemId: string) => void
   onRestore?: () => void
   onToggle: (itemId: string) => void
-  onSession: (itemId: string, session: CardSession) => void
   onToggleDangerous: (itemId: string, dangerous: boolean) => void
   /** "Terminal aqui" dos cartões desta coluna; só de passagem. Ausente = sem mesa em volta. */
   onOpenTerminal?: (scope: SessionScope) => void
@@ -68,7 +67,7 @@ export function Column({
   column,
   cards,
   expandedItemIds,
-  sessions,
+  terminais,
   conversations,
   dangerous,
   triage,
@@ -77,7 +76,6 @@ export function Column({
   onMaximize,
   onRestore,
   onToggle,
-  onSession,
   onToggleDangerous,
   onOpenTerminal,
 }: ColumnProps): JSX.Element {
@@ -148,7 +146,7 @@ export function Column({
               // regra, só a repassa ao cartão que está dentro dela.
               conversable={column.conversable}
               expanded={expandedItemIds.includes(card.itemId)}
-              session={sessions[card.itemId]}
+              terminal={terminais[card.itemId] ?? null}
               // O conjunto vem inteiro e a coluna só pergunta por este cartão: a conversa é do
               // cartão, e ele pode ter andado de coluna desde que ela aconteceu.
               dormant={conversations.includes(card.itemId)}
@@ -159,7 +157,6 @@ export function Column({
               onMaximize={onMaximize}
               onRestore={onRestore}
               onToggle={onToggle}
-              onSession={onSession}
               onToggleDangerous={onToggleDangerous}
               onOpenTerminal={onOpenTerminal}
             />

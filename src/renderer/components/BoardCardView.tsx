@@ -2,14 +2,14 @@ import { useEffect, useRef } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardCard } from '../../shared/board'
+import type { TerminalState } from '../../shared/claude'
 import type { SessionScope } from '../../shared/ipc'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Card } from '../ui/card'
 import { cn } from '../ui/cn'
-import { Chat } from './Chat'
-import type { CardSession } from './Chat'
 import { CardContent } from './CardContent'
+import { ClaudeTerminal } from './ClaudeTerminal'
 import { ConversationBadge } from './ConversationBadge'
 import { DangerBadge } from './DangerBadge'
 import { FieldBadge } from './FieldBadge'
@@ -25,8 +25,8 @@ interface BoardCardViewProps {
    */
   conversable: boolean
   expanded: boolean
-  /** A sessão deste cartão, se o kanban já souber de alguma. */
-  session: CardSession | undefined
+  /** O terminal Claude deste cartão, se o kanban já souber de algum. `null` = nenhum processo. */
+  terminal: TerminalState | null
   /** Há conversa a retomar neste cartão — de uma execução anterior do app (CA-1). */
   dormant: boolean
   /**
@@ -37,10 +37,9 @@ interface BoardCardViewProps {
    */
   dangerous: boolean
   onToggle: (itemId: string) => void
-  onSession: (itemId: string, session: CardSession) => void
-  /** Só de passagem para o `Chat`, que é filho deste componente e não da `Column`. */
+  /** Só de passagem para o `ClaudeTerminal`, que é filho deste componente e não da `Column`. */
   onToggleDangerous: (itemId: string, dangerous: boolean) => void
-  /** Só de passagem para o `Chat`: o terminal abre no repo deste card. Ausente = sem botão. */
+  /** Só de passagem para o `ClaudeTerminal`: o terminal abre no repo deste card. Ausente = sem botão. */
   onOpenTerminal?: (scope: SessionScope) => void
   /**
    * Este cartão está expandido (#28): cobre a tela do kanban, com o conteúdo e a conversa lado a
@@ -67,11 +66,10 @@ export function BoardCardView({
   card,
   conversable,
   expanded,
-  session,
+  terminal,
   dormant,
   dangerous,
   onToggle,
-  onSession,
   onToggleDangerous,
   onOpenTerminal,
   maximized = false,
@@ -114,6 +112,10 @@ export function BoardCardView({
 
     const h = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape' || event.defaultPrevented) return
+      // O Esc dentro do terminal é da CLI, que o usa para interromper o turno (P18 do #97).
+      if (event.target instanceof Element && event.target.closest('[data-testid="claude-terminal"]')) {
+        return
+      }
       if (
         event.target instanceof Node &&
         event.target !== document.body &&
@@ -147,8 +149,7 @@ export function BoardCardView({
 
   // A sessão **viva** deste cartão, ou nenhuma. Morta não conta: quem encerrou (CA-6) não tem o que
   // gerir, e o main também já a tirou do índice — o clique seguinte sobe uma nova.
-  const live =
-    session && session.state.kind !== 'closed' && session.state.kind !== 'failed' ? session : null
+  const live = terminal !== null && terminal.kind !== 'closed' ? terminal : null
 
   /**
    * A face do cartão, e **só** a face: a casca — canto, borda de 2px, sombra dura — vem da `Card`.
@@ -255,11 +256,11 @@ export function BoardCardView({
 
           {/* O sinal de sessão viva no cartão **fechado**, e é o mínimo para o CA-6 ser operável:
               sem ele, uma conversa aberta atrás de um cartão colapsado é invisível e não há o que
-              gerir. Aberto, quem mostra o estado é o próprio `Chat` — inclusive uma falha que
+              gerir. Aberto, quem mostra o estado é o próprio `ClaudeTerminal` — inclusive uma falha que
               aconteceu antes de haver sessão. */}
           {!expanded && live ? (
             <div className="min-w-0">
-              <StateBadge state={live.state} />
+              <StateBadge state={live} />
             </div>
           ) : null}
 
@@ -330,7 +331,7 @@ export function BoardCardView({
           </div>
 
           {/* O invólucro existe nos dois modos, e é isso que impede o desmonte: a árvore do React
-              não muda ao expandir, então o `Chat` (rascunho, sessão) e o `CardContent` (conteúdo
+              não muda ao expandir, então o `ClaudeTerminal` (terminal vivo) e o `CardContent` (conteúdo
               carregado) sobrevivem sem código de preservação. Só a classe muda. */}
           <div
             data-testid="card-open-body"
@@ -354,22 +355,17 @@ export function BoardCardView({
             />
 
             {temConversa ? (
-              <Chat
+              <ClaudeTerminal
                 preencher={maximized}
-                // O escopo montado aqui é objeto novo a cada render, e é seguro: quem depende dele é
-                // o `useSessionView`, e ele depende da **chave**, não da referência.
+                // O escopo montado aqui é objeto novo a cada render, e é seguro: o efeito do
+                // terminal depende da **chave** (`scopeKey`), não da referência.
                 scope={{ kind: 'card', itemId: card.itemId }}
-                // O CA-6 do #6 em uma linha: colapsar fecha a vista, não a conversa.
-                closeOnUnmount={false}
+                state={terminal}
                 dangerous={dangerous}
                 semPasta="Não sei em que pasta deste computador o repo deste card vive. Aponte-a e a sessão sobe lá."
+                // O CA-6 do #6 em uma linha: colapsar fecha a vista, não a conversa.
                 onCollapse={() => {
                   onToggle(card.itemId)
-                }}
-                // O `itemId` entra aqui, e não lá dentro: o `Chat` sabe de escopo, e é este componente
-                // que sabe que este escopo é um cartão do kanban.
-                onSession={(sessao) => {
-                  onSession(card.itemId, sessao)
                 }}
                 onToggleDangerous={(sem) => {
                   onToggleDangerous(card.itemId, sem)

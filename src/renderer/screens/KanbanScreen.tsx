@@ -2,10 +2,9 @@ import { useCallback, useEffect, useReducer, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardTab } from '../../shared/board'
+import type { ClaudeStateEvent, TerminalState } from '../../shared/claude'
 import type { DangerousSnapshot } from '../../shared/ipc'
-import type { SessionState } from '../../shared/session'
 import { BoardTabs } from '../components/BoardTabs'
-import type { CardSession, CardSessions } from '../components/Chat'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
 import { ThemePicker } from '../components/ThemePicker'
@@ -30,39 +29,31 @@ const VAZIO: readonly string[] = []
  */
 const SEM_MARCA: DangerousSnapshot = { itemIds: [], boardKeys: [] }
 
-type SessionsAction =
-  | { type: 'card'; itemId: string; session: CardSession }
-  | { type: 'state'; sessionId: string; state: SessionState }
+/** O terminal Claude vivo de cada cartão, por `itemId`. Sem a chave = sem processo. */
+export type CardTerminals = Readonly<Record<string, TerminalState>>
 
 /**
- * O registro de sessões por cartão.
+ * O registro de terminais por cartão (#97).
  *
- * Ele existe para o cartão **fechado**: enquanto o chat está na tela, quem sabe da sessão é o
- * próprio `Chat`. Fechado o cartão, a sessão continua viva (CA-6) e este registro é a única
- * coisa que ainda a enxerga.
+ * Existe para o cartão **fechado**: o terminal segue vivo atrás do cartão colapsado (R2.1), e este
+ * registro é a única coisa que ainda o enxerga. Só o escopo `card` entra — a sessão livre guarda o
+ * estado dela no painel lateral. `closed` **remove** a chave, e o mesmo estado devolve o **mesmo**
+ * objeto, para o board não redesenhar em laço.
  */
-function reduceSessions(sessions: CardSessions, action: SessionsAction): CardSessions {
-  if (action.type === 'card') {
-    const known = sessions[action.itemId]
-    // Devolver o **mesmo** registro quando nada mudou não é micro-otimização: o `Chat` relata a
-    // sessão de dentro de um efeito, e um registro novo a cada relato redesenharia o board em laço
-    // sem a sessão ter mexido um dedo.
-    if (known && known.id === action.session.id && known.state === action.session.state) {
-      return sessions
-    }
+export function reduceTerminals(terminais: CardTerminals, event: ClaudeStateEvent): CardTerminals {
+  if (event.scope.kind !== 'card') return terminais
 
-    return { ...sessions, [action.itemId]: action.session }
+  const { itemId } = event.scope
+  if (event.state.kind === 'closed') {
+    if (!(itemId in terminais)) return terminais
+
+    return Object.fromEntries(Object.entries(terminais).filter(([chave]) => chave !== itemId))
   }
 
-  // O evento vem por `sessionId` e o registro é por cartão; quem casa os dois é o relato do
-  // `Chat`, feito assim que o retrato da sessão voltou. Evento de sessão que este kanban não
-  // conhece simplesmente não tem onde entrar.
-  const owner = Object.entries(sessions).find(([, session]) => session.id === action.sessionId)
-  if (!owner) return sessions
+  if (terminais[itemId]?.kind === event.state.kind) return terminais
 
-  return { ...sessions, [owner[0]]: { id: action.sessionId, state: action.state } }
+  return { ...terminais, [itemId]: event.state }
 }
-
 /**
  * O kanban: o board do GitHub desenhado em colunas, e o chat de cada cartão dentro do próprio
  * cartão.
@@ -82,7 +73,7 @@ export function KanbanScreen(): JSX.Element {
   // de **qual** aba é o cartão que ele alterna.
   const { snapshot, expanded } = kanban
   const { boards, activeKey, discoveryError } = snapshot
-  const [sessions, dispatchSession] = useReducer(reduceSessions, {})
+  const [terminais, dispatchTerminal] = useReducer(reduceTerminals, {})
   /**
    * Os cartões com conversa a retomar. Vazio até a verificação do boot terminar — e é assim que
    * deve ser: um cartão sem conversa recuperável volta sem crachá (CA-3), e o vazio é a mesma
@@ -157,12 +148,22 @@ export function KanbanScreen(): JSX.Element {
   }, [])
 
   useEffect(() => {
-    // O kanban acompanha o estado das sessões por conta própria, e não só através do cartão aberto:
-    // sem isto o sinal de um cartão fechado congelaria no instante em que ele fechou, e ele mostraria
-    // "Trabalhando" para sempre depois de a sessão já ter pedido a vez de volta.
-    return window.oc.onState((event) => {
-      dispatchSession({ type: 'state', sessionId: event.sessionId, state: event.state })
+    // O kanban acompanha o terminal de cada cartão por conta própria, e não só através do cartão
+    // aberto: sem isto o selo de um cartão fechado congelaria no instante em que ele fechou. Assinar
+    // antes de pedir, e a mesma guarda do board: o evento mais novo vence a leitura antiga.
+    let pushed = false
+
+    const unsubscribe = window.oc.onClaudeState((event) => {
+      pushed = true
+      dispatchTerminal(event)
     })
+
+    void window.oc.readClaudeStates().then((eventos) => {
+      if (pushed) return
+      for (const evento of eventos) dispatchTerminal(evento)
+    })
+
+    return unsubscribe
   }, [])
 
   const toggle = useCallback(
@@ -190,10 +191,6 @@ export function KanbanScreen(): JSX.Element {
 
   const restore = useCallback(() => {
     dispatch({ type: 'recolher' })
-  }, [])
-
-  const registerSession = useCallback((itemId: string, session: CardSession) => {
-    dispatchSession({ type: 'card', itemId, session })
   }, [])
 
   const activate = useCallback((key: string) => {
@@ -290,7 +287,7 @@ export function KanbanScreen(): JSX.Element {
               // reposicionar cartão nenhum —, e `filter` preserva a ordem que o board devolveu.
               cards={board.cards.filter((card) => card.columnId === column.id)}
               expandedItemIds={expandedItemIds}
-              sessions={sessions}
+              terminais={terminais}
               conversations={conversations}
               dangerous={dangerous.itemIds}
               // A coluna não decide se há triagem: o core diz **qual** coluna a oferece
@@ -322,7 +319,6 @@ export function KanbanScreen(): JSX.Element {
               onMaximize={maximize}
               onRestore={restore}
               onToggle={toggle}
-              onSession={registerSession}
               onToggleDangerous={toggleDangerous}
               onOpenTerminal={terminalAqui}
             />
