@@ -147,8 +147,35 @@ describe('CA-4 — as âncoras de teste seguem nos mesmos elementos', () => {
     // A cor saiu do corpo quando o card #8 recompôs a bolha: quem pinta o texto agora é a face da
     // `Card` (`text-main-foreground` na do usuário, `text-foreground` na do Claude), e o que resta
     // aqui é a escala — que é exatamente o que este teste sempre cobrou.
-    expect(render('oi', 'assistant', 'sm')).toContain('class="text-sm"')
-    expect(render('oi', 'assistant', 'xs')).toContain('class="text-xs"')
+    expect(render('oi', 'assistant', 'sm')).toContain('class="text-base"')
+    expect(render('oi', 'assistant', 'xs')).toContain('class="text-sm"')
+  })
+
+  it('#94: todo markdown leva entrelinha de leitura', () => {
+    expect(render('oi', 'assistant', 'sm')).toContain(
+      'class="space-y-2 break-words leading-relaxed"',
+    )
+  })
+})
+
+describe('#94 CA-1 — código inline sem chip', () => {
+  it('o código inline é marcado só pelo fundo, sem borda', () => {
+    const html = render('- `A`, `B_C` e `d/e.ts:9`\n\n```ts\nconst x = 1\n```', 'assistant')
+    const [fora, pre] = html.split('<pre')
+    const codes = [...(fora ?? '').matchAll(/<code class="([^"]*)"/g)].map((m) => m[1] ?? '')
+
+    expect(codes).toHaveLength(3)
+    for (const classes of codes) {
+      expect(classes).toContain('inline-block')
+      expect(classes).toContain('max-w-full')
+      expect(classes).toContain('bg-foreground/10')
+      expect(classes).toContain('leading-snug')
+      expect(classes).not.toContain('border')
+    }
+
+    expect(pre).toContain('[&amp;_code]:inline')
+    expect(pre).toContain('[&amp;_code]:leading-[inherit]')
+    expect(pre).not.toContain('[&amp;_code]:border-0')
   })
 })
 

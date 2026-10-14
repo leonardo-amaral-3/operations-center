@@ -93,6 +93,14 @@ describe('CA-1 — o conteúdo do card vira elemento, não caractere', () => {
     expect(html).toContain('<code')
   })
 
+  it('#94: corpo e comentário em tamanho de leitura', () => {
+    const html = render({ kind: 'loaded', content: conteudo({ comments: [comentario()] }) })
+    const leitura = '<div class="text-sm"><div class="space-y-2 break-words leading-relaxed">'
+
+    expect(html.split(leitura)).toHaveLength(3)
+    expect(html).not.toContain('<div class="text-xs"><div class="space-y-2')
+  })
+
   it('não deixa sobrar sequência de sintaxe no texto visível', () => {
     // **A metade que costuma faltar**: sem ela, um render que jogasse o markdown cru dentro de um
     // `<p>` passaria em todas as asserções acima — as tags do cabeçalho bastariam.

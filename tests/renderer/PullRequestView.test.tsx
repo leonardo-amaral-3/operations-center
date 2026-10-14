@@ -222,6 +222,30 @@ describe('descrição e conversa', () => {
     expect(html).toContain('repare aqui')
   })
 
+  it('#94: descrição, comentários e threads em tamanho de leitura', () => {
+    const at = '2026-10-01T10:00:00Z'
+    const html = carregado({
+      timeline: [
+        { kind: 'comment', id: 'c1', author: AUTOR, at, body: 'oi' },
+        { kind: 'review', id: 'r1', author: AUTOR, at, state: 'COMMENTED', body: 'ok' },
+        {
+          kind: 'thread',
+          id: 't1',
+          at,
+          caminho: 'src/a.ts',
+          line: 3,
+          resolved: false,
+          outdated: false,
+          comments: [{ id: 'tc1', author: AUTOR, createdAt: at, body: 'repare' }],
+        },
+      ],
+    })
+    const leitura = '<div class="text-sm"><div class="space-y-2 break-words leading-relaxed">'
+
+    expect(html.split(leitura)).toHaveLength(5)
+    expect(html).not.toContain('<div class="text-xs"><div class="space-y-2')
+  })
+
   it('thread sem linha mostra só o caminho, e não-resolvido não leva a marca', () => {
     const html = carregado({
       timeline: [

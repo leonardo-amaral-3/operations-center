@@ -95,7 +95,7 @@ export function Conversation({
               key={message.id}
               data-testid="message"
               data-role="notice"
-              className="py-1 text-center text-[11px] tracking-wide text-foreground/60 uppercase"
+              className="py-1 text-center text-sm break-words text-foreground/70"
             >
               {message.text}
             </p>

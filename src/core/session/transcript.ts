@@ -51,6 +51,9 @@ export const DIFF_MAX_LINES = 40
  */
 export const INTERRUPTED_NOTICE = 'Turno interrompido.'
 
+/** A nota de uma notificação de tarefa que não traz `<summary>`. */
+export const TASK_NOTICE_FALLBACK = 'Tarefa em segundo plano atualizada.'
+
 /** O prefixo com que o Claude Code registra uma interrupção. Sem o fecho: a frase varia depois dele. */
 const INTERRUPCAO = '[Request interrupted by user'
 
@@ -62,6 +65,7 @@ const INTERRUPCAO = '[Request interrupted by user'
  * A lista é curta de propósito: adivinhar o conjunto completo de envelopes internos seria manter
  * uma tabela que envelhece a cada release do CLI. O que não estiver aqui vira bolha de usuário, que
  * é o modo de falha barato — uma linha a mais na conversa, nunca uma fala perdida.
+ * A notificação de tarefa vira o `<summary>` dela (`notaDeTarefa`), e nunca o envelope XML.
  */
 const NOTAS = [INTERRUPCAO, '<task-notification>']
 
@@ -444,14 +448,31 @@ function countLines(content: string): number {
  * quando é.
  *
  * A interrupção troca de texto — vira o mesmo `INTERRUPTED_NOTICE` do caminho ao vivo, porque o
- * mesmo fato tem de se ler igual, restaurado ou não. O resto mantém o próprio texto.
+ * mesmo fato tem de se ler igual, restaurado ou não. A notificação de tarefa vira o `<summary>`
+ * dela, ou o `TASK_NOTICE_FALLBACK` quando não traz um.
  */
 function noticeOf(text: string): string | null {
   const inicio = text.trimStart()
   const nota = NOTAS.find((prefixo) => inicio.startsWith(prefixo))
   if (nota === undefined) return null
 
-  return nota === INTERRUPCAO ? INTERRUPTED_NOTICE : inicio
+  return nota === INTERRUPCAO ? INTERRUPTED_NOTICE : notaDeTarefa(inicio)
+}
+
+const SUMMARY = /<summary>(?<summary>[\s\S]*?)<\/summary>/
+const EVENT = /<event>(?<event>[\s\S]*?)<\/event>/
+const achatar = (s: string | undefined): string => (s ?? '').replace(/\s+/g, ' ').trim()
+
+/**
+ * O `<summary>` (e o `<event>`, do Monitor) de uma notificação de tarefa. Lido por tag, nunca por
+ * posição; com duas notificações na mesma mensagem vale a primeira. Entidade HTML não é decodificada:
+ * o texto vai para um `<p>` do React, que escapa sozinho.
+ */
+function notaDeTarefa(texto: string): string {
+  const summary = achatar(SUMMARY.exec(texto)?.groups?.['summary'])
+  if (summary === '') return TASK_NOTICE_FALLBACK
+  const event = achatar(EVENT.exec(texto)?.groups?.['event'])
+  return event === '' ? summary : `${summary} — ${event}`
 }
 
 /** Os blocos `type: 'text'` de um `content`, juntos. Vazio (ou ilegível) → `''`. */
