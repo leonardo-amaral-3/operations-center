@@ -76,13 +76,13 @@ const SKINS: Record<BubbleScale, BubbleSkin> = {
     user: 'ml-auto max-w-[85%] bg-main text-main-foreground px-3 py-2',
     assistant: 'max-w-[85%] bg-secondary-background px-3 py-2',
     label: 'mb-1 text-[11px] tracking-wide text-foreground/60 uppercase',
-    body: 'text-sm',
+    body: 'text-base',
   },
   xs: {
     user: 'ml-auto max-w-[85%] bg-main text-main-foreground px-2.5 py-1.5',
     assistant: 'max-w-[85%] bg-secondary-background px-2.5 py-1.5',
     label: 'mb-0.5 text-[10px] tracking-wide text-foreground/60 uppercase',
-    body: 'text-xs',
+    body: 'text-sm',
   },
 }
 

@@ -91,7 +91,7 @@ export const CardCommentView = memo(function CardCommentView({
           O marcador `<!-- gm:X -->` continua no `body` e **não** é desenhado: o `rehype-sanitize`
           do `Markdown` descarta nó de comentário. Quem o esconde é o pipeline, não um corte no
           texto — o core não mutila o que o GitHub tem. */}
-      <div className="text-xs">
+      <div className="text-sm">
         <Markdown text={comment.body} />
       </div>
     </article>
@@ -280,7 +280,7 @@ function Corpo({
   return (
     <div className="space-y-3">
       {content.body === '' ? null : (
-        <div className="text-xs">
+        <div className="text-sm">
           <Markdown text={content.body} />
         </div>
       )}
