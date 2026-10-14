@@ -237,3 +237,12 @@ export async function end(scope: ClaudeScope): Promise<void> {
 export function focus(scope: ClaudeScope): void {
   entries.get(scopeKey(scope))?.term.focus()
 }
+
+/** Reajusta o xterm do escopo ao contêiner em que está; o `ResizeObserver` do componente chama. */
+export function fit(scope: ClaudeScope): void {
+  try {
+    entries.get(scopeKey(scope))?.fit.fit()
+  } catch {
+    // Contêiner escondido ou sem tamanho: a próxima medição corrige.
+  }
+}
