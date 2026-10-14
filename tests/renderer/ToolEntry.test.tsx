@@ -187,3 +187,50 @@ describe('o trecho vira linhas, e cada linha diz de que espécie é', () => {
     expect(html).toContain(`title="${LONGA}"`)
   })
 })
+
+describe('#94 — a trilha se lê', () => {
+  it('detalhe e frase com contraste de leitura, e subagente sem opacidade', () => {
+    const html = render(entrada(null, { headline: 'frase' }))
+    const detalhe = /<span title="[^"]*" class="(min-w-0[^"]*)"/.exec(html)?.[1] ?? ''
+    const frase = /<p class="(mt-0\.5 ml-4[^"]*)"/.exec(html)?.[1] ?? ''
+
+    expect(detalhe).toContain('text-xs text-foreground/80')
+    expect(frase).toContain('text-[11px] text-foreground/70')
+    for (const classe of [detalhe, frase]) {
+      expect(classe).not.toContain('/50')
+      expect(classe).not.toContain('/60')
+    }
+    expect(render(entrada(null, { parentId: 'p1' }))).not.toContain('opacity-70')
+  })
+
+  // Expectativas já escapadas, como o `renderToStaticMarkup` devolve (& " < >).
+  it.each([
+    [
+      String.raw`C:\Users\lokin\notoria\claude\despachos-215\pr226-body.md`,
+      String.raw`…\despachos-215\pr226-body.md`,
+    ],
+    [
+      'cd C:/Users/lokin/notoria/claude/despachos-215 && gh pr edit',
+      'cd …/claude/despachos-215 &amp;&amp; gh pr edit',
+    ],
+    ['/c/Users/lokin/x/y.ts', '…/x/y.ts'],
+    ['src/core/session/transcript.ts', 'src/core/session/transcript.ts'],
+    ['2>/dev/null', '2&gt;/dev/null'],
+    ['https://github.com/a/b/c', 'https://github.com/a/b/c'],
+    [
+      String.raw`tail -5 "C:\Users\lokin\AppData\Local\x.output"`,
+      String.raw`tail -5 &quot;…\Local\x.output&quot;`,
+    ],
+    [String.raw`C:\Program Files\Git\bin\bash.exe`, String.raw`C:\Program Files\Git\bin\bash.exe`],
+  ])('encurta o caminho absoluto de %s, e o title guarda o original', (detail, esperado) => {
+    const html = render(entrada(null, { detail }))
+    const escapar = (t: string): string =>
+      t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+    expect(html).toContain(`title="${escapar(detail)}"`)
+    expect(html).toContain(`>${esperado}</span>`)
+    if (esperado !== escapar(detail)) {
+      expect(semTags(html)).not.toContain(escapar(detail))
+    }
+  })
+})

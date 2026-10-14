@@ -282,7 +282,7 @@ export function Chat({
               key={message.id}
               data-testid="message"
               data-role="notice"
-              className="py-0.5 text-center text-[10px] tracking-wide text-foreground/60 uppercase"
+              className="py-0.5 text-center text-xs break-words text-foreground/70"
             >
               {message.text}
             </p>
