@@ -52,6 +52,10 @@ const CARD_FIXTURE_PATH = join(REPO_ROOT, 'tests', 'fixtures', 'cards.json')
 const NEW_COMMENT =
   'Comentário publicado com o app de pé — é este que o ⟳ tem de trazer para a tela.'
 
+/** O token do bloco `CODIGO_901` da fixture (#94): 100 caracteres sem ponto de quebra. */
+const TOKEN_DE_CEM =
+  'TOKEN_DE_CEM_CARACTERES_SEM_NENHUM_PONTO_DE_QUEBRA_PARA_PROVAR_QUE_ELE_QUEBRA_DENTRO_DO_PROPRIO_CHIP'
+
 /**
  * O envelope cru do board, do jeito que o `BoardReader` o recebe — reduzido ao que este smoke
  * precisa para escolher em quem clicar.
@@ -245,6 +249,14 @@ test('a fixture ainda traz o cartão de leitura com o corpo que o CA-4 precisa',
   // Sem comentário nenhum, a contagem do CA-7 sairia de zero e não distinguiria "recarregou" de
   // "desenhou o primeiro".
   expect(EXPECTED_COMMENTS, 'o card da fixture está sem comentários').toBeGreaterThan(0)
+  // O bloco do #94: a primeira linha com vários códigos inline e o token de 100 caracteres. Sem ele o
+  // teste do #94 mediria um corpo que nunca teve chip para recortar nem para quebrar.
+  expect(body, 'o corpo da fixture perdeu a lista com código inline (#94)').toMatch(
+    /^- `DATABASE_URL`, `JWT_REFRESH_SECRET=[^`]+` e `[^`]+:94` no mesmo bullet/,
+  )
+  expect(body, 'o corpo da fixture perdeu o token de 100 caracteres (#94)').toContain(
+    `\`${TOKEN_DE_CEM}\``,
+  )
 })
 
 test('CA-3: o cartão de coluna sem skill abre e mostra o conteúdo, e nenhuma sessão sobe', async () => {
@@ -317,6 +329,107 @@ test('CA-4: o conteúdo rola dentro da própria caixa, e o cartão continua dent
   expect(cartao.x + cartao.width, 'o cartão vaza pela direita da coluna').toBeLessThanOrEqual(
     raia.x + raia.width,
   )
+})
+
+/**
+ * O que o teste do #94 lê do corpo, num `evaluate` só: tudo em pixels da viewport. Um objeto simples,
+ * porque nó do DOM não atravessa a fronteira.
+ */
+interface MedidaCodigo {
+  scrollTop: number
+  bodyTop: number
+  firstCodeTop: number
+  bordaDoPrimeiro: string
+  /** `getClientRects().length` de cada `code` do primeiro bullet. */
+  fragmentosDoBullet: number[]
+  fragmentosDoToken: number
+  tokenRight: number
+  itemRight: number
+  /** `x` do primeiro filho (texto ou código) de cada um dos três `li`. */
+  recuos: number[]
+}
+
+/**
+ * A expressão roda no renderer. Vai como texto porque o tsconfig dos smokes não tem a lib DOM, e
+ * declará-la aqui a espalharia pelo projeto inteiro.
+ */
+const MEDIR_CODIGO_NO_DOM = `(() => {
+  const body = document.querySelector('[data-testid="card-content-body"]')
+  const itens = Array.from(body.querySelectorAll('li')).slice(0, 3)
+  const codes = Array.from(body.querySelectorAll('code'))
+  const doToken = codes.find((code) => code.textContent === '${TOKEN_DE_CEM}')
+  if (!doToken || itens.length < 3) throw new Error('o bloco do #94 não foi desenhado')
+  const item = doToken.closest('li')
+  const primeiro = codes[0]
+  const recuo = (li) => {
+    const faixa = document.createRange()
+    faixa.selectNode(li.firstChild)
+    return Math.round(faixa.getBoundingClientRect().x)
+  }
+  return {
+    scrollTop: body.scrollTop,
+    bodyTop: body.getBoundingClientRect().y,
+    firstCodeTop: primeiro.getBoundingClientRect().y,
+    bordaDoPrimeiro: getComputedStyle(primeiro).borderTopWidth,
+    fragmentosDoBullet: Array.from(itens[0].querySelectorAll('code')).map((code) => code.getClientRects().length),
+    fragmentosDoToken: doToken.getClientRects().length,
+    tokenRight: doToken.getBoundingClientRect().right,
+    itemRight: item.getBoundingClientRect().right,
+    recuos: itens.map(recuo),
+  }
+})()`
+
+async function medirCodigo(): Promise<MedidaCodigo> {
+  return await window.evaluate(MEDIR_CODIGO_NO_DOM)
+}
+
+/**
+ * O #94 no cartão real, na coluna e maximizado: a primeira linha do corpo fica inteira abaixo das
+ * abas (CA-4), o chip não tem borda e o termo que cabe não parte (CA-1), e o corpo de leitura não
+ * ganha rolagem horizontal (CA-2).
+ *
+ * Termina como começou — não maximizado —, porque o seguinte do arquivo (serial) parte daí.
+ */
+test('#94: a primeira linha fica inteira abaixo das abas, e chip que cabe não parte', async () => {
+  expect(TOKEN_DE_CEM.length, 'o token da fixture deixou de ter 100 caracteres').toBe(100)
+
+  const card = cardLocator(READ_CARD)
+  const corpo = card.getByTestId('card-content-body')
+  await expect(corpo).toBeVisible()
+
+  const conferir = (medida: MedidaCodigo, onde: string): void => {
+    expect(medida.scrollTop, `${onde}: o corpo abriu rolado`).toBe(0)
+    expect(
+      medida.firstCodeTop,
+      `${onde}: o chip foi recortado pela borda de cima`,
+    ).toBeGreaterThanOrEqual(medida.bodyTop)
+    expect(medida.bordaDoPrimeiro, `${onde}: o código inline voltou a ter borda`).toBe('0px')
+  }
+
+  const naColuna = await medirCodigo()
+  conferir(naColuna, 'na coluna')
+  // Cada termo do primeiro bullet cabe na linha, então nenhum parte em duas caixas.
+  expect(naColuna.fragmentosDoBullet.length, 'o primeiro bullet perdeu os códigos').toBe(3)
+  for (const fragmentos of naColuna.fragmentosDoBullet) expect(fragmentos).toBe(1)
+  // O que não cabe quebra dentro do próprio chip, sem passar da borda do li.
+  expect(naColuna.fragmentosDoToken).toBeGreaterThanOrEqual(1)
+  expect(naColuna.tokenRight).toBeLessThanOrEqual(naColuna.itemRight + 1)
+  // Regressão declarada, não discrimina: o recuo do texto é o mesmo com e sem código.
+  expect(new Set(naColuna.recuos).size, 'o recuo dos bullets divergiu').toBe(1)
+
+  const botao = card.getByTestId('card-maximize')
+  await botao.click()
+  await expect(botao).toHaveAttribute('aria-pressed', 'true')
+
+  const maximizado = await medirCodigo()
+  conferir(maximizado, 'maximizado')
+  const caixa = await rolagemDe(corpo)
+  expect(caixa.scrollWidth, 'o corpo maximizado rola na horizontal').toBeLessThanOrEqual(
+    caixa.clientWidth + 1,
+  )
+
+  await botao.click()
+  await expect(botao).toHaveAttribute('aria-pressed', 'false')
 })
 
 /**

@@ -40,6 +40,23 @@ function totaisDe(diff: FileDiff): string {
   return diff.deletions > 0 ? `+${diff.additions} −${diff.deletions}` : `+${diff.additions}`
 }
 
+/** Caminho absoluto: `C:\`, `C:/` ou `/`, não colado a palavra, `:`, `/`, `.`, `*`, `~`, `\` ou `-`. */
+const CAMINHO_ABSOLUTO = /(?<![\w:/.*~\\-])(?:[A-Za-z]:[\\/]|\/)(?:[^\s\\/"'`]+[\\/])+[^\s\\/"'`]+/g
+
+/**
+ * Encurta cada caminho absoluto do detalhe para `…` + os dois últimos segmentos: o que identifica o
+ * arquivo cabe na linha, e o `title` guarda o detalhe inteiro. Caminho com espaço não casa — mostrá-lo
+ * inteiro é o modo de falha barato.
+ */
+function encurtarCaminhos(detail: string): string {
+  return detail.replace(CAMINHO_ABSOLUTO, (caminho) => {
+    const segmentos = caminho.replace(/^(?:[A-Za-z]:)?[\\/]/, '').split(/[\\/]/)
+    if (segmentos.length <= 2) return caminho
+    const sep = caminho.includes('\\') ? '\\' : '/'
+    return `…${sep}${segmentos.slice(-2).join(sep)}`
+  })
+}
+
 /**
  * Uma ação na trilha da conversa: o que a sessão fez, enquanto ela faz.
  *
@@ -47,10 +64,11 @@ function totaisDe(diff: FileDiff): string {
  * na posição em que o fato aconteceu, e é isso que faz "rolar a conversa para cima" mostrar a
  * história inteira em vez de só as falas.
  *
- * **Um tamanho só para as duas telas.** O cartão do kanban escreve em `text-xs` e a tela de chat em
- * `text-sm`; a trilha fica no menor dos dois nos dois lugares, porque ela é informação subordinada
- * à conversa — e porque uma prop de tamanho aqui seria uma escolha a tomar em cada ponto de uso
- * para um ganho que ninguém pediu.
+ * **Um tamanho só para as duas telas.** O cartão do kanban escreve em `text-sm` e a tela de chat em
+ * `text-base`; a trilha fica em `text-xs` nos dois lugares, porque ela é informação subordinada à
+ * conversa — e porque uma prop de tamanho aqui seria uma escolha a tomar em cada ponto de uso para
+ * um ganho que ninguém pediu. O contraste é que não cede: detalhe a `/80` e frase a `/70`, os dois
+ * acima do AA nos três temas (#94).
  *
  * O recuo do subagente não monta árvore nenhuma: as entradas de dentro de um `Agent` chegam
  * **depois** da entrada que as gerou, então a ordem da lista já é a hierarquia, e o recuo só a
@@ -68,25 +86,25 @@ export function ToolEntry({ entry }: ToolEntryProps): JSX.Element {
       // Vazio quando é de nível de cima, e não ausente: é o que deixa o teste afirmar "esta não é
       // de subagente" em vez de só não achar o atributo — o mesmo trato do `data-card-assignees`.
       data-parent={entry.parentId ?? ''}
-      className={nested ? 'ml-3 border-l-2 border-border pl-2.5 opacity-70' : ''}
+      className={nested ? 'ml-3 border-l-2 border-border pl-2.5' : ''}
     >
       <div className="flex items-baseline gap-1.5">
-        <span title={mark.label} className={`shrink-0 text-[11px] ${mark.className}`}>
+        <span title={mark.label} className={`shrink-0 text-xs ${mark.className}`}>
           {mark.glyph}
         </span>
-        <span className="shrink-0 font-mono text-[11px] text-foreground">{entry.name}</span>
+        <span className="shrink-0 font-mono text-xs text-foreground">{entry.name}</span>
         {/* O `title` cheio porque a linha corta duas vezes: o core já trouxe o argumento em 120
             caracteres, e a largura do cartão corta de novo o que couber. O hover é onde o
             argumento inteiro continua legível. */}
-        <span title={entry.detail} className="min-w-0 truncate text-[11px] text-foreground/60">
-          {entry.detail}
+        <span title={entry.detail} className="min-w-0 truncate text-xs text-foreground/80">
+          {encurtarCaminhos(entry.detail)}
         </span>
       </div>
 
       {/* A frase que o próprio Claude Code escreveu, quando ele a mandou. Segunda linha e não a
           primeira: o nome da ferramenta é o que se procura ao varrer a trilha com o olho. */}
       {entry.headline ? (
-        <p className="mt-0.5 ml-4 truncate text-[10px] text-foreground/50">{entry.headline}</p>
+        <p className="mt-0.5 ml-4 truncate text-[11px] text-foreground/70">{entry.headline}</p>
       ) : null}
 
       {/* O que a chamada escreveu, enquanto ela escreve. Dentro da mesma entrada e depois do

@@ -237,7 +237,7 @@ function ComentarioDoThread({ comment }: { comment: PrThreadComment }): JSX.Elem
   return (
     <div className="mt-1 border-l-2 border-border pl-2 first:mt-0">
       <Cabecalho autor={comment.author} at={comment.createdAt} />
-      <div className="text-xs">
+      <div className="text-sm">
         <Markdown text={comment.body} />
       </div>
     </div>
@@ -285,7 +285,7 @@ const Entrada = memo(function Entrada({ entry }: { entry: PrTimelineEntry }): JS
     corpo = (
       <>
         <Cabecalho autor={entry.author} at={entry.at} />
-        <div className="text-xs">
+        <div className="text-sm">
           <Markdown text={entry.body} />
         </div>
       </>
@@ -293,7 +293,7 @@ const Entrada = memo(function Entrada({ entry }: { entry: PrTimelineEntry }): JS
   } else {
     marca = <AutorEData autor={entry.author} at={entry.at} />
     corpo = (
-      <div className="text-xs">
+      <div className="text-sm">
         <Markdown text={entry.body} />
       </div>
     )
@@ -472,7 +472,7 @@ function Carregado({
         {pr.body.trim() === '' ? (
           <p className="text-xs text-foreground/60">Sem descrição</p>
         ) : (
-          <div className="text-xs">
+          <div className="text-sm">
             <Markdown text={pr.body} />
           </div>
         )}

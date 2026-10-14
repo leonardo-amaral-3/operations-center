@@ -46,6 +46,18 @@ describe('as duas telas desenham a fala pela mesma bolha', () => {
     expect(comTextoCru).toEqual([])
   })
 
+  it('#94: a nota não grita — sem caixa alta nas duas telas', () => {
+    // A nota de tarefa passou a ser o `<summary>` em frase; em caixa alta e a /60 ela voltava a ser
+    // o ruído que o card tirou. A classe inteira fica fixa porque tamanho e contraste são o critério.
+    expect(TELAS.filter((tela) => lerFonte(tela).includes('uppercase'))).toEqual([])
+    expect(lerFonte('src/renderer/components/Chat.tsx')).toContain(
+      'py-0.5 text-center text-xs break-words text-foreground/70',
+    )
+    expect(lerFonte('src/renderer/components/Conversation.tsx')).toContain(
+      'py-1 text-center text-sm break-words text-foreground/70',
+    )
+  })
+
   it('as duas montam a fala com <MessageBubble>', () => {
     const semBolha = TELAS.filter((tela) => !lerFonte(tela).includes('MessageBubble'))
 

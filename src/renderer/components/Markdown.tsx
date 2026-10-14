@@ -50,8 +50,8 @@ const LINK_CLASSES = 'break-all underline decoration-2 underline-offset-2'
 /**
  * O mapa de elemento → casca.
  *
- * Toda medida é em `em`, e é isso que faz um mapa só servir a bolha `text-sm` da tela de chat e a
- * `text-xs` do cartão: a escala mora no contêiner, não aqui. Dois mapas divergiriam na primeira
+ * Toda medida é em `em`, e é isso que faz um mapa só servir a bolha `text-base` da tela de chat e a
+ * `text-sm` do cartão: a escala mora no contêiner, não aqui. Dois mapas divergiriam na primeira
  * correção que só um deles recebesse.
  */
 const COMPONENTS: Components = {
@@ -132,7 +132,12 @@ const COMPONENTS: Components = {
   },
 
   code: ({ children }) => (
-    <code className="rounded-base border-2 border-border bg-background px-1 py-0.5 font-mono text-[0.9em]">
+    // `inline-block max-w-full`: o termo que cabe inteiro na linha pula inteiro para a seguinte em
+    // vez de partir no meio; o que não cabe quebra dentro do próprio chip, limitado pela largura do
+    // contêiner. O fundo é `bg-foreground/10` — a tinta do próprio texto marca nas faces branca,
+    // violeta e obsidiana e também sobre o canvas `bg-background` do chat, onde `bg-background`
+    // sumiria (#94).
+    <code className="inline-block max-w-full break-words rounded-base bg-foreground/10 px-[0.3em] font-mono text-[0.9em] leading-snug">
       {children}
     </code>
   ),
@@ -140,13 +145,13 @@ const COMPONENTS: Components = {
   // O bloco de código e a tabela rolam na horizontal **dentro do próprio contêiner**: é o que os
   // mantém dentro da largura da bolha do cartão sem quebrar linha de código nem desalinhar coluna.
   // `w-max min-w-full` é o par que encolhe até a bolha quando cabe e cresce até o conteúdo quando
-  // não cabe. O `[&_code]` reseta a pílula que o componente de `code` inline traria para dentro do
+  // não cabe. O `[&_code]` reseta o chip que o componente de `code` inline traria para dentro do
   // bloco — seletor descendente, determinístico, sem precisar descobrir o pai a partir do nó. O
-  // `border-0` entrou nesse reset junto com a borda que o `code` inline ganhou: sem ele todo bloco
-  // de código nasceria com uma segunda caixa preta desenhada por dentro da primeira.
+  // `inline` desfaz o `inline-block` (o bloco precisa fluir como texto) e o `leading-[inherit]`
+  // devolve a entrelinha do bloco: sem ele o `leading-snug` do chip apertaria as linhas.
   pre: ({ children }) => (
     <div className="overflow-x-auto rounded-base border-2 border-border bg-background">
-      <pre className="w-max min-w-full p-2.5 font-mono text-[0.9em] leading-relaxed [&_code]:border-0 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit">
+      <pre className="w-max min-w-full p-2.5 font-mono text-[0.9em] leading-relaxed [&_code]:inline [&_code]:max-w-none [&_code]:rounded-none [&_code]:bg-transparent [&_code]:p-0 [&_code]:leading-[inherit] [&_code]:text-inherit">
         {children}
       </pre>
     </div>
@@ -161,7 +166,7 @@ const COMPONENTS: Components = {
   thead: ({ children }) => <thead className="border-b-2 border-border">{children}</thead>,
   // **`bg-background` no `th`, e não `bg-main`**: a bolha do usuário já é `bg-main`, e um cabeçalho
   // de tabela violet dentro de uma bolha violet desaparece. A lavanda recuada é a mesma superfície
-  // do `code` e do `pre`, e é a única que funciona nas duas faces de bolha.
+  // do `pre`, e é a única que funciona nas duas faces de bolha.
   th: ({ children }) => (
     <th className="border-2 border-border bg-background px-2 py-1 align-top font-heading">
       {children}
@@ -175,7 +180,7 @@ export function Markdown({ text }: { text: string }): JSX.Element {
   return (
     // `space-y-2` no contêiner, e não margem por elemento: ele aplica só aos filhos diretos, que
     // são exatamente os blocos de topo do markdown. O ritmo fino é assunto da #8.
-    <div className="space-y-2 break-words">
+    <div className="space-y-2 break-words leading-relaxed">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         // A ordem é **invariante de segurança**: o `rehype-raw` transforma as strings cruas de HTML
