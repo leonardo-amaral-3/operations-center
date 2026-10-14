@@ -1,5 +1,16 @@
+import type {
+  ClaudeStateEvent,
+  CloseClaudeRequest,
+  OpenClaudeRequest,
+  OpenClaudeResult,
+  TerminalState,
+} from '../../src/shared/claude'
 import { scopeKey } from '../../src/shared/ipc'
 import type {
+  TerminalDataEvent,
+  TerminalExitEvent,
+  TerminalInputRequest,
+  TerminalResizeRequest,
   ChooseFolderResult,
   CloseRequest,
   CreateFreeResult,
@@ -74,7 +85,29 @@ export interface OcFake {
   readonly terminaisAbertos: readonly OpenTerminalRequest[]
   /** Publica um retrato da janela aos assinantes de `onWindow`, como o observador do main faz. */
   publicarJanela(snapshot: WindowSnapshot): void
+  /** Os pedidos de `openClaude` inteiros, na ordem (#97). */
+  readonly claudeAbertos: readonly OpenClaudeRequest[]
+  /** Os escopos que a tela mandou `closeClaude`, na ordem. */
+  readonly claudeFechados: readonly CloseClaudeRequest[]
+  /** O que a tela digitou no PTY (`writeTerminal`), na ordem. */
+  readonly escritos: readonly TerminalInputRequest[]
+  /** Os redimensionamentos pedidos (`resizeTerminal`), na ordem. */
+  readonly redimensionados: readonly TerminalResizeRequest[]
+  /**
+   * Faz o próximo `openClaude` devolver este resultado em vez do `ok:true` padrão. `segurar` deixa a
+   * resposta pendente até `soltar()` — é o que permite o dado chegar antes dela.
+   */
+  responderClaude(resultado: OpenClaudeResult): void
+  segurarClaude(): { soltar(): void }
+  /** Publica um `claude:state` aos assinantes de `onClaudeState`. */
+  publicarEstadoClaude(event: ClaudeStateEvent): void
+  /** Publica saída do PTY (`terminal:data`). */
+  publicarDado(event: TerminalDataEvent): void
+  /** Publica o fim do PTY (`terminal:exit`). */
+  publicarSaida(event: TerminalExitEvent): void
 }
+
+const ESTADO_INICIAL: TerminalState = { kind: 'starting' }
 
 /** Instala o falso em `window.oc` e devolve o registro do que a tela pediu. */
 export function instalarOc(
@@ -89,6 +122,17 @@ export function instalarOc(
   const pedidosDaJanela: string[] = []
   const pedidosDaMesa: string[] = []
   const terminaisAbertos: OpenTerminalRequest[] = []
+  const claudeAbertos: OpenClaudeRequest[] = []
+  const claudeFechados: CloseClaudeRequest[] = []
+  const escritos: TerminalInputRequest[] = []
+  const redimensionados: TerminalResizeRequest[] = []
+  const ouvintesDeClaude: ((event: ClaudeStateEvent) => void)[] = []
+  const ouvintesDeDado: ((event: TerminalDataEvent) => void)[] = []
+  const ouvintesDeSaida: ((event: TerminalExitEvent) => void)[] = []
+  const vivosClaude = new Map<string, ClaudeStateEvent>()
+  let respostaClaude: OpenClaudeResult | null = null
+  let seguraClaude: Promise<void> | null = null
+  let cunhadosClaude = 0
 
   // As sessões vivas por escopo, que é o que faz o `start` ser idempotente. Um `Map`, e não um id
   // só, porque a mesma tela pode ter dois escopos em cena ao mesmo tempo.
@@ -301,6 +345,63 @@ export function instalarOc(
     onFree(ouvinte: (snapshot: FreeSnapshot) => void): () => void {
       return assinar(ouvintesDeLivres, ouvinte)
     },
+
+    // O terminal Claude (#97): `openClaude` é idempotente por escopo como o main (segundo `open` do
+    // mesmo escopo devolve o mesmo id com `spawned:false`), e o dado/saída do PTY têm emissores.
+    async openClaude(request: OpenClaudeRequest): Promise<OpenClaudeResult> {
+      claudeAbertos.push(request)
+      if (seguraClaude !== null) await seguraClaude
+
+      const programado = respostaClaude
+      respostaClaude = null
+      if (programado !== null) return programado
+
+      const chave = scopeKey(request.scope)
+      const viva = vivosClaude.get(chave)
+      if (viva !== undefined) {
+        return { ok: true, id: viva.id, state: viva.state, dangerous: viva.dangerous, spawned: false }
+      }
+
+      const id = `claude_${++cunhadosClaude}`
+      vivosClaude.set(chave, { scope: request.scope, id, state: ESTADO_INICIAL, dangerous: false })
+
+      return { ok: true, id, state: ESTADO_INICIAL, dangerous: false, spawned: true }
+    },
+
+    closeClaude(request: CloseClaudeRequest): Promise<void> {
+      claudeFechados.push(request)
+      vivosClaude.delete(scopeKey(request.scope))
+
+      return Promise.resolve()
+    },
+
+    readClaudeStates(): Promise<ClaudeStateEvent[]> {
+      return Promise.resolve([...vivosClaude.values()])
+    },
+
+    onClaudeState(ouvinte: (event: ClaudeStateEvent) => void): () => void {
+      return assinar(ouvintesDeClaude, ouvinte)
+    },
+
+    writeTerminal(request: TerminalInputRequest): Promise<void> {
+      escritos.push(request)
+
+      return Promise.resolve()
+    },
+
+    resizeTerminal(request: TerminalResizeRequest): Promise<void> {
+      redimensionados.push(request)
+
+      return Promise.resolve()
+    },
+
+    onTerminalData(ouvinte: (event: TerminalDataEvent) => void): () => void {
+      return assinar(ouvintesDeDado, ouvinte)
+    },
+
+    onTerminalExit(ouvinte: (event: TerminalExitEvent) => void): () => void {
+      return assinar(ouvintesDeSaida, ouvinte)
+    },
   }
 
   // A asserção mora aqui, e não no descritor: o `value` de um `PropertyDescriptor` é `any` e
@@ -318,6 +419,35 @@ export function instalarOc(
     pedidosDaJanela,
     pedidosDaMesa,
     terminaisAbertos,
+    claudeAbertos,
+    claudeFechados,
+    escritos,
+    redimensionados,
+    responderClaude(resultado: OpenClaudeResult): void {
+      respostaClaude = resultado
+    },
+    segurarClaude(): { soltar(): void } {
+      let soltar = (): void => undefined
+      seguraClaude = new Promise<void>((resolve) => {
+        soltar = resolve
+      })
+
+      return {
+        soltar: () => {
+          seguraClaude = null
+          soltar()
+        },
+      }
+    },
+    publicarEstadoClaude(event: ClaudeStateEvent): void {
+      for (const ouvinte of [...ouvintesDeClaude]) ouvinte(event)
+    },
+    publicarDado(event: TerminalDataEvent): void {
+      for (const ouvinte of [...ouvintesDeDado]) ouvinte(event)
+    },
+    publicarSaida(event: TerminalExitEvent): void {
+      for (const ouvinte of [...ouvintesDeSaida]) ouvinte(event)
+    },
     // Cópia do registro antes de percorrer, como o `close` acima: um ouvinte que se cancele ao
     // receber o retrato não pode furar a iteração de quem ainda não recebeu.
     publicarJanela(snapshot: WindowSnapshot): void {
