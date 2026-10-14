@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DIFF_MAX_LINES,
   INTERRUPTED_NOTICE,
+  TASK_NOTICE_FALLBACK,
   commandOf,
   diffOf,
   replay,
@@ -121,10 +122,40 @@ describe('replay de um transcript', () => {
       ])
     })
 
-    it('a notificação de tarefa também é nota, mas mantém o próprio texto', () => {
+    const envelope = (corpo: string): string => `<task-notification>\n${corpo}\n</task-notification>`
+    const textoDaNota = (aviso: string): string => {
+      const [nota] = falas(replay([fala('u1', aviso)]))
+      expect(nota?.role).toBe('notice')
+      expect(nota?.text).not.toContain('<')
+      return nota?.text ?? ''
+    }
+
+    it('a notificação de tarefa vira o summary dela', () => {
+      const aviso = envelope(
+        '<task-id>bw8</task-id>\n<status>completed</status>\n<summary>Background command "x" completed (exit code 0)</summary>',
+      )
+
+      expect(textoDaNota(aviso)).toBe('Background command "x" completed (exit code 0)')
+    })
+
+    it('a notificação de monitor junta summary e event', () => {
+      const aviso = envelope(
+        '<task-id>bm</task-id>\n<summary>Monitor event: "Cadeia"</summary>\n<event>passo 1 ok</event>',
+      )
+
+      expect(textoDaNota(aviso)).toBe('Monitor event: "Cadeia" — passo 1 ok')
+    })
+
+    it('achata quebra e espaço repetido, e ignora event vazio', () => {
+      const aviso = envelope('<summary>  linha um\n\n  linha   dois </summary>\n<event>   </event>')
+
+      expect(textoDaNota(aviso)).toBe('linha um linha dois')
+    })
+
+    it('sem summary, vira o texto padrão', () => {
       const aviso = '<task-notification>o agente terminou</task-notification>'
 
-      expect(falas(replay([fala('u1', aviso)]))).toEqual([{ role: 'notice', text: aviso }])
+      expect(textoDaNota(aviso)).toBe(TASK_NOTICE_FALLBACK)
     })
   })
 
