@@ -105,6 +105,17 @@ export class ConversationIndex {
    * vínculo antigo — a conversa de antes ficaria órfã, sem nenhum sinal de que existiu.
    */
   async restore(itemId: string): Promise<Restoration | null> {
+    const found = await this.locate(itemId)
+    if (found === null) return null
+
+    return { ...found, history: replay(await this.#entries(found.sessionId)) }
+  }
+
+  /**
+   * O `restore` sem o `replay`: o mesmo portão e a mesma poda, mas sem reler nem traduzir o JSONL.
+   * Quem só precisa do id e da pasta (o terminal Claude, #97) não paga a leitura do transcript.
+   */
+  async locate(itemId: string): Promise<{ sessionId: string; cwd: string } | null> {
     if (!this.#carregado) await this.refresh()
 
     const sessionId = this.#cards.get(itemId)
@@ -121,11 +132,7 @@ export class ConversationIndex {
       return null
     }
 
-    return {
-      sessionId,
-      cwd: info.cwd,
-      history: replay(await this.#entries(sessionId)),
-    }
+    return { sessionId, cwd: info.cwd }
   }
 
   /**
