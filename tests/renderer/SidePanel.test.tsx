@@ -25,7 +25,46 @@ vi.mock('../../src/renderer/components/TerminalView', () => ({
   ),
 }))
 
-afterEach(cleanup)
+// O terminal Claude (#97) monta o xterm de verdade no registro de instâncias; aqui ele é um dublê
+// que só conta os `focus()`, porque é isso que o CA-7 passou a observar (não há mais caixa de texto).
+const focos = vi.hoisted(() => ({ n: 0 }))
+
+vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
+vi.mock('@xterm/addon-fit', () => ({
+  FitAddon: class {
+    fit(): void {}
+  },
+}))
+vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }))
+vi.mock('@xterm/xterm', () => ({
+  Terminal: class {
+    cols = 80
+    rows = 24
+    options: Record<string, unknown> = {}
+    loadAddon(): void {}
+    open(): void {}
+    write(): void {}
+    focus(): void {
+      focos.n++
+    }
+    dispose(): void {}
+    hasSelection(): boolean {
+      return false
+    }
+    attachCustomKeyEventHandler(): void {}
+    onData(): { dispose(): void } {
+      return { dispose: () => undefined }
+    }
+    onResize(): { dispose(): void } {
+      return { dispose: () => undefined }
+    }
+  },
+}))
+
+afterEach(() => {
+  cleanup()
+  focos.n = 0
+})
 
 function painelAberto(ativa: string | null): LayoutSnapshot {
   return {
@@ -64,22 +103,22 @@ describe('CA-7 — criar uma sessão livre põe o foco na caixa dela', () => {
     await montar(painelAberto(null), { criaLivre: true })
 
     // Nada recebe foco sozinho na abertura do app.
-    expect(screen.queryByTestId('card-chat-input')).toBeNull()
+    expect(screen.queryByTestId('claude-terminal')).toBeNull()
 
     fireEvent.keyDown(window, { code: 'KeyN', ctrlKey: true, shiftKey: true })
     await act(async () => {})
 
-    const caixa = screen.getByTestId('card-chat-input')
-    expect(document.activeElement).toBe(caixa)
+    expect(screen.getByTestId('claude-terminal')).toBeTruthy()
+    expect(focos.n).toBe(1)
   })
 
   it('reabrir o app com o painel aberto numa sessão não põe o foco em lugar nenhum', async () => {
     await montar(painelAberto('free_0'), { livres: [SEM_TRANSCRIPT] })
 
-    // A sessão restaurada está na tela e habilitada, e mesmo assim o teclado não é levado a ela:
+    // A sessão restaurada está na tela, e mesmo assim o teclado não é levado a ela:
     // digitar sem clicar não pode cair numa conversa que ninguém escolheu.
-    expect(screen.getByTestId('card-chat-input')).toBeTruthy()
-    expect(document.activeElement).toBe(document.body)
+    expect(screen.getByTestId('claude-terminal')).toBeTruthy()
+    expect(focos.n).toBe(0)
   })
 })
 
@@ -93,9 +132,8 @@ describe('CA-2 — a sessão sem transcript aparece com título e pasta, sem his
     expect(aba.getAttribute('data-recoverable')).toBe('false')
 
     expect(screen.getByTestId('free-no-history')).toBeTruthy()
-    expect(screen.queryAllByTestId('message')).toHaveLength(0)
-    // A conversa está lá para a próxima mensagem abrir uma nova na mesma pasta.
-    expect(screen.getByTestId('card-chat-input')).toBeTruthy()
+    // O terminal está lá para a próxima abertura criar uma conversa nova na mesma pasta.
+    expect(screen.getByTestId('claude-terminal')).toBeTruthy()
   })
 
   it('com transcript, não há aviso de "sem histórico"', async () => {
@@ -106,7 +144,33 @@ describe('CA-2 — a sessão sem transcript aparece com título e pasta, sem his
   })
 })
 
-describe('CA-3 — o "Terminal aqui" convive com o painel e o kanban', () => {
+describe('#97 R2 — o estado do terminal da sessão livre chega ao selo', () => {
+  it('um `claude:state` do escopo `free` aparece; o de um cartão não mexe no painel', async () => {
+    const oc = await montar(painelAberto('free_0'), { livres: [SEM_TRANSCRIPT] })
+
+    act(() => {
+      oc.publicarEstadoClaude({
+        scope: { kind: 'card', itemId: 'item_9' },
+        id: 'claude_9',
+        state: { kind: 'working' },
+        dangerous: false,
+      })
+    })
+    expect(screen.getByTestId('state-badge').getAttribute('data-state')).toBe('starting')
+
+    act(() => {
+      oc.publicarEstadoClaude({
+        scope: { kind: 'free', id: 'free_0' },
+        id: 'claude_1',
+        state: { kind: 'working' },
+        dangerous: false,
+      })
+    })
+    expect(screen.getByTestId('state-badge').getAttribute('data-state')).toBe('working')
+  })
+})
+
+describe('CA-3 —o "Terminal aqui" convive com o painel e o kanban', () => {
   it('abre o dock no escopo da sessão, sem fechar o painel nem a tela', async () => {
     await montar(painelAberto('free_0'), { livres: [SEM_TRANSCRIPT] })
 
