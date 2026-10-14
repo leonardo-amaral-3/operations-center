@@ -23,6 +23,7 @@ vi.mock('electron', () => ({
 import type { WebContents } from 'electron'
 
 import { FreeIndex } from '../../src/core'
+import { composeCloseScope } from '../../src/main/claudeTerminal'
 import { registerFreeIpc } from '../../src/main/free'
 import { IPC_EVENT, IPC_INVOKE } from '../../src/shared/ipc'
 import type { CreateFreeResult, FreeSnapshot, SessionScope } from '../../src/shared/ipc'
@@ -113,6 +114,21 @@ describe('free:read e free:changed', () => {
 
     await invoke(IPC_INVOKE.renameFree, { id: 'livre-1', title: 'api' })
     expect(index.list()[0]?.title).toBe('api')
+  })
+})
+
+describe('closeScope composto (#97)', () => {
+  it('fecha o terminal Claude antes da sessão do SDK', async () => {
+    const ordem: string[] = []
+    const fechar = composeCloseScope(
+      { close: () => Promise.resolve(void ordem.push('claude')) },
+      () => Promise.resolve(void ordem.push('sdk')),
+    )
+
+    await fechar({ kind: 'free', id: 'livre-1' })
+    await fechar({ kind: 'triage', boardKey: 'b' })
+
+    expect(ordem).toEqual(['claude', 'sdk', 'sdk'])
   })
 })
 
