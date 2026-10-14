@@ -220,12 +220,17 @@ export function CardContentView({
           de 44 mil caracteres do card #6 empurraria o cartão seguinte para fora da vista — o kanban
           deixaria de ser um kanban (CA-4). O teto vale no kanban e cai no cartão expandido (#28), onde o
           corpo preenche a altura e rola sozinho. Quem rola na horizontal é o contêiner de cada tabela e
-          de cada bloco de código, dentro do `Markdown`; aqui só a vertical. */}
+          de cada bloco de código, dentro do `Markdown`; aqui só a vertical. O `pt-1` é a folga dentro
+          da caixa de rolagem para o que sobe da primeira linha: com `mt-2` e zero de padding, a borda
+          de cima recortava o chip do código inline (#94). */}
       {aberta ? (
         <div
           data-testid="card-content-body"
           hidden={naAbaPr}
-          className={cn('mt-2 overflow-y-auto', preencher ? 'min-h-0 flex-1' : 'max-h-[26rem]')}
+          className={cn(
+            'mt-1 overflow-y-auto pt-1',
+            preencher ? 'min-h-0 flex-1' : 'max-h-[26rem]',
+          )}
         >
           <Corpo state={state} pending={pending} onReload={onReload} />
         </div>
