@@ -2,6 +2,12 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 
 import type { BoardsSnapshot } from '../shared/board'
+import type {
+  ClaudeStateEvent,
+  CloseClaudeRequest,
+  OpenClaudeRequest,
+  OpenClaudeResult,
+} from '../shared/claude'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type {
   ActivateBoardRequest,
@@ -165,6 +171,13 @@ const api: OcApi = {
     ipcRenderer.invoke(IPC_INVOKE.closeTerminal, request) as Promise<void>,
   onTerminalData: (listener) => subscribe<TerminalDataEvent>(IPC_EVENT.terminalData, listener),
   onTerminalExit: (listener) => subscribe<TerminalExitEvent>(IPC_EVENT.terminalExit, listener),
+  openClaude: (request: OpenClaudeRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.openClaude, request) as Promise<OpenClaudeResult>,
+  closeClaude: (request: CloseClaudeRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.closeClaude, request) as Promise<void>,
+  readClaudeStates: () =>
+    ipcRenderer.invoke(IPC_INVOKE.readClaudeStates) as Promise<ClaudeStateEvent[]>,
+  onClaudeState: (listener) => subscribe<ClaudeStateEvent>(IPC_EVENT.claudeState, listener),
   readFree: () => ipcRenderer.invoke(IPC_INVOKE.readFree) as Promise<FreeSnapshot>,
   createFree: () => ipcRenderer.invoke(IPC_INVOKE.createFree) as Promise<CreateFreeResult>,
   renameFree: (request: RenameFreeRequest) =>

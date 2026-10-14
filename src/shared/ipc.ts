@@ -9,6 +9,12 @@
 
 import type { BoardsSnapshot, CardContent, PullRequestView } from './board'
 import type {
+  ClaudeStateEvent,
+  CloseClaudeRequest,
+  OpenClaudeRequest,
+  OpenClaudeResult,
+} from './claude'
+import type {
   ChatMessage,
   PermissionDecision,
   QuestionAnswers,
@@ -89,6 +95,14 @@ export const IPC_INVOKE = {
   resizeTerminal: 'terminal:resize',
   closeTerminal: 'terminal:close',
   /**
+   * O terminal Claude do cartão e da sessão livre (#97). Família `claude:` própria: sobe o `claude`
+   * num PTY do mesmo host do `terminal:*`, que segue levando dados, entrada, tamanho e saída.
+   * `readClaudeStates` devolve os processos vivos; **nenhum destes canais toca o board**.
+   */
+  openClaude: 'claude:open',
+  closeClaude: 'claude:close',
+  readClaudeStates: 'claude:states',
+  /**
    * Sessões livres (#74): conversa sem card. Família `free:` — o estado mora em arquivo do próprio
    * app em `OC_STATE_DIR`, nunca no GitHub. `readFree` também assina, como `readWindow`.
    */
@@ -147,6 +161,8 @@ export const IPC_EVENT = {
    */
   terminalData: 'terminal:data',
   terminalExit: 'terminal:exit',
+  /** O estado do terminal Claude de um escopo mudou (#97). Derivado dos hooks; não toca o board. */
+  claudeState: 'claude:state',
   /** Mudou o conjunto de sessões livres (#74). Estado do app, em `OC_STATE_DIR`; não toca o board. */
   free: 'free:changed',
 } as const
@@ -650,6 +666,12 @@ export interface OcApi {
   closeTerminal(request: TerminalCloseRequest): Promise<void>
   onTerminalData(listener: (event: TerminalDataEvent) => void): () => void
   onTerminalExit(listener: (event: TerminalExitEvent) => void): () => void
+  /** Abre (ou reencontra) o terminal Claude do escopo. Falha esperada volta como `ok: false`. */
+  openClaude(request: OpenClaudeRequest): Promise<OpenClaudeResult>
+  closeClaude(request: CloseClaudeRequest): Promise<void>
+  /** Os terminais Claude vivos, para o board pintar o selo de quem já estava aberto. */
+  readClaudeStates(): Promise<ClaudeStateEvent[]>
+  onClaudeState(listener: (event: ClaudeStateEvent) => void): () => void
 
   /** As sessões livres — e, como `readWindow`, **também é a assinatura** de `onFree`. */
   readFree(): Promise<FreeSnapshot>
