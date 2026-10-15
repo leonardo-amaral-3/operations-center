@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -13,7 +13,15 @@ import {
   FIRST_BOARD,
   fixtureProject,
 } from './boards-fixture'
-import { launchSmokeApp } from './smoke-app'
+import {
+  PERGUNTA_17_25,
+  RESPOSTA_42,
+  digitarNoTerminal,
+  fundoEfetivo,
+  launchSmokeApp,
+  provarSessaoNaPasta,
+  xtermDe,
+} from './smoke-app'
 
 /**
  * O smoke do cartão-chat: clicar num cartão do kanban e conversar dentro dele, de ponta a ponta.
@@ -26,7 +34,9 @@ import { launchSmokeApp } from './smoke-app'
  * rodam inteiros, e mesmo assim a sessão aterrissa numa pasta descartável.
  *
  * Como o smoke da fatia vertical, ele **sobe sessão real: precisa do Claude Code logado e consome
- * cota**. Por isso `OC_MODEL` num modelo barato e `OC_ISOLATED=1`, e por isso ele fica fora do CI.
+ * cota**. Por isso `OC_MODEL` num modelo barato (vira `--model` no terminal Claude), e por isso ele
+ * fica fora do CI. Desde o #97 o cartão aberto é o terminal do Claude Code (xterm), e o smoke o
+ * dirige como a pessoa: digita no `textarea` do xterm e lê o texto de `.xterm-rows`.
  *
  * **Nenhum valor esperado é escrito à mão.** Quais cartões clicar saem da fixture, e até o `origin`
  * do repo-fantoche é o repositório do cartão que a fixture manda conversar. Fixar "o card #4" faria
@@ -59,34 +69,6 @@ const TURN_TIMEOUT = 180_000
 
 /** Depois do clique, o próximo estado é síncrono no core: o que se espera aqui é só o IPC. */
 const DECISION_TIMEOUT = 15_000
-
-/** Intervalo entre duas leituras do estado enquanto a sessão trabalha. */
-const POLL_INTERVAL = 250
-
-/** A primeira coisa dita à sessão. Guardada porque o CA-6 a relê depois de colapsar e reabrir. */
-const FIRST_PROMPT = 'Responda apenas: OK'
-
-/**
- * O turno que o #12 manda parar: longo o bastante para dar tempo do clique, e **de texto puro**.
- *
- * O "sem usar ferramenta nenhuma" não é enfeite: o smoke roda com `OC_ISOLATED=1`, e ali *toda*
- * ferramenta passa pelo `canUseTool` — um pedido de permissão levaria o cartão a
- * `awaiting_decision`, o botão sumiria (CA-3) e o clique falharia por um motivo que não tem nada a
- * ver com parar turno.
- */
-const LONG_PROMPT = 'Conte de 1 a 200, um número por linha, sem usar ferramenta nenhuma'
-
-/**
- * O turno do CA-3 do #14: **de texto puro**, pela mesma razão do `LONG_PROMPT`, e longo o bastante
- * para haver turno em curso a observar quando a asserção chegar.
- *
- * O "explique o raciocínio" não é enfeite de prompt: o único heartbeat que o SDK publica são os
- * quadros de `thinking_tokens`, e sem fase de raciocínio o contador fica em zero e o teste falharia
- * por escolha do modelo, não por bug do app.
- */
-const THINKING_PROMPT =
-  'Pense com calma e explique o seu raciocínio passo a passo: quantos dias há entre 3 de março de ' +
-  '2027 e 19 de novembro de 2027? Não use ferramenta nenhuma.'
 
 /**
  * O envelope cru, do jeito que o `BoardReader` o recebe — reduzido ao que este smoke precisa.
@@ -297,10 +279,6 @@ test.beforeAll(async () => {
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell abriria a tela errada e o
       // teste falharia por um motivo que não tem nada a ver com o cartão-chat.
       OC_SCREEN: 'kanban',
-      // Sem carregar as settings pessoais, nenhuma allowlist pode pré-aprovar a ferramenta do CA-2
-      // e fazer o pedido de permissão não aparecer. É o que torna aquele passo determinístico — e,
-      // de quebra, o que deixa o smoke barato.
-      OC_ISOLATED: '1',
       OC_MODEL: SMOKE_MODEL,
     },
   })
@@ -325,7 +303,7 @@ test('CA-5: o cartão do repo forasteiro pede a pasta, e não sobe sessão nenhu
   // O pedido da pasta, e **nenhuma conversa**: sem pasta resolvida não há sessão, e é isso que
   // separa o CA-5 de um chat que abriria numa pasta chutada.
   await expect(cardLocator(OUTSIDER_CARD).getByTestId('choose-folder')).toBeVisible()
-  await expect(window.getByTestId('card-chat')).toHaveCount(0)
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(0)
 
   // Colapsado, o cartão só mostra o sinal de estado quando existe sessão viva atrás dele. A
   // ausência do sinal é a prova de que nenhuma nasceu — o `start` respondeu, e respondeu "não sei".
@@ -338,21 +316,18 @@ test('CA-1 e CA-2: o cartão vira chat no próprio lugar, e a sessão responde',
 
   // Dentro do cartão, dentro da coluna daquele `columnId` — não em modal, não em outra tela. E um
   // só no kanban inteiro, que é a outra metade do RF-6.
-  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
-  await expect(columnLocator(CHAT_CARD.columnId).getByTestId('card-chat')).toHaveCount(1)
-  await expect(window.getByTestId('card-chat')).toHaveCount(1)
+  await expect(cardLocator(CHAT_CARD).getByTestId('claude-terminal')).toBeVisible()
+  await expect(columnLocator(CHAT_CARD.columnId).getByTestId('claude-terminal')).toHaveCount(1)
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(1)
 
   // O estado ao abrir (`starting` na sonda do #80) não se afirma: a corrida com o `init` não é
   // deste critério.
   await barraSemSobreposicao(CHAT_CARD, 'aberto, ao abrir')
 
-  const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
-
-  // Ler e digitar: a mensagem atravessa renderer → main → core → SDK e a resposta volta renderizada
-  // dentro do cartão. A bolha de assistente só existe quando há texto, então vê-la já prova o texto.
-  await input.fill(FIRST_PROMPT)
-  await input.press('Enter')
-  await expect(assistantMessages(CHAT_CARD).first()).toBeVisible({ timeout: TURN_TIMEOUT })
+  // Digitar no xterm: a pergunta atravessa renderer → main → PTY → Claude Code, e a resposta (`42`,
+  // que não está no texto enviado) volta desenhada na tela do terminal e no selo do hook `Stop`.
+  await digitarNoTerminal(terminalDe(CHAT_CARD), PERGUNTA_17_25)
+  await expect(xtermDe(terminalDe(CHAT_CARD))).toContainText(RESPOSTA_42, { timeout: TURN_TIMEOUT })
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
     timeout: TURN_TIMEOUT,
   })
@@ -382,13 +357,9 @@ test('CA-1 e CA-2: o cartão vira chat no próprio lugar, e a sessão responde',
 })
 
 test('CA-3: a sessão do cartão roda na pasta do repo dele, e o cartão mostra qual é', async () => {
-  const cwd = cardLocator(CHAT_CARD).getByTestId('card-chat-cwd')
-
-  // A âncora só existe depois do `init`, e o `init` é o que o SDK reporta da sessão de verdade —
-  // então o que está na tela **é** a `cwd` em que o Claude Code subiu, e não um rótulo que o
-  // renderer montou por conta própria.
-  await expect(cwd).toBeVisible()
-  expect(comparablePath(await cwd.textContent())).toBe(comparablePath(puppetRepo))
+  // O transcript da sessão nasce na pasta em que o processo de fato subiu: é a `cwd` real, e não um
+  // rótulo que o renderer montou. O cabeçalho da TUI não prova isso, porque encurta o caminho.
+  await provarSessaoNaPasta(puppetRepo)
 })
 
 /**
@@ -405,7 +376,7 @@ test('#13 CA-5: o conteúdo e a conversa dividem o cartão, e recarregar não to
   // decisão de abas ou de painel lateral, que cumpririam "conversa alcançável" e não "com o
   // conteúdo à mostra".
   await expect(card.getByTestId('card-content')).toBeVisible()
-  await expect(card.getByTestId('card-chat-input')).toBeVisible()
+  await expect(terminalDe(CHAT_CARD)).toBeVisible()
 
   // Recolher a seção e recarregá-la são os dois gestos que mexem no conteúdo. Nenhum deles pode
   // mexer na sessão — e o estado do badge é onde isso apareceria primeiro.
@@ -419,7 +390,9 @@ test('#13 CA-5: o conteúdo e a conversa dividem o cartão, e recarregar não to
   // não só o clique — sem essa espera a asserção abaixo leria o badge antes de a resposta chegar.
   await expect(reload).toBeEnabled()
 
-  await expect(card.getByTestId('card-chat-input')).toBeVisible()
+  // A mesma instância do xterm: a resposta de antes do recarregar segue na tela.
+  await expect(terminalDe(CHAT_CARD)).toBeVisible()
+  await expect(xtermDe(terminalDe(CHAT_CARD))).toContainText(RESPOSTA_42)
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
 })
 
@@ -429,14 +402,8 @@ test('#13 CA-5: o conteúdo e a conversa dividem o cartão, e recarregar não to
  */
 test('#28 CA-1 e CA-2: expandir cobre a tela, e Esc devolve o cartão com rascunho, histórico e sessão', async () => {
   const card = cardLocator(CHAT_CARD)
-  const input = card.getByTestId('card-chat-input')
-
-  await input.fill('rascunho que não foi enviado')
-  const antes = {
-    user: await userMessages(CHAT_CARD).count(),
-    assistant: await assistantMessages(CHAT_CARD).count(),
-    notice: await noticeMessages(CHAT_CARD).count(),
-  }
+  // A resposta de antes de expandir: se o expandir remontasse o terminal, ela sumiria da tela.
+  await expect(xtermDe(terminalDe(CHAT_CARD))).toContainText(RESPOSTA_42)
 
   await card.getByTestId('card-maximize').click()
 
@@ -456,7 +423,9 @@ test('#28 CA-1 e CA-2: expandir cobre a tela, e Esc devolve o cartão com rascun
   expect(await corpo.getAttribute('class')).not.toContain('max-h-[26rem]')
   expect((await caixaDe(corpo, 'o corpo do conteúdo')).height).toBeGreaterThan(416)
 
-  await input.focus()
+  // O Esc é disparado FORA do terminal: dentro dele a tecla é da CLI (P18), que a usa para
+  // interromper o turno. O foco vai para um botão do próprio cartão.
+  await card.getByTestId('card-content-toggle').focus()
   await window.keyboard.press('Escape')
 
   expect(await card.getAttribute('class')).not.toContain('absolute')
@@ -470,17 +439,13 @@ test('#28 CA-1 e CA-2: expandir cobre a tela, e Esc devolve o cartão com rascun
   // `nearest` garante o topo à vista.
   expect(volta.y).toBeLessThan(coluna.y + coluna.height)
 
-  // Nada remontou: rascunho no lugar, mesmas mensagens, sessão no mesmo estado, conteúdo não relido.
-  await expect(input).toHaveValue('rascunho que não foi enviado')
-  expect(await userMessages(CHAT_CARD).count()).toBe(antes.user)
-  expect(await assistantMessages(CHAT_CARD).count()).toBe(antes.assistant)
-  expect(await noticeMessages(CHAT_CARD).count()).toBe(antes.notice)
+  // Nada remontou: o texto de antes segue no xterm, a sessão no mesmo estado, o conteúdo não relido.
+  await expect(xtermDe(terminalDe(CHAT_CARD))).toContainText(RESPOSTA_42)
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
   await expect(card.getByTestId('card-content-reload')).toBeEnabled()
   await expect(card.getByText('Lendo o card…')).toHaveCount(0)
 
   // Devolve o cartão como o #13 CA-5 o deixou, para os testes seguintes.
-  await input.fill('')
   await card.getByTestId('card-content-toggle').click()
   await expect(card.getByTestId('card-content-body')).toHaveCount(0)
 })
@@ -504,6 +469,8 @@ test('#28 CA-4: o botão recolhe, e fechar o cartão expandido não o reabre exp
   expect(await card.getAttribute('class')).not.toContain('absolute')
   // Há sessão viva, então a seção de conteúdo nasce recolhida (`CardContent.tsx:44`).
   await expect(card.getByTestId('card-content-body')).toHaveCount(0)
+  // Colapsar fecha a vista, não a conversa: o xterm volta com o que já tinha.
+  await expect(xtermDe(terminalDe(CHAT_CARD))).toContainText(RESPOSTA_42)
 })
 
 /**
@@ -516,7 +483,7 @@ test('#28 CA-4: o botão recolhe, e fechar o cartão expandido não o reabre exp
  */
 test('#78 CA-1 e CA-2: o chat veste o canvas, e não a face, nas três combinações', async () => {
   const card = cardLocator(CHAT_CARD)
-  if ((await card.getByTestId('card-chat').count()) === 0) await card.click()
+  if ((await card.getByTestId('claude-terminal').count()) === 0) await card.click()
 
   const html = window.locator('html')
   const original = await html.getAttribute('data-theme')
@@ -530,7 +497,7 @@ test('#78 CA-1 e CA-2: o chat veste o canvas, e não a face, nas três combinaç
       await html.evaluate((raiz: Raiz, valor) => raiz.setAttribute('data-theme', valor), tema)
       await expect(html).toHaveAttribute('data-theme', tema)
 
-      const chat = await corDeFundo(card.getByTestId('card-chat'))
+      const chat = await fundoEfetivo(card.getByTestId('claude-terminal'))
       const face = await corDeFundo(card)
       const canvas = await corDeFundo(window.locator('body'))
       expect(chat, `na ${tema}, o chat tem o fundo da face do cartão`).not.toBe(face)
@@ -552,39 +519,6 @@ test('#78 CA-1 e CA-2: o chat veste o canvas, e não a face, nas três combinaç
       original,
     )
   }
-})
-
-test('CA-2: a permissão de escrita aparece no cartão e a decisão destrava o turno', async () => {
-  const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
-
-  await input.fill('Crie um arquivo `smoke.txt` com o texto OK')
-  await input.press('Enter')
-
-  // A mesma carona do smoke da fatia vertical, agora dentro do cartão e igualmente **sem cota
-  // nenhuma**: as crases já estavam naquele prompt. `smoke.txt` vira `<code>` e a crase não sobra
-  // como caractere no texto visível — é o markdown do #9 provado na segunda tela, que é justamente
-  // a que a bolha compartilhada existe para não deixar divergir.
-  const sentBubble = userMessages(CHAT_CARD).last()
-  await expect(sentBubble.locator('code')).toHaveText('smoke.txt')
-  await expect(sentBubble).not.toContainText('`')
-
-  await expect(cardLocator(CHAT_CARD).getByTestId('permission-prompt')).toBeVisible({
-    timeout: TURN_TIMEOUT,
-  })
-  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_decision')
-  await barraSemSobreposicao(CHAT_CARD, 'aberto, decisão pendente')
-
-  // A decisão humana destrava o turno. O que vem **depois** dela não se afirma aqui: com a fila do
-  // #11, o estado seguinte tanto pode ser `working` quanto o próximo pedido, ao sabor de quantas
-  // ferramentas o modelo resolveu disparar no lote. Quem cobra o resto é o laço, que atravessa a
-  // fila inteira até a vez voltar.
-  await cardLocator(CHAT_CARD).getByTestId('permission-allow').click()
-
-  await allowUntilAwaitingInput(CHAT_CARD)
-
-  // O arquivo no repo-fantoche fecha o CA-3 pelo outro lado: o rótulo na tela dizia aquela pasta, e
-  // é nela que a ferramenta de fato escreveu.
-  expect(existsSync(join(puppetRepo, 'smoke.txt'))).toBe(true)
 })
 
 /**
@@ -611,36 +545,33 @@ test('#13 CA-3: o cartão de coluna sem skill abre o conteúdo, e não sobe sess
 
   // E nada de sessão **aqui**. O cartão-chat do `CHAT_CARD`, esse continua na tela: outra coluna, e
   // desde o #45 abrir um cartão só fecha os abertos da mesma coluna dele.
-  await expect(cardLocator(INERT_CARD).getByTestId('card-chat')).toHaveCount(0)
-  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
+  await expect(cardLocator(INERT_CARD).getByTestId('claude-terminal')).toHaveCount(0)
+  await expect(cardLocator(CHAT_CARD).getByTestId('claude-terminal')).toBeVisible()
 
   // Um no kanban inteiro, e não dois: o cartão inerte abriu sem subir sessão nenhuma. É a metade do
   // critério que sobreviveu à emenda do #13, agora afirmada por contagem em vez de por colapso.
-  await expect(window.getByTestId('card-chat')).toHaveCount(1)
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(1)
 
   // E aquela sessão segue viva, com a conversa onde estava — o clique noutra coluna não a tocou.
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
-  await expect(userMessages(CHAT_CARD).first()).toContainText(FIRST_PROMPT)
+  await expect(xtermDe(terminalDe(CHAT_CARD))).toContainText(RESPOSTA_42)
 })
 
 test('CA-1 e CA-6: o segundo cartão sobe em outra coluna, e a sessão do primeiro continua viva', async () => {
   await cardLocator(SECOND_CARD).click()
 
-  await expect(cardLocator(SECOND_CARD).getByTestId('card-chat')).toBeVisible()
-  await expect(columnLocator(SECOND_CARD.columnId).getByTestId('card-chat')).toHaveCount(1)
-  await expect(window.getByTestId('card-chat')).toHaveCount(2)
+  await expect(cardLocator(SECOND_CARD).getByTestId('claude-terminal')).toBeVisible()
+  await expect(columnLocator(SECOND_CARD.columnId).getByTestId('claude-terminal')).toHaveCount(1)
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(2)
 
   // Aberto — e vivo. O #45 tirou o colapso daqui, mas não o que o CA-6 afirma: a sessão do vizinho
   // atravessa o clique intacta, e o sinal de estado é onde isso apareceria primeiro. Quem prova o
   // CA-6 com o cartão **fechado** é agora o teste do RA-2, logo abaixo.
-  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
+  await expect(cardLocator(CHAT_CARD).getByTestId('claude-terminal')).toBeVisible()
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
 
-  // E é a mesma conversa, não uma sessão nova: as duas mensagens que o `CHAT_CARD` mandou continuam
-  // lá, na ordem em que foram ditas.
-  const mine = userMessages(CHAT_CARD)
-  await expect(mine).toHaveCount(2)
-  await expect(mine.first()).toContainText(FIRST_PROMPT)
+  // E é a mesma conversa, não uma sessão nova: a resposta que o `CHAT_CARD` deu continua no xterm.
+  await expect(xtermDe(terminalDe(CHAT_CARD))).toContainText(RESPOSTA_42)
 })
 
 /**
@@ -655,9 +586,9 @@ test('CA-1 e CA-6: o segundo cartão sobe em outra coluna, e a sessão do primei
  * mais que a largura dela. É por isso que a medida é de caixa, e não de captura de tela.
  */
 test('#45 RA-1: dois cartões de colunas diferentes ficam abertos, e as duas colunas alargam', async () => {
-  await expect(window.getByTestId('card-chat')).toHaveCount(2)
-  await expect(columnLocator(CHAT_CARD.columnId).getByTestId('card-chat')).toHaveCount(1)
-  await expect(columnLocator(SECOND_CARD.columnId).getByTestId('card-chat')).toHaveCount(1)
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(2)
+  await expect(columnLocator(CHAT_CARD.columnId).getByTestId('claude-terminal')).toHaveCount(1)
+  await expect(columnLocator(SECOND_CARD.columnId).getByTestId('claude-terminal')).toHaveCount(1)
 
   const primeira = await caixaDe(
     columnLocator(CHAT_CARD.columnId),
@@ -699,382 +630,70 @@ test('#45 RA-2: o cartão da mesma coluna fecha o vizinho dela, e só ele', asyn
 
   // O vizinho da **mesma** coluna colapsou — e a sessão dele não foi junto. O sinal no cartão
   // fechado é o CA-6 do #6, e é ele que separa colapsar de encerrar.
-  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toHaveCount(0)
+  await expect(cardLocator(CHAT_CARD).getByTestId('claude-terminal')).toHaveCount(0)
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input')
 
   // E ninguém de fora se mexeu: o `SECOND_CARD` está noutra coluna e continua aberto, com a sessão
   // dele à mostra. É esta linha que separa o RA-2 da regra antiga, que fechava o kanban inteiro.
-  await expect(cardLocator(SECOND_CARD).getByTestId('card-chat')).toBeVisible()
-  await expect(window.getByTestId('card-chat')).toHaveCount(1)
+  await expect(cardLocator(SECOND_CARD).getByTestId('claude-terminal')).toBeVisible()
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(1)
 
   await cardLocator(CHAT_CARD).click()
 
   // De volta, com a conversa de sempre — e o cartão da mesma coluna fechado pela mesma regra, agora
   // do outro lado.
-  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
+  await expect(cardLocator(CHAT_CARD).getByTestId('claude-terminal')).toBeVisible()
   await expect(cardLocator(SAME_COLUMN_CARD).getByTestId('choose-folder')).toHaveCount(0)
-  await expect(userMessages(CHAT_CARD).first()).toContainText(FIRST_PROMPT)
-  await expect(window.getByTestId('card-chat')).toHaveCount(2)
+  await expect(xtermDe(terminalDe(CHAT_CARD))).toContainText(RESPOSTA_42)
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(2)
 })
 
-test('#12: parar o turno corta a vez, deixa a nota e devolve a sessão viva', async () => {
-  // Os testes do #45 que vêm antes mexem nos cartões abertos; se o CHAT_CARD já está aberto, a
-  // guarda não faz nada (mesma do #78).
-  if ((await cardLocator(CHAT_CARD).getByTestId('card-chat').count()) === 0) {
-    await cardLocator(CHAT_CARD).click()
-  }
-
-  const stopButton = cardLocator(CHAT_CARD).getByTestId('card-stop-turn')
-  const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
-
-  // Nada rodando, nada a parar: o botão do CA-3 é situacional, e em `awaiting_input` ele nem existe
-  // no DOM.
-  await expect(stopButton).toHaveCount(0)
-
-  await input.fill(LONG_PROMPT)
-  await input.press('Enter')
-
-  // `working` já no Enter — é o CA-4, e é ele que faz o botão existir num turno que não pede
-  // permissão nenhuma. O prazo é o do IPC, não o do modelo: a transição é síncrona no core.
-  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'working', {
-    timeout: DECISION_TIMEOUT,
-  })
-  await expect(stopButton).toBeVisible()
-
-  // O #80 no pior caso: com o Parar real o grupo chega a 546px contra uma barra de ~500px. A janela
-  // é a do LONG_PROMPT; cada `expect` antes da medição faz um turno que acabou cedo demais falhar
-  // dizendo isso, e não com uma geometria confusa.
-  await barraSemSobreposicao(CHAT_CARD, 'aberto, trabalhando')
-  await cardLocator(CHAT_CARD).getByTestId('card-maximize').click()
-  await expect(stopButton).toBeVisible()
-  await barraSemSobreposicao(CHAT_CARD, 'expandido, trabalhando')
-  await cardLocator(CHAT_CARD).getByTestId('card-maximize').click()
-  await expect(cardLocator(CHAT_CARD).getByTestId('card-maximize')).toHaveAttribute(
-    'aria-pressed',
-    'false',
-  )
-
-  await stopButton.click()
-
-  // O CA-1 na sessão real: a vez volta, e volta como `awaiting_input` — e não como `failed`, que é
-  // o que um result de turno abortado viraria sem a bandeira do core.
-  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
-    timeout: TURN_TIMEOUT,
-  })
-
-  // A parada é visível (a nota) e a ação some com o turno que ela cortou.
-  await expect(noticeMessages(CHAT_CARD)).toHaveCount(1)
-  await expect(stopButton).toHaveCount(0)
-
-  // O CA-2 pela metade da memória: a conversa inteira continua na tela, na ordem, com a primeira
-  // mensagem ainda sendo a primeira.
-  const mine = userMessages(CHAT_CARD)
-  await expect(mine).toHaveCount(3)
-  await expect(mine.first()).toContainText(FIRST_PROMPT)
-
-  // E a outra metade: a **mesma** sessão responde o turno seguinte. A contagem é lida agora e
-  // comparada com `+1` porque quantas bolhas o turno cortado deixou é escolha do modelo — fixar um
-  // número aqui seria escrever à mão um valor esperado que o teste pode ler.
-  const answers = await assistantMessages(CHAT_CARD).count()
-
-  await input.fill('Responda apenas: SEGUE')
-  await input.press('Enter')
-
-  await expect(assistantMessages(CHAT_CARD)).toHaveCount(answers + 1, { timeout: TURN_TIMEOUT })
-  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
-    timeout: TURN_TIMEOUT,
-  })
-})
-
-test('#14 CA-2: a trilha da ferramenta sobrevive ao colapso do cartão', async () => {
-  // A ferramenta que gerou a trilha é a do passo da permissão de escrita, lá em cima: aqui o que se
-  // prova é que aquilo **ficou**, e não que o modelo usa ferramenta — isso ele já provou uma vez, e
-  // provar de novo custaria outro turno de cota por nada.
-  await expect(toolEntries(CHAT_CARD).first()).toBeVisible()
-
-  await cardLocator(CHAT_CARD).getByTestId('card-collapse').click()
-  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toHaveCount(0)
-
-  await cardLocator(CHAT_CARD).click()
-  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
-
-  // Com o status final, e não só presente: uma entrada que voltasse `running` seria uma sessão que
-  // a tela afirma trabalhando sobre uma ferramenta que terminou faz tempo.
-  await expect(doneToolEntries(CHAT_CARD).first()).toBeVisible()
-  await expect(runningToolEntries(CHAT_CARD)).toHaveCount(0)
-})
-
-test('#14 CA-3: a linha viva conta o turno, e some quando ele acaba', async () => {
-  const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
-  const pulse = cardLocator(CHAT_CARD).getByTestId('turn-pulse')
-
-  // Fora de turno não há pulso: ele é o spinner, não o histórico.
-  await expect(pulse).toHaveCount(0)
-
-  await input.fill(THINKING_PROMPT)
-  await input.press('Enter')
-
-  await expect(pulse).toBeVisible({ timeout: DECISION_TIMEOUT })
-  // O contador de raciocínio é o único heartbeat que o SDK dá: vê-lo passar de zero é a prova de
-  // que a linha está viva de verdade, e não desenhando um relógio local sobre uma sessão muda.
-  await expect(pulse).toHaveAttribute('data-tokens', /^[1-9]\d*$/, { timeout: TURN_TIMEOUT })
-
-  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
-    timeout: TURN_TIMEOUT,
-  })
-
-  // E some. Sem isto o app teria trocado um sinal que mente por outro: uma linha eternamente viva
-  // sobre uma sessão parada é exatamente o que este card existe para tirar da tela.
-  await expect(pulse).toHaveCount(0)
-})
-
-test('CA-6: encerrar é ação minha — e o botão mata a sessão', async () => {
+test('CA-6: encerrar é ação minha — o botão mata a sessão e o terminal reabre vazio', async () => {
   await cardLocator(CHAT_CARD).getByTestId('card-end-session').click()
 
-  await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'closed', {
-    timeout: DECISION_TIMEOUT,
-  })
+  // O selo da conversa encerrada some. Reaberto, o terminal novo ainda não recebeu hook nenhum, e o
+  // máximo que o selo pode dizer é `starting`: o que ele não pode é seguir em `awaiting_input`.
+  await expect
+    .poll(
+      async () =>
+        (await badge(CHAT_CARD).count()) === 0
+          ? 'ausente'
+          : await badge(CHAT_CARD).getAttribute('data-state'),
+      { message: 'o selo da conversa encerrada não saiu', timeout: DECISION_TIMEOUT },
+    )
+    .toMatch(/^(ausente|starting)$/)
 
-  await barraSemSobreposicao(CHAT_CARD, 'aberto, encerrada')
+  // E o xterm é outro: a resposta da conversa que acabou não está mais nele.
+  await expect(xtermDe(terminalDe(CHAT_CARD))).not.toContainText(RESPOSTA_42)
 })
 
 /**
- * O card #10 contra o SDK de verdade: o modo *dangerously* ligado, usado, e desligado — tudo na
- * mesma sessão viva.
+ * O card #10 no terminal Claude (#97): a marca de perigo liga e desliga com o terminal vivo, e o
+ * terminal avisa que ela só vale na próxima abertura (decisão 8 da spec do #97).
  *
- * É a única prova da entrega que lê o `permissionMode` **reportado** pelo SDK em vez do mandado
- * pelo app. Os unitários fixam o contrato medido dentro do `fakeQuery` (ele recusa a troca sem
- * `allowDangerouslySkipPermissions`, e não chama o `canUseTool` em bypass), mas um fake é uma
- * afirmação nossa sobre o SDK; aqui quem responde é ele. E o fake emite `init` uma vez só, nunca a
- * cada turno como o SDK real — então o modo reportado depois de uma troca só existe aqui.
- *
- * **Ele opera o `SECOND_CARD`, e fica no fim do arquivo.** As duas escolhas são obrigatórias, não
- * estéticas: este arquivo é `mode: 'serial'` e dois testes acima fixam a contagem de mensagens do
- * `CHAT_CARD` em 2 e em 3 — mandar prompt naquele cartão aqui os quebraria por um motivo que não
- * diz nada sobre o modo. O `SECOND_CARD` tem sessão viva — e continua **aberto**, desde o teste em
- * que subiu — e ninguém conta as mensagens dele.
- *
- * A sessão dele nasceu **sem** a marca, e é o caso interessante: o que se exerce aqui é a troca em
- * voo (`setPermissionMode` numa sessão de pé), e não o nascimento já em bypass. É também a ordem em
- * que uma pessoa de verdade faz isso — clicar na marca antes de escrever qualquer coisa.
+ * Ele opera o `SECOND_CARD`, que continua **aberto** desde o teste em que subiu — clicar nele
+ * fecharia o cartão. Não conversa com o modelo: o que se prova é o crachá e o aviso, e os dois
+ * já estão na tela.
  */
-test('#10 CA-1 e CA-3: o cartão marcado roda sem portão, e desmarcar devolve o portão', async () => {
+test('#10: a marca de perigo vale na próxima abertura, e o terminal avisa', async () => {
   const card = cardLocator(SECOND_CARD)
 
-  // Sem clique nenhum aqui: ele está aberto desde o teste em que subiu, e pela regra por coluna do
-  // #45 nada do que os testes do `CHAT_CARD` fizeram desde então o tocou. Clicar **fecharia** o
-  // cartão, que é o oposto do que este teste precisa.
-  await expect(card.getByTestId('card-chat')).toBeVisible()
+  await expect(card.getByTestId('claude-terminal')).toBeVisible()
   await expect(card.getByTestId('danger-badge')).toHaveCount(0)
+  await expect(card.getByTestId('danger-next-open')).toHaveCount(0)
 
   await card.getByTestId('card-danger-toggle').click()
 
-  // O crachá é o retrato **publicado de volta** pelo main — o renderer não tem estado otimista.
-  // Vê-lo é ver o caminho inteiro ter acontecido: o SDK aceitou a troca de modo, o main gravou a
-  // marca e o evento voltou. E vê-lo **com o cartão aberto** é a metade do CA-2 que separa este
-  // crachá dos vizinhos, que se calam ao expandir.
+  // O crachá é o retrato **publicado de volta** pelo main — o renderer não tem estado otimista. E o
+  // aviso é a outra metade: o processo nasceu sem a marca e segue sem ela até a próxima abertura.
   await expect(card.getByTestId('danger-badge')).toBeVisible({ timeout: DECISION_TIMEOUT })
+  await expect(card.getByTestId('danger-next-open')).toBeVisible({ timeout: DECISION_TIMEOUT })
 
-  const input = card.getByTestId('card-chat-input')
-  const semPortao = 'sem-portao.txt'
-
-  await input.fill(`Crie um arquivo \`${semPortao}\` com o texto OK`)
-  await input.press('Enter')
-
-  await expectTurnWithoutGate(SECOND_CARD)
-
-  // A ferramenta **executou**, e não apenas o turno terminou depressa: um modelo que respondesse
-  // "claro, pode deixar" sem tocar em ferramenta nenhuma daria exatamente o mesmo verde acima. O
-  // CA-1 fala de ferramenta que roda sem perguntar, e é o arquivo em disco que diz isso.
-  expect(existsSync(join(puppetRepo, semPortao))).toBe(true)
-
-  // A segunda fonte, a do próprio SDK: o `init` do turno que acabou de rodar. Antes deste turno o
-  // valor em mãos ainda era o do nascimento da sessão (`default`), e é por isso que a leitura vem
-  // aqui e não logo depois do clique.
-  await expect(card.getByTestId('card-chat-cwd')).toHaveAttribute(
-    'data-permission-mode',
-    'bypassPermissions',
-  )
-
-  // Desligar — **sem encerrar nada**. A conversa acima continua na tela e a sessão é a mesma: é o
-  // CA-3 ("o comportamento volta a ser o de hoje") e a reversibilidade do CA-2 no mesmo caso.
+  // Desligar volta a bater com o modo em que o processo abriu: o crachá e o aviso saem juntos.
   await card.getByTestId('card-danger-toggle').click()
   await expect(card.getByTestId('danger-badge')).toHaveCount(0, { timeout: DECISION_TIMEOUT })
-
-  // Alvo de nome **diferente** do passo anterior, e é o mesmo cuidado que o `THINKING_PROMPT`
-  // documenta: repetir o prompt daria ao modelo um arquivo que já existe, ele poderia responder
-  // "já está feito" sem pedir ferramenta nenhuma, e o portão não teria a chance de aparecer — o
-  // teste falharia por escolha dele, não por bug do app.
-  const comPortao = 'com-portao.txt'
-
-  await input.fill(`Crie um arquivo \`${comPortao}\` com o texto OK`)
-  await input.press('Enter')
-
-  await expect(card.getByTestId('permission-prompt')).toBeVisible({ timeout: TURN_TIMEOUT })
-  await expect(badge(SECOND_CARD)).toHaveAttribute('data-state', 'awaiting_decision')
-
-  await card.getByTestId('permission-allow').click()
-  await allowUntilAwaitingInput(SECOND_CARD)
-
-  expect(existsSync(join(puppetRepo, comPortao))).toBe(true)
-
-  // E o outro lado da segunda fonte. Lido só agora, com o turno encerrado: nenhum `init` novo virá
-  // depois dele, então o valor na tela é o do turno que acabou de rodar com o portão de volta.
-  await expect(card.getByTestId('card-chat-cwd')).toHaveAttribute('data-permission-mode', 'default')
+  await expect(card.getByTestId('danger-next-open')).toHaveCount(0, { timeout: DECISION_TIMEOUT })
 })
-
-/**
- * O card #15 contra o modelo de verdade: a escrita de arquivo mostra o diff dentro da própria
- * entrada da trilha, na conversa, sem painel nenhum ao lado.
- *
- * Os unitários já provam cada metade separada — que `diffOf` conta e numera o patch, que a entrada
- * ao vivo troca `diff: null` pelo diff **antes** do `result` (o roteiro do fake termina no
- * `tool_result`, de propósito) e o que o `ToolEntry` desenha. O que só existe aqui é o patch vir do
- * SDK de verdade: nenhum `structuredPatch` deste passo foi escrito por nós.
- *
- * **Ele opera o `SECOND_CARD`, e fica no fim do arquivo** — a mesma amarra que o passo do #10
- * documenta logo acima, e pelo mesmo motivo: dois testes lá em cima fixam a contagem de mensagens
- * do `CHAT_CARD`, e um turno novo naquele cartão os quebraria por uma razão que não diz nada sobre
- * diff.
- *
- * E ele manda **editar** um arquivo que já existe, em vez de criar um: criação não tem patch nenhum
- * (é o CA-2, medido em 86 resultados de 86) e não produziria `diff-line` alguma.
- */
-test('#15 CA-1: a escrita de arquivo mostra o diff na própria entrada da trilha', async () => {
-  const card = cardLocator(SECOND_CARD)
-  const input = card.getByTestId('card-chat-input')
-
-  // O arquivo que o passo do #10 deixou no repo-fantoche. O nome é repetido aqui, e não hasteado
-  // para constante compartilhada, porque o CA-6 desta feature se prova no diff da PR: o que este
-  // arquivo ganhou tem de ser só este passo.
-  const alvo = 'sem-portao.txt'
-
-  // "Leia … e depois edite" não é rodeio de prompt, é a mesma precaução do `THINKING_PROMPT`: a
-  // `Edit` do Claude Code recusa arquivo que a conversa ainda não leu, e sem o pedido explícito da
-  // ferramenta o modelo pode chegar ao mesmo fim por `Bash`, que escreve sem `structuredPatch`
-  // nenhum — o teste falharia por escolha dele, não por bug do app.
-  await input.fill(
-    `Leia o arquivo \`${alvo}\` e depois, com a ferramenta Edit, troque o texto OK por TUDO CERTO`,
-  )
-  await input.press('Enter')
-
-  // O portão voltou no fim do passo acima, e o smoke roda com `OC_ISOLATED=1`: toda ferramenta
-  // deste turno passa pelo `canUseTool`, inclusive a leitura.
-  await allowUntilAwaitingInput(SECOND_CARD)
-
-  // **A última**, e não a primeira: este cartão já carrega os diffs dos dois `Write` do passo
-  // acima, que são criações — `+N` e trecho nenhum (CA-2). A edição é a chamada mais recente, e é
-  // ela a única que tem trecho para mostrar.
-  const diff = card.getByTestId('tool-diff').last()
-
-  await expect(diff).toBeVisible({ timeout: DECISION_TIMEOUT })
-
-  // O total veio do patch, e não de um zero desenhado: `data-additions` maior que zero é o que
-  // separa "a área apareceu" de "a contagem aconteceu". Regex e não número exato pela mesma razão
-  // do `data-tokens` do #14 — quanto o modelo mexeu é escolha dele.
-  await expect(diff).toHaveAttribute('data-additions', /^[1-9]\d*$/)
-
-  // E o trecho, com a espécie que o core decidiu lendo o prefixo do patch. Uma linha basta: que
-  // exista linha nova marcada como nova é o que esta feature promete; quantas, não.
-  const linhasNovas = diff.locator('[data-testid="diff-line"][data-diff-kind="add"]')
-
-  await expect(linhasNovas.first()).toBeVisible()
-})
-
-/**
- * Permite o que a sessão pedir até ela devolver a vez.
- *
- * O passo da escrita pede um arquivo, mas quem decide quantas ferramentas usar para isso é o modelo
- * — ele pode querer olhar a pasta antes de escrever nela, e em modo isolado *toda* ferramenta passa
- * pelo `canUseTool`. Fixar "exatamente um pedido" tornaria o teste refém dessa escolha; o que o
- * critério afirma é que o pedido chega ao cartão e que a decisão humana destrava o turno.
- */
-async function allowUntilAwaitingInput(card: FixtureCard): Promise<void> {
-  const state = badge(card)
-  const deadline = Date.now() + TURN_TIMEOUT
-
-  while (Date.now() < deadline) {
-    const kind = await state.getAttribute('data-state')
-
-    if (kind === 'awaiting_input') return
-    // Sessão morta não devolve vez nenhuma: esperar o prazo inteiro só trocaria o motivo real da
-    // falha por um timeout que não explica nada.
-    if (kind === 'closed' || kind === 'failed') {
-      throw new Error(`a sessão terminou em ${kind} antes de devolver a vez`)
-    }
-
-    if (kind === 'awaiting_decision') {
-      const prompt = cardLocator(card).getByTestId('permission-prompt')
-
-      // O crachá pode dizer `awaiting_decision` com o painel já fora da tela: o clique o esconde na
-      // hora e quem o repõe é o `state` seguinte, que vem pela ponte. Nessa janela não há o que
-      // decidir — e ler o `data-request` aqui esperaria por um painel que, se o próximo estado for
-      // `working`, não volta mais.
-      if ((await prompt.count()) === 0) {
-        await window.waitForTimeout(POLL_INTERVAL)
-        continue
-      }
-
-      const anterior = await prompt.getAttribute('data-request')
-      await prompt.getByTestId('permission-allow').click()
-
-      // O prompt sai da tela no clique, mas o **estado** pode não mudar: com a fila do #11, o
-      // próximo pedido mantém o `data-state` em `awaiting_decision`, e esperar por ele esgotaria o
-      // prazo com o app funcionando como a spec manda. O que muda sempre é *qual* pedido está em
-      // cartaz — ou não há mais nenhum.
-      await expect
-        .poll(
-          async () =>
-            (await prompt.count()) === 0 ? null : await prompt.getAttribute('data-request'),
-          { timeout: DECISION_TIMEOUT },
-        )
-        .not.toBe(anterior)
-      continue
-    }
-
-    // Poll deliberado: o que se observa aqui é o progresso de um agente externo, e o DOM não tem
-    // evento nenhum para assinar enquanto ele pensa.
-    await window.waitForTimeout(POLL_INTERVAL)
-  }
-
-  throw new Error(`a sessão não devolveu a vez em ${TURN_TIMEOUT} ms`)
-}
-
-/**
- * Espera a vez voltar **provando que ela voltou sozinha**: nenhum `permission-prompt` na tela e o
- * cartão sem passar por `awaiting_decision` em leitura nenhuma. É o CA-1 do #10.
- *
- * O gêmeo negativo do `allowUntilAwaitingInput`, e o poll basta aqui — não é uma amostragem que
- * possa perder o instante errado. **Nada resolve um pedido de permissão sem uma pessoa**: se o modo
- * tivesse falhado, o cartão *ficaria* em `awaiting_decision` até o prazo estourar, e não passaria
- * por ele num piscar entre duas leituras. É a ausência de saída automática que transforma um laço
- * de 250 ms em prova.
- */
-async function expectTurnWithoutGate(card: FixtureCard): Promise<void> {
-  const state = badge(card)
-  const prompt = cardLocator(card).getByTestId('permission-prompt')
-  const deadline = Date.now() + TURN_TIMEOUT
-
-  while (Date.now() < deadline) {
-    const kind = await state.getAttribute('data-state')
-
-    expect(kind, 'o cartão marcado parou para pedir permissão').not.toBe('awaiting_decision')
-    expect(await prompt.count(), 'o pedido de permissão apareceu no cartão marcado').toBe(0)
-
-    if (kind === 'awaiting_input') return
-    // Sessão morta não devolve vez nenhuma: esperar o prazo inteiro só trocaria o motivo real da
-    // falha por um timeout que não explica nada.
-    if (kind === 'closed' || kind === 'failed') {
-      throw new Error(`a sessão terminou em ${kind} antes de devolver a vez`)
-    }
-
-    // Poll deliberado, como no irmão acima: o que se observa é o progresso de um agente externo, e
-    // o DOM não tem evento nenhum para assinar enquanto ele pensa.
-    await window.waitForTimeout(POLL_INTERVAL)
-  }
-
-  throw new Error(`a sessão não devolveu a vez em ${TURN_TIMEOUT} ms`)
-}
 
 /** O `optionId` do `Status` do item, ou `undefined` se ele não estiver em coluna nenhuma. */
 function statusOptionId(node: FixtureNode): string | undefined {
@@ -1128,6 +747,11 @@ function badge(card: FixtureCard): Locator {
   return cardLocator(card).getByTestId('state-badge')
 }
 
+/** O corpo do terminal Claude do cartão — a raiz onde o xterm vive. */
+function terminalDe(card: FixtureCard): Locator {
+  return cardLocator(card).getByTestId('claude-terminal')
+}
+
 /**
  * A caixa do elemento, com o `null` virando vermelho **aqui** e nomeando quem sumiu.
  *
@@ -1152,7 +776,7 @@ async function caixaDe(locator: Locator, oQue: string): Promise<Caixa> {
  * Ele continua obrigado a ficar dentro da barra e sem cobrir o selo.
  */
 async function barraSemSobreposicao(card: FixtureCard, onde: string): Promise<void> {
-  const barra = cardLocator(card).getByTestId('card-chat-actions')
+  const barra = cardLocator(card).getByTestId('claude-terminal-bar')
   await expect(barra).toBeVisible()
   // `elementFromPoint` só enxerga o que está na viewport.
   await barra.scrollIntoViewIfNeeded()
@@ -1271,43 +895,4 @@ async function barraSemSobreposicao(card: FixtureCard, onde: string): Promise<vo
       original,
     )
   }
-}
-
-function assistantMessages(card: FixtureCard): Locator {
-  return cardLocator(card).locator('[data-testid="message"][data-role="assistant"]')
-}
-
-function userMessages(card: FixtureCard): Locator {
-  return cardLocator(card).locator('[data-testid="message"][data-role="user"]')
-}
-
-function noticeMessages(card: FixtureCard): Locator {
-  return cardLocator(card).locator('[data-testid="message"][data-role="notice"]')
-}
-
-function toolEntries(card: FixtureCard): Locator {
-  return cardLocator(card).locator('[data-testid="tool-entry"]')
-}
-
-function doneToolEntries(card: FixtureCard): Locator {
-  return cardLocator(card).locator('[data-testid="tool-entry"][data-status="done"]')
-}
-
-function runningToolEntries(card: FixtureCard): Locator {
-  return cardLocator(card).locator('[data-testid="tool-entry"][data-status="running"]')
-}
-
-/**
- * Um caminho na forma em que o sistema de arquivos o compara.
- *
- * O que o CA-3 afirma é a **pasta**, não a grafia dela: no Windows a caixa não distingue caminho
- * nenhum, e `/` e `\` levam ao mesmo lugar. Comparar as strings cruas trocaria uma asserção sobre
- * onde a sessão subiu por uma sobre como o SDK escreveu o caminho de volta.
- */
-function comparablePath(path: string | null): string {
-  return (path ?? '')
-    .trim()
-    .replace(/[\\/]+/g, '/')
-    .replace(/\/$/, '')
-    .toLowerCase()
 }
