@@ -55,13 +55,13 @@ function montar(over: Partial<ClaudeTerminalDeps> & { dangerous?: boolean } = {}
   const fake = createFakeSpawner()
   const host = new TerminalHost(() => Promise.resolve({ ok: true as const, spawn: fake.spawn }))
   const alvos: Array<(e: HookEvent) => void> = []
+  const unregisters: Array<ReturnType<typeof vi.fn>> = []
   const hooks: HookServer = {
     register: (onEvent) => {
       alvos.push(onEvent)
-      return Promise.resolve({
-        url: `http://127.0.0.1:1/hook/t${alvos.length}`,
-        unregister: vi.fn(),
-      })
+      const unregister = vi.fn()
+      unregisters.push(unregister)
+      return Promise.resolve({ url: `http://127.0.0.1:1/hook/t${alvos.length}`, unregister })
     },
     close: () => Promise.resolve(),
   }
@@ -105,7 +105,20 @@ function montar(over: Partial<ClaudeTerminalDeps> & { dangerous?: boolean } = {}
   const open = (scope: ClaudeScope) =>
     invoke<OpenClaudeResult>(IPC_INVOKE.openClaude, { scope, cols: 80, rows: 24 })
   const hook = (i: number, e: HookEvent) => alvos[i]!(e)
-  return { fake, ipc, conversations, free, vigias, onTurnEnd, invoke, open, hook, alvos, ...s }
+  return {
+    fake,
+    ipc,
+    conversations,
+    free,
+    vigias,
+    onTurnEnd,
+    invoke,
+    open,
+    hook,
+    alvos,
+    unregisters,
+    ...s,
+  }
 }
 
 describe('claude:open — abertura e linha de comando', () => {
@@ -169,6 +182,14 @@ describe('claude:open — abertura e linha de comando', () => {
       reason: 'claude-missing',
       detail: 'CLAUDE_AUSENTE',
     })
+    expect(t.fake.calls).toHaveLength(0)
+  })
+
+  it('isDangerous que rejeita: o token de hooks sai do registro, sem spawn', async () => {
+    const t = montar({ danger: { isDangerous: () => Promise.reject(new Error('board fora')) } })
+
+    await expect(t.open(CARD)).rejects.toThrow('board fora')
+    expect(t.unregisters[0]).toHaveBeenCalledTimes(1)
     expect(t.fake.calls).toHaveLength(0)
   })
 })

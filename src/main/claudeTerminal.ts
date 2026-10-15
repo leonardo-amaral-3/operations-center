@@ -197,15 +197,23 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
     }
 
     const { url, unregister } = await hooks.register((ev: HookEvent) => signal(key, ev))
-    const dangerous = await deps.danger.isDangerous(scope)
-    const aberto = await host.open({
-      shell: bin,
-      args: claudeArgs({ start, dangerous, hookUrl: url, model: deps.model() }),
-      env: claudeEnv(deps.baseEnv()),
-      cwd,
-      cols: request.cols,
-      rows: request.rows,
-    })
+    let dangerous: boolean
+    let aberto: Awaited<ReturnType<TerminalHost['open']>>
+    try {
+      dangerous = await deps.danger.isDangerous(scope)
+      aberto = await host.open({
+        shell: bin,
+        args: claudeArgs({ start, dangerous, hookUrl: url, model: deps.model() }),
+        env: claudeEnv(deps.baseEnv()),
+        cwd,
+        cols: request.cols,
+        rows: request.rows,
+      })
+    } catch (erro) {
+      // Sem isto o token seguiria aceito pelo servidor de hooks até o app fechar.
+      unregister()
+      throw erro
+    }
     if (!aberto.ok) {
       unregister()
       return { ok: false, reason: 'pty-unavailable', detail: aberto.detail }
