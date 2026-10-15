@@ -171,6 +171,9 @@ describe('a superfície de board é somente-leitura', () => {
       writeTerminal: 'terminal:input',
       resizeTerminal: 'terminal:resize',
       closeTerminal: 'terminal:close',
+      openClaude: 'claude:open',
+      closeClaude: 'claude:close',
+      readClaudeStates: 'claude:states',
       readFree: 'free:read',
       createFree: 'free:create',
       renameFree: 'free:rename',
@@ -228,6 +231,7 @@ describe('a superfície de board é somente-leitura', () => {
       window: 'window:changed',
       terminalData: 'terminal:data',
       terminalExit: 'terminal:exit',
+      claudeState: 'claude:state',
       free: 'free:changed',
     })
   })

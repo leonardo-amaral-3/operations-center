@@ -5,7 +5,15 @@ import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
 import { BOARDS_FIXTURE_PATH, BOARD_FIXTURE_PATH } from './boards-fixture'
-import { launchSmokeApp } from './smoke-app'
+import {
+  PERGUNTA_17_25,
+  RESPOSTA_42,
+  digitarNoTerminal,
+  fundoEfetivo,
+  launchSmokeApp,
+  xtermDe,
+} from './smoke-app'
+import { REPO_ROOT } from './smoke-env'
 
 /**
  * O smoke da sessão livre (#74): conversar com o Claude Code sem card, fechar o app, reabrir e
@@ -18,8 +26,11 @@ import { launchSmokeApp } from './smoke-app'
  * botão: ele **semeia** `free-sessions.json` e `layout.json` no `stateDir` que ele mesmo cria, antes
  * de abrir o app. O `layout.json` é parte da semente porque o default do painel é fechado — sem
  * `side: { open: true, active }` a aba existiria e não estaria na tela. O que continua real é tudo
- * o que importa para o CA-2: o boot verificando a entrada, o chat subindo a sessão, o `init`
- * gravando o `sessionId` e a retomada relendo o transcript.
+ * o que importa para o CA-2: o boot verificando a entrada, o terminal Claude subindo a sessão, o
+ * hook `UserPromptSubmit` gravando o `sessionId` e o `--resume` relendo o transcript. A pasta da
+ * sessão é a raiz deste repo, já confiada pela CLI (P10): uma pasta nova pararia no diálogo de
+ * confiança. Cobre também o R2.1 (o texto sobrevive a fechar o painel), o R2.2 ("Encerrar sessão")
+ * e o R2.4 (reiniciar o app retoma o mesmo `sessionId`).
  */
 
 /** Um turno do modelo. Generoso porque quem responde é um agente de verdade. */
@@ -31,9 +42,6 @@ const BOOT_TIMEOUT = 60_000
 const POLL_INTERVAL = 250
 
 const SMOKE_MODEL = 'haiku'
-
-/** De texto puro: com `OC_ISOLATED=1` toda ferramenta pede permissão, e ninguém a destravaria. */
-const PROMPT = 'responda só: ok. Não use ferramenta nenhuma.'
 
 const STATE_FILE = 'free-sessions.json'
 
@@ -47,7 +55,6 @@ let app: ElectronApplication
 let window: Page
 let scenario: string
 let state: string
-let pasta: string
 let sessaoDoPrimeiroCiclo: string
 
 test.describe.configure({ mode: 'serial' })
@@ -55,9 +62,7 @@ test.describe.configure({ mode: 'serial' })
 test.beforeAll(() => {
   scenario = realpathSync(mkdtempSync(join(tmpdir(), 'oc-livre-')))
   state = join(scenario, 'state')
-  pasta = join(scenario, 'pasta-livre')
   mkdirSync(state)
-  mkdirSync(pasta)
   mkdirSync(join(scenario, 'projects'))
 
   writeFileSync(
@@ -69,7 +74,7 @@ test.beforeAll(() => {
           {
             id: FREE_ID,
             title: TITLE,
-            cwd: pasta,
+            cwd: REPO_ROOT,
             sessionId: null,
             dangerous: false,
             createdAt: new Date(0).toISOString(),
@@ -126,22 +131,32 @@ test('o primeiro ciclo de vida: a conversa acontece e o vínculo vai para o disc
   await aba.click()
 
   // #78 CA-2: no painel lateral o chat veste o canvas, o mesmo fundo do cartão aberto.
-  expect(
-    await corDeFundo(window.getByTestId('card-chat')),
-    'o chat do painel não veste o canvas',
-  ).toBe(await corDeFundo(window.locator('body')))
+  expect(await fundoEfetivo(terminal()), 'o terminal do painel não veste o canvas').toBe(
+    await corDeFundo(window.locator('body')),
+  )
 
-  const input = window.getByTestId('card-chat-input')
-  await input.fill(PROMPT)
-  await input.press('Enter')
+  // A pergunta (`42` não está no texto enviado) atravessa renderer → main → PTY → Claude Code, e a
+  // resposta volta desenhada no xterm do painel.
+  await digitarNoTerminal(terminal(), PERGUNTA_17_25)
+  await expect(xtermDe(terminal())).toContainText(RESPOSTA_42, { timeout: TURN_TIMEOUT })
 
-  await expect(mensagens('assistant').first()).toBeVisible({ timeout: TURN_TIMEOUT })
-
-  // Lido do arquivo, e não da tela: `sessionId` não tem âncora de DOM e não deve ganhar uma.
+  // Lido do arquivo, e não da tela: `sessionId` não tem âncora de DOM e não deve ganhar uma. Quem o
+  // grava é o hook `UserPromptSubmit`, não o spawn.
   sessaoDoPrimeiroCiclo = await sessaoGravada()
 })
 
-test('CA-2: fechar e reabrir devolve a mesma conversa', async () => {
+test('R2.1 e R2.4: fechar e reabrir o painel mantém o texto, e reiniciar o app retoma o mesmo sessionId', async () => {
+  // R2.1: o painel desmonta (`side.open` falso) e monta de novo; o xterm é o mesmo e o texto segue
+  // lá. O foco vai para a aba antes do atalho: dentro do xterm as teclas são da CLI.
+  await window.getByTestId('free-tab').focus()
+  await window.keyboard.press('Control+Shift+L')
+  await expect(window.getByTestId('side-panel')).toHaveCount(0)
+
+  await window.keyboard.press('Control+Shift+L')
+  await expect(window.getByTestId('side-panel')).toBeVisible()
+  await expect(xtermDe(terminal())).toContainText(RESPOSTA_42)
+
+  // R2.4: processo novo, nada em memória.
   await app.close()
   await launch()
 
@@ -152,21 +167,40 @@ test('CA-2: fechar e reabrir devolve a mesma conversa', async () => {
 
   await aba.click()
 
-  // O que foi dito antes do fechamento, relido do transcript em disco: nada disso sobreviveu em
-  // memória.
-  await expect(mensagens('user').first()).toContainText(PROMPT, { timeout: BOOT_TIMEOUT })
-  await expect(mensagens('assistant').first()).toBeVisible()
+  // O que foi dito antes do fechamento, redesenhado pela TUI do `--resume` a partir do transcript em
+  // disco: nada disso sobreviveu em memória.
+  await expect(xtermDe(terminal())).toContainText(RESPOSTA_42, { timeout: BOOT_TIMEOUT })
 
   // E é a mesma sessão, não uma conversa nova que por acaso tem o mesmo texto na tela.
   expect(await sessaoGravada()).toBe(sessaoDoPrimeiroCiclo)
 })
+
+test('R2.2: "Encerrar sessão" reabre o terminal vazio e esquece o sessionId', async () => {
+  await expect(xtermDe(terminal())).toContainText(RESPOSTA_42)
+
+  await window.getByTestId('side-panel').getByTestId('card-end-session').click()
+
+  // O xterm é outro, recém-aberto: a conversa que acabou não está mais na tela.
+  await expect(xtermDe(terminal())).not.toContainText(RESPOSTA_42)
+
+  // E a entrada continua na lista, mas sem conversa a retomar: o próximo clique abre uma nova.
+  // O `sessionId` só volta a existir no próximo `UserPromptSubmit`.
+  await expect
+    .poll(lerEntrada, { message: 'a entrada sumiu ou ainda tem sessionId' })
+    .toEqual(expect.objectContaining({ id: FREE_ID, sessionId: null }))
+})
+
+/** O terminal Claude da sessão livre ativa, dentro do painel lateral. */
+function terminal(): Locator {
+  return window.getByTestId('side-panel').getByTestId('claude-terminal')
+}
 
 /** O `sessionId` gravado para a sessão semeada, esperando o `init` escrevê-lo. */
 async function sessaoGravada(): Promise<string> {
   const deadline = Date.now() + BOOT_TIMEOUT
 
   while (Date.now() < deadline) {
-    const gravado = lerSessionId()
+    const gravado = lerEntrada()?.sessionId ?? null
     if (gravado !== null) return gravado
 
     await window.waitForTimeout(POLL_INTERVAL)
@@ -174,22 +208,17 @@ async function sessaoGravada(): Promise<string> {
 
   throw new Error(`o sessionId de ${FREE_ID} não apareceu em ${STATE_FILE} em ${BOOT_TIMEOUT} ms`)
 }
-
-function lerSessionId(): string | null {
+/** A entrada semeada como o app a gravou, ou `undefined` se o arquivo ou a entrada não existem. */
+function lerEntrada(): { id?: string; sessionId?: string | null } | undefined {
   try {
     const arquivo = JSON.parse(readFileSync(join(state, STATE_FILE), 'utf8')) as {
       sessions?: { id?: string; sessionId?: string | null }[]
     }
-    const entrada = arquivo.sessions?.find((sessao) => sessao.id === FREE_ID)
 
-    return entrada?.sessionId ?? null
+    return arquivo.sessions?.find((sessao) => sessao.id === FREE_ID)
   } catch {
-    return null
+    return undefined
   }
-}
-
-function mensagens(role: 'user' | 'assistant'): Locator {
-  return window.getByTestId('side-panel').locator(`[data-testid="message"][data-role="${role}"]`)
 }
 
 async function launch(): Promise<void> {
@@ -200,7 +229,6 @@ async function launch(): Promise<void> {
       OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
       OC_CLAUDE_PROJECTS: join(scenario, 'projects'),
       OC_SCREEN: 'kanban',
-      OC_ISOLATED: '1',
       OC_MODEL: SMOKE_MODEL,
     },
   })

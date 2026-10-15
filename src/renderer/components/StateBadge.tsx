@@ -1,11 +1,13 @@
 import type { JSX } from 'react'
 
+import type { TerminalState } from '../../shared/claude'
 import type { SessionState } from '../../shared/session'
 import { Badge } from '../ui/badge'
 import { cn } from '../ui/cn'
 
 interface StateBadgeProps {
-  state: SessionState
+  /** O `TerminalState` (#97) é o `SessionState` sem `failed` e sem fila: cabe nas mesmas leituras. */
+  state: SessionState | TerminalState
 }
 
 /**
@@ -19,7 +21,7 @@ interface StateBadgeProps {
  * sessão quer de você**, e o acento violet (`--main`) fica de fora — ele marca a esteira. Por isso
  * nenhum destes é a variante default do `Badge`, que é `bg-main`.
  */
-const LOOKS: Record<SessionState['kind'], { label: string; className: string }> = {
+const LOOKS: Record<(SessionState | TerminalState)['kind'], { label: string; className: string }> = {
   starting: {
     label: 'Iniciando',
     className: 'bg-secondary-background text-foreground/70',
@@ -59,7 +61,9 @@ export function StateBadge({ state }: StateBadgeProps): JSX.Element {
   // Derivado aqui, e não lido do `SessionView`, de propósito: este componente também desenha o
   // cartão **colapsado** do kanban (`BoardCardView.tsx`), que só tem um `SessionState` na mão.
   const queued =
-    state.kind === 'awaiting_decision' || state.kind === 'awaiting_answer' ? state.queued : 0
+    (state.kind === 'awaiting_decision' || state.kind === 'awaiting_answer') && 'queued' in state
+      ? state.queued
+      : 0
   // O motivo da falha e o tamanho da fila são as duas informações que o rótulo sozinho não dá.
   const label =
     state.kind === 'failed'

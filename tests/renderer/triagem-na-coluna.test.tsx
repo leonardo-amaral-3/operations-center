@@ -96,13 +96,12 @@ function coluna(
       column={TRIAGEM}
       cards={over.cards ?? [CARTAO]}
       expandedItemIds={over.expandidos ?? []}
-      sessions={{}}
+      terminais={{}}
       conversations={[]}
       dangerous={[]}
       triage={over.triage}
       onStartTriage={over.onStartTriage}
       onToggle={() => {}}
-      onSession={() => {}}
       onToggleDangerous={() => {}}
     />,
   )
@@ -229,11 +228,10 @@ describe('CA-3 — a saída do painel sempre existe (Decisão 11)', () => {
         card={CARTAO}
         conversable
         expanded
-        session={undefined}
+        terminal={null}
         dormant={false}
         dangerous={false}
         onToggle={() => {}}
-        onSession={() => {}}
         onToggleDangerous={() => {}}
       />,
     )

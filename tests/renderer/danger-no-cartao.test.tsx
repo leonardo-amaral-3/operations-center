@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { BoardCardView } from '../../src/renderer/components/BoardCardView'
-import type { CardSession } from '../../src/renderer/components/Chat'
+import type { TerminalState } from '../../src/shared/claude'
 import type { BoardCard } from '../../src/shared/board'
 
 /**
@@ -37,21 +37,20 @@ const CARTAO: BoardCard = {
   phases: [],
 }
 
-const VIVA: CardSession = { id: 'sess_1', state: { kind: 'working' } }
+const VIVA: TerminalState = { kind: 'working' }
 
 function cartao(
-  over: { expanded?: boolean; session?: CardSession; dormant?: boolean; dangerous?: boolean } = {},
+  over: { expanded?: boolean; terminal?: TerminalState; dormant?: boolean; dangerous?: boolean } = {},
 ): string {
   return renderToStaticMarkup(
     <BoardCardView
       card={CARTAO}
       conversable
       expanded={over.expanded ?? false}
-      session={over.session}
+      terminal={over.terminal ?? null}
       dormant={over.dormant ?? false}
       dangerous={over.dangerous ?? false}
       onToggle={() => {}}
-      onSession={() => {}}
       onToggleDangerous={() => {}}
     />,
   )
@@ -75,7 +74,7 @@ describe('CA-2 — o crachá do modo é do cartão, e não da sessão', () => {
 
   it('aparece **junto** do crachá de estado quando há sessão viva', () => {
     // Os dois convivem, ao contrário do par estado/conversa: um fala da sessão, o outro do cartão.
-    const html = cartao({ session: VIVA, dangerous: true })
+    const html = cartao({ terminal: VIVA, dangerous: true })
 
     expect(html).toContain('data-testid="danger-badge"')
     expect(html).toContain('data-testid="state-badge"')
@@ -94,8 +93,8 @@ describe('CA-2 — o crachá do modo é do cartão, e não da sessão', () => {
     // O recorte é obrigatório e não zelo: com o cartão aberto **existe** um `state-badge` na saída
     // — o do próprio `Chat`, que desenha o estado da sessão dele. Quem se cala é o crachá do
     // **rodapé do cartão**, e ele é tudo o que vem antes do chat.
-    const html = cartao({ expanded: true, session: VIVA, dangerous: true })
-    const rodape = html.slice(0, html.indexOf('data-testid="card-chat"'))
+    const html = cartao({ expanded: true, terminal: VIVA, dangerous: true })
+    const rodape = html.slice(0, html.indexOf('data-testid="claude-terminal-bar"'))
 
     expect(rodape).toContain('data-testid="danger-badge"')
     expect(rodape).not.toContain('data-testid="state-badge"')
@@ -125,7 +124,7 @@ describe('CA-2 — o botão diz para que lado o clique vai', () => {
     // ao contrário do "Encerrar sessão", que ali fica desabilitado.
     const html = cartao({
       expanded: true,
-      session: { id: 'sess_2', state: { kind: 'closed' } },
+      terminal: { kind: 'closed' },
     })
 
     // O `renderToStaticMarkup` só emite `disabled` no botão que o pediu; o recorte em volta da

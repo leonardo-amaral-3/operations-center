@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { JSX, KeyboardEvent, PointerEvent } from 'react'
 
+import type { ClaudeScope, TerminalState } from '../../shared/claude'
 import type { FreeSessionCard, SessionScope } from '../../shared/ipc'
 import type { MesaState } from '../mesa/mesaState'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
-import { Chat } from './Chat'
+import { ClaudeTerminal } from './ClaudeTerminal'
 
 export interface SidePanelProps {
   state: MesaState
@@ -28,9 +29,9 @@ export interface SidePanelProps {
  * clique) e o `✕` **esquece** em dois passos. Esquecer apaga a entrada do índice e não tem volta;
  * um clique só, ao lado do botão que seleciona, é um acidente esperando a pasta errada.
  *
- * `closeOnUnmount={false}` como o cartão: trocar de sessão no painel não encerra a outra, e o
- * `key` por sessão dá a cada uma o seu `Chat` — o histórico e o rascunho não vazam de uma para a
- * seguinte.
+ * O terminal Claude (#97) não é dono do processo: desmontá-lo ao trocar de aba só solta a vista, e o
+ * `key` por sessão dá a cada uma o seu `ClaudeTerminal`. O estado de cada sessão vem de uma
+ * assinatura local de `onClaudeState`, filtrada pelo escopo `free` — o board só guarda os cartões.
  */
 export function SidePanel({
   state,
@@ -45,6 +46,42 @@ export function SidePanel({
   const arrasto = useRef<{ x: number; largura: number } | null>(null)
   const [confirmando, setConfirmando] = useState<string | null>(null)
   const [editando, setEditando] = useState<{ id: string; texto: string } | null>(null)
+
+  const [terminais, setTerminais] = useState<Readonly<Record<string, TerminalState>>>({})
+
+  // Assinar antes de pedir, e o evento empurrado vence a leitura antiga (mesma guarda do kanban).
+  // `closed` remove a chave: sem processo, o terminal não tem estado a mostrar.
+  useEffect(() => {
+    let pushed = false
+
+    function aplicar(escopo: ClaudeScope, estado: TerminalState): void {
+      if (escopo.kind !== 'free') return
+      const { id } = escopo
+
+      setTerminais((atuais) => {
+        if (estado.kind === 'closed') {
+          if (!(id in atuais)) return atuais
+
+          return Object.fromEntries(Object.entries(atuais).filter(([chave]) => chave !== id))
+        }
+        if (atuais[id]?.kind === estado.kind) return atuais
+
+        return { ...atuais, [id]: estado }
+      })
+    }
+
+    const unsubscribe = window.oc.onClaudeState((event) => {
+      pushed = true
+      aplicar(event.scope, event.state)
+    })
+
+    void window.oc.readClaudeStates().then((eventos) => {
+      if (pushed) return
+      for (const evento of eventos) aplicar(evento.scope, evento.state)
+    })
+
+    return unsubscribe
+  }, [])
 
   const ativa = freeSessions.find((sessao) => sessao.id === side.active) ?? null
 
@@ -228,10 +265,10 @@ export function SidePanel({
               </p>
             )}
 
-            <Chat
+            <ClaudeTerminal
               key={ativa.id}
               scope={{ kind: 'free', id: ativa.id }}
-              closeOnUnmount={false}
+              state={terminais[ativa.id] ?? null}
               dangerous={ativa.dangerous}
               semPasta="A pasta desta sessão não existe mais — escolha outra."
               onToggleDangerous={(next) => {

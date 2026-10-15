@@ -41,10 +41,12 @@ import { createGitHubGraphQL } from './github/graphql'
 import { createGitHubRest } from './github/rest'
 import { createGhTokenSource } from './github/token'
 import { loadFree, registerFreeIpc, saveFree } from './free'
+import { composeCloseScope, registerClaudeTerminalIpc } from './claudeTerminal'
+import { createHookServer } from './hookServer'
 import { registerSessionIpc } from './ipc'
 import { registerLayoutIpc } from './layout'
 import { loadPty, presetDepsDeProducao, registerTerminalIpc } from './terminal'
-import { buildPresets } from './terminalPresets'
+import { buildPresets, childEnv } from './terminalPresets'
 import { judgeNavigation } from './navigation'
 import { loadActiveBoard, loadTheme, saveActiveBoard } from './preferences'
 import { gitOrigin, scanSessionFolders } from './repos'
@@ -234,6 +236,7 @@ function createWindow(theme: Theme): BrowserWindow {
 
 // O main é dono do `core`: é ele que tem o `query` do SDK, o ambiente e o processo Node. O host é
 // criado antes da janela para que nenhum `invoke` chegue a um canal ainda não registrado.
+const claudeBin = createClaudeBinSource()
 const host = new SessionHost({
   query,
   model: resolveModel(),
@@ -241,7 +244,7 @@ const host = new SessionHost({
   // **Sempre, e não só empacotado.** `yarn dev` e `yarn smoke` passam pela mesma cadeia do
   // executável — é isso que impede o clássico "funciona no dev" e o que faz os smokes que sobem
   // sessão real virarem, de graça, o teste de que a resolução funciona de ponta a ponta.
-  claudeBin: createClaudeBinSource(),
+  claudeBin,
 })
 
 // **O IPC de board só é registrado no kanban.** Assim o smoke da fatia vertical (`OC_SCREEN=chat`)
@@ -358,7 +361,11 @@ const free = new FreeIndex({
 // **Incondicional**, ao contrário dos de board: a sessão livre não toca o GitHub, e a pasta dela é
 // escolha do humano. O `closeScope` é referência para a frente — o `sessionIpc` nasce mais abaixo, e
 // o `free:forget` só roda muito depois.
-const freeIpc = registerFreeIpc(free, { closeScope: (scope) => sessionIpc.closeScope(scope) })
+const freeIpc = registerFreeIpc(free, {
+  closeScope: composeCloseScope({ close: (scope) => claudeIpc.close(scope) }, (scope) =>
+    sessionIpc.closeScope(scope),
+  ),
+})
 freeIpc.refresh()
 
 function publicarFree(): void {
@@ -437,23 +444,26 @@ const resolveScopeCwd = async (scope: SessionScope | undefined): Promise<string 
   return path !== null && existsSync(path) ? path : null
 }
 
+/** Turno terminado: relê a aba do board do card. Compartilhado pelo SDK e pelo terminal Claude. */
+const reler = (scope: SessionScope | undefined): void => {
+  // Sem kanban não há aba a reler, a tela de chat (`scope === undefined`) não tem board nenhum
+  // por trás e a sessão livre não move card: os três caem no mesmo no-op, e é por isso que a
+  // decisão mora aqui e não no `ipc.ts`.
+  if (!boardsIpc || scope === undefined || scope.kind === 'free') return
+
+  // A triagem já **é** de uma aba; o cartão precisa que alguém diga de qual. Um `itemId` que o
+  // retrato não conhece — cartão de board que sumiu, aba ainda não lida — não relê nada, em vez
+  // de relerem-se todas por precaução.
+  const key = scope.kind === 'triage' ? scope.boardKey : boardsIpc.tabKeyOf(scope.itemId)
+  if (key !== null) boardsIpc.readNow(key)
+}
+
 const sessionIpc = registerSessionIpc(host, {
   conversations,
   free,
   danger: dangerGate,
   resolveCwd: resolveScopeCwd,
-  onTurnEnd: (scope) => {
-    // Sem kanban não há aba a reler, a tela de chat (`scope === undefined`) não tem board nenhum
-    // por trás e a sessão livre não move card: os três caem no mesmo no-op, e é por isso que a
-    // decisão mora aqui e não no `ipc.ts`.
-    if (!boardsIpc || scope === undefined || scope.kind === 'free') return
-
-    // A triagem já **é** de uma aba; o cartão precisa que alguém diga de qual. Um `itemId` que o
-    // retrato não conhece — cartão de board que sumiu, aba ainda não lida — não relê nada, em vez
-    // de relerem-se todas por precaução.
-    const key = scope.kind === 'triage' ? scope.boardKey : boardsIpc.tabKeyOf(scope.itemId)
-    if (key !== null) boardsIpc.readNow(key)
-  },
+  onTurnEnd: reler,
 })
 
 /**
@@ -605,10 +615,26 @@ void app.whenReady().then(async () => {
 // turno em andamento morre.
 // Registro incondicional: nenhum handler spawna nada sozinho, ao contrário dos canais de board.
 const terminalDeps = presetDepsDeProducao()
+const terminalHost = new TerminalHost(loadPty)
 const terminalIpc = registerTerminalIpc({
   presets: () => buildPresets(terminalDeps),
   resolveCwd: async (scope) => resolveScopeCwd(scope),
-  host: new TerminalHost(loadPty),
+  host: terminalHost,
+})
+
+// O terminal Claude (#97) divide o `TerminalHost` com o terminal comum e fala com o `claude` por hooks.
+const hookServer = createHookServer()
+const claudeIpc = registerClaudeTerminalIpc({
+  host: terminalHost,
+  hooks: hookServer,
+  claudeBin,
+  model: resolveModel,
+  baseEnv: () => childEnv({ env: {} }),
+  conversations,
+  free,
+  danger: dangerGate,
+  resolveCwd: resolveScopeCwd,
+  onTurnEnd: reler,
 })
 
 // O layout da mesa (#74 §6): só persiste, e por isso também incondicional — não toca o board.
@@ -616,6 +642,8 @@ registerLayoutIpc()
 
 app.on('window-all-closed', () => {
   void sessionIpc.closeAll()
+  claudeIpc.closeAll()
   terminalIpc.closeAll()
+  void hookServer.close()
   app.quit()
 })
