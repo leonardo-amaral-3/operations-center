@@ -76,6 +76,8 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
   const live = new Map<string, Entry>()
   const opening = new Map<string, Promise<OpenClaudeResult>>()
   const watched = new WeakSet<WebContents>()
+  /** Ligado pelo `closeAll`, que só roda no fechamento do app: abertura que chegar depois morre. */
+  let encerrado = false
 
   const emit = (sender: WebContents, channel: string, payload: unknown): void => {
     if (!sender.isDestroyed()) sender.send(channel, payload)
@@ -218,6 +220,12 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
       unregister()
       return { ok: false, reason: 'pty-unavailable', detail: aberto.detail }
     }
+    if (encerrado) {
+      // O `closeAll` passou enquanto esta abertura esperava: ninguém mais fecharia este `claude`.
+      host.close(aberto.id)
+      unregister()
+      return { ok: false, reason: 'pty-unavailable', detail: 'o app está fechando' }
+    }
 
     const entry: Entry = {
       scope,
@@ -281,6 +289,7 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
 
   return {
     closeAll: () => {
+      encerrado = true
       for (const key of [...live.keys()]) teardown(key, { forget: false })
     },
     close,

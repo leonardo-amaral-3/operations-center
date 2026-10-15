@@ -397,6 +397,24 @@ describe('fechamento', () => {
     expect(t.free.release).not.toHaveBeenCalled()
   })
 
+  it('closeAll durante um open em voo: o claude que nasce depois morre, sem esquecer', async () => {
+    let liberar!: (v: boolean) => void
+    const gate = new Promise<boolean>((r) => (liberar = r))
+    const t = montar({ danger: { isDangerous: () => gate } })
+
+    const aberta = t.open(CARD)
+    await vi.waitFor(() => expect(t.alvos).toHaveLength(1))
+    t.ipc.closeAll()
+    liberar(false)
+    const r = await aberta
+
+    expect(r).toMatchObject({ ok: false, reason: 'pty-unavailable' })
+    expect(t.fake.ptys[0]!.killed).toBe(true)
+    expect(t.unregisters[0]).toHaveBeenCalledTimes(1)
+    expect(await t.invoke(IPC_INVOKE.readClaudeStates)).toEqual([])
+    expect(t.conversations.forget).not.toHaveBeenCalled()
+  })
+
   it('close(scope) mata sem esquecer e emite closed', async () => {
     const t = montar()
     await t.open(CARD)
