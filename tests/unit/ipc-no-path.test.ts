@@ -24,7 +24,11 @@ import { describe, expect, it } from 'vitest'
  * de IPC, e nunca foi varrido. Um `path` acrescentado a um `BoardCard` teria passado por aqui sem
  * uma linha de diff neste teste.
  */
-const CONTRATO = ['../../src/shared/ipc.ts', '../../src/shared/board.ts'].map((relativo) =>
+const CONTRATO = [
+  '../../src/shared/ipc.ts',
+  '../../src/shared/board.ts',
+  '../../src/shared/claude.ts',
+].map((relativo) =>
   fileURLToPath(new URL(relativo, import.meta.url)),
 )
 

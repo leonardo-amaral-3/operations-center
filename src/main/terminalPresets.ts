@@ -88,7 +88,7 @@ export function buildPresets(deps: PresetDeps): ResolvedPreset[] {
 
 /** O ambiente herdado pelo shell: o do app, sem o que sequestraria um `yarn smoke` digitado lá. */
 export function childEnv(
-  preset: ResolvedPreset,
+  preset: Pick<ResolvedPreset, 'env'>,
   base: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
   const env: Record<string, string> = {}

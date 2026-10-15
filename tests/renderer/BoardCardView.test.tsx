@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { BoardCardView } from '../../src/renderer/components/BoardCardView'
 import type { BoardCard, BoardPhase } from '../../src/shared/board'
+import type { TerminalState } from '../../src/shared/claude'
 
 /**
  * O parentesco pelo lado da tela: o crachá do épico no cartão da fase, a lista de fases no cartão do
@@ -64,11 +65,10 @@ function cartao(over: Partial<BoardCard> = {}): string {
       card={{ ...COMUM, ...over }}
       conversable
       expanded={false}
-      session={undefined}
+      terminal={null}
       dormant={false}
       dangerous={false}
       onToggle={() => {}}
-      onSession={() => {}}
       onToggleDangerous={() => {}}
     />,
   )
@@ -156,11 +156,10 @@ function aberto({
       card={{ ...COMUM, ...card }}
       conversable={conversable}
       expanded={expanded}
-      session={undefined}
+      terminal={null}
       dormant={false}
       dangerous={false}
       onToggle={() => {}}
-      onSession={() => {}}
       onToggleDangerous={() => {}}
       maximized={maximized}
       onMaximize={semBotao ? undefined : () => {}}
@@ -209,5 +208,48 @@ describe('#28 CA-1 e CA-3 — o modo expandido', () => {
 
   it('aberto sem `onMaximize`: nenhum `card-maximize`', () => {
     expect(aberto({ semBotao: true })).not.toContain('card-maximize')
+  })
+})
+
+function comTerminal(
+  terminal: TerminalState | null,
+  over: { expanded?: boolean; dormant?: boolean } = {},
+): string {
+  return renderToStaticMarkup(
+    <BoardCardView
+      card={COMUM}
+      conversable
+      expanded={over.expanded ?? false}
+      terminal={terminal}
+      dormant={over.dormant ?? false}
+      dangerous={false}
+      onToggle={() => {}}
+      onToggleDangerous={() => {}}
+    />,
+  )
+}
+
+describe('#97 R3.1 — o terminal Claude no cartão', () => {
+  it.each(['working', 'awaiting_decision', 'awaiting_answer', 'awaiting_input'] as const)(
+    'fechado, com o terminal em `%s`: o selo leva o `data-state` correspondente',
+    (kind) => {
+      expect(comTerminal({ kind })).toContain(`data-state="${kind}"`)
+    },
+  )
+
+  it('fechado, com `closed` ou `null` e dormente: o `ConversationBadge`, sem selo de estado', () => {
+    for (const terminal of [{ kind: 'closed' } as const, null]) {
+      const html = comTerminal(terminal, { dormant: true })
+
+      expect(html).not.toContain('data-testid="state-badge"')
+      expect(html).toContain('data-testid="conversation-badge"')
+    }
+  })
+
+  it('expandido: a barra do terminal no lugar do chat', () => {
+    const html = comTerminal(null, { expanded: true })
+
+    expect(html).toContain('data-testid="claude-terminal-bar"')
+    expect(html).not.toContain('card-chat')
   })
 })

@@ -586,3 +586,30 @@ describe('ConversationIndex — o aviso de mudança', () => {
     expect(onChange).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('ConversationIndex — locate (#97)', () => {
+  it('devolve sessionId e cwd sem reler o transcript', async () => {
+    const { index, transcript } = createIndex({
+      gravado: { [CARTAO]: SESSAO },
+      conversas: [{ sessionId: SESSAO, cwd: PASTA, entries: [fala('u1', 'oi')] }],
+    })
+
+    expect(await index.locate(CARTAO)).toEqual({ sessionId: SESSAO, cwd: PASTA })
+    expect(transcript).not.toHaveBeenCalled()
+  })
+
+  it('cartão sem vínculo devolve null', async () => {
+    const { index } = createIndex()
+
+    expect(await index.locate(OUTRO_CARTAO)).toBeNull()
+  })
+
+  it('transcript sumido poda o vínculo e devolve null, como o restore', async () => {
+    const { index, save } = createIndex({ gravado: { [CARTAO]: SESSAO } })
+
+    expect(await index.locate(CARTAO)).toBeNull()
+    expect(index.recoverable()).toEqual([])
+    await esperaGravar(save)
+    expect(ultimaGravacao(save)).toEqual(new Map())
+  })
+})

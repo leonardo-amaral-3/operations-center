@@ -283,7 +283,7 @@ test('CA-3: o cartão de coluna sem skill abre e mostra o conteúdo, e nenhuma s
 
   // E nada de sessão: nem neste cartão, nem no kanban inteiro. Ler não sobe chat, que é a metade do
   // CA-4 do #6 que a emenda preservou inteira.
-  await expect(window.getByTestId('card-chat')).toHaveCount(0)
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(0)
 })
 
 test('CA-4: o conteúdo rola dentro da própria caixa, e o cartão continua dentro da coluna', async () => {
@@ -474,7 +474,7 @@ test('CA-7: recarregar traz o comentário que nasceu depois da carga, sem fechar
   // E o cartão continua como estava: aberto, com a seção à mostra e sem sessão nenhuma. Recarregar é
   // trazer o que falta, e não recomeçar o cartão.
   await expect(cardLocator(READ_CARD).getByTestId('card-content-body')).toBeVisible()
-  await expect(window.getByTestId('card-chat')).toHaveCount(0)
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(0)
 })
 
 /** O `optionId` do `Status` do item, ou `undefined` se ele não estiver em coluna nenhuma. */

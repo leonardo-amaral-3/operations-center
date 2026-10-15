@@ -12,7 +12,14 @@ import {
   DISCOVERED,
   fixtureProject,
 } from './boards-fixture'
-import { launchSmokeApp } from './smoke-app'
+import {
+  PERGUNTA_17_25,
+  RESPOSTA_42,
+  digitarNoTerminal,
+  launchSmokeApp,
+  provarSessaoNaPasta,
+  xtermDe,
+} from './smoke-app'
 
 /**
  * O smoke das abas: uma aba por board da esteira, a troca de aba trocando o kanban inteiro, a
@@ -21,7 +28,7 @@ import { launchSmokeApp } from './smoke-app'
  * Sobe o app buildado com as fixtures e percorre `fixture → descoberta → main → renderer`. Os três
  * primeiros cenários não abrem cartão nenhum e por isso **não custam cota**; o quarto abre, e com
  * ele este arquivo entra para o time do `card-chat.smoke.spec.ts`: **sobe sessão real, precisa do
- * Claude Code logado e consome cota**. Daí o `OC_MODEL` num modelo barato e o `OC_ISOLATED=1`.
+ * Claude Code logado e consome cota**. Daí o `OC_MODEL` num modelo barato (vira `--model` no terminal Claude).
  *
  * A task 11 desenhou este arquivo prevendo que o CA-3 moraria noutro lugar, para não cobrar cota de
  * três cenários que não a usam. A previsão custou o que ela queria poupar: as variáveis de sessão
@@ -87,20 +94,6 @@ const SMOKE_MODEL = 'haiku'
 
 /** Um turno do modelo. Só o CA-3 gasta um, e é de texto puro. */
 const TURN_TIMEOUT = 180_000
-
-/**
- * A única fala do arquivo, e ela paga duas coisas.
- *
- * A primeira é a `cwd`: o `init` do SDK — que é quem a reporta — chega junto com o **primeiro
- * turno**, e não com a criação da sessão; até ele o rodapé diz "Conectando à sessão do Claude
- * Code…" e não existe `card-chat-cwd` nenhum. É o mesmo trato de `card-chat.smoke.spec.ts`, que
- * também só lê a pasta depois de a sessão ter falado.
- *
- * A segunda é o histórico, e é ele que faz o CA-3 afirmar **a mesma sessão** e não só a mesma
- * pasta: `cwd` voltaria idêntica de uma sessão nova aberta no mesmo repo; o que não sobrevive a uma
- * sessão trocada é o que já foi dito.
- */
-const FIRST_PROMPT = 'Responda apenas: OK'
 
 /**
  * O envelope cru do `BOARD_QUERY`, reduzido ao que este smoke lê.
@@ -347,29 +340,24 @@ test('CA-3: a conversa sobrevive à troca de aba e não vaza', async () => {
   // regra que o core decidiu, e é por ele que este é o cartão certo para o critério.
   await expect(cartaoA).toHaveAttribute('data-card-conversable', 'true')
   await cartaoA.click()
-  await expect(cartaoA.getByTestId('card-chat')).toBeVisible()
+  await expect(cartaoA.getByTestId('claude-terminal')).toBeVisible()
 
-  // A fala vem antes de qualquer asserção sobre a sessão, e não por pressa: é o primeiro turno que
-  // traz o `init` — ver o comentário do `FIRST_PROMPT`. É também o único turno de cota do arquivo.
-  const entrada = cartaoA.getByTestId('card-chat-input')
-  await entrada.fill(FIRST_PROMPT)
-  await entrada.press('Enter')
-  await expect(assistantMessages(cartaoA).first()).toBeVisible({ timeout: TURN_TIMEOUT })
+  // A fala é o único turno de cota do arquivo. A resposta (`42`) não está no texto enviado, então
+  // vê-la no xterm prova que o modelo respondeu.
+  const terminalA = cartaoA.getByTestId('claude-terminal')
+  await digitarNoTerminal(terminalA, PERGUNTA_17_25)
+  await expect(xtermDe(terminalA)).toContainText(RESPOSTA_42, { timeout: TURN_TIMEOUT })
 
-  // O que está no rodapé **é** a pasta em que o Claude Code subiu — o SDK a reportou —, e não um
-  // rótulo que o renderer montou. É ela que a volta para esta aba tem de reencontrar idêntica.
-  const cwdA = cartaoA.getByTestId('card-chat-cwd')
-  await expect(cwdA).toBeVisible()
-  expect(comparablePath(await cwdA.textContent())).toBe(
-    comparablePath(puppet(CONVERSA_A.repository)),
-  )
+  // O transcript nasce na pasta em que o Claude Code subiu. É ela que a volta para esta aba tem de
+  // reencontrar idêntica.
+  await provarSessaoNaPasta(puppet(CONVERSA_A.repository))
 
-  // A aba B, e a metade "não vaza": o `card-chat` da A não está em lugar nenhum desta tela. No
+  // A aba B, e a metade "não vaza": o terminal da A não está em lugar nenhum desta tela. No
   // kanban **inteiro**, e não só fora do cartão dela — é a asserção que pega uma conversa desenhada
   // por baixo de um board que não é o dela.
   await abaLocator(SEGUNDA.key).click()
   await esperarKanbanDe(SEGUNDA)
-  await expect(window.getByTestId('card-chat')).toHaveCount(0)
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(0)
 
   // Abrir um cartão aqui é a outra metade: cada aba lembra o **seu** cartão aberto, e o da A não
   // pode fechar por causa disto.
@@ -377,36 +365,31 @@ test('CA-3: a conversa sobrevive à troca de aba e não vaza', async () => {
 
   await expect(cartaoB).toHaveAttribute('data-card-conversable', 'true')
   await cartaoB.click()
-  await expect(cartaoB.getByTestId('card-chat')).toBeVisible()
-  await expect(window.getByTestId('card-chat')).toHaveCount(1)
+  await expect(cartaoB.getByTestId('claude-terminal')).toBeVisible()
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(1)
 
-  // E só. A sessão desta aba sobe — o `card-chat` no lugar do pedido de pasta é a prova de que o
+  // E só. A sessão desta aba sobe — o terminal no lugar do pedido de pasta é a prova de que o
   // repo-fantoche dela foi encontrado —, mas ela não fala: o que o CA-3 cobra aqui é que o cartão
   // **abra e continue aberto**, e um segundo turno custaria cota para provar o mesmo.
 
   // De volta à aba A: o cartão continua **aberto**, e a conversa é a mesma — mesma pasta e mesmo
-  // histórico. Uma sessão trocada devolveria a mesma pasta e um histórico vazio; é o `FIRST_PROMPT`
-  // ainda na tela que separa os dois casos.
+  // histórico. Uma sessão trocada devolveria a mesma pasta e um xterm vazio; é a resposta de antes
+  // ainda na tela que separa os dois casos (o terminal é o mesmo, remontado no mesmo escopo).
   await abaLocator(PRIMEIRA.key).click()
   await esperarKanbanDe(PRIMEIRA)
-  await expect(cartaoA.getByTestId('card-chat')).toBeVisible()
-  await expect(cwdA).toBeVisible()
-  expect(comparablePath(await cwdA.textContent())).toBe(
-    comparablePath(puppet(CONVERSA_A.repository)),
-  )
-  await expect(userMessages(cartaoA).first()).toContainText(FIRST_PROMPT)
-  await expect(assistantMessages(cartaoA).first()).toBeVisible()
+  await expect(cartaoA.getByTestId('claude-terminal')).toBeVisible()
+  await expect(xtermDe(terminalA)).toContainText(RESPOSTA_42)
 
-  // E o "não vaza" no outro sentido, que é o que fecha a simetria: o cartão-chat da B não veio
+  // E o "não vaza" no outro sentido, que é o que fecha a simetria: o terminal da B não veio
   // junto. Um só na tela, e ele é o desta aba.
-  await expect(window.getByTestId('card-chat')).toHaveCount(1)
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(1)
 
   // E o cartão da B não fechou enquanto estivemos aqui: a asserção que fecha o CA-3 pelo outro
   // lado, e sem a qual "cada aba lembra o seu" valeria só para a primeira delas.
   await abaLocator(SEGUNDA.key).click()
   await esperarKanbanDe(SEGUNDA)
-  await expect(cartaoB.getByTestId('card-chat')).toBeVisible()
-  await expect(window.getByTestId('card-chat')).toHaveCount(1)
+  await expect(cartaoB.getByTestId('claude-terminal')).toBeVisible()
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(1)
 })
 
 /**
@@ -436,10 +419,8 @@ async function launch(): Promise<void> {
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell de quem roda abriria a tela
       // errada e o teste falharia por um motivo que não tem nada a ver com abas.
       OC_SCREEN: 'kanban',
-      // As duas do CA-3, e elas não custam nada nos três cenários que não abrem cartão: o que gasta
-      // cota é uma sessão, e nenhuma sobe até alguém clicar. Sem `OC_ISOLATED`, a sessão carregaria
-      // o contexto inteiro deste projeto — que é a maior parte da conta.
-      OC_ISOLATED: '1',
+      // Não custa nada nos três cenários que não abrem cartão: o que gasta cota é uma sessão, e
+      // nenhuma sobe até alguém clicar. No CA-3 o `OC_MODEL` vira o `--model` do terminal Claude.
       OC_MODEL: SMOKE_MODEL,
     },
   })
@@ -613,29 +594,6 @@ function puppet(repository: string): string {
 /** `owner/repo` como nome de pasta. Só precisa ser estável e único entre os repos do cenário. */
 function slug(repository: string): string {
   return repository.replace(/[^\w.-]+/g, '-')
-}
-
-/**
- * Um caminho na forma em que o sistema de arquivos o compara.
- *
- * O que se afirma é a **pasta**, não a grafia dela: no Windows a caixa não distingue caminho nenhum,
- * e `/` e `\` levam ao mesmo lugar. Comparar as strings cruas trocaria a asserção sobre onde a
- * sessão subiu por uma sobre como o SDK escreveu o caminho de volta.
- */
-function comparablePath(path: string | null): string {
-  return (path ?? '')
-    .trim()
-    .replace(/[\\/]+/g, '/')
-    .replace(/\/$/, '')
-    .toLowerCase()
-}
-
-function assistantMessages(cartao: Locator): Locator {
-  return cartao.locator('[data-testid="message"][data-role="assistant"]')
-}
-
-function userMessages(cartao: Locator): Locator {
-  return cartao.locator('[data-testid="message"][data-role="user"]')
 }
 
 function abaLocator(key: string): Locator {

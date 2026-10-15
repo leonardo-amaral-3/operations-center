@@ -11,7 +11,7 @@ import {
   FIRST_BOARD,
   fixtureProject,
 } from './boards-fixture'
-import { launchSmokeApp } from './smoke-app'
+import { digitarNoTerminal, launchSmokeApp, xtermDe } from './smoke-app'
 
 import { CONVERSABLE_STATIONS, STATUS_FIELD } from '../../src/core/board/query'
 
@@ -86,10 +86,8 @@ const POLL_INTERVAL = 250
 const SENHA = 'CARAMBOLA'
 
 /**
- * O primeiro turno. **De texto puro**, como o `LONG_PROMPT` do cartão-chat e pelo mesmo motivo: o
- * smoke roda com `OC_ISOLATED=1`, e ali *toda* ferramenta passa pelo `canUseTool` — um pedido de
- * permissão levaria o cartão a `awaiting_decision` e o teste ficaria esperando um turno que ninguém
- * destravou.
+ * O primeiro turno. **De texto puro**: sem ferramenta, a TUI não para num pedido de permissão que
+ * ninguém responderia, e o teste não espera um turno que ninguém destravou.
  */
 const FIRST_PROMPT = `Guarde a palavra-chave ${SENHA}. Responda apenas: OK. Não use ferramenta nenhuma.`
 
@@ -271,13 +269,12 @@ test('o primeiro ciclo de vida: a conversa acontece, o vínculo vai para o disco
   await expect(window.getByTestId('conversation-badge')).toHaveCount(0)
 
   await cardLocator(CHAT_CARD).click()
-  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
+  await expect(cardLocator(CHAT_CARD).getByTestId('claude-terminal')).toBeVisible()
 
-  const input = cardLocator(CHAT_CARD).getByTestId('card-chat-input')
-  await input.fill(FIRST_PROMPT)
-  await input.press('Enter')
+  await digitarNoTerminal(cardLocator(CHAT_CARD).getByTestId('claude-terminal'), FIRST_PROMPT)
 
-  await expect(assistantMessages(CHAT_CARD).first()).toBeVisible({ timeout: TURN_TIMEOUT })
+  // O selo `awaiting_input` vem do hook `Stop`: o turno acabou, e o `UserPromptSubmit` do início
+  // dele já gravou o `sessionId` em `conversations.json`.
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
     timeout: TURN_TIMEOUT,
   })
@@ -308,7 +305,7 @@ test('CA-3: o cartão de vínculo quebrado volta sem crachá, e o board volta in
 
   await expect(conversationBadge(GHOST_CARD)).toHaveCount(0)
   // E nada foi inventado no lugar: nem chat aberto, nem sessão viva atrás do cartão fechado.
-  await expect(window.getByTestId('card-chat')).toHaveCount(0)
+  await expect(window.getByTestId('claude-terminal')).toHaveCount(0)
   await expect(badge(GHOST_CARD)).toHaveCount(0)
 })
 
@@ -319,44 +316,32 @@ test('CA-1: o cartão volta com o sinal de conversa, e expandido devolve o que f
   await expect(badge(CHAT_CARD)).toHaveCount(0)
 
   await cardLocator(CHAT_CARD).click()
-  await expect(cardLocator(CHAT_CARD).getByTestId('card-chat')).toBeVisible()
+  await expect(cardLocator(CHAT_CARD).getByTestId('claude-terminal')).toBeVisible()
 
-  // O histórico do ciclo anterior, na ordem em que aconteceu: a primeira fala continua sendo a
-  // primeira. Ela veio do transcript em disco — nada dela sobreviveu em memória ao fechamento.
-  const mine = userMessages(CHAT_CARD)
-  await expect(mine.first()).toContainText(FIRST_PROMPT)
-  await expect(assistantMessages(CHAT_CARD).first()).toBeVisible()
+  // O histórico do ciclo anterior, redesenhado pela TUI do `--resume`: a fala com a senha está no
+  // xterm. Ela veio do transcript em disco — nada dela sobreviveu em memória ao fechamento.
+  await expect(xtermDe(cardLocator(CHAT_CARD).getByTestId('claude-terminal'))).toContainText(
+    SENHA,
+    { timeout: BOOT_TIMEOUT },
+  )
 })
 
 test('CA-2: a mensagem seguinte continua o mesmo fio, na mesma sessão', async () => {
-  const chat = cardLocator(CHAT_CARD)
+  const terminal = cardLocator(CHAT_CARD).getByTestId('claude-terminal')
 
-  // Lida agora e comparada com `+1`: quantas bolhas o turno restaurado deixou é escolha do modelo, e
-  // fixar um número aqui seria escrever à mão um valor que o teste pode ler.
-  const respostas = await assistantMessages(CHAT_CARD).count()
+  await digitarNoTerminal(terminal, SECOND_PROMPT)
 
-  const input = chat.getByTestId('card-chat-input')
-  await input.fill(SECOND_PROMPT)
-  await input.press('Enter')
-
-  await expect(assistantMessages(CHAT_CARD)).toHaveCount(respostas + 1, { timeout: TURN_TIMEOUT })
+  // A metade do CA-2 que só o modelo pode responder: a senha foi dita antes de o app fechar, e quem
+  // a repete é uma sessão que nasceu depois. Sem `--resume`, aqui viria um "não sei".
+  //
+  // O marcador de resposta da TUI (`●`) antes da senha é o que distingue a resposta da fala do
+  // usuário que o `--resume` redesenha na tela, e que também contém a palavra.
+  await expect(xtermDe(terminal)).toContainText(new RegExp(`[●⏺]\\s*${SENHA}`, 'i'), {
+    timeout: TURN_TIMEOUT,
+  })
   await expect(badge(CHAT_CARD)).toHaveAttribute('data-state', 'awaiting_input', {
     timeout: TURN_TIMEOUT,
   })
-
-  // A metade do CA-2 que só o modelo pode responder: a senha foi dita antes de o app fechar, e quem
-  // a repete é uma sessão que nasceu depois. Sem `resume`, aqui viria um "não sei".
-  await expect(assistantMessages(CHAT_CARD).last()).toContainText(SENHA, { ignoreCase: true })
-
-  // A sessão retomada subiu de verdade, e subiu **na pasta em que a conversa aconteceu**.
-  //
-  // Aferido **depois** do turno, e não à abertura do cartão: a âncora só existe quando o `init`
-  // chega, e o `init` só chega quando o `query()` tem o que consumir — antes da primeira mensagem o
-  // cartão mostra "Conectando à sessão do Claude Code…". Medido nesta máquina: esperar por ela antes
-  // do envio estoura o prazo sem que nada esteja errado.
-  const cwd = chat.getByTestId('card-chat-cwd')
-  await expect(cwd).toBeVisible()
-  expect(comparablePath(await cwd.textContent())).toBe(comparablePath(puppetRepo))
 
   // E a outra metade, que o disco responde: é a **mesma** sessão, e não uma conversa nova que por
   // acaso soube a senha. O `remember` reescreve o vínculo a cada `init` — se o SDK tivesse forkado,
@@ -390,9 +375,6 @@ async function launch(): Promise<void> {
       // Fixado, e não herdado: um `OC_SCREEN=chat` esquecido no shell abriria a tela errada e o
       // teste falharia por um motivo que não tem nada a ver com retomada.
       OC_SCREEN: 'kanban',
-      // Sem carregar as settings pessoais: é o que mantém os dois turnos baratos e sem allowlist
-      // nenhuma influindo no que o modelo pode fazer.
-      OC_ISOLATED: '1',
       OC_MODEL: SMOKE_MODEL,
     },
   })
@@ -487,26 +469,4 @@ function badge(card: FixtureCard): Locator {
 
 function conversationBadge(card: FixtureCard): Locator {
   return cardLocator(card).getByTestId('conversation-badge')
-}
-
-function assistantMessages(card: FixtureCard): Locator {
-  return cardLocator(card).locator('[data-testid="message"][data-role="assistant"]')
-}
-
-function userMessages(card: FixtureCard): Locator {
-  return cardLocator(card).locator('[data-testid="message"][data-role="user"]')
-}
-
-/**
- * Um caminho na forma em que o sistema de arquivos o compara.
- *
- * O que se afirma é a **pasta**, não a grafia dela: no Windows a caixa não distingue caminho nenhum,
- * e `/` e `\` levam ao mesmo lugar.
- */
-function comparablePath(path: string | null): string {
-  return (path ?? '')
-    .trim()
-    .replace(/[\\/]+/g, '/')
-    .replace(/\/$/, '')
-    .toLowerCase()
 }
