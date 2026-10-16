@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardTab } from '../../shared/board'
@@ -23,8 +23,30 @@ import { useBoardFeeds } from './useBoardFeeds'
  */
 const VAZIO: readonly string[] = []
 
-/** Nenhum card em janela própria: na fase 2 ninguém é destacado. Referência estável para o `useMemo`. */
-const SEM_DESTACADOS: ReadonlySet<string> = new Set()
+/**
+ * Os cards em janela própria (#100, fase 3). `readCardWindows` assina o chamador, e o evento traz a
+ * lista inteira a cada mudança — por isso o `Set` é refeito, e não remendado.
+ */
+function useCardWindows(): ReadonlySet<string> {
+  const [destacados, setDestacados] = useState<ReadonlySet<string>>(() => new Set())
+
+  useEffect(() => {
+    let vivo = true
+    const aplicar = (itemIds: string[]) => {
+      if (vivo) setDestacados(new Set(itemIds))
+    }
+    const parar = window.oc.onCardWindows(aplicar)
+
+    void window.oc.readCardWindows().then(aplicar)
+
+    return () => {
+      vivo = false
+      parar()
+    }
+  }, [])
+
+  return destacados
+}
 
 /** O terminal Claude vivo de cada cartão, por `itemId`. Sem a chave = sem processo. */
 export type CardTerminals = Readonly<Record<string, TerminalState>>
@@ -81,6 +103,7 @@ export function KanbanScreen(): JSX.Element {
   })
   // A combinação de cores vive na raiz da tela; a `ThemePicker` só escolhe.
   const tema = useTemaAplicado()
+  const destacados = useCardWindows()
 
   const toggle = useCallback(
     (itemId: string) => {
@@ -118,8 +141,8 @@ export function KanbanScreen(): JSX.Element {
   }, [])
 
   const abas = useMemo(
-    () => abasDeConversa(terminais, snapshot, SEM_DESTACADOS),
-    [terminais, snapshot],
+    () => abasDeConversa(terminais, snapshot, destacados),
+    [terminais, snapshot, destacados],
   )
 
   const focus = useCallback(
@@ -234,6 +257,7 @@ export function KanbanScreen(): JSX.Element {
                 terminais={terminais}
                 conversations={conversations}
                 dangerous={dangerous.itemIds}
+                detachedItemIds={destacados}
                 // A coluna não decide se há triagem: o core diz **qual** coluna a oferece
                 // (`column.triage`) e o estado diz se ela está aberta. Aqui os dois se encontram.
                 triage={

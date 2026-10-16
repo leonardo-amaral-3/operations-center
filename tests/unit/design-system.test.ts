@@ -327,6 +327,9 @@ const ANCORAS = [
   // depois de um turno ter rodado — é o par que a decisão 10 mantém visível em vez de auto-corrigir.
   'data-dangerous',
   'data-deletions',
+  // Entrou com o card #103: a aba da faixa de conversas de um card em janela própria, por onde o
+  // smoke afirma o destaque sem ler o ícone.
+  'data-detached',
   'data-diff-kind',
   // Entrou com o card #44: é por ela que o smoke do CA-6 encontra a etiqueta de **um** campo para
   // comparar dois cartões. Âncora e não classe, e não o rótulo da opção: o teste precisa achar "a
