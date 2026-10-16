@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
+import { useCallback, useMemo, useReducer } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardTab } from '../../shared/board'
 import type { ClaudeStateEvent, TerminalState } from '../../shared/claude'
-import type { DangerousSnapshot } from '../../shared/ipc'
 import { BoardTabs } from '../components/BoardTabs'
 import { CardTabs } from '../components/CardTabs'
 import { Column } from '../components/Column'
@@ -11,8 +10,10 @@ import { Freshness } from '../components/Freshness'
 import { ThemePicker } from '../components/ThemePicker'
 import { useTerminalAqui } from '../mesa/terminalAqui'
 import { Badge } from '../ui/badge'
+import { useTemaAplicado } from '../useTemaAplicado'
 import { abasDeConversa } from './cardTabs'
 import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
+import { useBoardFeeds } from './useBoardFeeds'
 
 /**
  * Nenhum cartão aberto naquela aba.
@@ -21,15 +22,6 @@ import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
  * nova a **toda** `Column` sem nenhum ganho.
  */
 const VAZIO: readonly string[] = []
-
-/**
- * O retrato antes de o disco responder — as duas listas vazias, pelo mesmo motivo de sempre: um
- * cartão volta **com** portão até o contrário ser sabido, nunca o inverso.
- *
- * Constante de módulo pela mesma razão do `VAZIO`, e por uma a mais: é o valor inicial de um
- * `useState`, e um literal ali seria um objeto novo montado a cada render para ser descartado.
- */
-const SEM_MARCA: DangerousSnapshot = { itemIds: [], boardKeys: [] }
 
 /** Nenhum card em janela própria: na fase 2 ninguém é destacado. Referência estável para o `useMemo`. */
 const SEM_DESTACADOS: ReadonlySet<string> = new Set()
@@ -79,97 +71,16 @@ export function KanbanScreen(): JSX.Element {
   const { snapshot, expanded } = kanban
   const { boards, activeKey, discoveryError } = snapshot
   const [terminais, dispatchTerminal] = useReducer(reduceTerminals, {})
-  /**
-   * Os cartões com conversa a retomar. Vazio até a verificação do boot terminar — e é assim que
-   * deve ser: um cartão sem conversa recuperável volta sem crachá (CA-3), e o vazio é a mesma
-   * resposta que ele daria depois.
-   */
-  const [conversations, setConversations] = useState<readonly string[]>([])
-  /**
-   * O que roda sem o portão: os cartões marcados em disco e as triagens marcadas nesta execução.
-   *
-   * O retrato **inteiro**, e não só os `itemIds`, porque as duas listas chegam no mesmo evento e
-   * separá-las aqui obrigaria dois estados a serem atualizados em par a cada publicação.
-   */
-  const [dangerous, setDangerous] = useState<DangerousSnapshot>(SEM_MARCA)
-
-  useEffect(() => {
-    // Assinar vem **antes** de pedir, como no `ChatScreen`: uma leitura que termine entre o pedido
-    // e a assinatura chegaria a ninguém.
-    let pushed = false
-
-    const unsubscribe = window.oc.onBoards((next) => {
-      pushed = true
+  // As quatro assinaturas que alimentam o cartão moram no hook; a tela segue despachando nos dois
+  // reducers, porque o dos boards aplica o `focoPendente` e o dos estados é só dela.
+  const { conversations, dangerous } = useBoardFeeds({
+    onSnapshot: (next) => {
       dispatch({ type: 'snapshot', snapshot: next })
-    })
-
-    void window.oc.readBoards().then((next) => {
-      // O retrato do `invoke` é o estado no instante em que o main atendeu; um evento publicado
-      // enquanto a resposta voltava é mais novo que ele. Sem esta guarda, a resposta em trânsito
-      // sobrescreveria uma leitura mais fresca — e a tela retrocederia no tempo.
-      //
-      // A guarda ficou **mais** importante com a descoberta assíncrona, não menos: a janela entre o
-      // pedido e o primeiro evento deixou de ser uma leitura em voo e passou a ser a descoberta
-      // inteira, e o retrato que volta daqui quase sempre é o `boards: null` de antes dela.
-      if (!pushed) dispatch({ type: 'snapshot', snapshot: next })
-    })
-
-    return unsubscribe
-  }, [])
-
-  useEffect(() => {
-    // Assinar antes de pedir, e pela mesma razão do board logo acima.
-    let pushed = false
-
-    const unsubscribe = window.oc.onConversations((next) => {
-      pushed = true
-      setConversations(next.itemIds)
-    })
-
-    void window.oc.readConversations().then((next) => {
-      // A verificação do boot pode terminar enquanto esta resposta volta. Sem a guarda, o retrato
-      // antigo sobrescreveria o evento mais novo — a mesma corrida do `readBoards`.
-      if (!pushed) setConversations(next.itemIds)
-    })
-
-    return unsubscribe
-  }, [])
-
-  useEffect(() => {
-    // Espelha o efeito das conversas linha a linha — assinar antes de pedir, e a mesma guarda —
-    // porque é a mesma corrida: o `refresh` do boot pode publicar enquanto esta resposta volta.
-    let pushed = false
-
-    const unsubscribe = window.oc.onDangerous((next) => {
-      pushed = true
-      setDangerous(next)
-    })
-
-    void window.oc.readDangerous().then((next) => {
-      if (!pushed) setDangerous(next)
-    })
-
-    return unsubscribe
-  }, [])
-
-  useEffect(() => {
-    // O kanban acompanha o terminal de cada cartão por conta própria, e não só através do cartão
-    // aberto: sem isto o selo de um cartão fechado congelaria no instante em que ele fechou. Assinar
-    // antes de pedir, e a mesma guarda do board: o evento mais novo vence a leitura antiga.
-    let pushed = false
-
-    const unsubscribe = window.oc.onClaudeState((event) => {
-      pushed = true
-      dispatchTerminal(event)
-    })
-
-    void window.oc.readClaudeStates().then((eventos) => {
-      if (pushed) return
-      for (const evento of eventos) dispatchTerminal(evento)
-    })
-
-    return unsubscribe
-  }, [])
+    },
+    onClaudeState: dispatchTerminal,
+  })
+  // A combinação de cores vive na raiz da tela; a `ThemePicker` só escolhe.
+  const tema = useTemaAplicado()
 
   const toggle = useCallback(
     (itemId: string) => {
@@ -282,7 +193,7 @@ export function KanbanScreen(): JSX.Element {
           {/* Primeiro do agrupamento da direita: o carimbo de frescor continua no extremo, onde
               está desde o #12, e o seletor entra antes dele em vez de empurrá-lo. Ele não recebe
               nem devolve nada — cuida da própria combinação, e a tela não ganha estado por isso. */}
-          <ThemePicker />
+          <ThemePicker corrente={tema} />
           {/* Um dono que não respondeu não apaga os boards dos que responderam — e também não some
               da tela. Fica ao lado do carimbo de frescor porque é a mesma frase: o que está aí é
               verdade, só que incompleta. O motivo inteiro vai no `title`, como no carimbo. */}
