@@ -114,6 +114,8 @@ export interface TerminalIpcOptions {
   exists?: (path: string) => boolean
   /** Chamado depois de `host.resize`: quem espelha a tela (o terminal Claude, #100) acompanha o tamanho. */
   onResize?: (id: string, cols: number, rows: number) => void
+  /** Barra `terminal:input`/`terminal:resize` de quem não é o dono do terminal (o Claude muda de dono, #100). Default: aceita tudo. */
+  aceita?: (id: string, sender: WebContents) => boolean
 }
 
 export interface TerminalIpc {
@@ -214,10 +216,13 @@ export function registerTerminalIpc(options: TerminalIpcOptions): TerminalIpc {
     },
   )
 
-  ipcMain.handle(IPC_INVOKE.writeTerminal, (_e, r: TerminalInputRequest): void =>
-    host.write(r.id, r.data),
-  )
-  ipcMain.handle(IPC_INVOKE.resizeTerminal, (_e, r: TerminalResizeRequest): void => {
+  const aceita = options.aceita ?? (() => true)
+
+  ipcMain.handle(IPC_INVOKE.writeTerminal, (e, r: TerminalInputRequest): void => {
+    if (aceita(r.id, e.sender)) host.write(r.id, r.data)
+  })
+  ipcMain.handle(IPC_INVOKE.resizeTerminal, (e, r: TerminalResizeRequest): void => {
+    if (!aceita(r.id, e.sender)) return
     host.resize(r.id, r.cols, r.rows)
     options.onResize?.(r.id, r.cols, r.rows)
   })

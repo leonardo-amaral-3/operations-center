@@ -638,6 +638,7 @@ const terminalIpc = registerTerminalIpc({
   host: terminalHost,
   // `claudeIpc` nasce logo abaixo; o callback só roda com o app de pé, depois dos dois.
   onResize: (id, cols, rows) => claudeIpc.resizeMirror(id, cols, rows),
+  aceita: (id, sender) => claudeIpc.isOwner(id, sender),
 })
 
 // O terminal Claude (#97) divide o `TerminalHost` com o terminal comum e fala com o `claude` por hooks.

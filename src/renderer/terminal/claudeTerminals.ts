@@ -66,6 +66,12 @@ function soltar(key: string): void {
   if (entry !== undefined) destruir(key, entry)
 }
 
+function marcarEncerrada(entry: Entry): void {
+  entry.exited = true
+  entry.id = null
+  entry.term.write('\r\n[A sessão terminou. Enter retoma.]\r\n')
+}
+
 /** As assinaturas globais, feitas uma vez: o registro inteiro fala com o main por elas. */
 function assinar(): void {
   if (assinado) return
@@ -98,9 +104,7 @@ function assinar(): void {
     const entry = porId(event.id)
     if (entry === undefined) return
 
-    entry.exited = true
-    entry.id = null
-    entry.term.write('\r\n[A sessão terminou. Enter retoma.]\r\n')
+    marcarEncerrada(entry)
   })
 
   window.oc.onClaudeState((event) => {
@@ -108,9 +112,12 @@ function assinar(): void {
 
     // `free:forget`, ou um card cujo processo saiu com o cartão recolhido: ninguém está olhando,
     // então a instância não tem mais razão de existir. A próxima `attach` abre do zero.
+    // O broadcast chega a toda janela que leu os estados: só a entry deste `id` é do terminal que fechou.
     const key = scopeKey(event.scope)
     const entry = entries.get(key)
-    if (entry !== undefined && entry.container === null) destruir(key, entry)
+    if (entry !== undefined && entry.container === null && entry.id === event.id) {
+      destruir(key, entry)
+    }
   })
 
   window.oc.onClaudeReleased((event) => soltar(scopeKey(event.scope)))
@@ -137,8 +144,16 @@ function reopen(scope: ClaudeScope, key: string, entry: Entry): Promise<OpenClau
         return result
       }
 
-      entry.id = result.id
       entry.last = result
+
+      // O PTY saiu durante a adoção: não há id vivo a guardar, só o aviso (o `terminal:exit` não chega).
+      if (result.state.kind === 'closed') {
+        marcarEncerrada(entry)
+
+        return result
+      }
+
+      entry.id = result.id
       entry.exited = false
 
       // Terminal adotado de outra janela: a tela vem serializada. O `reset` desfaz o que o `fit` do
