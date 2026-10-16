@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm'
 import type { ITheme } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 
+import { SCROLLBACK } from '../../shared/claude'
 import { oklchToSrgb, parseOklch, toHex } from '../../shared/color'
 import { terminalKeyAction } from '../mesa/terminalKeys'
 
@@ -17,7 +18,7 @@ import { terminalKeyAction } from '../mesa/terminalKeys'
 export function createXterm(): { term: Terminal; fit: FitAddon } {
   const term = new Terminal({
     cursorBlink: true,
-    scrollback: 5000,
+    scrollback: SCROLLBACK,
     fontFamily: 'Cascadia Mono, Consolas, ui-monospace, monospace',
     theme: themeFromTokens(),
   })

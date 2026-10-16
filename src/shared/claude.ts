@@ -19,6 +19,9 @@ export type TerminalState = {
     | 'closed'
 }
 
+/** Linhas de rolagem do terminal Claude: a do xterm da tela e a do espelho headless do main (#100). */
+export const SCROLLBACK = 5000
+
 export interface OpenClaudeRequest {
   scope: ClaudeScope
   cols: number
