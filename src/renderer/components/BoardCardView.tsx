@@ -301,7 +301,8 @@ export function BoardCardView({
       // kanban aparecer por baixo. O `shadow-none` evita que a sombra dura vaze sobre o painel
       // lateral e o dock. O `mb-0` anula o `space-y-2` da lista da coluna, que segue dando 8px de
       // margem a um filho já fora do fluxo e o deixaria 8px mais curto que a tela. O bloco de
-      // contenção do `absolute` é a raiz do `KanbanScreen`.
+      // contenção do `absolute` é a área das colunas do `KanbanScreen` (`kanban-area`), abaixo da
+      // faixa de conversas (#100).
       <Card
         asChild
         className={cn(

@@ -12,6 +12,7 @@ import type { WebContents } from 'electron'
 import type { TerminalHost } from '../core'
 import { claudeArgs, claudeEnv } from '../core/terminal/claudeCommand'
 import { nextTerminalState } from '../core/terminal/claudeState'
+import { ScreenMirror } from '../core/terminal/ScreenMirror'
 import type { ClaudeSignal, HookEvent } from '../core/terminal/claudeState'
 import type {
   ClaudeScope,
@@ -49,6 +50,11 @@ export interface ClaudeTerminalDeps {
   danger: { isDangerous(scope: ClaudeScope): Promise<boolean> | boolean }
   resolveCwd: (scope: ClaudeScope) => Promise<string | null>
   onTurnEnd: (scope: ClaudeScope) => void
+  /**
+   * A janela principal, para onde o terminal volta quando o dono (outra janela) cai. `null` quando
+   * não há principal viva: aí o terminal morre com o dono, como antes do #100.
+   */
+  home?: () => WebContents | null
   watchInterrupt?: typeof watchInterrupt
   newId?: () => string
 }
@@ -56,6 +62,8 @@ export interface ClaudeTerminalDeps {
 export interface ClaudeTerminalIpc {
   closeAll(): void
   close(scope: ClaudeScope): Promise<void>
+  /** O `terminal:resize` é do `terminal.ts`, que não conhece o espelho: o `index.ts` liga os dois. Id que não é de terminal Claude é ignorado. */
+  resizeMirror(id: string, cols: number, rows: number): void
 }
 
 interface Entry {
@@ -66,15 +74,29 @@ interface Entry {
   dangerous: boolean
   unregister: () => void
   watch: TranscriptWatch | null
-  sender: WebContents
+  /** Quem recebe a saída e o estado; muda quando outro WebContents adota o terminal (#100). */
+  owner: WebContents
+  /** Quem disparou o spawn. Não muda: o dono atual pode ser outro. */
+  openedBy: WebContents
+  /** A tela do processo, para entregar o snapshot a quem adota. */
+  mirror: ScreenMirror
+  /**
+   * O terminal voltou à principal sem que o renderer dela tenha instância do escopo: a saída vai só
+   * ao espelho, e o próximo `claude:open` dela recebe o snapshot (#100).
+   */
+  devolvida: boolean
 }
 
 export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTerminalIpc {
   const { host, hooks } = deps
   const watchTranscript = deps.watchInterrupt ?? watchInterrupt
   const newId = deps.newId ?? (() => crypto.randomUUID())
+  const home = deps.home ?? (() => null)
   const live = new Map<string, Entry>()
-  const opening = new Map<string, Promise<OpenClaudeResult>>()
+  /** Guarda o sender que disparou a abertura: outro sender que chegue no meio adota depois do spawn. */
+  const opening = new Map<string, { promise: Promise<OpenClaudeResult>; sender: WebContents }>()
+  /** Todo WebContents que leu `readClaudeStates`: o estado é de todos, a saída é só do dono. */
+  const stateSubscribers = new Set<WebContents>()
   const watched = new WeakSet<WebContents>()
   /** Ligado pelo `closeAll`, que só roda no fechamento do app: abertura que chegar depois morre. */
   let encerrado = false
@@ -89,6 +111,15 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
     state: e.state,
     dangerous: e.dangerous,
   })
+
+  /** Estado a `stateSubscribers ∪ {owner}`, limpando os destruídos (padrão do `window.ts`). */
+  const publishState = (e: Entry): void => {
+    for (const sub of stateSubscribers) {
+      if (sub.isDestroyed()) stateSubscribers.delete(sub)
+    }
+    const alvos = new Set(stateSubscribers).add(e.owner)
+    for (const alvo of alvos) emit(alvo, IPC_EVENT.claudeState, stateEvent(e))
+  }
 
   const forgetScope = (scope: ClaudeScope): void => {
     if (scope.kind === 'card') deps.conversations.forget(scope.itemId)
@@ -111,8 +142,9 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
     if (opts.hostClose !== false) host.close(entry.id)
     entry.unregister()
     entry.watch?.stop()
+    entry.mirror.dispose()
     entry.state = { kind: 'closed' }
-    emit(entry.sender, IPC_EVENT.claudeState, stateEvent(entry))
+    publishState(entry)
     if (opts.forget) forgetScope(entry.scope)
   }
 
@@ -122,7 +154,7 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
     const { state, turnEnded } = nextTerminalState(entry.state, s)
     if (state.kind !== entry.state.kind) {
       entry.state = state
-      emit(entry.sender, IPC_EVENT.claudeState, stateEvent(entry))
+      publishState(entry)
     }
     if (turnEnded && entry.scope.kind === 'card') deps.onTurnEnd(entry.scope)
 
@@ -139,7 +171,17 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
 
   const closeOf = (sender: WebContents): void => {
     for (const [key, entry] of [...live]) {
-      if (entry.sender === sender) teardown(key, { forget: false })
+      if (entry.owner !== sender) continue
+      const principal = home()
+      if (principal !== null && principal !== sender) {
+        // A janela que segurava o terminal caiu, a principal não: ele continua vivo, agora dela.
+        entry.owner = principal
+        entry.devolvida = true
+        watchSender(principal)
+        publishState(entry)
+      } else {
+        teardown(key, { forget: false })
+      }
     }
   }
 
@@ -151,7 +193,7 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
     sender.on('did-navigate', () => closeOf(sender))
   }
 
-  const openResult = (e: Entry, spawned: boolean): OpenClaudeResult => ({
+  const openResult = (e: Entry, spawned: boolean): Extract<OpenClaudeResult, { ok: true }> => ({
     ok: true,
     id: e.id,
     state: e.state,
@@ -235,39 +277,83 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
       dangerous,
       unregister,
       watch: null,
-      sender,
+      owner: sender,
+      openedBy: sender,
+      mirror: new ScreenMirror(request.cols, request.rows),
+      devolvida: false,
     }
     live.set(key, entry)
     watchSender(sender)
     host.onData(entry.id, (data) => {
-      emit(sender, IPC_EVENT.terminalData, { id: entry.id, data })
+      // Espelho antes de emitir, e `owner` lido a cada chunk: o `TerminalHost` não tem unsubscribe,
+      // então a troca de dono é feita mudando o campo, nunca o callback.
+      entry.mirror.write(data)
+      // Devolvida, o renderer da principal não tem instância: o que chegasse agora seria escrito
+      // duas vezes, no snapshot do próximo `open` e na fila de pendentes.
+      if (!entry.devolvida) emit(entry.owner, IPC_EVENT.terminalData, { id: entry.id, data })
       // Só enquanto sobe: rodar a máquina a cada byte seria custo sem efeito.
       if (entry.state.kind === 'starting') signal(key, { name: 'output' })
     })
     host.onExit(entry.id, (exitCode) => {
-      emit(sender, IPC_EVENT.terminalExit, { id: entry.id, exitCode })
+      emit(entry.owner, IPC_EVENT.terminalExit, { id: entry.id, exitCode })
       teardown(key, { forget: false, hostClose: false, id: entry.id })
     })
     return openResult(entry, true)
+  }
+
+  /**
+   * `claude:open` de escopo vivo. O próprio dono recebe o resultado de hoje; outro sender **adota**:
+   * a troca de dono e o `snapshot()` acontecem no mesmo tick síncrono, então todo chunk anterior
+   * está no snapshot e todo chunk posterior vai ao novo dono pelo `terminal:data`.
+   */
+  const enter = async (
+    key: string,
+    entry: Entry,
+    sender: WebContents,
+  ): Promise<OpenClaudeResult> => {
+    if (entry.owner === sender) {
+      if (!entry.devolvida) return openResult(entry, false)
+      // O renderer da principal descartou a instância quando a outra janela adotou: precisa da tela.
+      entry.devolvida = false
+      const snapshot = await entry.mirror.snapshot()
+      if (live.get(key) !== entry || entry.owner !== sender) return openResult(entry, false)
+      return { ...openResult(entry, false), snapshot }
+    }
+    const anterior = entry.owner
+    entry.owner = sender
+    entry.devolvida = false
+    watchSender(sender)
+    if (!anterior.isDestroyed()) anterior.send(IPC_EVENT.claudeReleased, { scope: entry.scope })
+    const snapshot = await entry.mirror.snapshot()
+    // O PTY saiu ou um terceiro adotou durante a espera: o snapshot já não é de quem perguntou.
+    if (live.get(key) !== entry || entry.owner !== sender) return openResult(entry, false)
+    return { ...openResult(entry, false), snapshot }
   }
 
   ipcMain.handle(
     IPC_INVOKE.openClaude,
     (event, request: OpenClaudeRequest): Promise<OpenClaudeResult> => {
       const key = scopeKey(request.scope)
+      const sender = event.sender
       const vivo = live.get(key)
-      if (vivo !== undefined) return Promise.resolve(openResult(vivo, false))
+      if (vivo !== undefined) return enter(key, vivo, sender)
       const emVoo = opening.get(key)
-      if (emVoo !== undefined) return emVoo
-      const promessa = doOpen(key, request, event.sender).finally(() => opening.delete(key))
-      opening.set(key, promessa)
-      return promessa
+      if (emVoo !== undefined) {
+        if (sender === emVoo.sender) return emVoo.promise
+        return emVoo.promise.then((r) => {
+          const nascido = live.get(key)
+          return r.ok && nascido !== undefined ? enter(key, nascido, sender) : r
+        })
+      }
+      const promise = doOpen(key, request, sender).finally(() => opening.delete(key))
+      opening.set(key, { promise, sender })
+      return promise
     },
   )
 
   const settle = async (key: string): Promise<void> => {
     const emVoo = opening.get(key)
-    if (emVoo !== undefined) await emVoo.catch(() => undefined)
+    if (emVoo !== undefined) await emVoo.promise.catch(() => undefined)
   }
 
   const close = async (scope: ClaudeScope): Promise<void> => {
@@ -283,9 +369,10 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
     else forgetScope(r.scope)
   })
 
-  ipcMain.handle(IPC_INVOKE.readClaudeStates, (): ClaudeStateEvent[] =>
-    [...live.values()].map(stateEvent),
-  )
+  ipcMain.handle(IPC_INVOKE.readClaudeStates, (event): ClaudeStateEvent[] => {
+    stateSubscribers.add(event.sender)
+    return [...live.values()].map(stateEvent)
+  })
 
   return {
     closeAll: () => {
@@ -293,6 +380,11 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
       for (const key of [...live.keys()]) teardown(key, { forget: false })
     },
     close,
+    resizeMirror: (id, cols, rows) => {
+      for (const entry of live.values()) {
+        if (entry.id === id) entry.mirror.resize(cols, rows)
+      }
+    },
   }
 }
 

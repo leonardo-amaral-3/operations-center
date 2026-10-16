@@ -112,6 +112,8 @@ export interface TerminalIpcOptions {
   host: TerminalHost
   /** Injetável para o teste; em produção, `existsSync`. */
   exists?: (path: string) => boolean
+  /** Chamado depois de `host.resize`: quem espelha a tela (o terminal Claude, #100) acompanha o tamanho. */
+  onResize?: (id: string, cols: number, rows: number) => void
 }
 
 export interface TerminalIpc {
@@ -215,9 +217,10 @@ export function registerTerminalIpc(options: TerminalIpcOptions): TerminalIpc {
   ipcMain.handle(IPC_INVOKE.writeTerminal, (_e, r: TerminalInputRequest): void =>
     host.write(r.id, r.data),
   )
-  ipcMain.handle(IPC_INVOKE.resizeTerminal, (_e, r: TerminalResizeRequest): void =>
-    host.resize(r.id, r.cols, r.rows),
-  )
+  ipcMain.handle(IPC_INVOKE.resizeTerminal, (_e, r: TerminalResizeRequest): void => {
+    host.resize(r.id, r.cols, r.rows)
+    options.onResize?.(r.id, r.cols, r.rows)
+  })
   ipcMain.handle(IPC_INVOKE.closeTerminal, (_e, r: TerminalCloseRequest): void => {
     owners.delete(r.id)
     host.close(r.id)

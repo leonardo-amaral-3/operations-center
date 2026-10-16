@@ -435,3 +435,106 @@ describe('reduceKanban — o cartão expandido (#28, CA-4)', () => {
     expect(state.maximizado).toBeNull()
   })
 })
+
+describe('focar (#100, fase 2)', () => {
+  const ativo = apply({ type: 'snapshot', snapshot: retrato(A.key) })
+
+  it('no board ativo abre o cartão e o maximiza', () => {
+    const state = reduceKanban(ativo, { type: 'focar', key: A.key, itemId: 'PVTI_A1' })
+
+    expect(state.expanded).toEqual({ [A.key]: ['PVTI_A1'] })
+    expect(state.maximizado).toEqual({ key: A.key, itemId: 'PVTI_A1' })
+    expect(state.focoPendente).toBeNull()
+  })
+
+  it('abrir fecha o vizinho da coluna, como o `toggle`; já aberto, não fecha', () => {
+    const doVizinho = apply(
+      { type: 'snapshot', snapshot: retrato(A.key) },
+      { type: 'toggle', key: A.key, itemId: 'PVTI_A2' },
+    )
+    const trocado = reduceKanban(doVizinho, { type: 'focar', key: A.key, itemId: 'PVTI_A1' })
+
+    expect(trocado.expanded).toEqual({ [A.key]: ['PVTI_A1'] })
+
+    const denovo = reduceKanban(trocado, { type: 'focar', key: A.key, itemId: 'PVTI_A1' })
+
+    expect(denovo.expanded).toEqual({ [A.key]: ['PVTI_A1'] })
+    expect(denovo.maximizado).toEqual({ key: A.key, itemId: 'PVTI_A1' })
+  })
+
+  it('cartão que o retrato não conhece não abre nada', () => {
+    expect(reduceKanban(ativo, { type: 'focar', key: A.key, itemId: 'PVTI_X' })).toBe(ativo)
+  })
+
+  describe('em outro board', () => {
+    const pedido = reduceKanban(ativo, { type: 'focar', key: B.key, itemId: 'PVTI_A3' })
+
+    it('só guarda o `focoPendente` e deixa o resto intacto', () => {
+      expect(pedido.focoPendente).toEqual({ key: B.key, itemId: 'PVTI_A3' })
+      expect(pedido.expanded).toEqual({})
+      expect(pedido.maximizado).toBeNull()
+    })
+
+    it('o retrato com o `activeKey` novo aplica o foco e zera', () => {
+      const state = reduceKanban(pedido, { type: 'snapshot', snapshot: retrato(B.key) })
+
+      expect(state.focoPendente).toBeNull()
+      expect(state.expanded).toEqual({ [B.key]: ['PVTI_A3'] })
+      expect(state.maximizado).toEqual({ key: B.key, itemId: 'PVTI_A3' })
+    })
+
+    it('o retrato de rotina, com o `activeKey` de antes, mantém o pedido', () => {
+      const state = reduceKanban(pedido, { type: 'snapshot', snapshot: retrato(A.key) })
+
+      expect(state.focoPendente).toEqual({ key: B.key, itemId: 'PVTI_A3' })
+      expect(state.maximizado).toBeNull()
+    })
+
+    it('card que sumiu do retrato só zera', () => {
+      const semA3 = aba(B.key, B.title, { PVTI_A1: OPT_TRI })
+      const state = reduceKanban(pedido, {
+        type: 'snapshot',
+        snapshot: retrato(B.key, [A, semA3]),
+      })
+
+      expect(state.focoPendente).toBeNull()
+      expect(state.expanded).toEqual({})
+      expect(state.maximizado).toBeNull()
+    })
+
+    it('troca para outra chave só zera, sem disparar o foco numa troca manual', () => {
+      const C = aba('dono/9', 'Terceiro')
+      const state = reduceKanban(pedido, {
+        type: 'snapshot',
+        snapshot: retrato(C.key, [A, B, C]),
+      })
+
+      expect(state.focoPendente).toBeNull()
+      expect(state.maximizado).toBeNull()
+
+      const depois = reduceKanban(state, { type: 'snapshot', snapshot: retrato(B.key, [A, B, C]) })
+
+      expect(depois.maximizado).toBeNull()
+    })
+
+    it('aba que saiu do retrato só zera, e a volta dela não dispara o foco antigo', () => {
+      const sem = reduceKanban(pedido, { type: 'snapshot', snapshot: retrato(A.key, [A]) })
+
+      expect(sem.focoPendente).toBeNull()
+
+      const volta = reduceKanban(sem, { type: 'snapshot', snapshot: retrato(B.key) })
+
+      expect(volta.maximizado).toBeNull()
+    })
+
+    it('aba presente ainda sem leitura mantém o pedido', () => {
+      const semLeitura = { ...B, board: null }
+      const state = reduceKanban(pedido, {
+        type: 'snapshot',
+        snapshot: retrato(A.key, [A, semLeitura]),
+      })
+
+      expect(state.focoPendente).toEqual({ key: B.key, itemId: 'PVTI_A3' })
+    })
+  })
+})

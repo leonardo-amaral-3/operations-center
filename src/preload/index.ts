@@ -3,6 +3,7 @@ import type { IpcRendererEvent } from 'electron'
 
 import type { BoardsSnapshot } from '../shared/board'
 import type {
+  ClaudeReleasedEvent,
   ClaudeStateEvent,
   CloseClaudeRequest,
   OpenClaudeRequest,
@@ -178,6 +179,8 @@ const api: OcApi = {
   readClaudeStates: () =>
     ipcRenderer.invoke(IPC_INVOKE.readClaudeStates) as Promise<ClaudeStateEvent[]>,
   onClaudeState: (listener) => subscribe<ClaudeStateEvent>(IPC_EVENT.claudeState, listener),
+  onClaudeReleased: (listener) =>
+    subscribe<ClaudeReleasedEvent>(IPC_EVENT.claudeReleased, listener),
   readFree: () => ipcRenderer.invoke(IPC_INVOKE.readFree) as Promise<FreeSnapshot>,
   createFree: () => ipcRenderer.invoke(IPC_INVOKE.createFree) as Promise<CreateFreeResult>,
   renameFree: (request: RenameFreeRequest) =>

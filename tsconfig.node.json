@@ -9,6 +9,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "types": ["node"],
+    "paths": { "@xterm/addon-serialize": ["./src/core/terminal/addon-serialize.d.ts"] },
 
     "strict": true,
     "noUncheckedIndexedAccess": true,

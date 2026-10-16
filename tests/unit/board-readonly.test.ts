@@ -232,6 +232,7 @@ describe('a superfície de board é somente-leitura', () => {
       terminalData: 'terminal:data',
       terminalExit: 'terminal:exit',
       claudeState: 'claude:state',
+      claudeReleased: 'claude:released',
       free: 'free:changed',
     })
   })
