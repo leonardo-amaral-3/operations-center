@@ -29,7 +29,7 @@ import type { Theme } from './theme'
  * Qual tela o app desenha. Decidido no main por `OC_SCREEN` e entregue ao preload por argv — o
  * renderer não escolhe, só obedece.
  */
-export type Screen = 'kanban' | 'chat'
+export type Screen = 'kanban' | 'chat' | 'card'
 
 /** Renderer → main. Toda pergunta tem resposta, então são `invoke`. */
 export const IPC_INVOKE = {
@@ -117,6 +117,14 @@ export const IPC_INVOKE = {
    */
   readLayout: 'layout:read',
   setLayout: 'layout:set',
+  /**
+   * A janela própria do card (#100). Família `cardWindow:` própria: abre, foca e fecha janelas do
+   * app; **nenhum destes canais toca o board**. `readCardWindows` também assina, como `readWindow`.
+   */
+  openCardWindow: 'cardWindow:open',
+  bringBackCardWindow: 'cardWindow:bringBack',
+  focusCardWindow: 'cardWindow:focus',
+  readCardWindows: 'cardWindow:read',
 } as const
 
 /** Main → renderer. Avisos de mão única, disparados pelo `core` quando a sessão se mexe. */
@@ -168,6 +176,8 @@ export const IPC_EVENT = {
   claudeReleased: 'claude:released',
   /** Mudou o conjunto de sessões livres (#74). Estado do app, em `OC_STATE_DIR`; não toca o board. */
   free: 'free:changed',
+  /** Mudou o conjunto de cards destacados em janela própria (#100): os `itemId`, retrato inteiro. */
+  cardWindows: 'cardWindow:changed',
 } as const
 
 /**
@@ -419,6 +429,20 @@ export interface SetThemeRequest {
  */
 export interface WindowSnapshot {
   maximized: boolean
+}
+
+/**
+ * Pede a janela própria de um card. `atCursor` é o arrasto da aba: o main lê o cursor e, se o ponto
+ * estiver dentro da janela principal, não abre nada.
+ */
+export interface OpenCardWindowRequest {
+  itemId: string
+  atCursor: boolean
+}
+
+/** Qual card as demais operações da janela própria miram. */
+export interface CardWindowRequest {
+  itemId: string
 }
 
 /** Um perfil visto do renderer: rótulo e grupo, nunca o executável nem o ambiente. */
@@ -683,6 +707,20 @@ export interface OcApi {
   renameFree(request: RenameFreeRequest): Promise<void>
   forgetFree(request: ForgetFreeRequest): Promise<void>
   onFree(listener: (snapshot: FreeSnapshot) => void): () => void
+
+  /**
+   * Abre o card em janela própria, maximizada; já aberto, só foca. Com `atCursor`, o ponto do
+   * cursor decide (ver `OpenCardWindowRequest`).
+   */
+  openCardWindow(request: OpenCardWindowRequest): Promise<void>
+  /** Fecha a janela do card; o terminal Claude volta à principal sem reiniciar. */
+  bringBackCardWindow(request: CardWindowRequest): Promise<void>
+  focusCardWindow(request: CardWindowRequest): Promise<void>
+  /** Os `itemId` destacados — e, como `readWindow`, **também é a assinatura** de `onCardWindows`. */
+  readCardWindows(): Promise<string[]>
+  onCardWindows(listener: (itemIds: string[]) => void): () => void
+  /** O `itemId` desta janela quando a tela é `card`; `null` nas demais. */
+  readonly cardItemId: string | null
 
   /** A disposição da mesa. O renderer é o dono do estado; `setLayout` só pede ao main que persista. */
   readLayout(): Promise<LayoutSnapshot>

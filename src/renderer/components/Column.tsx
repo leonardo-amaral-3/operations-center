@@ -46,6 +46,8 @@ interface ColumnProps {
   maximizedItemId?: string | null
   onMaximize?: (itemId: string) => void
   onRestore?: () => void
+  /** Os cards abertos em janela própria (#100 §3). Ausente = nenhum. */
+  detachedItemIds?: ReadonlySet<string>
   onToggle: (itemId: string) => void
   onToggleDangerous: (itemId: string, dangerous: boolean) => void
   /** "Terminal aqui" dos cartões desta coluna; só de passagem. Ausente = sem mesa em volta. */
@@ -75,6 +77,7 @@ export function Column({
   maximizedItemId = null,
   onMaximize,
   onRestore,
+  detachedItemIds,
   onToggle,
   onToggleDangerous,
   onOpenTerminal,
@@ -156,6 +159,7 @@ export function Column({
               maximized={maximizedItemId === card.itemId}
               onMaximize={onMaximize}
               onRestore={onRestore}
+              detached={detachedItemIds?.has(card.itemId) ?? false}
               onToggle={onToggle}
               onToggleDangerous={onToggleDangerous}
               onOpenTerminal={onOpenTerminal}

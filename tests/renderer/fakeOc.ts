@@ -282,6 +282,35 @@ export function instalarOc(
       return Promise.resolve()
     },
 
+    // A janela própria do card (#100) também só registra; quem a abre de verdade é o main.
+    cardItemId: null,
+
+    openCardWindow(): Promise<void> {
+      pedidosDaMesa.push('openCardWindow')
+
+      return Promise.resolve()
+    },
+
+    bringBackCardWindow(): Promise<void> {
+      pedidosDaMesa.push('bringBackCardWindow')
+
+      return Promise.resolve()
+    },
+
+    focusCardWindow(): Promise<void> {
+      pedidosDaMesa.push('focusCardWindow')
+
+      return Promise.resolve()
+    },
+
+    readCardWindows(): Promise<string[]> {
+      return Promise.resolve([])
+    },
+
+    onCardWindows(): () => void {
+      return () => {}
+    },
+
     readTerminalPresets(): Promise<TerminalPresetsSnapshot> {
       return Promise.resolve({
         presets: [
@@ -363,7 +392,13 @@ export function instalarOc(
       const chave = scopeKey(request.scope)
       const viva = vivosClaude.get(chave)
       if (viva !== undefined) {
-        return { ok: true, id: viva.id, state: viva.state, dangerous: viva.dangerous, spawned: false }
+        return {
+          ok: true,
+          id: viva.id,
+          state: viva.state,
+          dangerous: viva.dangerous,
+          spawned: false,
+        }
       }
 
       const id = `claude_${++cunhadosClaude}`

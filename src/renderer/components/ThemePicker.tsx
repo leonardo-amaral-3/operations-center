@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 
 import { THEMES } from '../../shared/theme'
@@ -14,52 +13,14 @@ import { Button } from '../ui/button'
  *
  * **Nenhuma escolha própria**, como a `BoardTabs`: o clique só avisa o main, e a combinação corrente
  * volta no retrato. Um estado otimista aqui seria uma segunda fonte da verdade, e ela discordaria da
- * primeira no instante em que o main recusasse a troca. O `useState` daqui não é a escolha — é a
- * cópia local do último retrato, semeada com a mesma semente do primeiro paint.
+ * primeira no instante em que o main recusasse a troca. A combinação corrente chega por prop, do
+ * `useTemaAplicado` que a tela chama na raiz: é ele quem assina o retrato e escreve o `data-theme`.
  *
  * Semântica de `radiogroup`/`radio` com `aria-checked`, e **não** `tablist`: não há painel a trocar,
  * há uma opção entre três. O princípio é o que a `BoardTabs` declara — a seleção não pode existir só
  * no violeta do fundo.
  */
-export function ThemePicker(): JSX.Element {
-  /**
-   * A combinação corrente. Semeada com `window.oc.theme` — a mesma semente que o `main.tsx` escreveu
-   * no `<html>` antes do primeiro render —, e não com `THEME_DEFAULT`: os dois valores só coincidem
-   * para quem abre na lavanda, e semear com a default acenderia o botão errado por um quadro em
-   * quem abre na obsidiana.
-   */
-  const [corrente, setCorrente] = useState<Theme>(window.oc.theme)
-
-  useEffect(() => {
-    // Assinar vem **antes** de pedir, e com a mesma guarda dos três efeitos do `KanbanScreen`: uma
-    // troca publicada enquanto a resposta do `readTheme` volta é mais nova que ela, e sem a guarda o
-    // retrato em trânsito faria a tela retroceder para a cor de antes do clique.
-    let pushed = false
-
-    const unsubscribe = window.oc.onTheme((next) => {
-      pushed = true
-      setCorrente(next.theme)
-    })
-
-    void window.oc.readTheme().then((next) => {
-      if (!pushed) setCorrente(next.theme)
-    })
-
-    return unsubscribe
-  }, [])
-
-  useEffect(() => {
-    // Quem escreve o `data-theme` **depois do boot** é este efeito, e o `main.tsx` continua
-    // escrevendo a semente antes do primeiro render. Os dois concordam por construção na abertura —
-    // o main resolveu a flag do preload e a resposta do `readTheme` do mesmo valor —, então esta
-    // primeira escrita reescreve o que já está lá, e as seguintes é que trocam a cor de verdade.
-    //
-    // No `<html>`, e não numa div desta tela: a folha declara cada combinação num seletor de
-    // atributo sobre o documento, e o canvas que o CA-1 mede é o `body` — que está acima de
-    // qualquer nó que este componente pudesse pintar.
-    document.documentElement.dataset.theme = corrente
-  }, [corrente])
-
+export function ThemePicker({ corrente }: { readonly corrente: Theme }): JSX.Element {
   return (
     <div
       role="radiogroup"

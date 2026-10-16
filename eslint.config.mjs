@@ -97,6 +97,20 @@ export default tseslint.config(
     files: ['**/*.mjs', '**/*.js'],
     extends: [tseslint.configs.disableTypeChecked],
   },
+  {
+    // Scripts de medição rodam em Node puro, sem `globals` no package.json: declarados à mão.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        setImmediate: 'readonly',
+      },
+    },
+  },
   coreBoundary,
   sharedBoundary,
   prettier,

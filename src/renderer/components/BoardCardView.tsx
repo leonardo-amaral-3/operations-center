@@ -49,6 +49,16 @@ interface BoardCardViewProps {
   /** Ausente = sem o botão `card-maximize`, como o `onOpenTerminal` sem o dele. */
   onMaximize?: (itemId: string) => void
   onRestore?: () => void
+  /**
+   * Este card está aberto numa janela própria (#100 §3): o cartão da principal vira selo ou
+   * marcador, e **não monta** o `ClaudeTerminal` — o `attach` dele adotaria o terminal de volta.
+   */
+  detached?: boolean
+  /**
+   * Este cartão É o conteúdo da janela do card: sem maximizar, destacar nem recolher (não há
+   * kanban para recolher para), e ocupa a janela inteira.
+   */
+  janela?: boolean
 }
 
 /**
@@ -75,6 +85,8 @@ export function BoardCardView({
   maximized = false,
   onMaximize,
   onRestore,
+  detached = false,
+  janela = false,
 }: BoardCardViewProps): JSX.Element {
   const open = useRef<HTMLElement>(null)
 
@@ -95,10 +107,10 @@ export function BoardCardView({
    * voltaria fora da vista. Expandido, o cartão já cobre a tela, e não há o que trazer.
    */
   useEffect(() => {
-    if (!expanded || maximized) return
+    if (!expanded || maximized || janela) return
 
     open.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [expanded, maximized])
+  }, [expanded, maximized, janela])
 
   /**
    * `Esc` recolhe o cartão expandido (CA-2 do #28). Só registra com ele expandido.
@@ -113,7 +125,10 @@ export function BoardCardView({
     const h = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape' || event.defaultPrevented) return
       // O Esc dentro do terminal é da CLI, que o usa para interromper o turno (P18 do #97).
-      if (event.target instanceof Element && event.target.closest('[data-testid="claude-terminal"]')) {
+      if (
+        event.target instanceof Element &&
+        event.target.closest('[data-testid="claude-terminal"]')
+      ) {
         return
       }
       if (
@@ -258,6 +273,17 @@ export function BoardCardView({
               sem ele, uma conversa aberta atrás de um cartão colapsado é invisível e não há o que
               gerir. Aberto, quem mostra o estado é o próprio `ClaudeTerminal` — inclusive uma falha que
               aconteceu antes de haver sessão. */}
+          {/* Expandido, quem diz que o card está em outra janela é o marcador do corpo. */}
+          {!expanded && detached ? (
+            <Badge
+              variant="neutral"
+              data-testid="card-detached-badge"
+              className="rounded-base px-1.5 py-0 text-[10px] font-normal"
+            >
+              Em outra janela
+            </Badge>
+          ) : null}
+
           {!expanded && live ? (
             <div className="min-w-0">
               <StateBadge state={live} />
@@ -295,6 +321,9 @@ export function BoardCardView({
    */
   if (expanded) {
     const temConversa = conversable || live !== null || dormant
+    // A janela do card é a versão "maximizada" do cartão: mesma grade e mesmo preenchimento, só que
+    // ocupando a janela (`h-full`) e não a área das colunas (`absolute inset-0`).
+    const cheio = maximized || janela
 
     return (
       // O `opacity-100` vence o `opacity-60` do cartão fechado no GitHub: expandido, ele deixaria o
@@ -308,12 +337,29 @@ export function BoardCardView({
         className={cn(
           skin,
           maximized && 'absolute inset-0 z-20 mb-0 overflow-hidden opacity-100 shadow-none',
+          janela && 'mb-0 h-full overflow-hidden opacity-100 shadow-none',
         )}
       >
         <article ref={open} {...anchors}>
           <div className="flex shrink-0 items-start gap-2">
             <div className="min-w-0 flex-1">{body}</div>
-            {onMaximize ? (
+            {!janela && !detached ? (
+              <Button
+                type="button"
+                data-testid="card-detach"
+                variant="neutral"
+                size="xs"
+                title="Abrir o cartão numa janela própria"
+                onClick={() => {
+                  void window.oc.openCardWindow({ itemId: card.itemId, atCursor: false })
+                  // Maximizado, o cartão cobria o kanban: destacado, não há mais o que cobrir.
+                  if (maximized) onRestore?.()
+                }}
+              >
+                Destacar
+              </Button>
+            ) : null}
+            {onMaximize && !janela ? (
               <Button
                 type="button"
                 data-testid="card-maximize"
@@ -337,66 +383,118 @@ export function BoardCardView({
           <div
             data-testid="card-open-body"
             className={
-              maximized
+              cheio
                 ? cn(
                     'grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-4',
-                    temConversa ? 'grid-cols-2' : 'grid-cols-1',
+                    temConversa && !detached ? 'grid-cols-2' : 'grid-cols-1',
                   )
                 : undefined
             }
           >
-            {/* Acima da conversa, e dentro do próprio cartão: o conteúdo é o assunto, e a conversa
+            {detached ? (
+              <div
+                data-testid="card-detached"
+                className="flex flex-col items-start gap-3 border-t-2 border-border pt-3"
+              >
+                <p className="text-sm">Aberto em outra janela</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    data-testid="card-detached-show"
+                    variant="neutral"
+                    size="xs"
+                    onClick={() => {
+                      void window.oc.focusCardWindow({ itemId: card.itemId })
+                    }}
+                  >
+                    Mostrar
+                  </Button>
+                  <Button
+                    type="button"
+                    data-testid="card-detached-bring-back"
+                    variant="neutral"
+                    size="xs"
+                    onClick={() => {
+                      void window.oc.bringBackCardWindow({ itemId: card.itemId })
+                    }}
+                  >
+                    Trazer de volta
+                  </Button>
+                  {/* Sem este, o cartão expandido e destacado não teria como recolher: o botão do
+                      terminal não monta enquanto o card está em outra janela. */}
+                  <Button
+                    type="button"
+                    data-testid="card-collapse"
+                    variant="neutral"
+                    size="xs"
+                    onClick={() => {
+                      onToggle(card.itemId)
+                    }}
+                  >
+                    Fechar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Acima da conversa, e dentro do próprio cartão: o conteúdo é o assunto, e a conversa
               acontece sobre ele. `hasSession` só escolhe se a seção nasce aberta ou recolhida — e o
               dormente conta como sessão pela regra que o próprio `CardContent` enuncia: quem clica
               num cartão com conversa guardada abriu para falar, não para ler. */}
-            <CardContent
-              itemId={card.itemId}
-              hasSession={live !== null || dormant}
-              preencher={maximized}
-            />
+                <CardContent
+                  itemId={card.itemId}
+                  hasSession={live !== null || dormant}
+                  preencher={cheio}
+                />
 
-            {temConversa ? (
-              <ClaudeTerminal
-                preencher={maximized}
-                // O escopo montado aqui é objeto novo a cada render, e é seguro: o efeito do
-                // terminal depende da **chave** (`scopeKey`), não da referência.
-                scope={{ kind: 'card', itemId: card.itemId }}
-                state={terminal}
-                dangerous={dangerous}
-                semPasta="Não sei em que pasta deste computador o repo deste card vive. Aponte-a e a sessão sobe lá."
-                // O CA-6 do #6 em uma linha: colapsar fecha a vista, não a conversa.
-                onCollapse={() => {
-                  onToggle(card.itemId)
-                }}
-                onToggleDangerous={(sem) => {
-                  onToggleDangerous(card.itemId, sem)
-                }}
-                onOpenTerminal={
-                  onOpenTerminal === undefined
-                    ? undefined
-                    : () => {
-                        onOpenTerminal({ kind: 'card', itemId: card.itemId })
-                      }
-                }
-              />
-            ) : (
-              // Sem skill, sem sessão e sem conversa guardada: o cartão abriu para ser lido, e a
-              // única ação que ele oferece é fechar. A âncora `card-collapse` é a mesma do `Chat`
-              // de propósito — fechar um cartão é fechar um cartão, e o smoke não deve precisar saber
-              // qual ramo desenhou o botão.
-              <div className="mt-3 flex justify-end border-t-2 border-border pt-3">
-                <Button
-                  type="button"
-                  data-testid="card-collapse"
-                  variant="neutral"
-                  size="xs"
-                  onClick={() => {
-                    onToggle(card.itemId)
-                  }}
-                >
-                  Fechar
-                </Button>
-              </div>
+                {temConversa ? (
+                  <ClaudeTerminal
+                    preencher={cheio}
+                    // O escopo montado aqui é objeto novo a cada render, e é seguro: o efeito do
+                    // terminal depende da **chave** (`scopeKey`), não da referência.
+                    scope={{ kind: 'card', itemId: card.itemId }}
+                    state={terminal}
+                    dangerous={dangerous}
+                    semPasta="Não sei em que pasta deste computador o repo deste card vive. Aponte-a e a sessão sobe lá."
+                    // O CA-6 do #6 em uma linha: colapsar fecha a vista, não a conversa.
+                    {...(janela
+                      ? {}
+                      : {
+                          onCollapse: () => {
+                            onToggle(card.itemId)
+                          },
+                        })}
+                    onToggleDangerous={(sem) => {
+                      onToggleDangerous(card.itemId, sem)
+                    }}
+                    onOpenTerminal={
+                      onOpenTerminal === undefined
+                        ? undefined
+                        : () => {
+                            onOpenTerminal({ kind: 'card', itemId: card.itemId })
+                          }
+                    }
+                  />
+                ) : janela ? null : (
+                  // Sem skill, sem sessão e sem conversa guardada: o cartão abriu para ser lido, e a
+                  // única ação que ele oferece é fechar. A âncora `card-collapse` é a mesma do `Chat`
+                  // de propósito — fechar um cartão é fechar um cartão, e o smoke não deve precisar saber
+                  // qual ramo desenhou o botão.
+                  <div className="mt-3 flex justify-end border-t-2 border-border pt-3">
+                    <Button
+                      type="button"
+                      data-testid="card-collapse"
+                      variant="neutral"
+                      size="xs"
+                      onClick={() => {
+                        onToggle(card.itemId)
+                      }}
+                    >
+                      Fechar
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </article>
@@ -417,7 +515,8 @@ export function BoardCardView({
         {...anchors}
         type="button"
         onClick={() => {
-          onToggle(card.itemId)
+          if (detached) void window.oc.focusCardWindow({ itemId: card.itemId })
+          else onToggle(card.itemId)
         }}
       >
         {body}
