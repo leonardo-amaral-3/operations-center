@@ -506,6 +506,12 @@ ipcMain.handle(
 let janelaViva: BrowserWindow | null = null
 
 /**
+ * A principal teve o renderer morto mas a janela ainda existe: devolver um terminal a ela seria
+ * mandar a saída a um processo que não escuta. Volta a `false` quando ela recarrega (#100).
+ */
+let homeCaiu = false
+
+/**
  * Repinta a moldura quando o humano troca de combinação.
  *
  * Necessário porque o `backgroundColor` de uma `BrowserWindow` é fixado na construção: sem isto, um
@@ -586,6 +592,16 @@ void app.whenReady().then(async () => {
 
   const window = createWindow(theme)
   janelaViva = window
+  homeCaiu = false
+  window.on('closed', () => {
+    janelaViva = null
+  })
+  window.webContents.on('render-process-gone', () => {
+    homeCaiu = true
+  })
+  window.webContents.on('did-finish-load', () => {
+    homeCaiu = false
+  })
   observarJanela(window)
 
   if (!boardsIpc) return
@@ -620,6 +636,8 @@ const terminalIpc = registerTerminalIpc({
   presets: () => buildPresets(terminalDeps),
   resolveCwd: async (scope) => resolveScopeCwd(scope),
   host: terminalHost,
+  // `claudeIpc` nasce logo abaixo; o callback só roda com o app de pé, depois dos dois.
+  onResize: (id, cols, rows) => claudeIpc.resizeMirror(id, cols, rows),
 })
 
 // O terminal Claude (#97) divide o `TerminalHost` com o terminal comum e fala com o `claude` por hooks.
@@ -635,6 +653,14 @@ const claudeIpc = registerClaudeTerminalIpc({
   danger: dangerGate,
   resolveCwd: resolveScopeCwd,
   onTurnEnd: reler,
+  // Para onde o terminal volta quando a janela que o segurava cai: a principal, se estiver de pé.
+  home: () =>
+    janelaViva !== null &&
+    !janelaViva.isDestroyed() &&
+    !janelaViva.webContents.isDestroyed() &&
+    !homeCaiu
+      ? janelaViva.webContents
+      : null,
 })
 
 // O layout da mesa (#74 §6): só persiste, e por isso também incondicional — não toca o board.

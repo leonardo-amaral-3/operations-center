@@ -39,7 +39,7 @@ function fakeSender() {
   const sender = {
     isDestroyed: () => false,
     send: (canal: string, carga: unknown) => void enviados.push([canal, carga]),
-    once: () => {},
+    once: (evento: string, cb: () => void) => void on.set(evento, [...(on.get(evento) ?? []), cb]),
     on: (evento: string, cb: () => void) => void on.set(evento, [...(on.get(evento) ?? []), cb]),
   } as unknown as WebContents
   const emitir = (evento: string): void => on.get(evento)?.forEach((cb) => cb())
@@ -557,5 +557,113 @@ describe('claude:open — adoção por outro WebContents (#100)', () => {
 
     expect(c.estados()).toContain('working')
     expect(t.estados()).toContain('working')
+  })
+
+  describe('devolução à principal', () => {
+    /** `t.sender` é a principal (A); `b` e `c` são janelas de card que adotam. */
+    const comHome = () => {
+      const caixa: { home: WebContents | null } = { home: null }
+      const t = montar({ home: () => caixa.home })
+      caixa.home = t.sender
+      return t
+    }
+
+    it.each(['destroyed', 'did-navigate', 'render-process-gone'])(
+      'dono B que não é a principal sai por %s: o PTY segue vivo e o dono vira A',
+      async (evento) => {
+        const t = comHome()
+        const b = fakeSender()
+        await t.open(CARD)
+        await como(b).open(CARD)
+
+        b.emitir(evento)
+
+        expect(t.fake.ptys[0]!.killed).toBe(false)
+        t.fake.ptys[0]!.emitData('depois')
+        expect(dados(t)).toEqual([])
+        expect(dados(b)).toEqual([])
+      },
+    )
+
+    it('depois da devolução, o open de A traz o snapshot com a saída que chegou no intervalo', async () => {
+      const t = comHome()
+      const b = fakeSender()
+      await t.open(CARD)
+      await como(b).open(CARD)
+      b.emitir('destroyed')
+      t.fake.ptys[0]!.emitData('na ausencia\r\n')
+
+      const r = await t.open(CARD)
+
+      expect(r).toMatchObject({ ok: true, spawned: false })
+      expect((r as { snapshot?: { data: string } }).snapshot?.data).toContain('na ausencia')
+      t.fake.ptys[0]!.emitData('de novo')
+      expect(dados(t)).toEqual(['de novo'])
+    })
+
+    it('a devolução publica o estado a quem leu claude:states', async () => {
+      const t = comHome()
+      const b = fakeSender()
+      await t.open(CARD)
+      await como(b).open(CARD)
+      const antes = t.estados().length
+
+      b.emitir('destroyed')
+
+      expect(t.estados().length).toBe(antes + 1)
+    })
+
+    it('o exit do PTY chega ao dono mesmo devolvida', async () => {
+      const t = comHome()
+      const b = fakeSender()
+      await t.open(CARD)
+      await como(b).open(CARD)
+      b.emitir('destroyed')
+
+      t.fake.ptys[0]!.emitExit(0)
+
+      expect(t.enviados.some(([c]) => c === IPC_EVENT.terminalExit)).toBe(true)
+    })
+
+    it('o dono é a própria principal destruída: o PTY morre, como hoje', async () => {
+      const t = comHome()
+      await t.open(CARD)
+
+      t.emitir('destroyed')
+
+      expect(t.fake.ptys[0]!.killed).toBe(true)
+    })
+
+    it('home devolvendo null: o dono que morre derruba o PTY', async () => {
+      const t = montar({ home: () => null })
+      const b = fakeSender()
+      await t.open(CARD)
+      await como(b).open(CARD)
+
+      b.emitir('destroyed')
+
+      expect(t.fake.ptys[0]!.killed).toBe(true)
+    })
+
+    it('CA-3: destruir B não mata o PTY de C nem o de A, e o card 1 passa a ser de A', async () => {
+      const t = comHome()
+      const b = fakeSender()
+      const c = fakeSender()
+      await t.open(LIVRE)
+      await t.open(CARD)
+      await t.open(OUTRO)
+      await como(b).open(CARD)
+      await como(c).open(OUTRO)
+
+      b.emitir('destroyed')
+
+      expect(t.fake.ptys.map((p) => p.killed)).toEqual([false, false, false])
+      t.fake.ptys[1]!.emitData('card1')
+      t.fake.ptys[2]!.emitData('card2')
+      expect(dados(t)).toEqual([])
+      expect(dados(c)).toEqual(['card2'])
+      const r = await t.open(CARD)
+      expect((r as { snapshot?: { data: string } }).snapshot?.data).toContain('card1')
+    })
   })
 })

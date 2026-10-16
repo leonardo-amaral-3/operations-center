@@ -50,6 +50,11 @@ export interface ClaudeTerminalDeps {
   danger: { isDangerous(scope: ClaudeScope): Promise<boolean> | boolean }
   resolveCwd: (scope: ClaudeScope) => Promise<string | null>
   onTurnEnd: (scope: ClaudeScope) => void
+  /**
+   * A janela principal, para onde o terminal volta quando o dono (outra janela) cai. `null` quando
+   * não há principal viva: aí o terminal morre com o dono, como antes do #100.
+   */
+  home?: () => WebContents | null
   watchInterrupt?: typeof watchInterrupt
   newId?: () => string
 }
@@ -75,12 +80,18 @@ interface Entry {
   openedBy: WebContents
   /** A tela do processo, para entregar o snapshot a quem adota. */
   mirror: ScreenMirror
+  /**
+   * O terminal voltou à principal sem que o renderer dela tenha instância do escopo: a saída vai só
+   * ao espelho, e o próximo `claude:open` dela recebe o snapshot (#100).
+   */
+  devolvida: boolean
 }
 
 export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTerminalIpc {
   const { host, hooks } = deps
   const watchTranscript = deps.watchInterrupt ?? watchInterrupt
   const newId = deps.newId ?? (() => crypto.randomUUID())
+  const home = deps.home ?? (() => null)
   const live = new Map<string, Entry>()
   /** Guarda o sender que disparou a abertura: outro sender que chegue no meio adota depois do spawn. */
   const opening = new Map<string, { promise: Promise<OpenClaudeResult>; sender: WebContents }>()
@@ -160,7 +171,17 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
 
   const closeOf = (sender: WebContents): void => {
     for (const [key, entry] of [...live]) {
-      if (entry.owner === sender) teardown(key, { forget: false })
+      if (entry.owner !== sender) continue
+      const principal = home()
+      if (principal !== null && principal !== sender) {
+        // A janela que segurava o terminal caiu, a principal não: ele continua vivo, agora dela.
+        entry.owner = principal
+        entry.devolvida = true
+        watchSender(principal)
+        publishState(entry)
+      } else {
+        teardown(key, { forget: false })
+      }
     }
   }
 
@@ -259,6 +280,7 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
       owner: sender,
       openedBy: sender,
       mirror: new ScreenMirror(request.cols, request.rows),
+      devolvida: false,
     }
     live.set(key, entry)
     watchSender(sender)
@@ -266,7 +288,9 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
       // Espelho antes de emitir, e `owner` lido a cada chunk: o `TerminalHost` não tem unsubscribe,
       // então a troca de dono é feita mudando o campo, nunca o callback.
       entry.mirror.write(data)
-      emit(entry.owner, IPC_EVENT.terminalData, { id: entry.id, data })
+      // Devolvida, o renderer da principal não tem instância: o que chegasse agora seria escrito
+      // duas vezes, no snapshot do próximo `open` e na fila de pendentes.
+      if (!entry.devolvida) emit(entry.owner, IPC_EVENT.terminalData, { id: entry.id, data })
       // Só enquanto sobe: rodar a máquina a cada byte seria custo sem efeito.
       if (entry.state.kind === 'starting') signal(key, { name: 'output' })
     })
@@ -287,9 +311,17 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
     entry: Entry,
     sender: WebContents,
   ): Promise<OpenClaudeResult> => {
-    if (entry.owner === sender) return openResult(entry, false)
+    if (entry.owner === sender) {
+      if (!entry.devolvida) return openResult(entry, false)
+      // O renderer da principal descartou a instância quando a outra janela adotou: precisa da tela.
+      entry.devolvida = false
+      const snapshot = await entry.mirror.snapshot()
+      if (live.get(key) !== entry || entry.owner !== sender) return openResult(entry, false)
+      return { ...openResult(entry, false), snapshot }
+    }
     const anterior = entry.owner
     entry.owner = sender
+    entry.devolvida = false
     watchSender(sender)
     if (!anterior.isDestroyed()) anterior.send(IPC_EVENT.claudeReleased, { scope: entry.scope })
     const snapshot = await entry.mirror.snapshot()
