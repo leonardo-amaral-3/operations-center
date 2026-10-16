@@ -438,3 +438,124 @@ describe('fechamento', () => {
     expect(t.conversations.forget).not.toHaveBeenCalled()
   })
 })
+
+describe('claude:open — adoção por outro WebContents (#100)', () => {
+  /** Um segundo WebContents chamando os mesmos handlers, como a janela do card faria. */
+  const como = (s: ReturnType<typeof fakeSender>) => ({
+    open: (scope: ClaudeScope) =>
+      Promise.resolve(
+        handlers.get(IPC_INVOKE.openClaude)!({ sender: s.sender }, { scope, cols: 80, rows: 24 }),
+      ) as Promise<OpenClaudeResult>,
+    states: () =>
+      Promise.resolve(
+        handlers.get(IPC_INVOKE.readClaudeStates)!({ sender: s.sender }, undefined),
+      ) as Promise<ClaudeStateEvent[]>,
+  })
+  const dados = (s: ReturnType<typeof fakeSender>): string[] =>
+    s.enviados
+      .filter(([c]) => c === IPC_EVENT.terminalData)
+      .map(([, p]) => (p as { data: string }).data)
+  const soltos = (s: ReturnType<typeof fakeSender>): unknown[] =>
+    s.enviados.filter(([c]) => c === IPC_EVENT.claudeReleased).map(([, p]) => p)
+
+  it('B abre o escopo vivo de A: mesmo id, snapshot com a saída, e a saída seguinte só vai a B', async () => {
+    const t = montar()
+    const b = fakeSender()
+    const a = await t.open(CARD)
+    t.fake.ptys[0]!.emitData('ola do A\r\n')
+
+    const r = await como(b).open(CARD)
+
+    expect(r).toMatchObject({ ok: true, spawned: false, id: (a as { id: string }).id })
+    expect((r as { snapshot?: { data: string } }).snapshot?.data).toContain('ola do A')
+    expect(soltos(t)).toEqual([{ scope: CARD }])
+    t.fake.ptys[0]!.emitData('depois')
+    expect(dados(b)).toEqual(['depois'])
+    expect(dados(t)).toEqual(['ola do A\r\n'])
+  })
+
+  it('reabrir pelo próprio dono não traz snapshot nem solta nada', async () => {
+    const t = montar()
+    await t.open(CARD)
+
+    const r = await t.open(CARD)
+
+    expect(r).toMatchObject({ ok: true, spawned: false })
+    expect((r as { snapshot?: unknown }).snapshot).toBeUndefined()
+    expect(soltos(t)).toEqual([])
+  })
+
+  it('resizeMirror vale para o id do terminal Claude e ignora os outros', async () => {
+    const t = montar()
+    const b = fakeSender()
+    const a = (await t.open(CARD)) as { id: string }
+
+    t.ipc.resizeMirror('nao-e-claude', 10, 5)
+    t.ipc.resizeMirror(a.id, 100, 30)
+    const r = await como(b).open(CARD)
+
+    expect((r as { snapshot?: { cols: number; rows: number } }).snapshot).toMatchObject({
+      cols: 100,
+      rows: 30,
+    })
+  })
+
+  it('B abre enquanto a abertura de A está em voo: adota depois do spawn', async () => {
+    let liberar!: (v: boolean) => void
+    const gate = new Promise<boolean>((r) => (liberar = r))
+    const t = montar({ danger: { isDangerous: () => gate } })
+    const b = fakeSender()
+
+    const deA = t.open(CARD)
+    await vi.waitFor(() => expect(t.alvos).toHaveLength(1))
+    const deB = como(b).open(CARD)
+    liberar(false)
+    const [ra, rb] = await Promise.all([deA, deB])
+
+    expect(ra).toMatchObject({ ok: true, spawned: true })
+    expect(rb).toMatchObject({ ok: true, spawned: false })
+    expect((rb as { snapshot?: unknown }).snapshot).toBeDefined()
+    t.fake.ptys[0]!.emitData('x')
+    expect(dados(b)).toEqual(['x'])
+    expect(t.fake.calls).toHaveLength(1)
+  })
+
+  it('o PTY sai durante o await do snapshot: B resolve, sem snapshot', async () => {
+    const t = montar()
+    const b = fakeSender()
+    await t.open(CARD)
+
+    const pendente = como(b).open(CARD)
+    t.fake.ptys[0]!.emitExit(0)
+    const r = await pendente
+
+    expect(r).toMatchObject({ ok: true, spawned: false })
+    expect((r as { snapshot?: unknown }).snapshot).toBeUndefined()
+  })
+
+  it('C adota durante o await de B: B responde sem snapshot', async () => {
+    const t = montar()
+    const b = fakeSender()
+    const c = fakeSender()
+    await t.open(CARD)
+
+    const deB = como(b).open(CARD)
+    const deC = como(c).open(CARD)
+    const [rb, rc] = await Promise.all([deB, deC])
+
+    expect((rb as { snapshot?: unknown }).snapshot).toBeUndefined()
+    expect((rc as { snapshot?: unknown }).snapshot).toBeDefined()
+  })
+
+  it('claude:state vai a quem leu claude:states, e não só ao dono', async () => {
+    const t = montar()
+    const c = fakeSender()
+    await t.open(CARD)
+    await como(c).states()
+
+    t.hook(0, { name: 'UserPromptSubmit', sessionId: SID, transcriptPath: 'a' })
+
+    expect(c.estados()).toContain('working')
+    expect(t.estados()).toContain('working')
+  })
+})
