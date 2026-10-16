@@ -28,9 +28,28 @@ export interface OpenClaudeRequest {
   rows: number
 }
 
+/** A tela serializada de um terminal adotado de outro dono: escrita num xterm de `cols`×`rows`, reproduz o buffer. */
+export interface ClaudeSnapshot {
+  data: string
+  cols: number
+  rows: number
+}
+
+/** Payload de `claude:released`: o terminal deste escopo passou a outro dono (#100). */
+export interface ClaudeReleasedEvent {
+  scope: ClaudeScope
+}
+
 export type OpenClaudeResult =
-  /** `dangerous` = o modo em que o processo vivo NASCEU (não a marca atual). `spawned` = esta chamada criou o processo. */
-  | { ok: true; id: string; state: TerminalState; dangerous: boolean; spawned: boolean }
+  /** `dangerous` = o modo em que o processo vivo NASCEU (não a marca atual). `spawned` = esta chamada criou o processo. `snapshot` só quando a chamada adotou um terminal de outro dono. */
+  | {
+      ok: true
+      id: string
+      state: TerminalState
+      dangerous: boolean
+      spawned: boolean
+      snapshot?: ClaudeSnapshot
+    }
   /** `session-busy`: a conversa lembrada deste escopo já está aberta num terminal vivo de outro escopo. */
   | { ok: false; reason: 'unknown-folder' | 'session-busy' }
   /** `detail` é texto de erro para a tela, como o de `shell-missing`/`pty-unavailable` do `terminal:open`. */

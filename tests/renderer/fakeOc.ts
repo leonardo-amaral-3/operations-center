@@ -383,6 +383,10 @@ export function instalarOc(
       return assinar(ouvintesDeClaude, ouvinte)
     },
 
+    onClaudeReleased(): () => void {
+      return () => undefined
+    },
+
     writeTerminal(request: TerminalInputRequest): Promise<void> {
       escritos.push(request)
 

@@ -9,6 +9,7 @@
 
 import type { BoardsSnapshot, CardContent, PullRequestView } from './board'
 import type {
+  ClaudeReleasedEvent,
   ClaudeStateEvent,
   CloseClaudeRequest,
   OpenClaudeRequest,
@@ -163,6 +164,8 @@ export const IPC_EVENT = {
   terminalExit: 'terminal:exit',
   /** O estado do terminal Claude de um escopo mudou (#97). Derivado dos hooks; não toca o board. */
   claudeState: 'claude:state',
+  /** O terminal Claude deste escopo foi adotado por outro WebContents; quem o tinha o solta sem fechar (#100). */
+  claudeReleased: 'claude:released',
   /** Mudou o conjunto de sessões livres (#74). Estado do app, em `OC_STATE_DIR`; não toca o board. */
   free: 'free:changed',
 } as const
@@ -672,6 +675,7 @@ export interface OcApi {
   /** Os terminais Claude vivos, para o board pintar o selo de quem já estava aberto. */
   readClaudeStates(): Promise<ClaudeStateEvent[]>
   onClaudeState(listener: (event: ClaudeStateEvent) => void): () => void
+  onClaudeReleased(listener: (event: ClaudeReleasedEvent) => void): () => void
 
   /** As sessões livres — e, como `readWindow`, **também é a assinatura** de `onFree`. */
   readFree(): Promise<FreeSnapshot>

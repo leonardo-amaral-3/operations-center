@@ -54,6 +54,7 @@ function montar(
     load?: ConstructorParameters<typeof TerminalHost>[0]
     pasta?: string | null
     existe?: boolean
+    onResize?: (id: string, cols: number, rows: number) => void
   } = {},
 ) {
   handlers.clear()
@@ -66,6 +67,7 @@ function montar(
     resolveCwd: () => Promise.resolve(over.pasta === undefined ? 'C:\\repos\\notoria' : over.pasta),
     host,
     exists: () => over.existe ?? true,
+    onResize: over.onResize,
   })
   const abrir = (sender: WebContents, req: Partial<{ preset: string; scope: SessionScope }> = {}) =>
     handlers.get(IPC_INVOKE.openTerminal)!(
@@ -201,6 +203,26 @@ describe('terminal:open — abrindo', () => {
     ipc.closeAll()
 
     expect(fake.ptys[0]!.killed).toBe(true)
+  })
+})
+
+describe('terminal:resize — onResize (#100)', () => {
+  it('avisa quem espelha a tela depois de redimensionar o PTY', async () => {
+    const chamadas: Array<[string, number, number, number]> = []
+    const { abrir, fake } = montar({
+      onResize: (id, cols, rows) => {
+        // `host.resize` já rodou: o PTY do fake registrou o tamanho antes deste aviso.
+        chamadas.push([id, cols, rows, fake.ptys[0]!.resizes.length])
+      },
+    })
+    const aberto = await abrir(fakeSender().sender)
+    if (!aberto.opened) throw new Error('terminal não abriu')
+    const id = aberto.terminal.id
+
+    await handlers.get(IPC_INVOKE.resizeTerminal)!({}, { id, cols: 120, rows: 40 })
+
+    expect(chamadas).toEqual([[id, 120, 40, 1]])
+    expect(fake.ptys[0]!.resizes).toEqual([[120, 40]])
   })
 })
 
