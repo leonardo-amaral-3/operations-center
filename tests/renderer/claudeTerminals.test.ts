@@ -15,14 +15,20 @@ interface Dublê {
   escrito: string[]
   destruido: boolean
   digitou: Array<(data: string) => void>
+  /** Reset, resize e write na ordem em que o registro chamou. */
+  ops: string[]
+  /** Callbacks de `write` que o xterm ainda não "terminou"; o teste os dispara. */
+  aoEscrever: Array<() => void>
 }
 
-const { termos } = vi.hoisted(() => ({ termos: [] as Dublê[] }))
+const { termos, fits } = vi.hoisted(() => ({ termos: [] as Dublê[], fits: { n: 0 } }))
 
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 vi.mock('@xterm/addon-fit', () => ({
   FitAddon: class {
-    fit(): void {}
+    fit(): void {
+      fits.n++
+    }
   },
 }))
 vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }))
@@ -31,14 +37,22 @@ vi.mock('@xterm/xterm', () => ({
     cols = 80
     rows = 24
     options: Record<string, unknown> = {}
-    readonly #d: Dublê = { escrito: [], destruido: false, digitou: [] }
+    readonly #d: Dublê = { escrito: [], destruido: false, digitou: [], ops: [], aoEscrever: [] }
     constructor() {
       termos.push(this.#d)
     }
     loadAddon(): void {}
     open(): void {}
-    write(texto: string): void {
+    write(texto: string, aoTerminar?: () => void): void {
       this.#d.escrito.push(texto)
+      this.#d.ops.push(`write:${texto}`)
+      if (aoTerminar !== undefined) this.#d.aoEscrever.push(aoTerminar)
+    }
+    reset(): void {
+      this.#d.ops.push('reset')
+    }
+    resize(cols: number, rows: number): void {
+      this.#d.ops.push(`resize:${cols}x${rows}`)
     }
     focus(): void {}
     dispose(): void {
@@ -123,6 +137,49 @@ describe('claudeTerminals', () => {
     await abrindo
 
     expect(termos[0]?.escrito).toEqual(['oi'])
+  })
+
+  it('snapshot: reset, resize, write, pendentes, e o fit só depois do último write', async () => {
+    const segura = oc.segurarClaude()
+    oc.responderClaude({
+      ok: true,
+      id: 'claude_9',
+      state: { kind: 'starting' },
+      dangerous: false,
+      spawned: false,
+      snapshot: { data: 'TELA', cols: 100, rows: 30 },
+    })
+    const abrindo = registro.attach(CARTAO, contêiner())
+    oc.publicarDado({ id: 'claude_9', data: 'depois' })
+    const fitsAntes = fits.n
+
+    segura.soltar()
+    await abrindo
+
+    expect(termos[0]?.ops).toEqual(['reset', 'resize:100x30', 'write:TELA', 'write:depois', 'write:'])
+    expect(fits.n).toBe(fitsAntes)
+
+    termos[0]?.aoEscrever.forEach((cb) => cb())
+    expect(fits.n).toBe(fitsAntes + 1)
+  })
+
+  it('sem snapshot não há reset, resize nem fit extra', async () => {
+    await registro.attach(CARTAO, contêiner())
+
+    expect(termos[0]?.ops).toEqual([])
+    expect(termos[0]?.aoEscrever).toEqual([])
+  })
+
+  it('claude:released destrói a instância sem chamar closeClaude', async () => {
+    await registro.attach(CARTAO, contêiner())
+
+    oc.publicarLiberado({ scope: CARTAO })
+
+    expect(termos[0]?.destruido).toBe(true)
+    expect(oc.claudeFechados).toHaveLength(0)
+
+    await registro.attach(CARTAO, contêiner())
+    expect(termos).toHaveLength(2)
   })
 
   it('o dado de id desconhecido sem abertura em voo é descartado', async () => {

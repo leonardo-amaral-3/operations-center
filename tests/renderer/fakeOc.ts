@@ -1,4 +1,5 @@
 import type {
+  ClaudeReleasedEvent,
   ClaudeStateEvent,
   CloseClaudeRequest,
   OpenClaudeRequest,
@@ -101,6 +102,8 @@ export interface OcFake {
   segurarClaude(): { soltar(): void }
   /** Publica um `claude:state` aos assinantes de `onClaudeState`. */
   publicarEstadoClaude(event: ClaudeStateEvent): void
+  /** Publica um `claude:released` aos assinantes de `onClaudeReleased`. */
+  publicarLiberado(event: ClaudeReleasedEvent): void
   /** Publica saída do PTY (`terminal:data`). */
   publicarDado(event: TerminalDataEvent): void
   /** Publica o fim do PTY (`terminal:exit`). */
@@ -127,6 +130,7 @@ export function instalarOc(
   const escritos: TerminalInputRequest[] = []
   const redimensionados: TerminalResizeRequest[] = []
   const ouvintesDeClaude: ((event: ClaudeStateEvent) => void)[] = []
+  const ouvintesDeLiberado: ((event: ClaudeReleasedEvent) => void)[] = []
   const ouvintesDeDado: ((event: TerminalDataEvent) => void)[] = []
   const ouvintesDeSaida: ((event: TerminalExitEvent) => void)[] = []
   const vivosClaude = new Map<string, ClaudeStateEvent>()
@@ -383,8 +387,8 @@ export function instalarOc(
       return assinar(ouvintesDeClaude, ouvinte)
     },
 
-    onClaudeReleased(): () => void {
-      return () => undefined
+    onClaudeReleased(ouvinte: (event: ClaudeReleasedEvent) => void): () => void {
+      return assinar(ouvintesDeLiberado, ouvinte)
     },
 
     writeTerminal(request: TerminalInputRequest): Promise<void> {
@@ -445,6 +449,9 @@ export function instalarOc(
     },
     publicarEstadoClaude(event: ClaudeStateEvent): void {
       for (const ouvinte of [...ouvintesDeClaude]) ouvinte(event)
+    },
+    publicarLiberado(event: ClaudeReleasedEvent): void {
+      for (const ouvinte of [...ouvintesDeLiberado]) ouvinte(event)
     },
     publicarDado(event: TerminalDataEvent): void {
       for (const ouvinte of [...ouvintesDeDado]) ouvinte(event)
