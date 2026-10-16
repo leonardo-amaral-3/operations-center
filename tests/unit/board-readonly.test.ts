@@ -180,6 +180,10 @@ describe('a superfície de board é somente-leitura', () => {
       forgetFree: 'free:forget',
       readLayout: 'layout:read',
       setLayout: 'layout:set',
+      openCardWindow: 'cardWindow:open',
+      bringBackCardWindow: 'cardWindow:bringBack',
+      focusCardWindow: 'cardWindow:focus',
+      readCardWindows: 'cardWindow:read',
     })
   })
 
@@ -234,6 +238,7 @@ describe('a superfície de board é somente-leitura', () => {
       claudeState: 'claude:state',
       claudeReleased: 'claude:released',
       free: 'free:changed',
+      cardWindows: 'cardWindow:changed',
     })
   })
 
@@ -295,7 +300,9 @@ describe('a superfície de board é somente-leitura', () => {
     expect(verbosDoFetch(`fetch(url, { method: 'GET', ...init })`)).toEqual(['spread', 'GET'])
     expect(verbosDoFetch(`fetch(url, { method })`)).toEqual(['nao-literal'])
     expect(verbosDoFetch(`fetch(url, init)`)).toEqual(['sem-method'])
-    expect(verbosDoFetch(`fetch(\`\${BASE}\${path}\`, { method: 'GET', headers: h(x) })`)).toEqual(['GET'])
+    expect(verbosDoFetch(`fetch(\`\${BASE}\${path}\`, { method: 'GET', headers: h(x) })`)).toEqual([
+      'GET',
+    ])
   })
 
   it('nenhum arquivo que escreve ou envia GraphQL contém um documento de escrita', () => {

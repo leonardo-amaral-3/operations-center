@@ -13,6 +13,7 @@ import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type {
   ActivateBoardRequest,
   AnswerQuestionRequest,
+  CardWindowRequest,
   ChooseFolderRequest,
   ChooseFolderResult,
   CloseRequest,
@@ -22,6 +23,7 @@ import type {
   ForgetFreeRequest,
   FreeSnapshot,
   LayoutSnapshot,
+  OpenCardWindowRequest,
   OpenTerminalRequest,
   OpenTerminalResult,
   OcApi,
@@ -55,6 +57,7 @@ import { isTheme, THEME_DEFAULT, THEME_FLAG } from '../shared/theme'
 import type { Theme } from '../shared/theme'
 
 const SCREEN_FLAG = '--oc-screen='
+const CARD_FLAG = '--oc-card='
 
 /**
  * Lido de `process.argv`, preenchido por `additionalArguments` no main — e não de `process.env`,
@@ -65,7 +68,16 @@ const SCREEN_FLAG = '--oc-screen='
 function resolveScreen(): Screen {
   const arg = process.argv.find((value) => value.startsWith(SCREEN_FLAG))
 
-  return arg?.slice(SCREEN_FLAG.length) === 'chat' ? 'chat' : 'kanban'
+  const nome = arg?.slice(SCREEN_FLAG.length)
+
+  return nome === 'chat' || nome === 'card' ? nome : 'kanban'
+}
+
+/** O card da janela própria, de `--oc-card=` (ver `cardWindows.ts`); `null` fora da tela `card`. */
+function cardItemIdFromArgv(): string | null {
+  const arg = process.argv.find((value) => value.startsWith(CARD_FLAG))
+
+  return arg ? arg.slice(CARD_FLAG.length) || null : null
 }
 
 /**
@@ -120,6 +132,7 @@ const api: OcApi = {
   // há uma tela piscando enquanto uma promessa de configuração volta.
   screen: resolveScreen(),
   theme: themeFromArgv(),
+  cardItemId: cardItemIdFromArgv(),
   start: (request?: StartRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.start, request) as Promise<StartResult>,
   send: (request: SendRequest) => ipcRenderer.invoke(IPC_INVOKE.send, request) as Promise<void>,
@@ -191,6 +204,14 @@ const api: OcApi = {
   readLayout: () => ipcRenderer.invoke(IPC_INVOKE.readLayout) as Promise<LayoutSnapshot>,
   setLayout: (snapshot: LayoutSnapshot) =>
     ipcRenderer.invoke(IPC_INVOKE.setLayout, snapshot) as Promise<void>,
+  openCardWindow: (request: OpenCardWindowRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.openCardWindow, request) as Promise<void>,
+  bringBackCardWindow: (request: CardWindowRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.bringBackCardWindow, request) as Promise<void>,
+  focusCardWindow: (request: CardWindowRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.focusCardWindow, request) as Promise<void>,
+  readCardWindows: () => ipcRenderer.invoke(IPC_INVOKE.readCardWindows) as Promise<string[]>,
+  onCardWindows: (listener) => subscribe<string[]>(IPC_EVENT.cardWindows, listener),
 }
 
 contextBridge.exposeInMainWorld('oc', api)

@@ -284,4 +284,20 @@ describe('a janela continua nascendo sem a moldura do sistema', () => {
     // Windows 11 de pé. Faltando uma, a falha já diz qual.
     expect(CHAVES.filter((chave) => !corpo.includes(chave))).toEqual([])
   })
+
+  it('`createCardWindow` também: a janela do card é sem moldura e de canto reto', () => {
+    const fonte = readFileSync(
+      fileURLToPath(new URL('../../src/main/cardWindows.ts', import.meta.url)),
+      'utf8',
+    )
+    const abertura = fonte.indexOf('function createCardWindow(')
+
+    expect(abertura).toBeGreaterThan(-1)
+
+    const corpo = fonte.slice(abertura)
+    const fechamento = corpo.search(/^}/m)
+
+    expect(fechamento).toBeGreaterThan(0)
+    expect(CHAVES.filter((chave) => !corpo.slice(0, fechamento).includes(chave))).toEqual([])
+  })
 })
