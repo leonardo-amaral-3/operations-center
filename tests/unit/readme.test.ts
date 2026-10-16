@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
@@ -15,33 +15,6 @@ import { describe, expect, it } from 'vitest'
  * o produto muda. A prosa em volta pode ser reescrita à vontade sem quebrar nada aqui.
  */
 const readme = readFileSync(fileURLToPath(new URL('../../README.md', import.meta.url)), 'utf8')
-
-/** Os smokes que existem no disco. É deles que sai o número que o README precisa dizer. */
-const SMOKES = readdirSync(fileURLToPath(new URL('../smoke', import.meta.url))).filter((arquivo) =>
-  arquivo.endsWith('.smoke.spec.ts'),
-)
-
-/**
- * Os numerais por extenso, porque o README escreve "os oito smokes" e não "os 8 smokes".
- *
- * A lista para em doze de propósito: passar disso é sinal de que a frase do `yarn smoke` deixou de
- * caber numa enumeração, e a correção aí é reescrever o README — não alongar este array.
- */
-const POR_EXTENSO = [
-  'zero',
-  'um',
-  'dois',
-  'três',
-  'quatro',
-  'cinco',
-  'seis',
-  'sete',
-  'oito',
-  'nove',
-  'dez',
-  'onze',
-  'doze',
-]
 
 describe('README', () => {
   it('não descreve mais o repo como esqueleto de stack indecidida', () => {
@@ -107,17 +80,13 @@ describe('README', () => {
     }
   })
 
-  it('diz quantos smokes o repo tem, e o número confere com o disco', () => {
-    // O número sai do **disco**, e não de um literal: é isso que faz a omissão reprovar. Um smoke
-    // novo que ninguém listou muda a contagem dos arquivos e não muda a frase do README, e o
-    // vermelho aparece aqui — que é o único lugar que olha para os dois ao mesmo tempo. A lista
-    // nominal em volta ("o do kanban, o do tema…") não é derivável: o apelido de cada smoke é prosa,
-    // e `app.smoke.spec.ts` se chama "o da fatia vertical". O que dá para vigiar é a contagem, e ela
-    // basta — quem for corrigi-la tem de reler a enumeração inteira para acertar o numeral.
-    const quantos = POR_EXTENSO[SMOKES.length]
-
-    expect(quantos, `${SMOKES.length} smokes não têm numeral por extenso na lista`).toBeDefined()
-    expect(readme).toContain(`os ${quantos} smokes`)
+  it('não soletra quantos smokes o repo tem', () => {
+    // O README errava a conta a cada smoke novo ("os doze", "cinco dos doze") e a lista de numerais
+    // só empurrava o problema. A frase agora não carrega número, e é este teste que a mantém assim.
+    expect(readme).not.toMatch(
+      /\b(os|dos|nos|aos)\s+(\d+|um|dois|três|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quinze)\s+smokes\b/i,
+    )
+    expect(readme).toContain('todos os smokes')
   })
 
   it('documenta as variáveis de configuração', () => {

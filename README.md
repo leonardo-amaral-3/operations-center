@@ -104,14 +104,14 @@ vazia e ninguém é avisado. Confira com `gh auth status`; se faltar, `gh auth r
 | `yarn build`     | compila os três bundles (main, preload, renderer) em `out/`                                                                                                                                                                                                                                                                                                      |
 | `yarn package`   | compila e empacota o executável em `dist/win-unpacked/` (Windows; ver `## Executável`)                                                                                                                                                                                                                                                                           |
 | `yarn test`      | Vitest — as unidades do core. Sem rede, sem credencial, determinístico                                                                                                                                                                                                                                                                                           |
-| `yarn smoke`     | compila e roda os doze smokes de ponta a ponta (Playwright + Electron): os **sete que leem fixture** e não tocam a rede — o do kanban, o do conteúdo do cartão, o da aba PR, o do tema, o da triagem, o da janela e o do terminal —, e os **cinco que sobem sessão real** — o da fatia vertical, o do terminal Claude no cartão, o da retomada, o das abas e o da sessão livre —, que precisam do login e **consomem cota** |
+| `yarn smoke`     | compila e roda todos os smokes de ponta a ponta (Playwright + Electron): os que **leem fixture** e não tocam a rede — o do kanban, o do conteúdo do cartão, o da aba PR, o do tema, o da triagem, o da janela e o do terminal —, e os que **sobem sessão real** — o da fatia vertical, o do terminal Claude no cartão, o da retomada, o das abas, o da sessão livre e o da janela do card —, que precisam do login e **consomem cota** |
 | `yarn lint`      | ESLint                                                                                                                                                                                                                                                                                                                                                           |
 | `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                                                                                                                                    |
 | `yarn format`    | Prettier                                                                                                                                                                                                                                                                                                                                                         |
 
 `yarn lint`, `yarn typecheck` e `yarn test` formam o portão de qualidade, e são exatamente o que o
 CI roda a cada PR para `dev` e `main`. Os smokes ficam de fora do CI de propósito: o runner nem
-baixa o binário do Electron, e os cinco que sobem sessão ainda dependem do login local, que ele
+baixa o binário do Electron, e os que sobem sessão ainda dependem do login local, que ele
 não tem.
 
 ## Executável
@@ -197,8 +197,8 @@ chat — e agora **um clique num cartão já é um pedido**, porque a sessão da
 cartão aberto e esquecido não gasta nada enquanto ninguém fala com ele, mas dez cartões conversando
 são dez sessões disputando a mesma cota.
 
-**Cinco dos doze smokes sobem sessão real e consomem cota**: o da fatia vertical, o do terminal
-Claude no cartão, o da retomada, o das abas e o da sessão livre. Os quatro últimos dirigem o
+**Os smokes que sobem sessão real consomem cota**: o da fatia vertical, o do terminal
+Claude no cartão, o da retomada, o das abas, o da sessão livre e o da janela do card. Todos menos o primeiro dirigem o
 terminal do Claude Code (xterm) como uma pessoa: digitam no terminal e leem o texto dele, com a
 pergunta "17+25" e a resposta `42`, que não aparece no que foi enviado. O do cartão é o mais caro —
 ele levanta uma sessão para conversar e outra ao provar que abrir um segundo cartão em outra coluna
@@ -206,8 +206,8 @@ não colapsa o primeiro —, o da retomada gasta dois turnos, um em cada ciclo d
 segundo retoma a conversa com `--resume`), o das abas levanta duas sessões, uma por aba, e só uma
 delas chega a falar, e o da sessão livre prova que o texto sobrevive a fechar o painel, que
 reiniciar o app retoma o mesmo `sessionId` e que "Encerrar sessão" reabre o terminal vazio — um
-turno só. O terminal é o Claude Code do usuário, com as settings dele: `OC_ISOLATED` não se aplica
-a ele, então o que segura a conta nos quatro é `OC_MODEL`, que vira `--model` (os smokes usam
+turno só, e o da janela do card destaca a conversa do cartão para uma janela própria e a traz de volta, provando que o `id` do terminal e a rolagem (`42`) não mudam — também um turno. O terminal é o Claude Code do usuário, com as settings dele: `OC_ISOLATED` não se aplica
+a ele, então o que segura a conta neles é `OC_MODEL`, que vira `--model` (os smokes usam
 `haiku`). O da fatia vertical ainda é o chat do SDK e soma `OC_ISOLATED=1` ao modelo barato — este
 último é o que mais pesa nele, porque a maior parte daqueles 20 centavos era carregamento de
 contexto. Os outros seis não custam nada: o do kanban, o
