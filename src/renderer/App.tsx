@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 
 import { Mesa } from './mesa/Mesa'
+import { CardScreen } from './screens/CardScreen'
 import { ChatScreen } from './screens/ChatScreen'
 import { KanbanScreen } from './screens/KanbanScreen'
 
@@ -24,5 +25,9 @@ import { KanbanScreen } from './screens/KanbanScreen'
  * lateral, que sobrevivem à troca de tela.
  */
 export function App(): JSX.Element {
+  // A janela do card (#100) é satélite: tem faixa própria e **não** monta a mesa, para não hidratar
+  // o dock nem o painel nem disputar o `layout.json` com a principal.
+  if (window.oc.screen === 'card') return <CardScreen />
+
   return <Mesa>{window.oc.screen === 'chat' ? <ChatScreen /> : <KanbanScreen />}</Mesa>
 }
