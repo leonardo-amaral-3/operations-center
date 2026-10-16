@@ -200,9 +200,13 @@ function aplicarFocoPendente(antes: KanbanState, novo: KanbanState): KanbanState
     return reduceKanban(zerado, { type: 'focar', key: pendente.key, itemId: pendente.itemId })
   }
 
-  const cards = cardsOf(novo.snapshot, pendente.key)
+  const aba = novo.snapshot.boards?.find((candidata) => candidata.key === pendente.key)
 
-  if (cards !== null && !cards.some((card) => card.itemId === pendente.itemId)) return zerado
+  // Aba que saiu do retrato conta como card sumido: o `activateBoard` dela é ignorado no main, e
+  // um pedido guardado dispararia se ela voltasse e o humano a ativasse à mão. Só a aba presente
+  // e ainda sem leitura (`board: null`) não diz nada sobre o card.
+  if (aba === undefined) return zerado
+  if (aba.board && !aba.board.cards.some((card) => card.itemId === pendente.itemId)) return zerado
   if (novo.snapshot.activeKey !== antes.snapshot.activeKey) return zerado
 
   return novo

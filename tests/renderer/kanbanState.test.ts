@@ -516,5 +516,25 @@ describe('focar (#100, fase 2)', () => {
 
       expect(depois.maximizado).toBeNull()
     })
+
+    it('aba que saiu do retrato só zera, e a volta dela não dispara o foco antigo', () => {
+      const sem = reduceKanban(pedido, { type: 'snapshot', snapshot: retrato(A.key, [A]) })
+
+      expect(sem.focoPendente).toBeNull()
+
+      const volta = reduceKanban(sem, { type: 'snapshot', snapshot: retrato(B.key) })
+
+      expect(volta.maximizado).toBeNull()
+    })
+
+    it('aba presente ainda sem leitura mantém o pedido', () => {
+      const semLeitura = { ...B, board: null }
+      const state = reduceKanban(pedido, {
+        type: 'snapshot',
+        snapshot: retrato(A.key, [A, semLeitura]),
+      })
+
+      expect(state.focoPendente).toEqual({ key: B.key, itemId: 'PVTI_A3' })
+    })
   })
 })
