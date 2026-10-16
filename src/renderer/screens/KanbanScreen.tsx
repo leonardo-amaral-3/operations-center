@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardTab } from '../../shared/board'
 import type { ClaudeStateEvent, TerminalState } from '../../shared/claude'
 import type { DangerousSnapshot } from '../../shared/ipc'
 import { BoardTabs } from '../components/BoardTabs'
+import { CardTabs } from '../components/CardTabs'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
 import { ThemePicker } from '../components/ThemePicker'
 import { useTerminalAqui } from '../mesa/terminalAqui'
 import { Badge } from '../ui/badge'
+import { abasDeConversa } from './cardTabs'
 import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
 
 /**
@@ -28,6 +30,9 @@ const VAZIO: readonly string[] = []
  * `useState`, e um literal ali seria um objeto novo montado a cada render para ser descartado.
  */
 const SEM_MARCA: DangerousSnapshot = { itemIds: [], boardKeys: [] }
+
+/** Nenhum card em janela própria: na fase 2 ninguém é destacado. Referência estável para o `useMemo`. */
+const SEM_DESTACADOS: ReadonlySet<string> = new Set()
 
 /** O terminal Claude vivo de cada cartão, por `itemId`. Sem a chave = sem processo. */
 export type CardTerminals = Readonly<Record<string, TerminalState>>
@@ -201,6 +206,28 @@ export function KanbanScreen(): JSX.Element {
     void window.oc.activateBoard({ key })
   }, [])
 
+  const abas = useMemo(
+    () => abasDeConversa(terminais, snapshot, SEM_DESTACADOS),
+    [terminais, snapshot],
+  )
+
+  const focus = useCallback(
+    (itemId: string) => {
+      // A `key` sai do retrato, e não da aba ativa: o card pode ser de **outro** board.
+      const dono = (snapshot.boards ?? []).find((tab) =>
+        tab.board?.cards.some((card) => card.itemId === itemId),
+      )
+
+      if (dono === undefined) return
+
+      dispatch({ type: 'focar', key: dono.key, itemId })
+      // Board de outro: o reducer guarda o foco até o retrato da troca chegar. A tela não adianta
+      // a aba, como no `activate`.
+      if (dono.key !== activeKey) void window.oc.activateBoard({ key: dono.key })
+    },
+    [snapshot.boards, activeKey],
+  )
+
   const startTriage = useCallback(() => {
     // Inalcançável sem aba ativa, como o `toggle`: a guarda existe para dizer isso ao tipo em vez de
     // a `key` virar `string | null` no vocabulário do reducer.
@@ -276,6 +303,8 @@ export function KanbanScreen(): JSX.Element {
           {active && <Freshness readAt={active.readAt} error={active.error} />}
         </div>
       </header>
+
+      <CardTabs tabs={abas} onFocus={focus} />
 
       {board ? (
         <main className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3">

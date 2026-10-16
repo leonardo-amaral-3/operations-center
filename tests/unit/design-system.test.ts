@@ -334,6 +334,8 @@ const ANCORAS = [
   // coisas que ele existe justamente para medir do outro lado da cascata.
   'data-field',
   'data-free-id',
+  // Entrou com o #100 (fase 2): o `itemId` da aba da faixa de conversas, que os testes de tela leem.
+  'data-item-id',
   // Entrou com o card #83: a espécie da entrada da conversa do PR (comment, review, thread).
   'data-kind',
   'data-label',
