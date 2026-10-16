@@ -242,6 +242,85 @@ describe('o observador publica o estado da janela', () => {
   })
 })
 
+describe('com duas janelas, o maximize só chega à própria (#100)', () => {
+  /** Um `sender` que anota o que recebe, amarrado a uma janela. */
+  function assinante(window: unknown) {
+    const recebidos: WindowSnapshot[] = []
+    const sender = {
+      isDestroyed: () => false,
+      send(channel: string, payload: unknown): void {
+        if (channel === IPC_EVENT.window) recebidos.push(payload as WindowSnapshot)
+      },
+    } as unknown as WebContents
+
+    janelasPorSender.set(sender, window)
+
+    return { sender, recebidos }
+  }
+
+  it('maximizar a janela do card não publica na faixa da principal, e vice-versa', () => {
+    handlers.clear()
+    janelasPorSender.clear()
+
+    const principal = criarJanela(false)
+    const card = criarJanela(false)
+    const daPrincipal = assinante(principal.window)
+    const doCard = assinante(card.window)
+
+    const observar = registerWindowIpc()
+    observar(principal.window as unknown as BrowserWindow)
+    observar(card.window as unknown as BrowserWindow)
+
+    // As duas faixas pediram o retrato, e é isso que as inscreve.
+    handlers.get(IPC_INVOKE.readWindow)?.({ sender: daPrincipal.sender })
+    handlers.get(IPC_INVOKE.readWindow)?.({ sender: doCard.sender })
+
+    card.disparar('maximize')
+
+    expect(doCard.recebidos).toEqual([{ maximized: true }])
+    expect(daPrincipal.recebidos).toEqual([])
+
+    principal.disparar('maximize')
+    principal.disparar('unmaximize')
+
+    expect(daPrincipal.recebidos).toEqual([{ maximized: true }, { maximized: false }])
+    expect(doCard.recebidos).toEqual([{ maximized: true }])
+  })
+})
+
+describe('o main fecha as janelas de card com a principal (#100)', () => {
+  /** O `closed` da principal, do `window.on('closed', …)` até o `});` que o fecha. */
+  function lerClosedDaPrincipal(): string {
+    const fonte = readFileSync(
+      fileURLToPath(new URL('../../src/main/index.ts', import.meta.url)),
+      'utf8',
+    )
+    const abertura = fonte.indexOf("window.on('closed'")
+
+    expect(abertura).toBeGreaterThan(-1)
+
+    const corpo = fonte.slice(abertura)
+    const fechamento = corpo.indexOf('\n  })')
+
+    expect(fechamento).toBeGreaterThan(0)
+
+    // Sem os comentários: o motivo do "sem quit" mora ali e cita a palavra.
+    return corpo
+      .slice(0, fechamento)
+      .split('\n')
+      .filter((linha) => !linha.trim().startsWith('//'))
+      .join('\n')
+  }
+
+  it('o `closed` chama `closeAll()` e não sai do app: quem sai é o `window-all-closed`', () => {
+    const corpo = lerClosedDaPrincipal()
+
+    expect(corpo).toContain('cardWindows?.closeAll()')
+    expect(corpo).not.toContain('app.quit')
+    expect(corpo).not.toContain('destroy')
+  })
+})
+
 describe('a janela continua nascendo sem a moldura do sistema', () => {
   // Canária de fonte, no molde de `markdown-nas-duas-telas.test.ts` ("a guarda de navegação
   // continua pendurada no main") e pela mesma razão: o canto reto e a ausência de barra de título

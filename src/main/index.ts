@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
 import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, shell } from 'electron'
+import type { WebPreferences } from 'electron'
 
 import {
   BoardFinder,
@@ -41,6 +42,8 @@ import { createGitHubGraphQL } from './github/graphql'
 import { createGitHubRest } from './github/rest'
 import { createGhTokenSource } from './github/token'
 import { loadFree, registerFreeIpc, saveFree } from './free'
+import { registerCardWindowsIpc } from './cardWindows'
+import type { CardWindows } from './cardWindows'
 import { composeCloseScope, registerClaudeTerminalIpc } from './claudeTerminal'
 import { createHookServer } from './hookServer'
 import { registerSessionIpc } from './ipc'
@@ -141,6 +144,64 @@ const THEME_DO_AMBIENTE = resolveThemeEnv(process.env.OC_THEME)
 // continuam parando o app antes de existir janela, que é a hora certa de reclamar.
 const CORES_DE_JANELA = new Map(THEMES.map((theme) => [theme, windowBackground(theme)]))
 
+// `||` e não `??`: variável vazia já significava "sem dev server" para o `loadURL` de `carregar`, e as
+// duas decisões precisam concordar — um `APP_URL` que discordasse da URL realmente carregada
+// julgaria a própria janela como forasteira e barraria a recarga dela.
+const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || undefined
+const INDEX_FILE = join(__dirname, '../renderer/index.html')
+// Contra o que uma navegação é julgada própria ou de fora.
+const APP_URL = DEV_SERVER_URL ?? pathToFileURL(INDEX_FILE).href
+
+/**
+ * As `webPreferences` de toda janela do app. Os `additionalArguments` ficam de fora porque dizem
+ * qual tela e qual combinação a janela abre, e isso é de cada janela.
+ */
+const WEB_PREFERENCES: WebPreferences = {
+  preload: join(__dirname, '../preload/index.js'),
+  // O renderer nunca vê Node. Toda capacidade dele passa pelo contrato do preload.
+  nodeIntegration: false,
+  contextIsolation: true,
+  sandbox: true,
+}
+
+/**
+ * As duas portas de navegação de uma janela, a da principal e as de card (#100). Fica aqui e não em
+ * `cardWindows.ts` porque `markdown-nas-duas-telas.test.ts` lê neste arquivo a fiação do CA-5.
+ */
+function protegerNavegacao(window: BrowserWindow): void {
+  // Um `target="_blank"` do markdown cai aqui. **Sempre `deny`**: uma segunda janela seria um
+  // navegador sem barra de endereço dentro do Operations Center.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    const verdict = judgeNavigation(url, APP_URL)
+    if (verdict.kind === 'external') void shell.openExternal(verdict.url)
+
+    return { action: 'deny' }
+  })
+
+  // A rede de segurança: um `<a>` sem `target`, um arrastar-e-soltar de URL na janela, ou qualquer
+  // código futuro que tente navegar. Sem ela a janela vira o site clicado — sem menu bar
+  // (`autoHideMenuBar: true`) e sem caminho de volta.
+  window.webContents.on('will-navigate', (event, url) => {
+    const verdict = judgeNavigation(url, APP_URL)
+    if (verdict.kind === 'internal') return
+
+    event.preventDefault()
+    if (verdict.kind === 'external') void shell.openExternal(verdict.url)
+  })
+}
+
+/**
+ * `loadURL`/`loadFile` são programáticos e **não** disparam `will-navigate`: só o que o renderer
+ * inicia passa pela guarda de `protegerNavegacao`.
+ */
+function carregar(window: BrowserWindow): void {
+  if (DEV_SERVER_URL) {
+    void window.loadURL(DEV_SERVER_URL)
+  } else {
+    void window.loadFile(INDEX_FILE)
+  }
+}
+
 function createWindow(theme: Theme): BrowserWindow {
   const window = new BrowserWindow({
     width: 1100,
@@ -166,15 +227,11 @@ function createWindow(theme: Theme): BrowserWindow {
     autoHideMenuBar: true,
     title: 'Operations Center',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      ...WEB_PREFERENCES,
       // Como o preload sabe qual tela desenhar e qual combinação de cores vale. É o mecanismo
       // documentado do Electron para passar dados ao preload e funciona com `sandbox: true` — ler
       // `process.env` lá dentro não.
       additionalArguments: [`--oc-screen=${screen}`, `${THEME_FLAG}${theme}`],
-      // O renderer nunca vê Node. Toda capacidade dele passa pelo contrato do preload.
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
     },
   })
 
@@ -182,37 +239,11 @@ function createWindow(theme: Theme): BrowserWindow {
     window.show()
   })
 
-  // `||` e não `??`: variável vazia já significava "sem dev server" para o `loadURL` abaixo, e as
-  // duas decisões precisam concordar — um `appUrl` que discordasse da URL realmente carregada
-  // julgaria a própria janela como forasteira e barraria a recarga dela.
-  const devServerUrl = process.env.ELECTRON_RENDERER_URL || undefined
-  const indexFile = join(__dirname, '../renderer/index.html')
-  // Contra o que uma navegação é julgada própria ou de fora.
-  const appUrl = devServerUrl ?? pathToFileURL(indexFile).href
-
-  // Um `target="_blank"` do markdown cai aqui. **Sempre `deny`**: o app tem uma janela só, e uma
-  // segunda seria um navegador sem barra de endereço dentro do Operations Center.
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    const verdict = judgeNavigation(url, appUrl)
-    if (verdict.kind === 'external') void shell.openExternal(verdict.url)
-
-    return { action: 'deny' }
-  })
-
-  // A rede de segurança: um `<a>` sem `target`, um arrastar-e-soltar de URL na janela, ou qualquer
-  // código futuro que tente navegar. Sem ela a janela vira o site clicado — sem menu bar
-  // (`autoHideMenuBar: true` acima) e sem caminho de volta.
-  window.webContents.on('will-navigate', (event, url) => {
-    const verdict = judgeNavigation(url, appUrl)
-    if (verdict.kind === 'internal') return
-
-    event.preventDefault()
-    if (verdict.kind === 'external') void shell.openExternal(verdict.url)
-  })
+  protegerNavegacao(window)
 
   // O menu é `null` (spec #74, decisão 23), e o `F12` → DevTools ia junto com ele. Só em `yarn dev`
   // ele volta, por aqui: no executável o DevTools continua fora de alcance, como sempre esteve.
-  if (devServerUrl) {
+  if (DEV_SERVER_URL) {
     window.webContents.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown' || input.key !== 'F12') return
 
@@ -221,13 +252,7 @@ function createWindow(theme: Theme): BrowserWindow {
     })
   }
 
-  // `loadURL`/`loadFile` são programáticos e **não** disparam `will-navigate`: só o que o renderer
-  // inicia passa pela guarda acima.
-  if (devServerUrl) {
-    void window.loadURL(devServerUrl)
-  } else {
-    void window.loadFile(indexFile)
-  }
+  carregar(window)
 
   // Devolvida porque é nela que o gatilho de foco se pendura — o observador do board precisa de uma
   // referência à janela, e sem isto não haveria onde.
@@ -512,6 +537,15 @@ let janelaViva: BrowserWindow | null = null
 let homeCaiu = false
 
 /**
+ * As janelas de card (#100), ou `null` fora do kanban e antes do `whenReady`. Referência para a
+ * frente, como `janelaViva`: o `pintarJanela` roda antes de o registro existir.
+ */
+let cardWindows: CardWindows | null = null
+
+/** A combinação em vigor, para a janela de card que nasce depois de uma troca (`pintarJanela`). */
+let temaCorrente: Theme = THEME_DEFAULT
+
+/**
  * Repinta a moldura quando o humano troca de combinação.
  *
  * Necessário porque o `backgroundColor` de uma `BrowserWindow` é fixado na construção: sem isto, um
@@ -526,7 +560,14 @@ let homeCaiu = false
  * `THEMES`, e `Theme` é a união desses mesmos nomes.
  */
 function pintarJanela(theme: Theme): void {
-  janelaViva?.setBackgroundColor(CORES_DE_JANELA.get(theme) ?? windowBackground(THEME_DEFAULT))
+  const cor = CORES_DE_JANELA.get(theme) ?? windowBackground(THEME_DEFAULT)
+
+  // A janela de card que abrir depois nasce na combinação corrente, e não na do boot.
+  temaCorrente = theme
+  janelaViva?.setBackgroundColor(cor)
+  cardWindows?.forEach((window) => {
+    window.setBackgroundColor(cor)
+  })
 }
 
 /**
@@ -577,12 +618,27 @@ void app.whenReady().then(async () => {
 
   // **Antes de `createWindow`**: o renderer pede o primeiro retrato assim que monta, e um canal
   // registrado depois da janela seria uma corrida contra o próprio boot.
+  temaCorrente = theme
   registerThemeIpc(theme, pintarJanela)
 
   // **Antes de `createWindow` também**, e pela mesma razão da linha acima. O observador que ele
   // devolve é a outra metade: os eventos `maximize`/`unmaximize` são da janela, e ela só existe da
   // linha seguinte em diante.
   const observarJanela = registerWindowIpc()
+
+  // Só no kanban: o card vem do retrato dos boards, que as outras telas não têm. Antes da janela
+  // principal pelo mesmo motivo dos canais acima.
+  if (screen === 'kanban') {
+    cardWindows = registerCardWindowsIpc({
+      theme: () => temaCorrente,
+      home: () => janelaViva,
+      webPreferences: WEB_PREFERENCES,
+      background: (cor) => CORES_DE_JANELA.get(cor) ?? windowBackground(THEME_DEFAULT),
+      protegerNavegacao,
+      load: carregar,
+      observarJanela,
+    })
+  }
 
   // Sem menu (spec #74, decisão 23). O app nunca montou um, então valia o **default do Electron**,
   // cujos aceleradores seguem vivos com a barra escondida pelo `autoHideMenuBar`: `Ctrl+W` fechava o
@@ -595,6 +651,10 @@ void app.whenReady().then(async () => {
   homeCaiu = false
   window.on('closed', () => {
     janelaViva = null
+    // **Sem sair do app daqui**: o `quit` não emite `window-all-closed`, e é lá que moram o `closeAll` das
+    // sessões, dos terminais e do hook server. A principal é a dona do app e as de card são
+    // satélites: `close()` em cada uma, e a última a fechar dispara o `window-all-closed` de sempre.
+    cardWindows?.closeAll()
   })
   window.webContents.on('render-process-gone', () => {
     homeCaiu = true
