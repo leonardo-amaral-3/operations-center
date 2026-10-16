@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import type { JSX } from 'react'
 
 import type { BoardTab } from '../../shared/board'
 import type { ClaudeStateEvent, TerminalState } from '../../shared/claude'
 import type { DangerousSnapshot } from '../../shared/ipc'
 import { BoardTabs } from '../components/BoardTabs'
+import { CardTabs } from '../components/CardTabs'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
 import { ThemePicker } from '../components/ThemePicker'
 import { useTerminalAqui } from '../mesa/terminalAqui'
 import { Badge } from '../ui/badge'
+import { abasDeConversa } from './cardTabs'
 import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
 
 /**
@@ -28,6 +30,9 @@ const VAZIO: readonly string[] = []
  * `useState`, e um literal ali seria um objeto novo montado a cada render para ser descartado.
  */
 const SEM_MARCA: DangerousSnapshot = { itemIds: [], boardKeys: [] }
+
+/** Nenhum card em janela própria: na fase 2 ninguém é destacado. Referência estável para o `useMemo`. */
+const SEM_DESTACADOS: ReadonlySet<string> = new Set()
 
 /** O terminal Claude vivo de cada cartão, por `itemId`. Sem a chave = sem processo. */
 export type CardTerminals = Readonly<Record<string, TerminalState>>
@@ -201,6 +206,28 @@ export function KanbanScreen(): JSX.Element {
     void window.oc.activateBoard({ key })
   }, [])
 
+  const abas = useMemo(
+    () => abasDeConversa(terminais, snapshot, SEM_DESTACADOS),
+    [terminais, snapshot],
+  )
+
+  const focus = useCallback(
+    (itemId: string) => {
+      // A `key` sai do retrato, e não da aba ativa: o card pode ser de **outro** board.
+      const dono = (snapshot.boards ?? []).find((tab) =>
+        tab.board?.cards.some((card) => card.itemId === itemId),
+      )
+
+      if (dono === undefined) return
+
+      dispatch({ type: 'focar', key: dono.key, itemId })
+      // Board de outro: o reducer guarda o foco até o retrato da troca chegar. A tela não adianta
+      // a aba, como no `activate`.
+      if (dono.key !== activeKey) void window.oc.activateBoard({ key: dono.key })
+    },
+    [snapshot.boards, activeKey],
+  )
+
   const startTriage = useCallback(() => {
     // Inalcançável sem aba ativa, como o `toggle`: a guarda existe para dizer isso ao tipo em vez de
     // a `key` virar `string | null` no vocabulário do reducer.
@@ -241,11 +268,9 @@ export function KanbanScreen(): JSX.Element {
   const triagem = kanban.triagem
 
   return (
-    // `relative` é o bloco de contenção do cartão expandido (#28): ele cobre esta caixa, e não a
-    // janela, para o painel lateral e o dock continuarem utilizáveis ao lado.
     <div
       data-testid="kanban-screen"
-      className="relative flex h-full flex-col bg-background font-base text-foreground"
+      className="flex h-full flex-col bg-background font-base text-foreground"
     >
       <header className="flex items-center justify-between gap-4 border-b-2 border-border px-4 py-3">
         {/* A barra ocupa o lugar do título, e não um espaço ao lado dele: o rótulo da aba ativa
@@ -277,58 +302,67 @@ export function KanbanScreen(): JSX.Element {
         </div>
       </header>
 
-      {board ? (
-        <main className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3">
-          {board.columns.map((column) => (
-            <Column
-              key={column.id}
-              column={column}
-              // Filtra por `columnId`, nunca pelo nome — renomear a estação no board não pode
-              // reposicionar cartão nenhum —, e `filter` preserva a ordem que o board devolveu.
-              cards={board.cards.filter((card) => card.columnId === column.id)}
-              expandedItemIds={expandedItemIds}
-              terminais={terminais}
-              conversations={conversations}
-              dangerous={dangerous.itemIds}
-              // A coluna não decide se há triagem: o core diz **qual** coluna a oferece
-              // (`column.triage`) e o estado diz se ela está aberta. Aqui os dois se encontram.
-              triage={
-                column.triage && triagem !== null
-                  ? {
-                      boardKey: triagem,
-                      dangerous: dangerous.boardKeys.includes(triagem),
-                      onEnd: endTriage,
-                      onToggleDangerous: (next: boolean) => {
-                        toggleTriageDangerous(triagem, next)
-                      },
-                      onOpenTerminal:
-                        terminalAqui === undefined
-                          ? undefined
-                          : () => {
-                              terminalAqui({ kind: 'triage', boardKey: triagem })
-                            },
-                    }
-                  : undefined
-              }
-              onStartTriage={column.triage && triagem === null ? startTriage : undefined}
-              maximizedItemId={
-                kanban.maximizado !== null && kanban.maximizado.key === activeKey
-                  ? kanban.maximizado.itemId
-                  : null
-              }
-              onMaximize={maximize}
-              onRestore={restore}
-              onToggle={toggle}
-              onToggleDangerous={toggleDangerous}
-              onOpenTerminal={terminalAqui}
-            />
-          ))}
-        </main>
-      ) : (
-        <main className="flex min-h-0 flex-1 items-center justify-center p-8">
-          <SemKanban boards={boards} discoveryError={discoveryError} active={active} />
-        </main>
-      )}
+      <CardTabs tabs={abas} onFocus={focus} />
+
+      {/* O bloco de contenção do cartão expandido (#28): ele cobre esta caixa, e não a janela, para
+          o painel lateral e o dock continuarem utilizáveis ao lado. Fica **abaixo** da faixa de
+          conversas (#100), e não na raiz: expandido por uma aba, o cartão não pode esconder as
+          outras abas, que são o caminho para o próximo card. Não é o `main`, porque o `absolute`
+          dentro do `overflow-x-auto` dele rolaria junto com as colunas. */}
+      <div data-testid="kanban-area" className="relative flex min-h-0 flex-1 flex-col">
+        {board ? (
+          <main className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3">
+            {board.columns.map((column) => (
+              <Column
+                key={column.id}
+                column={column}
+                // Filtra por `columnId`, nunca pelo nome — renomear a estação no board não pode
+                // reposicionar cartão nenhum —, e `filter` preserva a ordem que o board devolveu.
+                cards={board.cards.filter((card) => card.columnId === column.id)}
+                expandedItemIds={expandedItemIds}
+                terminais={terminais}
+                conversations={conversations}
+                dangerous={dangerous.itemIds}
+                // A coluna não decide se há triagem: o core diz **qual** coluna a oferece
+                // (`column.triage`) e o estado diz se ela está aberta. Aqui os dois se encontram.
+                triage={
+                  column.triage && triagem !== null
+                    ? {
+                        boardKey: triagem,
+                        dangerous: dangerous.boardKeys.includes(triagem),
+                        onEnd: endTriage,
+                        onToggleDangerous: (next: boolean) => {
+                          toggleTriageDangerous(triagem, next)
+                        },
+                        onOpenTerminal:
+                          terminalAqui === undefined
+                            ? undefined
+                            : () => {
+                                terminalAqui({ kind: 'triage', boardKey: triagem })
+                              },
+                      }
+                    : undefined
+                }
+                onStartTriage={column.triage && triagem === null ? startTriage : undefined}
+                maximizedItemId={
+                  kanban.maximizado !== null && kanban.maximizado.key === activeKey
+                    ? kanban.maximizado.itemId
+                    : null
+                }
+                onMaximize={maximize}
+                onRestore={restore}
+                onToggle={toggle}
+                onToggleDangerous={toggleDangerous}
+                onOpenTerminal={terminalAqui}
+              />
+            ))}
+          </main>
+        ) : (
+          <main className="flex min-h-0 flex-1 items-center justify-center p-8">
+            <SemKanban boards={boards} discoveryError={discoveryError} active={active} />
+          </main>
+        )}
+      </div>
     </div>
   )
 }
