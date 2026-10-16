@@ -143,4 +143,26 @@ describe('#100 CA-1 — faixa de conversas no kanban', () => {
     expect(activateBoard).not.toHaveBeenCalled()
     expect((await screen.findByTestId('card-maximize')).getAttribute('aria-pressed')).toBe('true')
   })
+
+  it('o card maximizado cobre só a área das colunas: a faixa fica fora do bloco de contenção', async () => {
+    render(<KanbanScreen />)
+    await waitFor(() => {
+      expect(screen.queryAllByTestId('board-card')).toHaveLength(1)
+    })
+
+    act(() => {
+      publicarClaude(vivo('PVTI_A'))
+    })
+    fireEvent.click(screen.getByTestId('card-tab'))
+    await screen.findByTestId('card-maximize')
+
+    // O jsdom não faz layout: o que se prova é a árvore. O `absolute inset-0` do cartão resolve
+    // contra o ancestral posicionado mais próximo, e ele tem de ser a área, que não contém a faixa.
+    const area = screen.getByTestId('kanban-area')
+
+    expect(area.className).toContain('relative')
+    expect(screen.getByTestId('kanban-screen').className).not.toContain('relative')
+    expect(area.contains(screen.getByTestId('board-card'))).toBe(true)
+    expect(area.contains(screen.getByTestId('card-tabs'))).toBe(false)
+  })
 })

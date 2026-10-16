@@ -268,11 +268,9 @@ export function KanbanScreen(): JSX.Element {
   const triagem = kanban.triagem
 
   return (
-    // `relative` é o bloco de contenção do cartão expandido (#28): ele cobre esta caixa, e não a
-    // janela, para o painel lateral e o dock continuarem utilizáveis ao lado.
     <div
       data-testid="kanban-screen"
-      className="relative flex h-full flex-col bg-background font-base text-foreground"
+      className="flex h-full flex-col bg-background font-base text-foreground"
     >
       <header className="flex items-center justify-between gap-4 border-b-2 border-border px-4 py-3">
         {/* A barra ocupa o lugar do título, e não um espaço ao lado dele: o rótulo da aba ativa
@@ -306,58 +304,65 @@ export function KanbanScreen(): JSX.Element {
 
       <CardTabs tabs={abas} onFocus={focus} />
 
-      {board ? (
-        <main className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3">
-          {board.columns.map((column) => (
-            <Column
-              key={column.id}
-              column={column}
-              // Filtra por `columnId`, nunca pelo nome — renomear a estação no board não pode
-              // reposicionar cartão nenhum —, e `filter` preserva a ordem que o board devolveu.
-              cards={board.cards.filter((card) => card.columnId === column.id)}
-              expandedItemIds={expandedItemIds}
-              terminais={terminais}
-              conversations={conversations}
-              dangerous={dangerous.itemIds}
-              // A coluna não decide se há triagem: o core diz **qual** coluna a oferece
-              // (`column.triage`) e o estado diz se ela está aberta. Aqui os dois se encontram.
-              triage={
-                column.triage && triagem !== null
-                  ? {
-                      boardKey: triagem,
-                      dangerous: dangerous.boardKeys.includes(triagem),
-                      onEnd: endTriage,
-                      onToggleDangerous: (next: boolean) => {
-                        toggleTriageDangerous(triagem, next)
-                      },
-                      onOpenTerminal:
-                        terminalAqui === undefined
-                          ? undefined
-                          : () => {
-                              terminalAqui({ kind: 'triage', boardKey: triagem })
-                            },
-                    }
-                  : undefined
-              }
-              onStartTriage={column.triage && triagem === null ? startTriage : undefined}
-              maximizedItemId={
-                kanban.maximizado !== null && kanban.maximizado.key === activeKey
-                  ? kanban.maximizado.itemId
-                  : null
-              }
-              onMaximize={maximize}
-              onRestore={restore}
-              onToggle={toggle}
-              onToggleDangerous={toggleDangerous}
-              onOpenTerminal={terminalAqui}
-            />
-          ))}
-        </main>
-      ) : (
-        <main className="flex min-h-0 flex-1 items-center justify-center p-8">
-          <SemKanban boards={boards} discoveryError={discoveryError} active={active} />
-        </main>
-      )}
+      {/* O bloco de contenção do cartão expandido (#28): ele cobre esta caixa, e não a janela, para
+          o painel lateral e o dock continuarem utilizáveis ao lado. Fica **abaixo** da faixa de
+          conversas (#100), e não na raiz: expandido por uma aba, o cartão não pode esconder as
+          outras abas, que são o caminho para o próximo card. Não é o `main`, porque o `absolute`
+          dentro do `overflow-x-auto` dele rolaria junto com as colunas. */}
+      <div data-testid="kanban-area" className="relative flex min-h-0 flex-1 flex-col">
+        {board ? (
+          <main className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3">
+            {board.columns.map((column) => (
+              <Column
+                key={column.id}
+                column={column}
+                // Filtra por `columnId`, nunca pelo nome — renomear a estação no board não pode
+                // reposicionar cartão nenhum —, e `filter` preserva a ordem que o board devolveu.
+                cards={board.cards.filter((card) => card.columnId === column.id)}
+                expandedItemIds={expandedItemIds}
+                terminais={terminais}
+                conversations={conversations}
+                dangerous={dangerous.itemIds}
+                // A coluna não decide se há triagem: o core diz **qual** coluna a oferece
+                // (`column.triage`) e o estado diz se ela está aberta. Aqui os dois se encontram.
+                triage={
+                  column.triage && triagem !== null
+                    ? {
+                        boardKey: triagem,
+                        dangerous: dangerous.boardKeys.includes(triagem),
+                        onEnd: endTriage,
+                        onToggleDangerous: (next: boolean) => {
+                          toggleTriageDangerous(triagem, next)
+                        },
+                        onOpenTerminal:
+                          terminalAqui === undefined
+                            ? undefined
+                            : () => {
+                                terminalAqui({ kind: 'triage', boardKey: triagem })
+                              },
+                      }
+                    : undefined
+                }
+                onStartTriage={column.triage && triagem === null ? startTriage : undefined}
+                maximizedItemId={
+                  kanban.maximizado !== null && kanban.maximizado.key === activeKey
+                    ? kanban.maximizado.itemId
+                    : null
+                }
+                onMaximize={maximize}
+                onRestore={restore}
+                onToggle={toggle}
+                onToggleDangerous={toggleDangerous}
+                onOpenTerminal={terminalAqui}
+              />
+            ))}
+          </main>
+        ) : (
+          <main className="flex min-h-0 flex-1 items-center justify-center p-8">
+            <SemKanban boards={boards} discoveryError={discoveryError} active={active} />
+          </main>
+        )}
+      </div>
     </div>
   )
 }

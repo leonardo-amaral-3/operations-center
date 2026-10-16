@@ -407,8 +407,9 @@ test('#28 CA-1 e CA-2: expandir cobre a tela, e Esc devolve o cartão com rascun
 
   await card.getByTestId('card-maximize').click()
 
-  // Cobre a caixa do kanban inteira — cabeçalho das abas incluído —, ±1px nos quatro lados.
-  const tela = await caixaDe(window.getByTestId('kanban-screen'), 'a tela do kanban')
+  // Cobre a área das colunas inteira, ±1px nos quatro lados. O cabeçalho e a faixa de conversas
+  // ficam fora dela (#100): expandido, o cartão não esconde o caminho para o próximo card.
+  const tela = await caixaDe(window.getByTestId('kanban-area'), 'a área das colunas')
   const cobre = await caixaDe(card, 'o cartão expandido')
   expect(Math.abs(cobre.x - tela.x)).toBeLessThanOrEqual(1)
   expect(Math.abs(cobre.y - tela.y)).toBeLessThanOrEqual(1)
