@@ -60,7 +60,13 @@ function destruir(key: string, entry: Entry): void {
   entries.delete(key)
 }
 
-/** As três assinaturas globais, feitas uma vez: o registro inteiro fala com o main por elas. */
+/** O main passou o terminal a outra janela: destrói a instância local sem encerrar o processo. */
+function soltar(key: string): void {
+  const entry = entries.get(key)
+  if (entry !== undefined) destruir(key, entry)
+}
+
+/** As assinaturas globais, feitas uma vez: o registro inteiro fala com o main por elas. */
 function assinar(): void {
   if (assinado) return
   assinado = true
@@ -106,6 +112,8 @@ function assinar(): void {
     const entry = entries.get(key)
     if (entry !== undefined && entry.container === null) destruir(key, entry)
   })
+
+  window.oc.onClaudeReleased((event) => soltar(scopeKey(event.scope)))
 }
 
 function reopen(scope: ClaudeScope, key: string, entry: Entry): Promise<OpenClaudeResult> {
@@ -133,10 +141,30 @@ function reopen(scope: ClaudeScope, key: string, entry: Entry): Promise<OpenClau
       entry.last = result
       entry.exited = false
 
+      // Terminal adotado de outra janela: a tela vem serializada. O `reset` desfaz o que o `fit` do
+      // `attach` desenhou, o `resize` iguala a grade antes do `write` (que é assíncrono).
+      const { snapshot } = result
+      if (snapshot !== undefined) {
+        entry.term.reset()
+        entry.term.resize(snapshot.cols, snapshot.rows)
+        entry.term.write(snapshot.data)
+      }
+
       const fila = pendentes.get(result.id)
       if (fila !== undefined) {
         pendentes.delete(result.id)
         for (const dado of fila) entry.term.write(dado)
+      }
+
+      // O `fit` só depois do último `write`: antes disso leria o snapshot na largura errada.
+      if (snapshot !== undefined) {
+        entry.term.write('', () => {
+          try {
+            entry.fit.fit()
+          } catch {
+            // Contêiner sem tamanho medível: o `ResizeObserver` do componente refaz.
+          }
+        })
       }
 
       return result
