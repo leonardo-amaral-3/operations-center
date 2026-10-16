@@ -40,6 +40,12 @@ export interface KanbanState {
    * nas transições que quebram uma das duas condições, em vez de cada ramo lembrar de fazê-lo.
    */
   maximizado: { key: string; itemId: string } | null
+  /**
+   * O foco que espera o retrato da aba `key` chegar (#100, fase 2), ou `null`. A aba de um card de
+   * **outro board** pede a troca de aba ao main, e a troca volta por um retrato novo: até lá o card
+   * não está na tela, então o pedido fica guardado aqui em vez de se perder.
+   */
+  focoPendente: { key: string; itemId: string } | null
 }
 
 export type KanbanAction =
@@ -68,6 +74,11 @@ export type KanbanAction =
   | { type: 'maximizar'; key: string; itemId: string }
   /** Devolve o cartão expandido à coluna. Sem `key`: há no máximo um. */
   | { type: 'recolher' }
+  /**
+   * Leva o olho ao cartão `itemId` da aba `key` (#100): abre e maximiza. Na aba ativa vale na hora;
+   * em outra, guarda `focoPendente` e espera o retrato da troca de aba.
+   */
+  | { type: 'focar'; key: string; itemId: string }
 
 export const INITIAL_KANBAN: KanbanState = {
   // Antes da descoberta a tela não sabe nem quantos boards existem — e `boards: null` é exatamente
@@ -76,6 +87,7 @@ export const INITIAL_KANBAN: KanbanState = {
   expanded: {},
   triagem: null,
   maximizado: null,
+  focoPendente: null,
 }
 
 export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanState {
@@ -84,7 +96,7 @@ export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanSt
     // usuário deixou aberto, nem quando o cartão mudou de coluna (RA-4 do #45) — fechar a conversa
     // no exato evento que este app existe para acompanhar seria o oposto do que ele faz. O que a
     // releitura tira é só o que deixou de existir.
-    return conferirMaximizado({
+    const novo = conferirMaximizado({
       ...state,
       snapshot: action.snapshot,
       expanded: podar(state.expanded, action.snapshot),
@@ -95,6 +107,8 @@ export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanSt
       // `activeKey` muda junto.
       triagem: action.snapshot.activeKey === state.triagem ? state.triagem : null,
     })
+
+    return aplicarFocoPendente(state, novo)
   }
 
   if (action.type === 'abrir-triagem') return { ...state, triagem: action.key }
@@ -115,6 +129,25 @@ export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanSt
   }
 
   if (action.type === 'recolher') return { ...state, maximizado: null }
+
+  // Também antes do `toggle`, pelo mesmo motivo: `focar` tem `key` e `itemId`.
+  if (action.type === 'focar') {
+    if (action.key !== state.snapshot.activeKey) {
+      return { ...state, focoPendente: { key: action.key, itemId: action.itemId } }
+    }
+
+    // Card que o retrato não conhece não tem o que abrir: expandi-lo seria o `podar` desfazendo
+    // no retrato seguinte.
+    if (columnOf(state.snapshot, action.key, action.itemId) === null) return state
+
+    const aberto = (state.expanded[action.key] ?? []).includes(action.itemId)
+    // Abrir pela regra do `toggle` (fecha o vizinho da coluna); já aberto, não fecha.
+    const base = aberto
+      ? state
+      : reduceKanban(state, { type: 'toggle', key: action.key, itemId: action.itemId })
+
+    return { ...base, maximizado: { key: action.key, itemId: action.itemId } }
+  }
 
   const abertos = state.expanded[action.key] ?? []
 
@@ -145,6 +178,34 @@ export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanSt
     ...state,
     expanded: comLista(state.expanded, action.key, [...sobreviventes, action.itemId]),
   })
+}
+
+/**
+ * Resolve o `focoPendente` contra o retrato que acabou de entrar em `novo` (`antes` é o estado
+ * anterior ao retrato). Quatro saídas:
+ * - o `activeKey` é o da aba pedida: aplica o foco (se o card ainda existe) e zera;
+ * - o card sumiu da aba pedida: só zera;
+ * - o `activeKey` mudou para **outra** chave: só zera, para um `activateBoard` ignorado não
+ *   disparar o foco numa troca manual mais tarde;
+ * - o `activeKey` não mudou: mantém, porque o retrato com a troca ainda não chegou.
+ */
+function aplicarFocoPendente(antes: KanbanState, novo: KanbanState): KanbanState {
+  const pendente = antes.focoPendente
+
+  if (pendente === null) return novo
+
+  const zerado = { ...novo, focoPendente: null }
+
+  if (novo.snapshot.activeKey === pendente.key) {
+    return reduceKanban(zerado, { type: 'focar', key: pendente.key, itemId: pendente.itemId })
+  }
+
+  const cards = cardsOf(novo.snapshot, pendente.key)
+
+  if (cards !== null && !cards.some((card) => card.itemId === pendente.itemId)) return zerado
+  if (novo.snapshot.activeKey !== antes.snapshot.activeKey) return zerado
+
+  return novo
 }
 
 /**
