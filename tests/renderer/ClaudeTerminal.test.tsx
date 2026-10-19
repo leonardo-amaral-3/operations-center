@@ -112,6 +112,40 @@ describe('ClaudeTerminal', () => {
     expect(oc.claudeAbertos).toHaveLength(2)
   })
 
+  it('encerrarSemReabrir com onCollapse: fecha e colapsa, sem openClaude novo', async () => {
+    const onCollapse = vi.fn()
+    montar({ encerrarSemReabrir: true, onCollapse })
+    await act(async () => {})
+    expect(oc.claudeAbertos).toHaveLength(1)
+
+    fireEvent.click(screen.getByTestId('card-end-session'))
+    await act(async () => {})
+
+    expect(oc.claudeFechados).toHaveLength(1)
+    expect(oc.claudeAbertos).toHaveLength(1)
+    expect(onCollapse).toHaveBeenCalledTimes(1)
+  })
+
+  it('encerrarSemReabrir sem onCollapse: mostra Nova sessão, e só o clique reabre', async () => {
+    montar({ encerrarSemReabrir: true, onCollapse: undefined })
+    await act(async () => {})
+
+    fireEvent.click(screen.getByTestId('card-end-session'))
+    await act(async () => {})
+
+    expect(screen.getByTestId('claude-terminal-ended')).toBeTruthy()
+    expect(screen.queryByTestId('claude-terminal')).toBeNull()
+    expect(oc.claudeFechados).toHaveLength(1)
+    expect(oc.claudeAbertos).toHaveLength(1)
+
+    fireEvent.click(screen.getByTestId('claude-terminal-new-session'))
+    await act(async () => {})
+
+    expect(oc.claudeAbertos).toHaveLength(2)
+    expect(screen.getByTestId('claude-terminal')).toBeTruthy()
+    expect(screen.queryByTestId('claude-terminal-ended')).toBeNull()
+  })
+
   it('danger-next-open aparece quando a prop difere do modo do main e some quando volta a bater', async () => {
     const { rerender } = render(
       <ClaudeTerminal
