@@ -22,13 +22,13 @@ const ABAS: readonly CardTab[] = [
 
 describe('#100 — CardTabs', () => {
   it('lista vazia não renderiza nada', () => {
-    const { container } = render(<CardTabs tabs={[]} onFocus={() => {}} />)
+    const { container } = render(<CardTabs tabs={[]} onFocus={() => {}} onClose={() => {}} />)
 
     expect(container.innerHTML).toBe('')
   })
 
   it('uma aba por item, na ordem, com o rótulo `#n título` e o título inteiro no `title`', () => {
-    render(<CardTabs tabs={ABAS} onFocus={() => {}} />)
+    render(<CardTabs tabs={ABAS} onFocus={() => {}} onClose={() => {}} />)
 
     const abas = screen.getAllByTestId('card-tab')
 
@@ -40,7 +40,7 @@ describe('#100 — CardTabs', () => {
   it('o clique devolve o `itemId` da aba', () => {
     const onFocus = vi.fn()
 
-    render(<CardTabs tabs={ABAS} onFocus={onFocus} />)
+    render(<CardTabs tabs={ABAS} onFocus={onFocus} onClose={() => {}} />)
     fireEvent.click(screen.getAllByTestId('card-tab')[1] as HTMLElement)
 
     expect(onFocus).toHaveBeenCalledExactlyOnceWith('PVTI_2')
@@ -64,7 +64,7 @@ describe('#100 fase 3 — aba destacável', () => {
     const onFocus = vi.fn()
     const abas = [{ ...(ABAS[0] as CardTab), detached: true }, ABAS[1] as CardTab]
 
-    render(<CardTabs tabs={abas} onFocus={onFocus} />)
+    render(<CardTabs tabs={abas} onFocus={onFocus} onClose={() => {}} />)
 
     const [destacada, comum] = screen.getAllByTestId('card-tab') as [HTMLElement, HTMLElement]
 
@@ -78,7 +78,7 @@ describe('#100 fase 3 — aba destacável', () => {
   })
 
   it('toda aba é arrastável e o `dragend` pede a janela no cursor', () => {
-    render(<CardTabs tabs={ABAS} onFocus={() => {}} />)
+    render(<CardTabs tabs={ABAS} onFocus={() => {}} onClose={() => {}} />)
 
     const [primeira] = screen.getAllByTestId('card-tab') as [HTMLElement]
 
@@ -87,5 +87,32 @@ describe('#100 fase 3 — aba destacável', () => {
     fireEvent.dragEnd(primeira)
 
     expect(openCardWindow).toHaveBeenCalledExactlyOnceWith({ itemId: 'PVTI_1', atCursor: true })
+  })
+
+  it('cada aba tem um ✕ que devolve o itemId a onClose, sem chamar onFocus', () => {
+    const onFocus = vi.fn()
+    const onClose = vi.fn()
+
+    render(<CardTabs tabs={ABAS} onFocus={onFocus} onClose={onClose} />)
+
+    const fechar = screen.getAllByTestId('card-tab-close')
+
+    expect(fechar.map((b) => b.dataset.itemId)).toEqual(['PVTI_1', 'PVTI_2'])
+
+    fireEvent.click(fechar[1] as HTMLElement)
+
+    expect(onClose).toHaveBeenCalledExactlyOnceWith('PVTI_2')
+    expect(onFocus).not.toHaveBeenCalled()
+  })
+
+  it('o ✕ da aba destacada também chama onClose, sem focusCardWindow', () => {
+    const onClose = vi.fn()
+    const abas = [{ ...(ABAS[0] as CardTab), detached: true }]
+
+    render(<CardTabs tabs={abas} onFocus={() => {}} onClose={onClose} />)
+    fireEvent.click(screen.getByTestId('card-tab-close'))
+
+    expect(onClose).toHaveBeenCalledExactlyOnceWith('PVTI_1')
+    expect(focusCardWindow).not.toHaveBeenCalled()
   })
 })

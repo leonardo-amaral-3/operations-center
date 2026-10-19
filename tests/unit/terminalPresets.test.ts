@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildPresets, childEnv } from '../../src/main/terminalPresets'
 import type { PresetDeps } from '../../src/main/terminalPresets'
+import { claudeEnv } from '../../src/core/terminal/claudeCommand'
 
 const aws = readFileSync(new URL('../fixtures/aws-config.ini', import.meta.url), 'utf8')
 
@@ -88,5 +89,29 @@ describe('perfis de terminal', () => {
       COLORTERM: 'truecolor',
       AWS_PROFILE: 'default',
     })
+  })
+
+  it('NO_COLOR herdado não chega ao shell do perfil (CA-2)', () => {
+    const env = childEnv(porId('aws:default'), { PATH: 'x', NO_COLOR: '1' })
+
+    expect(env).not.toHaveProperty('NO_COLOR')
+    expect(env).toMatchObject({ PATH: 'x' })
+  })
+
+  it('NO_COLOR herdado não chega ao terminal Claude (CA-1)', () => {
+    const env = claudeEnv(childEnv({ env: {} }, { PATH: 'x', NO_COLOR: '1', CLAUDECODE: '1' }))
+
+    expect(env).not.toHaveProperty('NO_COLOR')
+    expect(env).not.toHaveProperty('CLAUDECODE')
+  })
+
+  it('NO_COLOR declarado pelo perfil vence o herdado (CA-3)', () => {
+    const env = childEnv({ env: { NO_COLOR: '0' } }, { NO_COLOR: '1' })
+
+    expect(env).toMatchObject({ NO_COLOR: '0' })
+  })
+
+  it('no_color em minúsculas também é descartado', () => {
+    expect(childEnv({ env: {} }, { no_color: '1' })).not.toHaveProperty('no_color')
   })
 })
