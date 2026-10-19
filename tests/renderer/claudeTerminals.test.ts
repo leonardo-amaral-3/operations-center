@@ -216,6 +216,38 @@ describe('claudeTerminals', () => {
     expect(termos[0]?.destruido).toBe(true)
   })
 
+  it('closed de outro id não destrói a entrada desmontada (broadcast para quem não é dono)', async () => {
+    await registro.attach(CARTAO, contêiner())
+    registro.detach(CARTAO)
+
+    oc.publicarEstadoClaude({
+      scope: CARTAO,
+      id: 'claude_outro',
+      state: { kind: 'closed' },
+      dangerous: false,
+    })
+
+    expect(termos[0]?.destruido).toBe(false)
+  })
+
+  it('resposta do open com state closed: marca exited, escreve o aviso e não guarda o id', async () => {
+    oc.responderClaude({
+      ok: true,
+      id: 'claude_morto',
+      state: { kind: 'closed' },
+      dangerous: false,
+      spawned: false,
+    })
+
+    await registro.attach(CARTAO, contêiner())
+
+    expect(termos[0]?.escrito.join('')).toContain('Enter retoma')
+    // Sem id guardado, o dado do id morto não é do terminal; e Enter reabre em vez de digitar no PTY.
+    termos[0]?.digitou[0]?.('\r')
+    await vi.waitFor(() => expect(oc.claudeAbertos).toHaveLength(2))
+    expect(oc.escritos).toHaveLength(0)
+  })
+
   it('closed com a entrada montada não destrói', async () => {
     await registro.attach(CARTAO, contêiner())
 

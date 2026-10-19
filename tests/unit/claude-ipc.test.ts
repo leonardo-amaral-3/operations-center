@@ -529,8 +529,43 @@ describe('claude:open — adoção por outro WebContents (#100)', () => {
     t.fake.ptys[0]!.emitExit(0)
     const r = await pendente
 
-    expect(r).toMatchObject({ ok: true, spawned: false })
+    expect(r).toMatchObject({ ok: true, spawned: false, state: { kind: 'closed' } })
     expect((r as { snapshot?: unknown }).snapshot).toBeUndefined()
+  })
+
+  it('o PTY sai antes do ramo em voo de B responder: closed, não o starting de A', async () => {
+    let liberar!: (v: boolean) => void
+    const gate = new Promise<boolean>((r) => (liberar = r))
+    const t = montar({ danger: { isDangerous: () => gate } })
+    const b = fakeSender()
+
+    const deA = t.open(CARD)
+    // Registrado antes do `.then` de B: o PTY sai entre a resposta de A e a de B.
+    void deA.then(() => t.fake.ptys[0]!.emitExit(0))
+    await vi.waitFor(() => expect(t.alvos).toHaveLength(1))
+    const deB = como(b).open(CARD)
+    liberar(false)
+    const [ra, rb] = await Promise.all([deA, deB])
+
+    expect(ra).toMatchObject({ ok: true, spawned: true })
+    expect(rb).toMatchObject({ ok: true, spawned: false, state: { kind: 'closed' } })
+    expect((rb as { snapshot?: unknown }).snapshot).toBeUndefined()
+  })
+
+  describe('isOwner — o dono antigo não escreve nem redimensiona', () => {
+    it('depois da adoção só o novo dono é dono; id desconhecido aceita qualquer sender', async () => {
+      const t = montar()
+      const b = fakeSender()
+      const a = (await t.open(CARD)) as { id: string }
+
+      expect(t.ipc.isOwner(a.id, t.sender)).toBe(true)
+      expect(t.ipc.isOwner(a.id, b.sender)).toBe(false)
+      await como(b).open(CARD)
+
+      expect(t.ipc.isOwner(a.id, t.sender)).toBe(false)
+      expect(t.ipc.isOwner(a.id, b.sender)).toBe(true)
+      expect(t.ipc.isOwner('nao-e-claude', t.sender)).toBe(true)
+    })
   })
 
   it('C adota durante o await de B: B responde sem snapshot', async () => {

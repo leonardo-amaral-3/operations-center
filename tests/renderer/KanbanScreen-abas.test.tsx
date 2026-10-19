@@ -60,10 +60,15 @@ function retrato(activeKey: string): BoardsSnapshot {
 
 let publicarBoards: (snapshot: BoardsSnapshot) => void
 let publicarClaude: (event: ClaudeStateEvent) => void
+let publicarJanelas: (itemIds: string[]) => void
 const activateBoard = vi.fn()
+const focusCardWindow = vi.fn()
+const openCardWindow = vi.fn()
 
 beforeEach(() => {
   activateBoard.mockReset()
+  focusCardWindow.mockReset()
+  openCardWindow.mockReset()
 
   const semAssinar = () => () => {}
 
@@ -88,6 +93,14 @@ beforeEach(() => {
     },
     readClaudeStates: () => Promise.resolve([]),
     activateBoard,
+    onCardWindows: (ouvinte: (itemIds: string[]) => void) => {
+      publicarJanelas = ouvinte
+
+      return () => {}
+    },
+    readCardWindows: () => Promise.resolve([]),
+    focusCardWindow,
+    openCardWindow,
   }
 
   Object.defineProperty(window, 'oc', { value: ponte, configurable: true })
@@ -164,5 +177,49 @@ describe('#100 CA-1 — faixa de conversas no kanban', () => {
     expect(screen.getByTestId('kanban-screen').className).not.toContain('relative')
     expect(area.contains(screen.getByTestId('board-card'))).toBe(true)
     expect(area.contains(screen.getByTestId('card-tabs'))).toBe(false)
+  })
+})
+
+describe('#100 CA-2/CA-3 — card destacado na janela principal', () => {
+  it('cardWindow:changed marca o cartão e a aba; clicar na aba foca a janela e não a faixa', async () => {
+    render(<KanbanScreen />)
+    await waitFor(() => {
+      expect(screen.queryAllByTestId('board-card')).toHaveLength(1)
+    })
+
+    act(() => {
+      publicarClaude(vivo('PVTI_A'))
+    })
+    expect(screen.getByTestId('card-tab').dataset.detached).toBe('false')
+    expect(screen.queryByTestId('card-detached-badge')).toBeNull()
+
+    act(() => {
+      publicarJanelas(['PVTI_A'])
+    })
+
+    const aba = screen.getByTestId('card-tab')
+
+    expect(aba.dataset.detached).toBe('true')
+    expect(screen.getByTestId('card-detached-badge')).toBeTruthy()
+
+    fireEvent.click(aba)
+
+    expect(focusCardWindow).toHaveBeenCalledExactlyOnceWith({ itemId: 'PVTI_A' })
+    // `focar` abriria o cartão maximizado na principal.
+    expect(screen.queryByTestId('card-maximize')).toBeNull()
+  })
+
+  it('soltar a aba fora pede a janela no cursor', async () => {
+    render(<KanbanScreen />)
+    await waitFor(() => {
+      expect(screen.queryAllByTestId('board-card')).toHaveLength(1)
+    })
+
+    act(() => {
+      publicarClaude(vivo('PVTI_A'))
+    })
+    fireEvent.dragEnd(screen.getByTestId('card-tab'))
+
+    expect(openCardWindow).toHaveBeenCalledExactlyOnceWith({ itemId: 'PVTI_A', atCursor: true })
   })
 })

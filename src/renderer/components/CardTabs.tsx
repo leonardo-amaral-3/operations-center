@@ -43,10 +43,27 @@ export function CardTabs({ tabs, onFocus }: CardTabsProps): JSX.Element | null {
           size="xs"
           data-testid="card-tab"
           data-item-id={tab.itemId}
+          data-detached={tab.detached}
+          // Toda aba é arrastável: soltar fora da janela abre o card numa janela própria. Quem decide
+          // se o ponto ficou fora é o main (`atCursor`); o `dragend` chega com `dropEffect` `none`
+          // tanto na soltura sobre a área de trabalho quanto no Esc, e os dois têm o mesmo efeito.
+          draggable
+          onDragEnd={() => {
+            void window.oc.openCardWindow({ itemId: tab.itemId, atCursor: true })
+          }}
           className="max-w-72 shrink-0 gap-2 font-heading"
           title={`#${tab.number} ${tab.title}`}
-          onClick={() => onFocus(tab.itemId)}
+          onClick={() => {
+            // Destacado, o card não está na principal: o clique traz a janela dele para a frente.
+            if (tab.detached) void window.oc.focusCardWindow({ itemId: tab.itemId })
+            else onFocus(tab.itemId)
+          }}
         >
+          {tab.detached ? (
+            <span aria-hidden="true" title="Em outra janela">
+              ⧉
+            </span>
+          ) : null}
           <StateBadge state={tab.state} />
           <span className="max-w-[24ch] truncate">
             #{tab.number} {tab.title}

@@ -40,12 +40,18 @@ function janela(event: IpcMainInvokeEvent): BrowserWindow | null {
 export function registerWindowIpc(): (window: BrowserWindow) => void {
   const subscribers = new Set<WebContents>()
 
-  function publish(proximo: WindowSnapshot): void {
+  /**
+   * Só chega a quem é **da janela** que mudou. Com a janela do card (#100) há mais de uma, e a
+   * faixa de uma não pode refletir o maximize da outra.
+   */
+  function publish(window: BrowserWindow, proximo: WindowSnapshot): void {
     for (const sender of subscribers) {
       if (sender.isDestroyed()) {
         subscribers.delete(sender)
         continue
       }
+
+      if (BrowserWindow.fromWebContents(sender) !== window) continue
 
       sender.send(IPC_EVENT.window, proximo)
     }
@@ -86,7 +92,7 @@ export function registerWindowIpc(): (window: BrowserWindow) => void {
     // O retrato é lido da janela, e não deduzido do nome do evento: o que atravessa a ponte é o
     // estado, nunca a intenção.
     const publicar = (): void => {
-      publish({ maximized: window.isMaximized() })
+      publish(window, { maximized: window.isMaximized() })
     }
 
     window.on('maximize', publicar)
