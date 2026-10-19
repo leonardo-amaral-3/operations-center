@@ -55,6 +55,7 @@ function montar(
     pasta?: string | null
     existe?: boolean
     onResize?: (id: string, cols: number, rows: number) => void
+    aceita?: (id: string, sender: WebContents) => boolean
   } = {},
 ) {
   handlers.clear()
@@ -68,6 +69,7 @@ function montar(
     host,
     exists: () => over.existe ?? true,
     onResize: over.onResize,
+    aceita: over.aceita,
   })
   const abrir = (sender: WebContents, req: Partial<{ preset: string; scope: SessionScope }> = {}) =>
     handlers.get(IPC_INVOKE.openTerminal)!(
@@ -223,6 +225,41 @@ describe('terminal:resize — onResize (#100)', () => {
 
     expect(chamadas).toEqual([[id, 120, 40, 1]])
     expect(fake.ptys[0]!.resizes).toEqual([[120, 40]])
+  })
+})
+
+describe('terminal:input e terminal:resize — aceita (#100)', () => {
+  it('sender que a opção recusa não escreve nem redimensiona; os demais seguem', async () => {
+    const dono = fakeSender().sender
+    const antigo = fakeSender().sender
+    const onResize = vi.fn()
+    const { abrir, fake } = montar({ aceita: (_id, sender) => sender === dono, onResize })
+    const aberto = await abrir(dono)
+    if (!aberto.opened) throw new Error('terminal não abriu')
+    const id = aberto.terminal.id
+    const escrever = handlers.get(IPC_INVOKE.writeTerminal)!
+    const redimensionar = handlers.get(IPC_INVOKE.resizeTerminal)!
+
+    await escrever({ sender: antigo }, { id, data: 'x' })
+    await redimensionar({ sender: antigo }, { id, cols: 10, rows: 5 })
+    expect(fake.ptys[0]!.writes).toEqual([])
+    expect(fake.ptys[0]!.resizes).toEqual([])
+    expect(onResize).not.toHaveBeenCalled()
+
+    await escrever({ sender: dono }, { id, data: 'y' })
+    await redimensionar({ sender: dono }, { id, cols: 120, rows: 40 })
+    expect(fake.ptys[0]!.writes).toEqual(['y'])
+    expect(fake.ptys[0]!.resizes).toEqual([[120, 40]])
+  })
+
+  it('sem a opção, qualquer sender escreve (terminal que não é Claude)', async () => {
+    const { abrir, fake } = montar()
+    const aberto = await abrir(fakeSender().sender)
+    if (!aberto.opened) throw new Error('terminal não abriu')
+
+    await handlers.get(IPC_INVOKE.writeTerminal)!({ sender: fakeSender().sender }, { id: aberto.terminal.id, data: 'z' })
+
+    expect(fake.ptys[0]!.writes).toEqual(['z'])
   })
 })
 

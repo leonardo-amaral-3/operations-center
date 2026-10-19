@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CardTabs } from '../../src/renderer/components/CardTabs'
 import type { CardTab } from '../../src/renderer/components/CardTabs'
@@ -44,5 +44,48 @@ describe('#100 — CardTabs', () => {
     fireEvent.click(screen.getAllByTestId('card-tab')[1] as HTMLElement)
 
     expect(onFocus).toHaveBeenCalledExactlyOnceWith('PVTI_2')
+  })
+})
+
+describe('#100 fase 3 — aba destacável', () => {
+  const openCardWindow = vi.fn()
+  const focusCardWindow = vi.fn()
+
+  beforeEach(() => {
+    openCardWindow.mockReset()
+    focusCardWindow.mockReset()
+    Object.defineProperty(window, 'oc', {
+      value: { openCardWindow, focusCardWindow },
+      configurable: true,
+    })
+  })
+
+  it('aba destacada ganha `data-detached` e o clique foca a janela, não a faixa', () => {
+    const onFocus = vi.fn()
+    const abas = [{ ...(ABAS[0] as CardTab), detached: true }, ABAS[1] as CardTab]
+
+    render(<CardTabs tabs={abas} onFocus={onFocus} />)
+
+    const [destacada, comum] = screen.getAllByTestId('card-tab') as [HTMLElement, HTMLElement]
+
+    expect(destacada.dataset.detached).toBe('true')
+    expect(comum.dataset.detached).toBe('false')
+
+    fireEvent.click(destacada)
+
+    expect(focusCardWindow).toHaveBeenCalledExactlyOnceWith({ itemId: 'PVTI_1' })
+    expect(onFocus).not.toHaveBeenCalled()
+  })
+
+  it('toda aba é arrastável e o `dragend` pede a janela no cursor', () => {
+    render(<CardTabs tabs={ABAS} onFocus={() => {}} />)
+
+    const [primeira] = screen.getAllByTestId('card-tab') as [HTMLElement]
+
+    expect(screen.getAllByTestId('card-tab').every((a) => a.draggable)).toBe(true)
+
+    fireEvent.dragEnd(primeira)
+
+    expect(openCardWindow).toHaveBeenCalledExactlyOnceWith({ itemId: 'PVTI_1', atCursor: true })
   })
 })

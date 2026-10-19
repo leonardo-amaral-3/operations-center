@@ -64,6 +64,11 @@ export interface ClaudeTerminalIpc {
   close(scope: ClaudeScope): Promise<void>
   /** O `terminal:resize` é do `terminal.ts`, que não conhece o espelho: o `index.ts` liga os dois. Id que não é de terminal Claude é ignorado. */
   resizeMirror(id: string, cols: number, rows: number): void
+  /**
+   * Quem pode escrever e redimensionar o terminal `id`: só o dono atual de um terminal Claude. Id
+   * que não é de terminal Claude aceita qualquer sender (é do `terminal.ts`).
+   */
+  isOwner(id: string, sender: WebContents): boolean
 }
 
 interface Entry {
@@ -76,8 +81,6 @@ interface Entry {
   watch: TranscriptWatch | null
   /** Quem recebe a saída e o estado; muda quando outro WebContents adota o terminal (#100). */
   owner: WebContents
-  /** Quem disparou o spawn. Não muda: o dono atual pode ser outro. */
-  openedBy: WebContents
   /** A tela do processo, para entregar o snapshot a quem adota. */
   mirror: ScreenMirror
   /**
@@ -201,6 +204,21 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
     spawned,
   })
 
+  /** A resposta de uma adoção, montada do estado **atual**: o PTY pode ter saído durante o `await`. */
+  const adotada = (
+    key: string,
+    entry: Entry,
+    sender: WebContents,
+    snapshot: Awaited<ReturnType<ScreenMirror['snapshot']>>,
+  ): Extract<OpenClaudeResult, { ok: true }> => {
+    if (live.get(key) !== entry) {
+      return { ...openResult(entry, false), state: { kind: 'closed' } }
+    }
+    // Um terceiro adotou durante a espera: o snapshot já não é de quem perguntou.
+    if (entry.owner !== sender) return openResult(entry, false)
+    return { ...openResult(entry, false), snapshot }
+  }
+
   const doOpen = async (
     key: string,
     request: OpenClaudeRequest,
@@ -278,7 +296,6 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
       unregister,
       watch: null,
       owner: sender,
-      openedBy: sender,
       mirror: new ScreenMirror(request.cols, request.rows),
       devolvida: false,
     }
@@ -315,19 +332,14 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
       if (!entry.devolvida) return openResult(entry, false)
       // O renderer da principal descartou a instância quando a outra janela adotou: precisa da tela.
       entry.devolvida = false
-      const snapshot = await entry.mirror.snapshot()
-      if (live.get(key) !== entry || entry.owner !== sender) return openResult(entry, false)
-      return { ...openResult(entry, false), snapshot }
+      return adotada(key, entry, sender, await entry.mirror.snapshot())
     }
     const anterior = entry.owner
     entry.owner = sender
     entry.devolvida = false
     watchSender(sender)
     if (!anterior.isDestroyed()) anterior.send(IPC_EVENT.claudeReleased, { scope: entry.scope })
-    const snapshot = await entry.mirror.snapshot()
-    // O PTY saiu ou um terceiro adotou durante a espera: o snapshot já não é de quem perguntou.
-    if (live.get(key) !== entry || entry.owner !== sender) return openResult(entry, false)
-    return { ...openResult(entry, false), snapshot }
+    return adotada(key, entry, sender, await entry.mirror.snapshot())
   }
 
   ipcMain.handle(
@@ -341,8 +353,11 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
       if (emVoo !== undefined) {
         if (sender === emVoo.sender) return emVoo.promise
         return emVoo.promise.then((r) => {
+          if (!r.ok) return r
           const nascido = live.get(key)
-          return r.ok && nascido !== undefined ? enter(key, nascido, sender) : r
+          if (nascido !== undefined) return enter(key, nascido, sender)
+          // O PTY saiu entre o spawn de A e esta resposta: a de A ainda diz `starting`.
+          return { ...r, spawned: false, state: { kind: 'closed' } as const }
         })
       }
       const promise = doOpen(key, request, sender).finally(() => opening.delete(key))
@@ -384,6 +399,12 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
       for (const entry of live.values()) {
         if (entry.id === id) entry.mirror.resize(cols, rows)
       }
+    },
+    isOwner: (id, sender) => {
+      for (const entry of live.values()) {
+        if (entry.id === id) return entry.owner === sender
+      }
+      return true
     },
   }
 }
