@@ -9,6 +9,7 @@ import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
 import { ThemePicker } from '../components/ThemePicker'
 import { useTerminalAqui } from '../mesa/terminalAqui'
+import { end } from '../terminal/claudeTerminals'
 import { Badge } from '../ui/badge'
 import { useTemaAplicado } from '../useTemaAplicado'
 import { abasDeConversa } from './cardTabs'
@@ -145,6 +146,14 @@ export function KanbanScreen(): JSX.Element {
     [terminais, snapshot, destacados],
   )
 
+  const close = useCallback((itemId: string) => {
+    // Fecha o cartão **antes** de encerrar, e esquece um foco pendente nele: aberto, uma remontagem
+    // (trocar de board e voltar) faria o `attach` subir um `claude` novo sozinho (#114).
+    dispatch({ type: 'fechar', itemId })
+    // A aba sai quando o `closed` do main chega ao `reduceTerminals` — nada de tirar antes.
+    void end({ kind: 'card', itemId })
+  }, [])
+
   const focus = useCallback(
     (itemId: string) => {
       // A `key` sai do retrato, e não da aba ativa: o card pode ser de **outro** board.
@@ -236,7 +245,7 @@ export function KanbanScreen(): JSX.Element {
         </div>
       </header>
 
-      <CardTabs tabs={abas} onFocus={focus} />
+      <CardTabs tabs={abas} onFocus={focus} onClose={close} />
 
       {/* O bloco de contenção do cartão expandido (#28): ele cobre esta caixa, e não a janela, para
           o painel lateral e o dock continuarem utilizáveis ao lado. Fica **abaixo** da faixa de

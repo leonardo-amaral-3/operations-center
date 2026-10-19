@@ -538,3 +538,40 @@ describe('focar (#100, fase 2)', () => {
     })
   })
 })
+
+describe('fechar (#114, o ✕ da aba)', () => {
+  it('tira o card de toda aba e limpa o maximizado dele', () => {
+    const state = apply(
+      { type: 'snapshot', snapshot: retrato(B.key) },
+      { type: 'toggle', key: B.key, itemId: 'PVTI_A3' },
+      { type: 'snapshot', snapshot: retrato(A.key) },
+      { type: 'toggle', key: A.key, itemId: 'PVTI_A3' },
+      { type: 'toggle', key: A.key, itemId: 'PVTI_A1' },
+      { type: 'maximizar', key: A.key, itemId: 'PVTI_A3' },
+    )
+    const fechado = reduceKanban(state, { type: 'fechar', itemId: 'PVTI_A3' })
+
+    expect(fechado.expanded).toEqual({ [A.key]: ['PVTI_A1'] })
+    expect(fechado.maximizado).toBeNull()
+  })
+
+  it('esquece o focoPendente do mesmo card, e não o de outro', () => {
+    const ativo = apply({ type: 'snapshot', snapshot: retrato(A.key) })
+    const pedido = reduceKanban(ativo, { type: 'focar', key: B.key, itemId: 'PVTI_A3' })
+
+    expect(reduceKanban(pedido, { type: 'fechar', itemId: 'PVTI_A3' }).focoPendente).toBeNull()
+    expect(reduceKanban(pedido, { type: 'fechar', itemId: 'PVTI_A1' }).focoPendente).toEqual({
+      key: B.key,
+      itemId: 'PVTI_A3',
+    })
+  })
+
+  it('card que não está aberto não abre nada', () => {
+    const ativo = apply({ type: 'snapshot', snapshot: retrato(A.key) })
+    const fechado = reduceKanban(ativo, { type: 'fechar', itemId: 'PVTI_A1' })
+
+    expect(fechado.expanded).toEqual({})
+    expect(fechado.maximizado).toBeNull()
+    expect(fechado.focoPendente).toBeNull()
+  })
+})

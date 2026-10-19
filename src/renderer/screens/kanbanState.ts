@@ -79,6 +79,11 @@ export type KanbanAction =
    * em outra, guarda `focoPendente` e espera o retrato da troca de aba.
    */
   | { type: 'focar'; key: string; itemId: string }
+  /**
+   * Fecha o cartão `itemId` em **todas** as abas e esquece um foco pendente nele (#114, o ✕ da
+   * aba). Sem `key`: a aba da faixa vale para o card em qualquer board. Idempotente.
+   */
+  | { type: 'fechar'; itemId: string }
 
 export const INITIAL_KANBAN: KanbanState = {
   // Antes da descoberta a tela não sabe nem quantos boards existem — e `boards: null` é exatamente
@@ -129,6 +134,25 @@ export function reduceKanban(state: KanbanState, action: KanbanAction): KanbanSt
   }
 
   if (action.type === 'recolher') return { ...state, maximizado: null }
+
+  // Também antes do `toggle`, que é o ramo por exclusão. Fechar via `toggle` não bastaria: um foco
+  // pendente (aba de outro board clicada, retrato ainda não chegou) reabriria o cartão depois do ✕,
+  // e o `attach` subiria `claude` sozinho.
+  if (action.type === 'fechar') {
+    let expanded = state.expanded
+
+    for (const [key, lista] of Object.entries(state.expanded)) {
+      expanded = comLista(
+        expanded,
+        key,
+        lista.filter((id) => id !== action.itemId),
+      )
+    }
+
+    const pendente = state.focoPendente?.itemId === action.itemId ? null : state.focoPendente
+
+    return conferirMaximizado({ ...state, expanded, focoPendente: pendente })
+  }
 
   // Também antes do `toggle`, pelo mesmo motivo: `focar` tem `key` e `itemId`.
   if (action.type === 'focar') {

@@ -450,6 +450,9 @@ export function BoardCardView({
                 {temConversa ? (
                   <ClaudeTerminal
                     preencher={cheio}
+                    // Encerrar aqui não sobe `claude` novo: no kanban fecha o cartão, na janela mostra
+                    // "Nova sessão" (#114).
+                    encerrarSemReabrir
                     // O escopo montado aqui é objeto novo a cada render, e é seguro: o efeito do
                     // terminal depende da **chave** (`scopeKey`), não da referência.
                     scope={{ kind: 'card', itemId: card.itemId }}
