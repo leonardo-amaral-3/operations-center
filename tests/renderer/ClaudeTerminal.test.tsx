@@ -126,6 +126,35 @@ describe('ClaudeTerminal', () => {
     expect(onCollapse).toHaveBeenCalledTimes(1)
   })
 
+  it('clique duplo em "Encerrar sessão" antes do closeClaude voltar: um fechamento, um colapso, sem openClaude novo', async () => {
+    // No kanban o `onCollapse` é um toggle: dois colapsos reabrem o cartão e o `attach` sobe outro `claude`.
+    const pendentes: Array<() => void> = []
+    const fecharOriginal = window.oc.closeClaude.bind(window.oc)
+    window.oc.closeClaude = (request) =>
+      new Promise<void>((resolve) => {
+        pendentes.push(() => {
+          void fecharOriginal(request).then(resolve)
+        })
+      })
+    const onCollapse = vi.fn()
+    montar({ encerrarSemReabrir: true, onCollapse })
+    await act(async () => {})
+    expect(oc.claudeAbertos).toHaveLength(1)
+
+    const botao = screen.getByTestId('card-end-session')
+    fireEvent.click(botao)
+    fireEvent.click(botao)
+    await act(async () => {})
+    expect(botao.hasAttribute('disabled')).toBe(true)
+
+    for (const soltar of pendentes) soltar()
+    await act(async () => {})
+
+    expect(oc.claudeFechados).toHaveLength(1)
+    expect(onCollapse).toHaveBeenCalledTimes(1)
+    expect(oc.claudeAbertos).toHaveLength(1)
+  })
+
   it('encerrarSemReabrir sem onCollapse: mostra Nova sessão, e só o clique reabre', async () => {
     montar({ encerrarSemReabrir: true, onCollapse: undefined })
     await act(async () => {})

@@ -56,6 +56,12 @@ export function ClaudeTerminal({
   const [tentativa, setTentativa] = useState(0)
   // Só no modo `encerrarSemReabrir` sem `onCollapse` (janela do card): o corpo dá lugar ao aviso.
   const [encerrada, setEncerrada] = useState(false)
+  // Um encerramento por vez (#114): o botão só desabilita quando o `closed` do main chega, e um
+  // segundo clique no meio do `closeClaude` chamaria o `onCollapse` duas vezes — no kanban ele é um
+  // toggle, o cartão reabriria e o `attach` subiria outro `claude`. A ref barra no mesmo tique; o
+  // estado é o que desabilita o botão.
+  const encerrandoRef = useRef(false)
+  const [encerrando, setEncerrando] = useState(false)
 
   useEffect(() => {
     const alvo = corpo.current
@@ -105,6 +111,18 @@ export function ClaudeTerminal({
   }
 
   async function encerrar(): Promise<void> {
+    if (encerrandoRef.current) return
+    encerrandoRef.current = true
+    setEncerrando(true)
+    try {
+      await encerrarUmaVez()
+    } finally {
+      encerrandoRef.current = false
+      setEncerrando(false)
+    }
+  }
+
+  async function encerrarUmaVez(): Promise<void> {
     const alvo = corpo.current
     await end(escopo.current)
     if (encerrarSemReabrir) {
@@ -200,7 +218,7 @@ export function ClaudeTerminal({
             variant="neutral"
             size="xs"
             className="bg-danger text-danger-foreground"
-            disabled={morta}
+            disabled={morta || encerrando}
             onClick={() => {
               void encerrar()
             }}
