@@ -86,6 +86,8 @@ export function buildPresets(deps: PresetDeps): ResolvedPreset[] {
   return presets
 }
 
+const DROPPED_FROM_BASE = new Set(['ELECTRON_RUN_AS_NODE', 'ELECTRON_RENDERER_URL', 'NO_COLOR'])
+
 /** O ambiente herdado pelo shell: o do app, sem o que sequestraria um `yarn smoke` digitado lá. */
 export function childEnv(
   preset: Pick<ResolvedPreset, 'env'>,
@@ -94,12 +96,9 @@ export function childEnv(
   const env: Record<string, string> = {}
   for (const [chave, valor] of Object.entries(base)) {
     // `ELECTRON_RENDERER_URL` faria o smoke digitado no terminal carregar o dev server (pegadinha do #37).
-    if (
-      valor === undefined ||
-      chave === 'ELECTRON_RUN_AS_NODE' ||
-      chave === 'ELECTRON_RENDERER_URL'
-    )
-      continue
+    // `NO_COLOR` vem da sessão Claude que lançou o app e apagaria as cores dos terminais (#113).
+    // O `toUpperCase` existe porque no Windows o nome de variável não diferencia maiúsculas.
+    if (valor === undefined || DROPPED_FROM_BASE.has(chave.toUpperCase())) continue
     env[chave] = valor
   }
   return { ...env, TERM: 'xterm-256color', COLORTERM: 'truecolor', ...preset.env }
