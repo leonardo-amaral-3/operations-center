@@ -185,6 +185,44 @@ describe('CA-3 —o "Terminal aqui" convive com o painel e o kanban', () => {
   })
 })
 
+describe('#111 — recolher o painel por clique', () => {
+  const atalho = (): void => {
+    fireEvent.keyDown(window, { code: 'KeyL', ctrlKey: true, shiftKey: true })
+  }
+
+  it('CA-1: o » recolhe o painel sem esquecer nenhuma sessão', async () => {
+    const oc = await montar(painelAberto('free_0'), { livres: [SEM_TRANSCRIPT] })
+
+    fireEvent.click(screen.getByTestId('side-collapse'))
+
+    expect(screen.queryByTestId('side-panel')).toBeNull()
+    expect(oc.pedidosDaMesa.some((p) => p.startsWith('forgetFree'))).toBe(false)
+  })
+
+  it('CA-1: o painel vazio também tem o » e fecha por ele', async () => {
+    await montar(painelAberto(null))
+
+    fireEvent.click(screen.getByTestId('side-collapse'))
+
+    expect(screen.queryByTestId('side-panel')).toBeNull()
+  })
+
+  it('CA-3: o Ctrl+Shift+L segue alternando depois do clique, e o » mostra o atalho', async () => {
+    await montar(painelAberto('free_0'), { livres: [SEM_TRANSCRIPT] })
+
+    expect(screen.getByTestId('side-collapse').getAttribute('title')).toContain('Ctrl+Shift+L')
+
+    fireEvent.click(screen.getByTestId('side-collapse'))
+    act(atalho)
+
+    expect(screen.getByTestId('side-panel')).toBeTruthy()
+    expect(screen.getByTestId('free-tab').getAttribute('data-free-id')).toBe('free_0')
+
+    act(atalho)
+    expect(screen.queryByTestId('side-panel')).toBeNull()
+  })
+})
+
 describe('esquecer e renomear', () => {
   it('esquecer pede confirmação: o primeiro clique não apaga, o segundo sim', async () => {
     const oc = await montar(painelAberto('free_0'), { livres: [SEM_TRANSCRIPT] })

@@ -42,6 +42,7 @@ export function Mesa({ children }: { children: ReactNode }): JSX.Element {
               onFocusConsumed={() => mesa.dispatch({ type: 'focusConsumed' })}
               onForgotten={(id) => mesa.dispatch({ type: 'freeForgotten', id })}
               onOpenTerminal={mesa.openTerminalAt}
+              onCollapse={() => mesa.dispatch({ type: 'toggleSide' })}
             />
           ) : null}
         </div>

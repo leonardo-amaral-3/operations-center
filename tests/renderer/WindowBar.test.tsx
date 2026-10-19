@@ -144,6 +144,9 @@ describe('#74 CA-5 — os botões da mesa dizem o atalho no `title`', () => {
     expect(titulo('mesa-presets')).toContain('Ctrl+`')
     expect(titulo('mesa-new-free')).toContain('Ctrl+Shift+N')
     expect(titulo('mesa-free-list')).toContain('Ctrl+Shift+L')
+    // #111: o `▾` abre a lista, não o painel — o title não pode prometer o que o clique não faz.
+    expect(titulo('mesa-free-list')).not.toMatch(/^Sessões livres \(/)
+    expect(titulo('mesa-free-list')).toContain('Escolher uma sessão livre')
   })
 })
 

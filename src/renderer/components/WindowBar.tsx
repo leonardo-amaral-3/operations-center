@@ -159,7 +159,7 @@ export function WindowBar({
             aria-label="Lista de sessões livres"
             aria-haspopup="menu"
             aria-expanded={menu === 'free'}
-            title={`Sessões livres (${SHORTCUT_LABEL['toggle-side']} abre ou fecha o painel)`}
+            title={`Escolher uma sessão livre para abrir (o painel abre e fecha com ${SHORTCUT_LABEL['toggle-side']})`}
             className="nao-arrasta-a-janela"
             onClick={() => {
               setMenu(menu === 'free' ? null : 'free')
