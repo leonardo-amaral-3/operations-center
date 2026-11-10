@@ -15,6 +15,7 @@ import type {
   TerminalPresetsSnapshot,
   TerminalResizeRequest,
 } from '../shared/ipc'
+import { ehExecutavel, procurarNoPath } from './pathLookup'
 import { childEnv, toPublicPreset } from './terminalPresets'
 import type { PresetDeps, ResolvedPreset } from './terminalPresets'
 
@@ -57,7 +58,7 @@ export const loadPty: LoadSpawn = async () => {
   }
 }
 
-/** O `where` do System32, como em `claudeBin.ts`: a primeira linha da saída, ou `null`. */
+/** O ramo do Windows: o `where` do System32, como em `claudeBin.ts`; a primeira linha da saída, ou `null`. */
 function rodarWhere(exe: string): string | null {
   try {
     return (
@@ -71,13 +72,21 @@ function rodarWhere(exe: string): string | null {
   }
 }
 
+/** O ramo do POSIX: o primeiro executável do PATH, ou `null`. */
+function primeiroNoPath(exe: string): string | null {
+  return procurarNoPath(exe, process.env.PATH, ehExecutavel)[0] ?? null
+}
+
 /**
  * As pontas de IO de produção dos perfis. Os perfis são relidos a cada `terminal:open` e cada
  * `where` é um processo síncrono no main, então o que **achou** fica memorizado. O `null` não: quem
  * instala o shell que faltou e clica `Tentar de novo` tem de vê-lo sem reiniciar o app.
  */
 export function presetDepsDeProducao(
-  where: (exe: string) => string | null = rodarWhere,
+  where: (exe: string) => string | null = process.platform === 'win32'
+    ? rodarWhere
+    : primeiroNoPath,
+  platform: NodeJS.Platform = process.platform,
 ): PresetDeps {
   const achados = new Map<string, string>()
 
@@ -101,6 +110,7 @@ export function presetDepsDeProducao(
     },
     programFiles: process.env.ProgramFiles ?? 'C:\\Program Files',
     systemRoot: process.env.SystemRoot ?? 'C:\\Windows',
+    platform,
   }
 }
 
