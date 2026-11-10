@@ -4,3 +4,4 @@ node_modules/
 test-results/
 playwright-report/
 yarn.lock
+tests/fixtures/relatorio/cofre-2026-11-10/
