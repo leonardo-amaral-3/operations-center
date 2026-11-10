@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 
 import type { FreeSessionCard, SessionScope, TerminalPreset } from '../../shared/ipc'
-import { MESA_INICIAL, paraLayout, reduceMesa } from './mesaState'
+import {
+  MESA_INICIAL,
+  paraLayout,
+  PERFIL_INICIAL_SEM_LISTA,
+  perfilSemPedido,
+  reduceMesa,
+} from './mesaState'
 import type { MesaAction, MesaState } from './mesaState'
 import { shortcutFor } from './shortcuts'
-
-/** O perfil da primeira vez, quando ninguém abriu terminal ainda (CA-5). */
-const PERFIL_INICIAL = 'powershell'
 
 /** Quanto o arrasto de divisória espera para gravar: um arrasto são dezenas de eventos por segundo. */
 const DEBOUNCE_DO_TAMANHO_MS = 300
@@ -16,7 +19,7 @@ export interface Mesa {
   dispatch: (action: MesaAction) => void
   presets: readonly TerminalPreset[]
   freeSessions: readonly FreeSessionCard[]
-  /** Sem `preset`, abre no último perfil usado. */
+  /** Sem `preset`, abre no último perfil usado, se o main ainda o oferece; senão, no primeiro da lista. */
   newTerminal: (preset?: string) => void
   /** "Terminal aqui": abre no último perfil, na pasta do escopo (#74 §11). */
   openTerminalAt: (scope: SessionScope) => void
@@ -56,6 +59,8 @@ export function useMesa(): Mesa {
   const estrutura = useRef('')
   const espera = useRef<ReturnType<typeof setTimeout> | null>(null)
   const focoAnterior = useRef<Element | null>(null)
+  const presetsResolvidos = useRef<readonly TerminalPreset[] | null>(null)
+  const presetsLidos = useRef<Promise<readonly TerminalPreset[]> | null>(null)
 
   const dispatch = useCallback((action: MesaAction): void => {
     dispatchBruto(action)
@@ -80,9 +85,16 @@ export function useMesa(): Mesa {
       dispatchBruto({ type: 'hydrate', snapshot, viewport })
     })
 
-    void window.oc.readTerminalPresets().then((next) => {
-      if (vivo) setPresets(next.presets)
-    })
+    const leitura = window.oc.readTerminalPresets().then((next) => next.presets)
+    presetsLidos.current = leitura
+    // Falhar não é erro de tela: o `comPerfil` já trata a leitura rejeitada, e a lista fica vazia.
+    void leitura.then(
+      (lista) => {
+        presetsResolvidos.current = lista
+        if (vivo) setPresets(lista)
+      },
+      () => undefined,
+    )
 
     const unsubscribe = window.oc.onFree((next) => {
       pushed = true
@@ -136,29 +148,55 @@ export function useMesa(): Mesa {
     if (!ultimo.current.dock.open) focoAnterior.current = document.activeElement
   }, [])
 
+  /**
+   * Abre com o perfil pedido; sem pedido, pelo `perfilSemPedido`. **Síncrono quando a lista já
+   * chegou**, que é o caso de sempre depois do monte, e é o que os testes de `tests/renderer/`
+   * esperam (clique e `getByTestId` na mesma volta). Só espera quando a lista ainda não veio: abrir
+   * `powershell` no Linux antes da resposta daria "shell não encontrado" num clique rápido. Falhando
+   * a leitura, a lista vale vazia: `lastPreset`, se houver, senão `PERFIL_INICIAL_SEM_LISTA`.
+   */
+  const comPerfil = useCallback(
+    (explicito: string | undefined, abrir: (preset: string) => void): void => {
+      if (explicito !== undefined) {
+        abrir(explicito)
+        return
+      }
+      const lista = presetsResolvidos.current
+      if (lista !== null) {
+        abrir(perfilSemPedido(ultimo.current.lastPreset, lista))
+        return
+      }
+      const leitura = presetsLidos.current
+      if (leitura === null) {
+        abrir(ultimo.current.lastPreset ?? PERFIL_INICIAL_SEM_LISTA)
+        return
+      }
+      void leitura.then(
+        (chegou) => abrir(perfilSemPedido(ultimo.current.lastPreset, chegou)),
+        () => abrir(ultimo.current.lastPreset ?? PERFIL_INICIAL_SEM_LISTA),
+      )
+    },
+    [],
+  )
+
   const newTerminal = useCallback(
     (preset?: string): void => {
       guardarFoco()
-      dispatchBruto({
-        type: 'addTerminal',
-        key: crypto.randomUUID(),
-        preset: preset ?? ultimo.current.lastPreset ?? PERFIL_INICIAL,
-      })
+      comPerfil(preset, (p) =>
+        dispatchBruto({ type: 'addTerminal', key: crypto.randomUUID(), preset: p }),
+      )
     },
-    [guardarFoco],
+    [guardarFoco, comPerfil],
   )
 
   const openTerminalAt = useCallback(
     (scope: SessionScope): void => {
       guardarFoco()
-      dispatchBruto({
-        type: 'addTerminal',
-        key: crypto.randomUUID(),
-        preset: ultimo.current.lastPreset ?? PERFIL_INICIAL,
-        scope,
-      })
+      comPerfil(undefined, (p) =>
+        dispatchBruto({ type: 'addTerminal', key: crypto.randomUUID(), preset: p, scope }),
+      )
     },
-    [guardarFoco],
+    [guardarFoco, comPerfil],
   )
 
   const openFree = useCallback((id: string): void => {
