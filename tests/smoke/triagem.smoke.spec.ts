@@ -129,7 +129,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app.close()
-  rmSync(state, { recursive: true, force: true })
+  rmSync(state, { recursive: true, force: true, maxRetries: 3 })
 })
 
 /**

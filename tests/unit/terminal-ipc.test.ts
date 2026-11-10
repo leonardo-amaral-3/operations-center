@@ -257,7 +257,10 @@ describe('terminal:input e terminal:resize — aceita (#100)', () => {
     const aberto = await abrir(fakeSender().sender)
     if (!aberto.opened) throw new Error('terminal não abriu')
 
-    await handlers.get(IPC_INVOKE.writeTerminal)!({ sender: fakeSender().sender }, { id: aberto.terminal.id, data: 'z' })
+    await handlers.get(IPC_INVOKE.writeTerminal)!(
+      { sender: fakeSender().sender },
+      { id: aberto.terminal.id, data: 'z' },
+    )
 
     expect(fake.ptys[0]!.writes).toEqual(['z'])
   })
@@ -284,5 +287,17 @@ describe('presetDepsDeProducao — o `where`', () => {
     expect(deps.which('git.exe')).toBeNull()
 
     expect(where.mock.calls.map(([exe]) => exe)).toEqual(['pwsh.exe', 'git.exe', 'git.exe'])
+  })
+})
+
+describe('presetDepsDeProducao — a plataforma', () => {
+  it('leva a plataforma pedida; o `which` memoriza igual', () => {
+    const where = vi.fn((exe: string) => (exe === 'bash' ? '/usr/bin/bash' : null))
+    const deps = presetDepsDeProducao(where, 'linux')
+
+    expect(deps.platform).toBe('linux')
+    expect(deps.which('bash')).toBe('/usr/bin/bash')
+    expect(deps.which('bash')).toBe('/usr/bin/bash')
+    expect(where).toHaveBeenCalledTimes(1)
   })
 })

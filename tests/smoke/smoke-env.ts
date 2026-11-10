@@ -65,3 +65,23 @@ export function smokeEnv(): Record<string, string> {
 
   return env
 }
+
+/** Os flags que sobem o Chromium sem janela e com uma tela virtual do tamanho de um monitor comum. */
+export const FLAGS_HEADLESS = [
+  '--ozone-platform=headless',
+  '--ozone-override-screen-size=1920,1080',
+] as const
+
+/**
+ * Os argumentos extras do `electron.launch`, lidos do ambiente de quem roda.
+ *
+ * `OC_SMOKE_HEADLESS=1`, e só `1`, liga o modo sem janela do Linux. Existe porque, sem ele, o
+ * Electron abre uma janela de verdade a cada smoke e rouba o foco de quem está usando a máquina
+ * (M2), e porque a tela virtual dá ao Chromium um monitor de tamanho conhecido, sem depender do
+ * compositor (M3). Mora aqui, e não em `smoke-app.ts`, porque este é o único módulo dos smokes que
+ * pode ler `process.env` (M16). É opt-in porque o Windows não tem ozone: lá a janela visível é o
+ * modo de sempre, e passar a flag derrubaria a subida.
+ */
+export function smokeLaunchArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  return env.OC_SMOKE_HEADLESS === '1' ? [...FLAGS_HEADLESS] : []
+}

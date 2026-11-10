@@ -11,8 +11,8 @@ import { launchSmokeApp } from './smoke-app'
  * O smoke do terminal (#74): abrir um shell de verdade dentro do app, digitar nele, clicar numa URL e
  * ver a mesa voltar depois de fechar e reabrir.
  *
- * **Não consome cota e não toca a rede**: o board vem da fixture, e o shell é o PowerShell da
- * máquina. O que ele prova que nenhum teste unitário alcança é o encontro dos três pedaços que só
+ * **Não consome cota e não toca a rede**: o board vem da fixture, e o shell é o do perfil inicial:
+ * o PowerShell no Windows, o bash no Linux. O que ele prova que nenhum teste unitário alcança é o encontro dos três pedaços que só
  * existem juntos no Electron real — o prebuilt do `node-pty` carregando no `out/`, o xterm no
  * renderer e a guarda de navegação do main. O **artefato empacotado** não passa por aqui (o
  * `yarn smoke` roda o `out/` com `node_modules` solto); quem o prova é a verificação pós-deploy da
@@ -22,8 +22,30 @@ import { launchSmokeApp } from './smoke-app'
  * primeiro deixou em disco.
  */
 
-/** Um shell subindo no ConPTY e imprimindo o prompt. Generoso: o primeiro PowerShell da sessão é lento. */
+/** Um shell subindo no PTY e imprimindo o prompt. Generoso: o primeiro shell da sessão é lento. */
 const SHELL_TIMEOUT = 30_000
+
+/**
+ * O que o shell do perfil inicial desenha, por sistema. Windows: PowerShell + PSReadLine. Linux: o
+ * bash de login com `HOME` vazio (ver `launch`), que desenha o prompt do `/etc/bash.bashrc` e o
+ * Ctrl+R do readline, sem starship nem fzf do usuário.
+ */
+const SHELL =
+  process.platform === 'win32'
+    ? {
+        prompt: /^PS .*>/,
+        comandoPid: '$PID',
+        buscaReversa: 'bck-i-search',
+        sairDaBusca: 'Escape',
+        esperarFimDaBusca: false,
+      }
+    : {
+        prompt: /\$$/,
+        comandoPid: 'echo $$',
+        buscaReversa: 'reverse-i-search',
+        sairDaBusca: 'Control+g',
+        esperarFimDaBusca: true,
+      }
 
 /** A saída que só existe se o shell **executou** o comando — ver `linhasDoTerminal`. */
 const ECO = 'oc-smoke-ok'
@@ -179,7 +201,7 @@ test('sem menu, Ctrl+R é do shell; e recarregar a janela mata o shell que ela a
   expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu())).toBeNull()
 
   const teclado = window.locator('.xterm-helper-textarea')
-  await teclado.pressSequentially('$PID')
+  await teclado.pressSequentially(SHELL.comandoPid)
   await teclado.press('Enter')
   let pid = 0
   await expect
@@ -193,17 +215,27 @@ test('sem menu, Ctrl+R é do shell; e recarregar a janela mata o shell que ela a
     )
     .toBeGreaterThan(0)
 
-  // Com o menu default, a janela recarregaria e a marca sumiria. Sem ele o PSReadLine recebe o ^R e
+  // Com o menu default, a janela recarregaria e a marca sumiria. Sem ele o shell recebe o ^R e
   // abre a busca reversa — a prova de que a tecla chegou ao shell, e não só de que nada aconteceu.
   await window.evaluate(`window.__ocMarca = 1`)
   await teclado.press('Control+r')
   await expect
-    .poll(async () => (await linhasDoTerminal()).some((linha) => linha.includes('bck-i-search')), {
-      message: 'o Ctrl+R não chegou ao PSReadLine',
+    .poll(async () => (await linhasDoTerminal()).some((linha) => linha.includes(SHELL.buscaReversa)), {
+      message: 'o Ctrl+R não chegou ao shell',
       timeout: SHELL_TIMEOUT,
     })
     .toBe(true)
-  await teclado.press('Escape')
+  await teclado.press(SHELL.sairDaBusca)
+  // Fora da busca **antes** do reload: dentro dela o bash sobrevive ao SIGHUP do node-pty (M8), e o
+  // que se mediria seria o readline, não o app.
+  if (SHELL.esperarFimDaBusca) {
+    await expect
+      .poll(
+        async () => (await linhasDoTerminal()).some((linha) => linha.includes(SHELL.buscaReversa)),
+        { message: 'a busca reversa não fechou', timeout: SHELL_TIMEOUT },
+      )
+      .toBe(false)
+  }
   expect(await window.evaluate(`window.__ocMarca`)).toBe(1)
 
   // O reload troca o documento e mantém o `WebContents`: o `destroyed` não dispara, e o shell
@@ -226,8 +258,8 @@ test('sem menu, Ctrl+R é do shell; e recarregar a janela mata o shell que ela a
     .toBe(false)
 })
 
-/** Uma linha de prompt do PowerShell (`PS C:\pasta>`), com ou sem o resto digitado. */
-const PROMPT = expect.stringMatching(/^PS .*>/)
+/** Uma linha de prompt do shell do perfil inicial (ver `SHELL`), com ou sem o resto digitado. */
+const PROMPT = expect.stringMatching(SHELL.prompt)
 
 /**
  * O texto de cada linha do terminal, aparado.
@@ -267,6 +299,8 @@ async function launch(): Promise<void> {
       // Uma raiz vazia: a varredura de repos não precisa ler o `~/.claude` de quem roda isto.
       OC_CLAUDE_PROJECTS: join(scenario, 'projects'),
       OC_SCREEN: 'kanban',
+      // No Linux, um `HOME` vazio tira o `.bashrc` de quem roda (M7). No Windows o PowerShell não lê `HOME`.
+      ...(process.platform === 'win32' ? {} : { HOME: scenario }),
     },
   })
 

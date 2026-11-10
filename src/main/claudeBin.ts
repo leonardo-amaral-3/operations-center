@@ -12,8 +12,13 @@
  * do PATH — o caminho óbvio, e errado — quebraria toda sessão. Por isso todo degrau abaixo termina
  * num `.exe` de verdade, e nunca no shim.
  *
- * **Escrito para Windows** (`where`, `.exe`, `.cmd`); portá-lo é do card que trouxer outro sistema.
- * Daí os caminhos serem tratados por `node:path/win32` e não pelo `node:path` do sistema: as linhas
+ * **Duas cadeias**, escolhidas por `probes.platform`. A do Windows (`where`, `.exe`, `.cmd`) é a
+ * descrita acima. A do POSIX é mais curta: devolve o primeiro `claude` executável do PATH **sem
+ * `realpath`**, porque o shim do mise decide pelo próprio nome (o `realpath` dele daria
+ * `/usr/bin/mise`, que não é o claude) e spawnado direto ele funciona (medido: M13/M14 do card
+ * #118, `2.1.319` em 43 ms). Não há `.cmd` no POSIX, então não há o que derivar.
+ *
+ * Na cadeia do Windows, os caminhos são tratados por `node:path/win32` e não pelo `node:path` do sistema: as linhas
  * que o `where` devolve são sempre caminhos do Windows, e o `dirname` do POSIX não reconhece a
  * barra invertida — colapsaria `C:\…\npm\claude.cmd` em `.` e derivaria um caminho relativo que não
  * existe em lugar nenhum. Em produção os dois coincidem, porque lá o sistema é Windows; quem vê a
@@ -24,11 +29,18 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { join as joinPosix } from 'node:path/posix'
 import { dirname, extname, join } from 'node:path/win32'
+
+import { ehExecutavel, procurarNoPath } from './pathLookup'
 
 export const CLAUDE_AUSENTE =
   'Claude Code não encontrado. Instale-o (`npm i -g @anthropic-ai/claude-code`) ou aponte ' +
   '`OC_CLAUDE_BIN` para o claude.exe.'
+
+export const CLAUDE_AUSENTE_POSIX =
+  'Claude Code não encontrado no PATH. Instale-o (`npm i -g @anthropic-ai/claude-code`) ou aponte ' +
+  '`OC_CLAUDE_BIN` para o executável do claude.'
 
 export function claudeBinInvalido(caminho: string): string {
   return `OC_CLAUDE_BIN aponta para ${caminho}, que não existe.`
@@ -49,20 +61,26 @@ export interface ClaudeBinProbes {
   env: Record<string, string | undefined>
   home: string
   exists(caminho: string): boolean
-  /** As linhas do `where <cmd>`, na ordem em que ele as devolveu. `[]` quando não achou nada. */
+  platform: NodeJS.Platform
+  /**
+   * As linhas do `where <cmd>` (Windows) ou os executáveis do PATH (POSIX), na ordem em que foram
+   * devolvidos. `[]` quando não achou nada.
+   */
   which(comando: string): readonly string[]
 }
 
 /**
- * O `claude.exe` desta máquina, pelos três degraus, nesta ordem.
+ * O `claude` desta máquina, pelos três degraus da cadeia do sistema, nesta ordem.
  *
  * **A ordem é contrato**, e é a mesma do `resolveCwd` e do `#declared` do `RepoIndex`: a escolha do
  * humano vence a descoberta, e a descoberta vence o palpite.
  *
- * 1. `OC_CLAUDE_BIN`, se declarada.
+ * 1. `OC_CLAUDE_BIN`, se declarada (igual nos dois sistemas).
  * 2. O que o `where claude` achar — o mesmo Claude Code que o terminal roda, que é o que torna
- *    observável a diferença de versão entre o CLI da máquina e o que o SDK embutia.
- * 3. `~/.local/bin/claude.exe`, o caminho do instalador nativo, que **não entra no PATH**.
+ *    observável a diferença de versão entre o CLI da máquina e o que o SDK embutia. No POSIX, o
+ *    primeiro executável `claude` do PATH, como veio.
+ * 3. `~/.local/bin/claude.exe`, o caminho do instalador nativo, que **não entra no PATH**. No POSIX,
+ *    `~/.local/bin/claude`.
  *
  * Lança quando nenhum responde, e a mensagem é a que a tela desenha: o `throw` sai daqui, atravessa
  * o `start()` do host, rejeita o `invoke` do IPC e vira o `reason` do estado `failed`.
@@ -71,6 +89,8 @@ export function resolveClaudeBin(probes: ClaudeBinProbes): string {
   const declarado = declaredBin(probes)
   if (declarado !== null) return declarado
 
+  if (probes.platform !== 'win32') return resolvePosix(probes)
+
   const doPath = pathBin(probes)
   if (doPath !== null) return doPath
 
@@ -78,6 +98,24 @@ export function resolveClaudeBin(probes: ClaudeBinProbes): string {
   if (probes.exists(nativo)) return nativo
 
   throw new Error(CLAUDE_AUSENTE)
+}
+
+/**
+ * A cadeia do POSIX, depois da variável. Sem derivação e sem pulo por extensão: o que o PATH achou
+ * é executável e serve como veio.
+ */
+function resolvePosix(probes: ClaudeBinProbes): string {
+  for (const linha of probes.which('claude')) {
+    if (probes.exists(linha)) return linha
+  }
+
+  // O layout do instalador nativo no Linux. Nesta máquina esse caminho é um wrapper do mise
+  // (`mise use -g … && exec mise x claude`, M13): só é alcançado com o PATH sem nenhum `claude`, e
+  // aí o comportamento é o do wrapper, não do app.
+  const nativo = joinPosix(probes.home, '.local', 'bin', 'claude')
+  if (probes.exists(nativo)) return nativo
+
+  throw new Error(CLAUDE_AUSENTE_POSIX)
 }
 
 /**
@@ -158,9 +196,14 @@ export function createClaudeBinSource(probes: ClaudeBinProbes = probesDeProducao
 function probesDeProducao(): ClaudeBinProbes {
   return {
     env: process.env,
+    platform: process.platform,
     home: homedir(),
     exists: existsSync,
     which: (comando) => {
+      if (process.platform !== 'win32') {
+        return procurarNoPath(comando, process.env.PATH, ehExecutavel)
+      }
+
       try {
         // `where` é do System32 e sempre existe no Windows. Sem `shell`, pela mesma razão do
         // `token.ts`: nada aqui precisa de interpretação de metacaractere.

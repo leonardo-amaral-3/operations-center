@@ -4,10 +4,12 @@ import {
   abaParaSpawnar,
   MESA_INICIAL,
   paraLayout,
+  perfilInicial,
+  perfilSemPedido,
   reduceMesa,
 } from '../../src/renderer/mesa/mesaState'
 import type { MesaAction, MesaState } from '../../src/renderer/mesa/mesaState'
-import type { LayoutSnapshot } from '../../src/shared/ipc'
+import type { LayoutSnapshot, TerminalPreset } from '../../src/shared/ipc'
 
 /**
  * A parte pura da mesa (#74 §7): o dock, o painel e a **intenção de foco**.
@@ -309,5 +311,27 @@ describe('paraLayout — o que vai para o disco', () => {
     })
 
     expect(paraLayout(volta)).toEqual(layout)
+  })
+})
+
+describe('perfilInicial e perfilSemPedido', () => {
+  const POWERSHELL: TerminalPreset = { id: 'powershell', label: 'PowerShell', group: 'shell' }
+  const GIT_BASH: TerminalPreset = { id: 'git-bash', label: 'Git Bash', group: 'shell' }
+  const BASH: TerminalPreset = { id: 'bash', label: 'Bash', group: 'shell' }
+  const AWS_A: TerminalPreset = { id: 'aws:a', label: 'AWS · a', group: 'aws' }
+
+  it('perfilInicial é o primeiro da lista do main, e `powershell` sem lista', () => {
+    expect(perfilInicial([])).toBe('powershell')
+    expect(perfilInicial([BASH, AWS_A])).toBe('bash')
+    expect(perfilInicial([POWERSHELL, GIT_BASH])).toBe('powershell')
+  })
+
+  it('perfilSemPedido mantém o último usado que o main ainda oferece', () => {
+    expect(perfilSemPedido('git-bash', [POWERSHELL, GIT_BASH])).toBe('git-bash')
+  })
+
+  it('perfilSemPedido trata como ausente um `lastPreset` que a lista não tem (R-9)', () => {
+    expect(perfilSemPedido('powershell', [BASH])).toBe('bash')
+    expect(perfilSemPedido(null, [BASH])).toBe('bash')
   })
 })

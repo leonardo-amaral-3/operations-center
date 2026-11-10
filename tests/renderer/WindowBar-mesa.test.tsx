@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Mesa } from '../../src/renderer/mesa/Mesa'
-import type { LayoutSnapshot } from '../../src/shared/ipc'
+import type { LayoutSnapshot, TerminalPresetsSnapshot } from '../../src/shared/ipc'
 import { instalarOc } from './fakeOc'
 
 /**
@@ -104,6 +104,53 @@ describe('CA-5 — o atalho faz o mesmo que o clique', () => {
     await montar()
 
     fireEvent.keyDown(window, { code: 'Backquote', ctrlKey: true, shiftKey: true })
+
+    expect(screen.getByTestId('terminal-tab').getAttribute('data-preset')).toBe('powershell')
+  })
+})
+
+describe('o perfil da primeira vez vem do main', () => {
+  function presetsPendentes(): {
+    resolver: (presets: TerminalPresetsSnapshot['presets']) => void
+    rejeitar: () => void
+  } {
+    let resolver!: (presets: TerminalPresetsSnapshot['presets']) => void
+    let rejeitar!: () => void
+    const pendente = new Promise<TerminalPresetsSnapshot>((res, rej) => {
+      resolver = (presets) => res({ presets })
+      rejeitar = () => rej(new Error('sem lista'))
+    })
+    const oc = instalarOc()
+    window.oc.readTerminalPresets = () => pendente
+    void oc
+
+    render(
+      <Mesa>
+        <p>kanban</p>
+      </Mesa>,
+    )
+
+    return { resolver, rejeitar }
+  }
+
+  it('um clique antes da lista chegar espera, e abre no primeiro perfil do main', async () => {
+    const { resolver } = presetsPendentes()
+
+    fireEvent.click(screen.getByTestId('mesa-new-terminal'))
+    expect(screen.queryByTestId('terminal-tab')).toBeNull()
+
+    resolver([{ id: 'bash', label: 'Bash', group: 'shell' }])
+    await act(async () => {})
+
+    expect(screen.getByTestId('terminal-tab').getAttribute('data-preset')).toBe('bash')
+  })
+
+  it('com a leitura rejeitada, abre em `powershell`', async () => {
+    const { rejeitar } = presetsPendentes()
+
+    fireEvent.click(screen.getByTestId('mesa-new-terminal'))
+    rejeitar()
+    await act(async () => {})
 
     expect(screen.getByTestId('terminal-tab').getAttribute('data-preset')).toBe('powershell')
   })

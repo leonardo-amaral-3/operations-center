@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { smokeEnv } from '../smoke/smoke-env'
+import { FLAGS_HEADLESS, smokeEnv, smokeLaunchArgs } from '../smoke/smoke-env'
 
 /**
  * O CA-2 e o CA-3 do card #57 em forma de teste, no espírito de `ipc-no-path.test.ts`.
@@ -166,5 +166,28 @@ describe('smokeEnv saneia o ambiente sem cortar a herança', () => {
     expect(env['OC_THEME']).toBeUndefined()
 
     expect(env[TESTEMUNHA]).toBe('presente')
+  })
+})
+
+describe('smokeLaunchArgs', () => {
+  it('liga o modo sem janela só com OC_SMOKE_HEADLESS=1', () => {
+    expect(smokeLaunchArgs({ OC_SMOKE_HEADLESS: '1' })).toEqual([...FLAGS_HEADLESS])
+  })
+
+  it.each([{}, { OC_SMOKE_HEADLESS: '0' }, { OC_SMOKE_HEADLESS: 'true' }])(
+    'não passa flag nenhuma com %j',
+    (env) => {
+      expect(smokeLaunchArgs(env)).toEqual([])
+    },
+  )
+})
+
+describe('o smoke-app.ts não lê process.env', () => {
+  it('quem lê o ambiente é o smoke-env.ts, e o smoke-app.ts só o consome', () => {
+    // É o que distingue a solução versionada da linha provisória do cofre #1451, que lia a variável
+    // direto no `launchSmokeApp` e abria uma segunda fonte de verdade sobre o ambiente (R-11).
+    const corpo = semComentarios(readFileSync(join(DIRETORIO_DOS_SMOKES, 'smoke-app.ts'), 'utf8'))
+
+    expect(corpo).not.toContain('process.env')
   })
 })
