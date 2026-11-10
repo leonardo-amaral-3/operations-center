@@ -15,7 +15,7 @@ import { join } from 'node:path'
 import { _electron as electron, expect } from '@playwright/test'
 import type { ElectronApplication, Locator } from '@playwright/test'
 
-import { REPO_ROOT, smokeEnv } from './smoke-env'
+import { REPO_ROOT, smokeEnv, smokeLaunchArgs } from './smoke-env'
 
 export interface LaunchOptions {
   /**
@@ -38,6 +38,9 @@ export interface LaunchOptions {
  * porta do estado vem por último de propósito, para que um `OC_STATE_DIR` posto por engano dentro de
  * `opts.env` não consiga furar o isolamento que `stateDir` existe para garantir.
  *
+ * Os argumentos extras do Electron (o modo sem janela do Linux) vêm de `smokeLaunchArgs()`, que é
+ * quem lê o ambiente: este módulo não toca em `process.env`.
+ *
  * `ANTHROPIC_API_KEY` continua herdada: apagá-la garantiria o resultado que os smokes de sessão real
  * deveriam estar provando.
  */
@@ -45,7 +48,7 @@ export async function launchSmokeApp(opts: LaunchOptions): Promise<ElectronAppli
   return electron.launch({
     // O app buildado, resolvido pelo `main` do `package.json`. O `yarn smoke` roda o
     // `electron-vite build` antes justamente para que `out/` exista aqui.
-    args: ['.'],
+    args: ['.', ...smokeLaunchArgs()],
     cwd: REPO_ROOT,
     env: { ...smokeEnv(), ...opts.env, OC_STATE_DIR: opts.stateDir },
   })

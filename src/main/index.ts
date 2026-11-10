@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { query } from '@anthropic-ai/claude-agent-sdk'
@@ -53,8 +53,18 @@ import { buildPresets, childEnv } from './terminalPresets'
 import { judgeNavigation } from './navigation'
 import { loadActiveBoard, loadTheme, saveActiveBoard } from './preferences'
 import { gitOrigin, scanSessionFolders } from './repos'
+import { chromiumUserDataDir } from './store'
 import { resolveThemeEnv, windowBackground } from './theme'
 import { registerWindowIpc } from './window'
+
+// Antes do `ready`, ou o Chromium já terá aberto o userData default (M12). A pasta é criada antes:
+// o `setPath` do Electron documenta que lança para diretório inexistente (`electron.d.ts:1799-1801`),
+// mesmo que no Electron 44 a medição M12 tenha passado sem ela.
+const userDataDoSmoke = chromiumUserDataDir()
+if (userDataDoSmoke !== null) {
+  mkdirSync(userDataDoSmoke, { recursive: true })
+  app.setPath('userData', userDataDoSmoke)
+}
 
 /**
  * A pasta de trabalho da sessão **sem cartão** — a da fatia vertical. Sem `OC_CWD`, é a raiz do repo:
