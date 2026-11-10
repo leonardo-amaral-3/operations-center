@@ -447,9 +447,9 @@ export interface CardWindowRequest {
 
 /** Um perfil visto do renderer: rótulo e grupo, nunca o executável nem o ambiente. */
 export interface TerminalPreset {
-  /** `powershell`, `git-bash` ou `aws:` seguido do nome do perfil AWS. */
+  /** `powershell`, `git-bash` (Windows), `bash` (Linux) ou `aws:` seguido do nome do perfil AWS. */
   id: string
-  /** `PowerShell`, `Git Bash` ou `AWS · ` seguido do nome do perfil. */
+  /** `PowerShell`, `Git Bash`, `Bash` ou `AWS · ` seguido do nome do perfil. */
   label: string
   group: 'shell' | 'aws'
 }

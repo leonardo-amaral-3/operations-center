@@ -17,6 +17,7 @@ function deps(over: Partial<PresetDeps> = {}): PresetDeps {
     awsConfig: () => aws,
     programFiles: 'C:\\Program Files',
     systemRoot: 'C:\\Windows',
+    platform: 'win32',
     ...over,
   }
 }
@@ -113,5 +114,53 @@ describe('perfis de terminal', () => {
 
   it('no_color em minúsculas também é descartado', () => {
     expect(childEnv({ env: {} }, { no_color: '1' })).not.toHaveProperty('no_color')
+  })
+})
+
+describe('buildPresets — POSIX', () => {
+  const posix = (over: Partial<PresetDeps> = {}) =>
+    buildPresets(
+      deps({
+        platform: 'linux',
+        which: () => null,
+        exists: () => false,
+        awsConfig: () => null,
+        ...over,
+      }),
+    )
+
+  it('lista só o bash, com o do PATH e o login interativo', () => {
+    const lista = posix({ which: (exe) => (exe === 'bash' ? '/usr/bin/bash' : null) })
+
+    expect(lista).toEqual([
+      {
+        id: 'bash',
+        label: 'Bash',
+        group: 'shell',
+        shell: '/usr/bin/bash',
+        args: ['--login', '-i'],
+        env: {},
+      },
+    ])
+  })
+
+  it('sem bash no PATH, cai em /bin/bash', () => {
+    expect(posix()[0]!.shell).toBe('/bin/bash')
+  })
+
+  it('com ~/.aws/config de 2 perfis, lista bash e os aws:* com o shell do bash', () => {
+    const lista = posix({ which: () => '/usr/bin/bash', awsConfig: () => aws })
+    const ids = lista.map((p) => p.id)
+
+    expect(ids[0]).toBe('bash')
+    expect(ids.slice(1).every((id) => id.startsWith('aws:'))).toBe(true)
+    expect(lista.slice(1).every((p) => p.shell === '/usr/bin/bash')).toBe(true)
+  })
+
+  it('nunca procura pwsh.exe nem git.exe', () => {
+    const chamadas: string[] = []
+    posix({ which: (exe) => (chamadas.push(exe), null), awsConfig: () => aws })
+
+    expect(chamadas).toEqual(['bash'])
   })
 })
