@@ -16,6 +16,7 @@
     "!playwright-report/**",
     "!.github/**",
     "!.claude/**",
+    "!fabrica/**",
     "!*.tmp",
     "!electron.vite.config.ts",
     "!playwright.config.ts",
