@@ -131,4 +131,10 @@ describe('README', () => {
     expect(readme).toContain('mesma cota')
     expect(readme).toContain('OC_MODEL')
   })
+
+  it('documenta o modo sem janela dos smokes', () => {
+    // A porta de ambiente do smoke no Linux: sem ela documentada, quem roda `yarn smoke` rouba o
+    // foco de quem trabalha e não sabe por quê.
+    expect(readme).toContain('OC_SMOKE_HEADLESS')
+  })
 })
