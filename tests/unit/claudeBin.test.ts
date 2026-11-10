@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   CLAUDE_AUSENTE,
+  CLAUDE_AUSENTE_POSIX,
   claudeBinInvalido,
   createClaudeBinSource,
   resolveClaudeBin,
@@ -48,15 +49,24 @@ interface Cenario {
   existentes?: readonly string[]
   /** O que o `where claude` devolve, na ordem. */
   where?: readonly string[]
+  platform?: NodeJS.Platform
+  home?: string
 }
 
-function cenario({ env = {}, existentes = [], where = [] }: Cenario = {}) {
+function cenario({
+  env = {},
+  existentes = [],
+  where = [],
+  platform = 'win32',
+  home = HOME,
+}: Cenario = {}) {
   const existe = new Set(existentes)
   const chamadas: string[] = []
 
   const probes: ClaudeBinProbes = {
     env,
-    home: HOME,
+    platform,
+    home,
     exists: (caminho) => existe.has(caminho),
     which: (comando) => {
       chamadas.push(comando)
@@ -190,5 +200,59 @@ describe('createClaudeBinSource — o que o thunk guarda', () => {
     existe.add(NPM_EXE)
 
     expect(claudeBin()).toBe(NPM_EXE)
+  })
+})
+
+describe('resolveClaudeBin — POSIX', () => {
+  const POSIX_HOME = '/home/u'
+  const SHIM = '/home/u/.local/share/mise/shims/claude'
+  const BIN = '/home/u/.local/share/mise/installs/claude/latest/claude'
+  const NATIVO_POSIX = '/home/u/.local/bin/claude'
+  const posix = (c: Cenario = {}) => cenario({ platform: 'linux', home: POSIX_HOME, ...c })
+
+  it('OC_CLAUDE_BIN existente vence e o PATH nem é consultado', () => {
+    const { probes, chamadas } = posix({
+      env: { OC_CLAUDE_BIN: '/opt/claude' },
+      existentes: ['/opt/claude', SHIM],
+      where: [SHIM],
+    })
+
+    expect(resolveClaudeBin(probes)).toBe('/opt/claude')
+    expect(chamadas).toEqual([])
+  })
+
+  it('devolve o primeiro achado do PATH, como veio, sem resolver', () => {
+    const { probes } = posix({ existentes: [SHIM, BIN], where: [SHIM, BIN] })
+
+    expect(resolveClaudeBin(probes)).toBe(SHIM)
+  })
+
+  it('cai em ~/.local/bin/claude quando o PATH não tem nada', () => {
+    const { probes } = posix({ existentes: [NATIVO_POSIX] })
+
+    expect(resolveClaudeBin(probes)).toBe(NATIVO_POSIX)
+  })
+
+  it('lança CLAUDE_AUSENTE_POSIX quando nada responde', () => {
+    const { probes } = posix()
+
+    expect(() => resolveClaudeBin(probes)).toThrow(CLAUDE_AUSENTE_POSIX)
+  })
+
+  it('uma linha sem extensão serve: o pulo do shim é só do Windows', () => {
+    const { probes } = posix({ existentes: [SHIM], where: [SHIM] })
+
+    expect(resolveClaudeBin(probes)).toBe(SHIM)
+  })
+
+  it('OC_CLAUDE_BIN para o nada lança claudeBinInvalido, sem cair no PATH', () => {
+    const { probes, chamadas } = posix({
+      env: { OC_CLAUDE_BIN: '/nada/claude' },
+      existentes: [SHIM],
+      where: [SHIM],
+    })
+
+    expect(() => resolveClaudeBin(probes)).toThrow(claudeBinInvalido('/nada/claude'))
+    expect(chamadas).toEqual([])
   })
 })
