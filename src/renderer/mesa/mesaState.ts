@@ -23,8 +23,31 @@ import type {
   LayoutTerminal,
   OpenTerminalResult,
   SessionScope,
+  TerminalPreset,
   TerminalSnapshot,
 } from '../../shared/ipc'
+
+/** O perfil da primeira vez (CA-5 do #74): o primeiro que o main montou para este sistema. */
+export const PERFIL_INICIAL_SEM_LISTA = 'powershell'
+
+export function perfilInicial(presets: readonly TerminalPreset[]): string {
+  return presets[0]?.id ?? PERFIL_INICIAL_SEM_LISTA
+}
+
+/**
+ * O perfil de um terminal aberto sem perfil pedido: o último usado, se o main ainda o oferece;
+ * senão, o primeiro da lista do main. Um `lastPreset` que a lista não tem (um `powershell` gravado
+ * no Linux, R-9 da revisão) é tratado como ausente, e não reaberto para cair em "shell não
+ * encontrado" a cada clique.
+ */
+export function perfilSemPedido(
+  lastPreset: string | null,
+  presets: readonly TerminalPreset[],
+): string {
+  if (lastPreset !== null && presets.some((p) => p.id === lastPreset)) return lastPreset
+
+  return perfilInicial(presets)
+}
 
 /** Os limites de tamanho: piso fixo, teto proporcional ao viewport (spec §7). */
 export const DOCK_HEIGHT_MIN = 120
