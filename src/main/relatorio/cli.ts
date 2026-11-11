@@ -106,9 +106,20 @@ export async function executar(deps: DepsDoCli): Promise<number> {
   try {
     const janela = janelaDoDia(dia)
     const nomes = (await deps.listarPasta(pastaDoCofre)).filter((n) => n.endsWith('.md'))
-    const arquivos = await Promise.all(
-      nomes.map(async (nome) => ({ nome, texto: await deps.lerArquivo(join(pastaDoCofre, nome)) })),
-    )
+    // Em lotes: o cofre passa de mil arquivos e abri-los todos de uma vez estoura o limite de fds.
+    const arquivos: { nome: string; texto: string }[] = []
+    for (let i = 0; i < nomes.length; i += 64) {
+      arquivos.push(
+        ...(await Promise.all(
+          nomes
+            .slice(i, i + 64)
+            .map(async (nome) => ({
+              nome,
+              texto: await deps.lerArquivo(join(pastaDoCofre, nome)),
+            })),
+        )),
+      )
+    }
     const { decisoes, ilegiveis } = decisoesDoDia(arquivos, dia, REPO)
     const commits = lerCommits(await deps.git(argsDoGitLog(janela), deps.cwd), janela)
     const movidos = await lerNumerosMovidos(deps.graphql, {

@@ -144,7 +144,7 @@ export function lerDecisao(
     tipo,
     escopo: escopo.trim(),
     card: casa ? card : null,
-    substitui: substitui === undefined ? null : substitui,
+    substitui: substitui === undefined || substitui.trim() === '' ? null : substitui,
     titulo,
     fato,
     porque,

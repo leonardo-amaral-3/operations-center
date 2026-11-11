@@ -111,6 +111,10 @@ describe('lerDecisao (spec-p1 §2)', () => {
     expect(d?.card).toBeNull()
   })
 
+  it('substitui vazio vale como ausente', () => {
+    expect(lerDecisao('x.md', arquivo(`${FM}\nsubstitui:`, '# A\n'))?.substitui).toBeNull()
+  })
+
   it('substitui vem cru do frontmatter', () => {
     expect(lerDecisao('x.md', arquivo(`${FM}\nsubstitui: 1234`, '# A\n'))?.substitui).toBe('1234')
   })
