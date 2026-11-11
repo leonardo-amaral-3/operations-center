@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   comandoDoG4,
@@ -68,5 +69,15 @@ describe('promptDoG4', () => {
     expect(p).toContain('PARADA: G4 da PR #9: sem bloqueante · parecer <url do comentário>')
     expect(p).toContain('PARADA: G4 da PR #9: <N> bloqueante(s) · parecer <url do comentário>')
     expect(p.endsWith('\n')).toBe(false)
+  })
+})
+
+describe('fabrica/README.md', () => {
+  it('descreve a estação G4 antes de "Por que não no CLAUDE.md"', () => {
+    const readme = readFileSync('fabrica/README.md', 'utf8')
+    const g4 = readme.indexOf('## A estação G4 do yarn fabrica')
+    const claude = readme.indexOf('## Por que não no CLAUDE.md')
+    expect(g4).toBeGreaterThan(-1)
+    expect(claude).toBeGreaterThan(g4)
   })
 })
