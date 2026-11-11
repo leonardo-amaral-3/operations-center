@@ -23,10 +23,7 @@ describe('trilhaDa', () => {
     const casos: Array<[TelaDaFabrica, string[]]> = [
       [{ tela: 'agentes' }, ['Sala de controle', 'Agentes']],
       [{ tela: 'pergunta', item: 'q-1' }, ['Sala de controle', 'Esperando você', 'Pergunta']],
-      [
-        { tela: 'decisao', item: 'q-1' },
-        ['Sala de controle', 'Esperando você', 'Validação em dev'],
-      ],
+      [{ tela: 'decisao', item: 'q-1' }, ['Sala de controle', 'Esperando você', 'Revisão · G4']],
       [{ tela: 'card', card: 129 }, ['Sala de controle', 'Linha', '#129']],
       [{ tela: 'entrada' }, ['Sala de controle', 'Entrada']],
       [{ tela: 'relatorio' }, ['Sala de controle', 'Relatório de 11/11']],

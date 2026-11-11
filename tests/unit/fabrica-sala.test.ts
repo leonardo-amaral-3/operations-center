@@ -11,11 +11,13 @@ import {
   montarPergunta,
   montarSala,
   ondeRodaDo,
+  prDoMotivo,
   tipoDoItem,
+  urlDaPr,
   urlDoCard,
 } from '../../src/core/fabrica/sala'
+import type { Desfecho, Despacho, EstadoDaFabrica, ItemDaFila } from '../../src/core/fabrica/tipos'
 import type { RecursosDaFabrica } from '../../src/shared/fabrica'
-import type { EstadoDaFabrica, ItemDaFila } from '../../src/core/fabrica/tipos'
 import { identidade } from '../../src/main/fabrica/arquivos'
 import {
   estadoDoDespachante,
@@ -27,6 +29,9 @@ import {
 } from '../../src/main/fabrica/sala'
 
 const FIXTURE = join(__dirname, '..', 'fixtures', 'fabrica', 'sala')
+const FIXTURE_F3 = join(__dirname, '..', 'fixtures', 'fabrica', 'f3')
+const estadoDaF3 = (): EstadoDaFabrica =>
+  parseEstado(readFileSync(join(FIXTURE_F3, 'estado.json'), 'utf8'))
 const estadoDaFixture = (): EstadoDaFabrica =>
   parseEstado(readFileSync(join(FIXTURE, 'estado.json'), 'utf8'))
 const FIXTURE_F2 = join(__dirname, '..', 'fixtures', 'fabrica', 'f2')
@@ -76,14 +81,115 @@ describe('tipo e estação (F1.5)', () => {
     expect(estacaoDoComando('/gm-constructor')).toBeNull()
   })
 
-  it('tipoDoItem é sempre pergunta na F1, e a sala o preenche', () => {
-    const e = estadoDaFixture()
-    expect(e.fila.map(tipoDoItem).every((t) => t === 'pergunta')).toBe(true)
-    const sala = montarSala(e, CTX)
+  it('a sala da F1 segue toda pergunta (Q16) e preenche a estação', () => {
+    const sala = montarSala(estadoDaFixture(), CTX)
     expect([...sala.abertos, ...sala.fechados].every((i) => i.tipo === 'pergunta')).toBe(true)
     expect(sala.emVoo.map((d) => d.estacao)).toEqual(
       sala.emVoo.map((d) => estacaoDoComando(d.comando)),
     )
+  })
+})
+
+describe('tipoDoItem: Decisão só pela origem (F3, CA-3.4)', () => {
+  const item = (motivo: string): ItemDaFila => ({
+    id: 'q-0001',
+    card: 1,
+    motivo,
+    despacho: 'd-0001',
+    sessaoClaude: null,
+    criadoEm: '2026-11-11T09:00:00.000Z',
+    fechadoEm: null,
+    resolucao: null,
+  })
+  const origem = (comando: string, desfecho: Desfecho | null): Despacho => ({
+    id: 'd-0001',
+    frente: 'fr-0001',
+    card: 1,
+    comando,
+    nota: null,
+    estado: 'concluido',
+    pid: null,
+    criadoEm: '2026-11-11T09:00:00.000Z',
+    lancadoEm: null,
+    concluidoEm: null,
+    sessaoClaude: null,
+    desfecho,
+  })
+  const COM_PR = 'PR #970 aberta na dev (Card: #962); o merge é da orquestradora'
+
+  it.each([
+    [
+      '/gm-ship parada com PR',
+      origem('/gm-ship /x', { tipo: 'parada', motivo: COM_PR }),
+      COM_PR,
+      'decisao',
+    ],
+    [
+      '/gm-ship parada sem PR',
+      origem('/gm-ship /x', { tipo: 'parada', motivo: 'sem pr' }),
+      'sem pr',
+      'pergunta',
+    ],
+    [
+      '/gm-ship falha citando PR',
+      origem('/gm-ship /x', { tipo: 'falha', motivo: COM_PR }),
+      COM_PR,
+      'pergunta',
+    ],
+    [
+      '/gm-ship com proximo citando PR',
+      origem('/gm-ship /x', { tipo: 'proximo', comando: '/gm-release' }),
+      COM_PR,
+      'pergunta',
+    ],
+    ['/gm-ship sem desfecho', origem('/gm-ship /x', null), COM_PR, 'pergunta'],
+    [
+      '/gm-spec parada citando PR',
+      origem('/gm-spec #1', { tipo: 'parada', motivo: COM_PR }),
+      COM_PR,
+      'pergunta',
+    ],
+  ] as const)('%s → %s', (_nome, o, motivo, esperado) => {
+    expect(tipoDoItem(item(motivo), o)).toBe(esperado)
+  })
+
+  it('origem fora do estado → pergunta', () => {
+    expect(tipoDoItem(item(COM_PR), undefined)).toBe('pergunta')
+  })
+
+  it('o item real (q-0010, d-0009; valores da Q5, escritos aqui) é decisão e a PR é a 128', () => {
+    const motivo = 'PR #128 aberta na dev (Card: #126); o merge é da orquestradora'
+    const e: EstadoDaFabrica = {
+      ...estadoDaF3(),
+      despachos: [
+        origem('/gm-ship /home/leo/pessoal/planning/118-fabrica-agentica fase P3b (#126)', {
+          tipo: 'parada',
+          motivo,
+        }),
+      ].map((d) => ({ ...d, id: 'd-0009' })),
+      fila: [{ ...item(motivo), id: 'q-0010', card: 126, despacho: 'd-0009' }],
+    }
+    expect(tipoDoItem(e.fila[0]!, e.despachos[0])).toBe('decisao')
+    const p = montarPergunta(e, 'q-0010', null)
+    expect(p?.item.tipo).toBe('decisao')
+    expect(p?.pr).toBe(128)
+  })
+})
+
+describe('prDoMotivo e urlDaPr', () => {
+  it.each([
+    ['PR #970 aberta', 970],
+    ['aberta (PR #12)', 12],
+    ['PR #0', null],
+    ['PRs #3', null],
+    ['sem pr', null],
+    ['PR #7 e PR #9', 7],
+  ])('%j → %j', (motivo, esperado) => {
+    expect(prDoMotivo(motivo)).toBe(esperado)
+  })
+
+  it('urlDaPr aponta para a PR no repositório da fábrica', () => {
+    expect(urlDaPr(970)).toBe('https://github.com/leonardo-amaral-3/operations-center/pull/970')
   })
 })
 
@@ -329,6 +435,96 @@ describe('montarPergunta', () => {
   })
 })
 
+describe('a fixture f3 (F3.7)', () => {
+  const sala = montarSala(estadoDaF3(), CTX)
+
+  it('montarSala: os tipos e a ordem do esperado F3', () => {
+    expect(sala.abertos.map((i) => [i.id, i.card, i.tipo])).toEqual([
+      ['q-0009', 961, 'pergunta'],
+      ['q-0013', 962, 'decisao'],
+      ['q-0016', 963, 'pergunta'],
+      ['q-0017', 964, 'decisao'],
+    ])
+    expect(sala.fechados.map((i) => [i.id, i.tipo])).toEqual([['q-0003', 'pergunta']])
+  })
+
+  it('montarPergunta do q-0013: parada, PR 970 e os três passos', () => {
+    const p = montarPergunta(estadoDaF3(), 'q-0013', null)
+    expect(p?.fim).toBe('parada')
+    expect(p?.pr).toBe(970)
+    expect(p?.prUrl).toBe(urlDaPr(970))
+    expect(p?.passos).toEqual([
+      {
+        despacho: 'd-0007',
+        skill: 'gm-plan-tasks',
+        comando: '/gm-plan-tasks /home/u/pessoal/planning/962-fila',
+        fim: 'proximo',
+        detalhe: '/gm-implement /home/u/pessoal/planning/962-fila',
+        em: '2026-11-11T08:20:00.000Z',
+      },
+      {
+        despacho: 'd-0008',
+        skill: 'gm-implement',
+        comando: '/gm-implement /home/u/pessoal/planning/962-fila',
+        fim: 'proximo',
+        detalhe: '/gm-ship /home/u/pessoal/planning/962-fila',
+        em: '2026-11-11T08:45:00.000Z',
+      },
+      {
+        despacho: 'd-0010',
+        skill: 'gm-ship',
+        comando: '/gm-ship /home/u/pessoal/planning/962-fila',
+        fim: 'parada',
+        detalhe: 'PR #970 aberta na dev (Card: #962); o merge é da orquestradora',
+        em: '2026-11-11T09:00:00.000Z',
+      },
+    ])
+  })
+
+  it('montarPergunta do q-0009: pergunta, sem PR, um passo', () => {
+    const p = montarPergunta(estadoDaF3(), 'q-0009', null)
+    expect(p?.item.tipo).toBe('pergunta')
+    expect(p?.pr).toBeNull()
+    expect(p?.prUrl).toBeNull()
+    expect(p?.fim).toBe('parada')
+    expect(p?.passos.map((x) => x.despacho)).toEqual(['d-0005'])
+  })
+
+  it('origem fora do estado → fim null e passos vazios', () => {
+    const p = montarPergunta({ ...estadoDaF3(), despachos: [] }, 'q-0009', null)
+    expect(p?.fim).toBeNull()
+    expect(p?.passos).toEqual([])
+  })
+
+  it('despacho sem desfecho na frente → fim, detalhe e em null', () => {
+    const e = estadoDaF3()
+    const despachos = e.despachos.map((d) =>
+      d.id === 'd-0010' ? { ...d, desfecho: null, concluidoEm: null } : d,
+    )
+    const p = montarPergunta({ ...e, despachos }, 'q-0013', null)
+    expect(p?.fim).toBeNull()
+    expect(p?.item.tipo).toBe('pergunta')
+    expect(p?.passos.at(-1)).toMatchObject({
+      despacho: 'd-0010',
+      fim: null,
+      detalhe: null,
+      em: null,
+    })
+  })
+
+  describe('lerPergunta numa cópia da f3', () => {
+    let pasta = ''
+    afterEach(() => rmSync(pasta, { recursive: true, force: true }))
+    it('q-0009 traz o resultado do saida.json; q-0016 não tem', () => {
+      pasta = mkdtempSync(join(__dirname, '..', '..', 'node_modules', '.oc-fabrica-teste-'))
+      cpSync(FIXTURE_F3, pasta, { recursive: true })
+      expect(lerPergunta(pasta, 'q-0009')?.resultado).toContain('A spec do #961 está escrita')
+      expect(lerPergunta(pasta, 'q-0016')?.resultado).toBeNull()
+      expect(lerPergunta(pasta, 'q-0013')?.pr).toBe(970)
+    })
+  })
+})
+
 describe('a leitura da sala', () => {
   const pastas: string[] = []
   const nova = (): string => {
@@ -529,9 +725,9 @@ describe('pastaDaSala', () => {
 })
 
 describe('a sala só lê', () => {
-  // O app não escreve na pasta da fábrica: fechar um item é `yarn fabrica fechar`, que passa pelo
-  // cadeado do estado.json (spec P3 §A3, CA-3a.3). Por isso o arquivo da sala não pode nem citar uma
-  // porta de escrita; o teste procura no texto inteiro, comentário incluído.
+  // O app escreve na pasta da fábrica só pelo `executar` do canal de comando (`comando.ts`), que passa
+  // pelo cadeado do estado.json (spec P3 §A3, CA-3a.3; F3). O `sala.ts` continua sem porta de
+  // escrita: o teste procura no texto inteiro, comentário incluído.
   const PROIBIDOS = [
     'alterarEstado',
     'gravarEstado',

@@ -6,6 +6,7 @@ import { RelatorioDaSalaView } from './Relatorio'
 import { trilhaDa, type NomeDaTela, type TelaDaFabrica } from './rotas'
 import { Agentes } from './telas/Agentes'
 import { CardEmVoo } from './telas/Card'
+import { Decisao } from './telas/Decisao'
 import { Entrada } from './telas/Entrada'
 import { Pergunta } from './telas/Pergunta'
 import { Sala } from './telas/Sala'
@@ -43,7 +44,7 @@ export const TELAS: Record<NomeDaTela, (p: PropsDaTela) => JSX.Element> = {
     </>
   ),
   agentes: Agentes,
-  decisao: porVir('F3'),
+  decisao: Decisao,
   card: CardEmVoo,
   entrada: Entrada,
   portfolio: porVir('F5'),
