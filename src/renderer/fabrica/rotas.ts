@@ -22,7 +22,7 @@ export type TelaDaFabrica =
   | { tela: 'agentes' }
   | { tela: 'entrada' }
   | { tela: 'relatorio'; dia?: string } // dia `AAAA-MM-DD`
-  | { tela: 'portfolio' }
+  | { tela: 'portfolio'; dia?: string } // dia `AAAA-MM-DD`
   | { tela: 'mandato' }
   | { tela: 'briefing' }
   | { tela: 'release' }

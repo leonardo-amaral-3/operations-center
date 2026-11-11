@@ -558,7 +558,6 @@ async function gerarDoDia(window: Page): Promise<void> {
   await abrirSala(window)
   await window.getByTestId('fabrica-nav-relatorio').click()
   await window.getByTestId('relatorio-dia').fill('2026-11-10')
-  await window.getByTestId('relatorio-gerar').click()
 }
 
 test('o relatório na sala', async () => {
@@ -567,10 +566,14 @@ test('o relatório na sala', async () => {
 
   try {
     await gerarDoDia(window)
-    const corpo = window.getByTestId('relatorio-corpo')
-    await expect(corpo).toContainText('Relatório do dia 2026-11-10', { timeout: 20_000 })
-    await expect(corpo).toContainText(
-      'Fábrica agêntica: o Operations Center despacha, governa e presta contas',
+    await expect(window.getByTestId('fabrica-relatorio-frase')).toContainText('#118', {
+      timeout: 20_000,
+    })
+    await expect(window.locator('[data-testid="fabrica-kpi"][data-kpi="cofre"]')).toContainText(
+      '14',
+    )
+    await expect(window.locator('[data-testid="fabrica-kpi"][data-kpi="chaves"]')).toContainText(
+      '7',
     )
   } finally {
     await app.close()

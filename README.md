@@ -109,7 +109,7 @@ vazia e ninguém é avisado. Confira com `gh auth status`; se faltar, `gh auth r
 | `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                                                                                                                                    |
 | `yarn format`    | Prettier                                                                                                                                                                                                                                                                                                                                                         |
 | `yarn -s relatorio` | o relatório de um dia da fábrica (#118), em markdown no stdout: por frente, a partir do cofre de decisões, do board e do git, e toda linha cita a fonte. `yarn -s relatorio 2026-11-10` escolhe o dia (em UTC, como o cofre); `--cofre <pasta>` troca a pasta do cofre, que por padrão é `~/notoria/claude/decisoes`. O `-s` tira as linhas do próprio yarn do stdout. Só lê: não escreve no cofre, no board nem no git |
-| `yarn fabrica` | despacha as sessões `claude -p` da prova da fábrica (#118): `iniciar <n>`, `estado`, `fechar <item> "<resolução>"`, `entrada "<texto>"`, `triar <item> "<resolução>"`, `pausar` e `retomar` (a pausa é o `pausa.json` da pasta: com ele o `rodar` não lança despacho novo, mas segue recolhendo os que terminam); a `entrada` grava o texto no `entrada.json` da pasta da fábrica, o `estado` lista o que ainda não foi triado, e o `rodar` não despacha nada da entrada; sem subcomando, gira até não sobrar nada em voo. Só no Linux |
+| `yarn fabrica` | despacha as sessões `claude -p` da prova da fábrica (#118): `iniciar <n>`, `estado`, `fechar <item> "<resolução>"`, `entrada "<texto>"`, `triar <item> "<resolução>"`, `confirmar <arquivo>`, `contestar <arquivo> "<motivo>"`, `atender <arquivo> "<resolução>"`, `pausar` e `retomar` (a pausa é o `pausa.json` da pasta: com ele o `rodar` não lança despacho novo, mas segue recolhendo os que terminam); a `entrada` grava o texto no `entrada.json` da pasta da fábrica, o `estado` lista o que ainda não foi triado, e o `rodar` não despacha nada da entrada; as revisões das decisões do cofre ficam no `revisoes.jsonl` da pasta da fábrica, só de acréscimo, e vale a primeira de cada arquivo; o `estado` lista as contestações até o `atender`; sem subcomando, gira até não sobrar nada em voo. Só no Linux |
 
 `yarn lint`, `yarn typecheck` e `yarn test` formam o portão de qualidade, e são exatamente o que o
 CI roda a cada PR para `dev` e `main`. Os smokes ficam de fora do CI de propósito: o runner nem
@@ -140,11 +140,17 @@ e o que fazer se o PC cair. Os recursos vêm de leituras só de leitura: as **se
 processos da máquina que carregam a marca do mandato da `dev` (lido do GitHub e guardado por 60 s) contra o
 teto de 3; a **suíte de smoke** é o cadeado do `yarn smoke` (`/proc/locks` no Linux, o card vem da pasta
 em que o dono roda); o **disco** é o espaço livre da partição da pasta da fábrica contra o mínimo de 2 GB.
-Fora do Linux, sessões e suíte aparecem como "sem leitura". O Relatório gera o relatório de um dia com o mesmo código do `yarn relatorio`,
-lendo o cofre de `OC_RELATORIO_COFRE` (default `~/notoria/claude/decisoes`) e o git de
-`OC_RELATORIO_REPO` (default `~/pessoal/operations-center`). As outras telas chegam nas fases F2 a F6
-do épico #129. Pausar, retomar, fechar um item e mandar para a entrada são as únicas escritas do app na pasta
-da fábrica: o app roda `yarn fabrica pausar`/`retomar`/`fechar`/`entrada` pelo canal `fabrica:comando`. Fora
+Fora do Linux, sessões e suíte aparecem como "sem leitura". O **Relatório** mostra o painel do dia montado pelo mesmo código do `yarn relatorio`
+(a frase de cada frente, os números, o esforço por repo do cofre inteiro, as decisões-chave do
+operations-center, as estacionadas e a rotina), do dia escolhido no seletor, lendo o cofre de
+`OC_RELATORIO_COFRE` (default `~/notoria/claude/decisoes`) e o git de `OC_RELATORIO_REPO` (default
+`~/pessoal/operations-center`); o **Portfólio** mostra os objetivos do `fabrica/DIRECAO.md` desse repo e
+a trilha de decisões do dia, com filtros; nos dois, Confirmar e Contestar uma provisória gravam pelo
+`yarn fabrica confirmar`/`contestar`. O **Mandato** mostra, só leitura, quem decide cada portão
+segundo o `fabrica/MANDATO.md` da `dev`, as regras e a linha de base do placar (claude-brain#28). O
+Briefing e o Release chegam na F6 do épico #129. Pausar, retomar, fechar um item, mandar para a entrada e
+confirmar ou contestar uma decisão são as únicas escritas do app na pasta da fábrica: o app roda `yarn
+fabrica pausar`/`retomar`/`fechar`/`entrada`/`confirmar`/`contestar` pelo canal `fabrica:comando`. Fora
 dela, **Assumir a sessão** grava no `conversations.json` do app a sessão do despacho como a conversa do
 cartão. Sem `OC_FABRICA_DIR`, o app lê `~/pessoal/claude/despachos-fabrica`.
 
@@ -172,37 +178,6 @@ A comparação com o protótipo se gera com `OC_SMOKE_HEADLESS=1 yarn smoke -- t
 estático do `.dc.html` de `tests/fixtures/prototipo/`) e `<Tela>-app.png` (a tela no app, com fixture), e um
 `index.html` que os põe lado a lado, em `test-results/comparacao/`. `OC_COMPARACAO_DIR=<pasta>` troca a
 pasta de saída, que o smoke apaga e recria. A variável é lida só pelo smoke, nunca pelo app.
-
-## Executável`)                                                                                                                                                                                                                                                                           |
-| `yarn test`      | Vitest — as unidades do core. Sem rede, sem credencial, determinístico                                                                                                                                                                                                                                                                                           |
-| `yarn smoke`     | compila e roda todos os smokes de ponta a ponta (Playwright + Electron): os que **leem fixture** e não tocam a rede — o do kanban, o do conteúdo do cartão, o da aba PR, o do tema, o da triagem, o da janela e o do terminal —, e os que **sobem sessão real** — o da fatia vertical, o do terminal Claude no cartão, o da retomada, o das abas, o da sessão livre e o da janela do card —, que precisam do login e **consomem cota**. No Linux, uma suíte por vez na máquina: a segunda espera o cadeado da primeira; `npx playwright test` direto passa por fora dele |
-| `yarn lint`      | ESLint                                                                                                                                                                                                                                                                                                                                                           |
-| `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                                                                                                                                    |
-| `yarn format`    | Prettier                                                                                                                                                                                                                                                                                                                                                         |
-| `yarn -s relatorio` | o relatório de um dia da fábrica (#118), em markdown no stdout: por frente, a partir do cofre de decisões, do board e do git, e toda linha cita a fonte. `yarn -s relatorio 2026-11-10` escolhe o dia (em UTC, como o cofre); `--cofre <pasta>` troca a pasta do cofre, que por padrão é `~/notoria/claude/decisoes`. O `-s` tira as linhas do próprio yarn do stdout. Só lê: não escreve no cofre, no board nem no git |
-| `yarn fabrica` | despacha as sessões `claude -p` da prova da fábrica (#118): `iniciar <n>`, `estado`, `fechar <item> "<resolução>"`, `pausar` e `retomar` (a pausa é o `pausa.json` da pasta: com ele o `rodar` não lança despacho novo, mas segue recolhendo os que terminam); sem subcomando, gira até não sobrar nada em voo. Só no Linux |
-
-`yarn lint`, `yarn typecheck` e `yarn test` formam o portão de qualidade, e são exatamente o que o
-CI roda a cada PR para `dev` e `main`. Os smokes ficam de fora do CI de propósito: o runner nem
-baixa o binário do Electron, e os que sobem sessão ainda dependem do login local, que ele
-não tem.
-
-No Linux, `OC_SMOKE_HEADLESS=1` sobe o Electron sem janela (`--ozone-platform=headless`, tela
-virtual de 1920×1080), e os smokes rodam sem roubar o foco de quem trabalha. É lida só pelo smoke,
-nunca pelo app.
-
-O `yarn fabrica` guarda o estado em `OC_FABRICA_DIR` (default: `<pasta-mãe do repo>/claude/despachos-fabrica`):
-`estado.json` e uma pasta `sessoes/<id>/` por sessão, com o prompt, a saída JSON e o stderr. Uma
-pasta no `/tmp` é recusada. O mandato é lido de `fabrica/MANDATO.md` da `dev` a cada despacho. As
-sessões sobem destacadas: matar o despachante (o pid em `rodar.pid`, e não o do `yarn`) não mata
-nenhuma, e ele as adota quando é religado.
-
-No app, o botão **Fábrica** do cabeçalho troca o kanban pela sala da fábrica: a fila de decisões, os
-despachos em voo e se o despachante está rodando, relidos do `estado.json` a cada 5 s. Clicar num item
-mostra o texto final da sessão que o gerou e o comando para fechá-lo. O app só lê essa pasta: fechar um
-item continua sendo `yarn fabrica fechar`. Sem `OC_FABRICA_DIR`, o app lê `~/pessoal/claude/despachos-fabrica`. A aba **Relatório** da sala gera o relatório de um dia com o mesmo
-código do `yarn relatorio`, lendo o cofre de `OC_RELATORIO_COFRE` (default `~/notoria/claude/decisoes`)
-e o git de `OC_RELATORIO_REPO` (default `~/pessoal/operations-center`).
 
 ## Executável
 
@@ -252,11 +227,11 @@ Sem banco e sem arquivo de config. Variáveis de ambiente lidas no main:
 | `OC_PR_FIXTURE`      | ausente: nenhum cartão tem aba PR com conteúdo                                | caminho de um JSON `{ "pulls": { "<pr>": resposta da API }, "files": { "<pr>": lista de arquivos } }` com o PR inteiro — conversa, CI e arquivos com patch. A ligação cartão → PR **não** mora nele: vem da `timelineItems` do `OC_CARD_FIXTURE`. É o par dele no **smoke da aba PR**; PR sem entrada no mapa vira erro dentro da aba, e não aba vazia |
 | `OC_CLAUDE_PROJECTS` | ausente: `CLAUDE_CONFIG_DIR` se houver, senão `~/.claude/projects`            | raiz dos transcripts do Claude Code, de onde sai o mapa `repo → pasta local` em que a sessão de um cartão roda. Existe **para os smokes do cartão-chat e das abas**, que apontam para uma raiz temporária e fazem a descoberta rodar inteira sobre repos descartáveis                                                                                                                                                                                                                                                                                                                                                                               |
 | `OC_STATE_DIR`       | ausente: o `userData` do Electron — no Windows, `%APPDATA%\operations-center` | pasta em que o app grava o próprio estado, hoje em cinco arquivos: `conversations.json`, o vínculo `cartão → sessão do Claude Code` que faz a conversa voltar depois de fechar e reabrir; `dangerous.json`, a lista dos cartões marcados para rodar sem pedir permissão; `preferences.json`, a aba que estava ativa e a combinação de cores escolhida quando o app fechou; `free-sessions.json`, as sessões livres (sem cartão), com pasta, título e a conversa a retomar; e `layout.json`, a mesa — terminais abertos, painel lateral e tamanhos. Ser diretório, e não arquivo, é o que permitiu os outros nascerem sem uma segunda variável. Com ela, o Chromium do app também grava o dele em `<OC_STATE_DIR>/chromium`, e o smoke não toca o userData real. Existe **para os smokes da retomada, do cartão-chat, das abas, do tema, do terminal e da sessão livre**, que apontam para uma pasta temporária em vez de sujar o estado real de quem os roda |
-| `OC_FABRICA_DIR` | ausente: `~/pessoal/claude/despachos-fabrica` | a pasta da fábrica que a sala lê (#122): `estado.json`, `entrada.json`, `rodar.pid` e `sessoes/`. O app lê; quando escreve, é pelos subcomandos do `yarn fabrica` do canal `fabrica:comando`, que usa a mesma variável. Nos smokes da sala, uma cópia da fixture |
-| `OC_RELATORIO_COFRE` | ausente: `~/notoria/claude/decisoes` | o cofre de decisões que a aba Relatório da sala lê (#126). O app só lê |
+| `OC_FABRICA_DIR` | ausente: `~/pessoal/claude/despachos-fabrica` | a pasta da fábrica que a sala lê (#122): `estado.json`, `entrada.json`, `revisoes.jsonl`, `rodar.pid` e `sessoes/`. O app lê; quando escreve, é pelos subcomandos do `yarn fabrica` do canal `fabrica:comando`, que usa a mesma variável. Nos smokes da sala, uma cópia da fixture |
+| `OC_RELATORIO_COFRE` | ausente: `~/notoria/claude/decisoes` | o cofre de decisões que as telas Relatório e Portfólio leem (#126, #134). O app só lê; o `yarn fabrica confirmar` só confere que o arquivo existe nele |
 | `OC_RELATORIO_REPO` | ausente: `~/pessoal/operations-center` | o repo cujo `git log` entra no relatório da aba Relatório |
 | `OC_RELATORIO_FIXTURE` | ausente: os documentos do relatório respondem erro na fixture | caminho de um JSON com as respostas de GraphQL do relatório. Só é consultada com `OC_BOARD_FIXTURE`, e é o par dela no smoke da aba Relatório |
-| `OC_FABRICA_MANDATO_FIXTURE` | ausente: o mandato vem da `dev` do GitHub, e a fixture do board responde `sem fixture do mandato` | caminho de um arquivo de texto cuja primeira linha é a marca do mandato que a Sala e Agentes usam para contar as sessões da fábrica. Só é consultada com `OC_BOARD_FIXTURE`, e é o par dela no smoke da F2 |
+| `OC_FABRICA_MANDATO_FIXTURE` | ausente: o mandato vem da `dev` do GitHub, e a fixture do board responde `sem fixture do mandato` | caminho de um arquivo de texto cuja primeira linha é a marca do mandato que a Sala e Agentes usam para contar as sessões da fábrica, e que a tela Mandato lê inteiro. Só é consultada com `OC_BOARD_FIXTURE`, e é o par dela no smoke da F2 |
 | `OC_SMOKE_CADEADO` | ausente: o cadeado padrão do `yarn smoke` (`/run/user/<uid>/operations-center-smoke.lock`, ou `/tmp/operations-center-smoke-<uid>.lock`) | caminho do arquivo de cadeado da suíte de smoke que a Sala lê (no Linux) para mostrar quem a segura. O app só lê; quem a segura é o `flock` do `yarn smoke`. Existe **para o smoke da F2**, que segura um cadeado próprio; fora dele, não há razão para tocá-la |
 
 `OC_SCREEN`, `OC_BOARD_FIXTURE`, `OC_BOARDS_FIXTURE`, `OC_CARD_FIXTURE`, `OC_PR_FIXTURE`, `OC_CLAUDE_PROJECTS` e

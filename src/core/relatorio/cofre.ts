@@ -18,7 +18,7 @@ export function janelaDoDia(dia: string): Janela {
 }
 
 /** Tira os acentos e põe em minúsculas: as marcas do mandato variam na grafia (R7). */
-function normalizar(texto: string): string {
+export function normalizar(texto: string): string {
   return texto.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 }
 

@@ -158,12 +158,17 @@ describe('a superfície de board é somente-leitura', () => {
     //
     // **E a do canal de escrita da fábrica (#129)**: `fabrica:comando` é o **único** canal que
     // escreve na pasta da fábrica, e só por um subcomando do `yarn fabrica` numa lista fechada
-    // (`SUBCOMANDOS_DO_APP`: `pausar`, `retomar`, `fechar`, `entrada`). Não toca o board, nem para
+    // (`SUBCOMANDOS_DO_APP`: `pausar`, `retomar`, `fechar`, `entrada`, `confirmar`, `contestar`). Não toca o board, nem para
     // ler; fica na família `fabrica:`, sem exceção nominal no filtro de `boards:`/`card:`.
     //
     // **E os dois de leitura da F4 (#133)**: `fabrica:read-card` e `fabrica:read-entrada` só leem a
     // pasta da fábrica (o despacho de um card, o `entrada.json`), nunca escrevem e não tocam o
     // board. O card chega por número, e a pasta não atravessa a ponte.
+    //
+    // **E os dois de leitura da F5 (#134)**: `fabrica:read-revisoes` só lê o `revisoes.jsonl` da pasta
+    // da fábrica. `fabrica:read-mandato` lê o `fabrica/MANDATO.md` da `dev` pela GraphQL, como o
+    // `fabrica:read`: é leitura do GitHub, sem tocar o board nem o Project, e por isso entra no filtro
+    // e na lista abaixo. Nenhum dos dois escreve.
     //
     // **E a do `fabrica:assumir` (#133)**: assumir a sessão de um despacho no cartão do card. Grava a
     // conversa do cartão (`itemId → sessão`) no `conversations.json` do app, como abrir o chat de um
@@ -220,6 +225,8 @@ describe('a superfície de board é somente-leitura', () => {
       readFabricaCard: 'fabrica:read-card',
       readFabricaEntrada: 'fabrica:read-entrada',
       assumirDespacho: 'fabrica:assumir',
+      readFabricaRevisoes: 'fabrica:read-revisoes',
+      readFabricaMandato: 'fabrica:read-mandato',
       readRelatorio: 'relatorio:read',
     })
   })
@@ -302,7 +309,8 @@ describe('a superfície de board é somente-leitura', () => {
         canal.startsWith('boards:') ||
         canal.startsWith('card:') ||
         canal.startsWith('relatorio:') ||
-        canal === 'fabrica:read',
+        canal === 'fabrica:read' ||
+        canal === 'fabrica:read-mandato',
     )
 
     // A ordem é a de declaração dos mapas: os `invoke` primeiro, o evento depois.
@@ -311,6 +319,7 @@ describe('a superfície de board é somente-leitura', () => {
       'card:read',
       'card:read-pr',
       'fabrica:read',
+      'fabrica:read-mandato',
       'relatorio:read',
       'boards:changed',
     ])

@@ -24,6 +24,7 @@ import {
   lerCardDaFabrica,
   lerEntradaDaSala,
   lerPergunta,
+  lerRevisoesDaSala,
   lerSala,
   pastaDaSala,
 } from '../../src/main/fabrica/sala'
@@ -733,6 +734,7 @@ describe('a sala só lê', () => {
     'gravarEstado',
     'alterarEntrada',
     'gravarEntrada',
+    'acrescentarRevisao',
     'criarCadeado',
     'tomarSeMorto',
     'tomarRodar',
@@ -748,8 +750,10 @@ describe('a sala só lê', () => {
   ]
   // O `comando.ts` entra na mesma lista (#129): ele só chega à pasta pelo `executar` do CLI. O
   // `assumir.ts` (#133) também: ele grava a conversa do cartão no `conversations.json` do app, por
-  // dependência injetada, e não nomeia porta de escrita da pasta da fábrica.
-  it.each(['sala.ts', 'comando.ts', 'recursos.ts', 'assumir.ts'])(
+  // dependência injetada, e não nomeia porta de escrita da pasta da fábrica. O `mandatoNaSala.ts`
+  // (#134) também: só lê o mandato da `dev`. As revisões são escritas só pelo `revisoes.ts`, chamado
+  // pelo `executar` do CLI; o `lerRevisoesDaSala` do `sala.ts` só lê.
+  it.each(['sala.ts', 'comando.ts', 'recursos.ts', 'assumir.ts', 'mandatoNaSala.ts'])(
     'src/main/fabrica/%s não nomeia nenhuma porta de escrita',
     (arquivo) => {
       const texto = readFileSync(
@@ -826,5 +830,59 @@ describe('lerCardDaFabrica e lerEntradaDaSala (F4)', () => {
     expect(lerEntradaDaSala(pasta)).toEqual({ kind: 'ok', itens: [], total: 0 })
     writeFileSync(join(pasta, 'entrada.json'), '{torto')
     expect(lerEntradaDaSala(pasta).kind).toBe('ilegivel')
+  })
+})
+
+describe('lerRevisoesDaSala (F5)', () => {
+  const RAIZ = join(__dirname, '..', '..')
+  const F5 = join(__dirname, '..', 'fixtures', 'fabrica', 'f5')
+  const copias: string[] = []
+  afterEach(() => {
+    for (const c of copias.splice(0)) rmSync(c, { recursive: true, force: true })
+  })
+  function pastaDeTeste(): string {
+    const pasta = mkdtempSync(join(RAIZ, 'node_modules', '.oc-fabrica-teste-'))
+    copias.push(pasta)
+    // Antes de qualquer escrita: a pasta de teste nunca é a real.
+    expect(pasta).toContain('/node_modules/.oc-fabrica-teste-')
+    return pasta
+  }
+
+  it('sem revisoes.jsonl: ok e vazio', () => {
+    expect(lerRevisoesDaSala(pastaDeTeste())).toEqual({ kind: 'ok', revisoes: [], ilegiveis: 0 })
+  })
+
+  it('com a fixture f5: a revisão confirmada', () => {
+    expect(lerRevisoesDaSala(F5)).toEqual({
+      kind: 'ok',
+      revisoes: [
+        {
+          arquivo: '2026-11-10-a-sala-le-o-mandato-pela-graphql.md',
+          veredito: 'confirmada',
+          em: '2026-11-10T21:00:00.000Z',
+          motivo: null,
+          atendida: null,
+        },
+      ],
+      ilegiveis: 0,
+    })
+  })
+
+  it('com uma linha torta: ilegiveis 1, e as boas continuam', () => {
+    const pasta = pastaDeTeste()
+    cpSync(F5, pasta, { recursive: true })
+    writeFileSync(
+      join(pasta, 'revisoes.jsonl'),
+      `${readFileSync(join(F5, 'revisoes.jsonl'), 'utf8')}{torta\n`,
+    )
+    const r = lerRevisoesDaSala(pasta)
+    expect(r).toMatchObject({ kind: 'ok', ilegiveis: 1 })
+    expect(r.kind === 'ok' ? r.revisoes : []).toHaveLength(1)
+  })
+
+  it('com o arquivo como pasta: ilegivel, sem lançar', () => {
+    const pasta = pastaDeTeste()
+    mkdirSync(join(pasta, 'revisoes.jsonl'))
+    expect(lerRevisoesDaSala(pasta).kind).toBe('ilegivel')
   })
 })

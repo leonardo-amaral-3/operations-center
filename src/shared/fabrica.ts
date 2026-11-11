@@ -105,6 +105,8 @@ export type ComandoDaFabrica =
   | { tipo: 'retomar' }
   | { tipo: 'fechar'; item: string; resolucao: string } // F3
   | { tipo: 'entrada'; texto: string } // F4
+  | { tipo: 'confirmar'; arquivo: string } // F5
+  | { tipo: 'contestar'; arquivo: string; motivo: string } // F5
 
 export interface ResultadoDoComando {
   ok: boolean // codigo === 0
@@ -146,7 +148,14 @@ export interface ReadRelatorioRequest {
 }
 
 export type RelatorioDaSala =
-  | { kind: 'ok'; dia: string; markdown: string; semFonte: number; geradoEm: string }
+  | {
+      kind: 'ok'
+      dia: string
+      markdown: string
+      semFonte: number
+      geradoEm: string
+      painel: PainelDoDia // F5
+    }
   | { kind: 'erro'; dia: string; erro: string }
 
 /** Um despacho de um card, para a tela Card (F4). */
@@ -206,3 +215,69 @@ export interface AssumirDespachoRequest {
 export type AssumirDespachoResult =
   | { ok: true; anterior: string | null } // a conversa que o cartão tinha, quando era outra
   | { ok: false; motivo: string }
+
+/** Em qual seção do relatório a decisão caiu (a `Classe` da P1), ou `sem-repo` (escopo só número). */
+export type SecaoDaDecisao =
+  'chave' | 'provisoria' | 'estacionada' | 'desvio' | 'rotina' | 'sem-repo'
+
+/** Uma decisão do dia, do cofre (F5). */
+export interface DecisaoDoDia {
+  arquivo: string // o nome no cofre, sem pasta: a chave das revisões
+  escopo: string // cru, do frontmatter
+  card: number | null // o #n do escopo, quando o repo é o operations-center
+  frente: number | null // a raiz da frente no relatório da P1; null = sem card ou sem repo
+  secao: SecaoDaDecisao
+  motivo: string // o `motivo` do `classificar`; '' na rotina; 'escopo sem repo' no sem-repo
+  tipo: string // cru: 'decisao' | 'descoberta' | 'pendencia' | 'restricao' | …
+  titulo: string
+  porque: string | null
+  descartado: string | null
+  objetivos: string[] // 'P0'..'P3', da marca `objetivo:`
+  provisoria: boolean // marca `provisória: sim`
+  reversivel: 'sim' | 'nao' | null // marca `reversível: sim|não`; null sem marca
+  sob: string | null // o texto da marca `sob:`, sem o ponto final
+}
+
+/** A frase do dia de uma frente (a da P1, sem as fontes). */
+export interface FraseDoDia {
+  card: number | null
+  texto: string
+}
+
+/** O relatório do dia em dado, para as telas Relatório e Portfólio (F5). */
+export interface PainelDoDia {
+  frases: FraseDoDia[] // uma por frente, na ordem da P1 (a maior primeiro)
+  decisoes: DecisaoDoDia[] // as do operations-center e as de escopo sem repo, por `arquivo`
+  porRepo: Array<{ repo: string; decisoes: number }> // o cofre inteiro do dia, sem o sem-repo
+  noCofre: number // decisões legíveis do dia no cofre inteiro, sem-repo incluído
+  commits: number
+  objetivos: Array<{ codigo: string; nome: string }> | null // null = sem fabrica/DIRECAO.md
+}
+
+/** O veredito de uma decisão do cofre (F5), lido do `revisoes.jsonl`. */
+export interface RevisaoNaSala {
+  arquivo: string
+  veredito: 'confirmada' | 'contestada'
+  em: string // ISO
+  motivo: string | null // só na contestada
+  atendida: { em: string; resolucao: string } | null // só na contestada
+}
+
+export type RevisoesNaSala =
+  | { kind: 'ok'; revisoes: RevisaoNaSala[]; ilegiveis: number } // ilegiveis = linhas que não deram para ler
+  | { kind: 'ilegivel'; erro: string }
+
+/** Quem decide um portão: A (a fábrica decide), B (prepara e você aprova), C (só você). */
+export type QuemDecide = 'A' | 'B' | 'C'
+
+export interface PortaoDoMandato {
+  id: 'entrada' | 'g1' | 'g2' | 'g3' | 'impl' | 'g4' | 'val' | 'g5' | 'op'
+  nome: string
+  nota: string
+  quem: QuemDecide | null // null = o mandato não diz
+  travado: boolean // só o G5
+  fonte: string | null // a linha do mandato que sustenta o `quem`, sem o "- " do começo
+}
+
+export type MandatoNaSala =
+  { kind: 'ok'; portoes: PortaoDoMandato[]; regras: string[] } | { kind: 'erro'; erro: string }
