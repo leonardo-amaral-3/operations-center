@@ -753,7 +753,7 @@ describe('a sala só lê', () => {
   // dependência injetada, e não nomeia porta de escrita da pasta da fábrica. O `mandatoNaSala.ts`
   // (#134) também: só lê o mandato da `dev`. As revisões são escritas só pelo `revisoes.ts`, chamado
   // pelo `executar` do CLI; o `lerRevisoesDaSala` do `sala.ts` só lê.
-  it.each(['sala.ts', 'comando.ts', 'recursos.ts', 'assumir.ts', 'mandatoNaSala.ts'])(
+  it.each(['sala.ts', 'comando.ts', 'recursos.ts', 'assumir.ts', 'mandatoNaSala.ts', 'sessoes.ts'])(
     'src/main/fabrica/%s não nomeia nenhuma porta de escrita',
     (arquivo) => {
       const texto = readFileSync(
@@ -767,6 +767,19 @@ describe('a sala só lê', () => {
       ).toEqual([])
     },
   )
+
+  // As sessões da máquina (#142) só leem; nenhum sinal para processo. `skill` não conta: o `\b`
+  // exige fronteira antes do `k`.
+  it('src/main/fabrica/sessoes.ts não sinaliza processo', () => {
+    const regex = /\bkill\s*\(/
+    expect(regex.test('process.kill(1)')).toBe(true)
+    expect(regex.test('skillDaSessao(')).toBe(false)
+    const texto = readFileSync(
+      join(__dirname, '..', '..', 'src', 'main', 'fabrica', 'sessoes.ts'),
+      'utf8',
+    )
+    expect(texto).not.toMatch(regex)
+  })
 })
 
 describe('lerCardDaFabrica e lerEntradaDaSala (F4)', () => {

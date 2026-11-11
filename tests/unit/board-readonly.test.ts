@@ -229,6 +229,8 @@ describe('a superfície de board é somente-leitura', () => {
       assumirDespacho: 'fabrica:assumir',
       readFabricaRevisoes: 'fabrica:read-revisoes',
       readFabricaMandato: 'fabrica:read-mandato',
+      // Lê /proc e o git das pastas (#142); não escreve, não sinaliza processo, não toca o board.
+      readFabricaSessoes: 'fabrica:read-sessoes',
       readRelatorio: 'relatorio:read',
     })
   })

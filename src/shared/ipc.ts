@@ -13,6 +13,7 @@ import type {
   ComandoDaFabrica,
   EntradaNaSala,
   MandatoNaSala,
+  SessoesDaMaquina,
   PerguntaDaFila,
   AssumirDespachoRequest,
   AssumirDespachoResult,
@@ -169,6 +170,11 @@ export const IPC_INVOKE = {
    */
   readFabricaRevisoes: 'fabrica:read-revisoes',
   readFabricaMandato: 'fabrica:read-mandato',
+  /**
+   * As sessões `claude` vivas da máquina (#142): **lê** `/proc` e o `origin` das pastas pelo git.
+   * Não escreve em lugar nenhum, não sinaliza processo e não toca o board.
+   */
+  readFabricaSessoes: 'fabrica:read-sessoes',
   /**
    * O relatório do dia (#126), o mesmo do `yarn relatorio`. **Lê** o cofre, o git e o board, e não
    * escreve em nenhum dos três.
@@ -785,6 +791,7 @@ export interface OcApi {
   assumirDespacho(pedido: AssumirDespachoRequest): Promise<AssumirDespachoResult>
   readFabricaRevisoes(): Promise<RevisoesNaSala>
   readFabricaMandato(): Promise<MandatoNaSala>
+  readFabricaSessoes(): Promise<SessoesDaMaquina>
 }
 
 declare global {

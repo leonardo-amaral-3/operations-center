@@ -48,7 +48,7 @@ export function cwdDoProcesso(pid: number): string | null {
   }
 }
 
-function pids(): number[] {
+export function pids(): number[] {
   return readdirSync('/proc')
     .filter((n) => /^\d+$/.test(n))
     .map(Number)
