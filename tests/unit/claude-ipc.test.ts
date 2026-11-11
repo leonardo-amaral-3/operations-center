@@ -343,6 +343,28 @@ describe('estado e índice', () => {
   })
 })
 
+describe('sessaoAberta (#133)', () => {
+  it('devolve o sessionId do terminal vivo do escopo e null sem terminal', async () => {
+    const t = montar()
+    const escopo = { kind: 'card' as const, itemId: 'PVTI_x' }
+    expect(t.ipc.sessaoAberta(escopo)).toBeNull()
+
+    await t.open(CARD)
+
+    expect(t.ipc.sessaoAberta(CARD)).toBe(SID)
+    expect(t.ipc.sessaoAberta(escopo)).toBeNull()
+  })
+
+  it('card com conversa lembrada: devolve a sessão retomada', async () => {
+    const t = montar()
+    t.conversations.locate.mockResolvedValue({ sessionId: SID2, cwd: 'C:\\transcript' })
+
+    await t.open(CARD)
+
+    expect(t.ipc.sessaoAberta(CARD)).toBe(SID2)
+  })
+})
+
 describe('fechamento', () => {
   it('a saída do PTY emite closed sem esquecer', async () => {
     const t = montar()

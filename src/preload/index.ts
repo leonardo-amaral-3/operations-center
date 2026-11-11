@@ -14,6 +14,8 @@ import type {
   ComandoDaFabrica,
   EntradaNaSala,
   PerguntaDaFila,
+  AssumirDespachoRequest,
+  AssumirDespachoResult,
   ReadCardDaFabricaRequest,
   ReadPerguntaRequest,
   ReadRelatorioRequest,
@@ -227,6 +229,8 @@ const api: OcApi = {
     ipcRenderer.invoke(IPC_INVOKE.readFabricaCard, pedido) as Promise<CardNaFabrica>,
   readFabricaEntrada: () =>
     ipcRenderer.invoke(IPC_INVOKE.readFabricaEntrada) as Promise<EntradaNaSala>,
+  assumirDespacho: (pedido: AssumirDespachoRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.assumirDespacho, pedido) as Promise<AssumirDespachoResult>,
   openCardWindow: (request: OpenCardWindowRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.openCardWindow, request) as Promise<void>,
   bringBackCardWindow: (request: CardWindowRequest) =>

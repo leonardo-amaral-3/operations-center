@@ -535,6 +535,8 @@ describe('a sala só lê', () => {
   const PROIBIDOS = [
     'alterarEstado',
     'gravarEstado',
+    'alterarEntrada',
+    'gravarEntrada',
     'criarCadeado',
     'tomarSeMorto',
     'tomarRodar',
@@ -548,8 +550,10 @@ describe('a sala só lê', () => {
     'copyFile',
     'openSync',
   ]
-  // O `comando.ts` entra na mesma lista (#129): ele só chega à pasta pelo `executar` do CLI.
-  it.each(['sala.ts', 'comando.ts', 'recursos.ts'])(
+  // O `comando.ts` entra na mesma lista (#129): ele só chega à pasta pelo `executar` do CLI. O
+  // `assumir.ts` (#133) também: ele grava a conversa do cartão no `conversations.json` do app, por
+  // dependência injetada, e não nomeia porta de escrita da pasta da fábrica.
+  it.each(['sala.ts', 'comando.ts', 'recursos.ts', 'assumir.ts'])(
     'src/main/fabrica/%s não nomeia nenhuma porta de escrita',
     (arquivo) => {
       const texto = readFileSync(

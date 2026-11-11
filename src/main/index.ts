@@ -38,6 +38,8 @@ import {
 } from './conversations'
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
 import { REPO_DA_FABRICA } from '../core/fabrica/mandato'
+import { criarAssumir, registerAssumirIpc } from './fabrica/assumir'
+import { lerEstado } from './fabrica/arquivos'
 import { criarExecutorDeComando, registerComandoIpc } from './fabrica/comando'
 import { lerMandato, lerMandatoPelaGraphQL } from './fabrica/github'
 import { criarMarcaEmCache, lerRecursos, portasReais, worktreesDo } from './fabrica/recursos'
@@ -405,7 +407,7 @@ if (screen === 'kanban') {
   })
 }
 
-// O canal de escrita da fábrica (#129): roda `pausar`/`retomar` do `yarn fabrica` em processo, pela
+// O canal de escrita da fábrica (#129): roda os subcomandos de `SUBCOMANDOS_DO_APP` do `yarn fabrica` em processo, pela
 // mesma pasta que a sala lê (`OC_FABRICA_DIR` vale para os dois). Não toca o board.
 if (screen === 'kanban')
   registerComandoIpc(
@@ -785,6 +787,25 @@ const claudeIpc = registerClaudeTerminalIpc({
       ? janelaViva.webContents
       : null,
 })
+
+// Assumir a sessão de um despacho no cartão do card (#133). Grava a conversa do cartão no
+// `conversations.json` do app, como abrir o chat de um card já faz, e abre a janela do card. Não
+// toca a pasta da fábrica nem o board.
+if (screen === 'kanban') {
+  const pastaDoAssumir = pastaDaSala(process.env, homedir())
+  registerAssumirIpc(
+    criarAssumir({
+      lerEstado: () => lerEstado(pastaDoAssumir),
+      cardDoItem: (itemId) => boardsIpc?.cardById(itemId) ?? null,
+      sessaoAberta: (itemId) => claudeIpc.sessaoAberta({ kind: 'card', itemId }),
+      conversaDoCartao: async (itemId) => (await conversations.locate(itemId))?.sessionId ?? null,
+      transcriptExiste: async (sessao) => (await inspectSession(sessao)) !== null,
+      janelasDePe: () => cardWindows !== null,
+      lembrar: (itemId, sessao) => conversations.remember(itemId, sessao),
+      abrirJanela: (itemId) => cardWindows?.open(itemId, null),
+    }),
+  )
+}
 
 // O layout da mesa (#74 §6): só persiste, e por isso também incondicional — não toca o board.
 registerLayoutIpc()

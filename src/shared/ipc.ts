@@ -13,6 +13,8 @@ import type {
   ComandoDaFabrica,
   EntradaNaSala,
   PerguntaDaFila,
+  AssumirDespachoRequest,
+  AssumirDespachoResult,
   ReadCardDaFabricaRequest,
   ReadPerguntaRequest,
   ReadRelatorioRequest,
@@ -152,6 +154,11 @@ export const IPC_INVOKE = {
   /** O card e a entrada da fábrica (F4): só leem a pasta da fábrica. */
   readFabricaCard: 'fabrica:read-card',
   readFabricaEntrada: 'fabrica:read-entrada',
+  /**
+   * Assumir a sessão de um despacho no cartão do card (F4): grava a conversa do cartão no
+   * `conversations.json` do app e abre a janela do card, sem tocar a pasta da fábrica nem o board.
+   */
+  assumirDespacho: 'fabrica:assumir',
   /**
    * O relatório do dia (#126), o mesmo do `yarn relatorio`. **Lê** o cofre, o git e o board, e não
    * escreve em nenhum dos três.
@@ -765,6 +772,7 @@ export interface OcApi {
   comandoFabrica(pedido: ComandoDaFabrica): Promise<ResultadoDoComando>
   readFabricaCard(pedido: ReadCardDaFabricaRequest): Promise<CardNaFabrica>
   readFabricaEntrada(): Promise<EntradaNaSala>
+  assumirDespacho(pedido: AssumirDespachoRequest): Promise<AssumirDespachoResult>
 }
 
 declare global {
