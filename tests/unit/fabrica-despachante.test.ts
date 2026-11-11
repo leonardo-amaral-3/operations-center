@@ -13,6 +13,7 @@ import {
 } from '../../src/core/fabrica/despachante'
 import { estadoVazio } from '../../src/core/fabrica/estado'
 import { caminhosProibidos } from '../../src/core/fabrica/mandato'
+import { tipoDoItem } from '../../src/core/fabrica/sala'
 import type { Despacho, EstadoDaFabrica } from '../../src/core/fabrica/tipos'
 
 const proibidos = caminhosProibidos(
@@ -270,6 +271,76 @@ describe('G4 depois do /gm-ship', () => {
       'o G4 terminou com PROXIMO, e a revisão só fecha com PARADA: /gm-spec #7',
     )
     expect(e.frentes[0]?.encerradaEm).toBe(T1)
+  })
+})
+
+describe('G4: os três caminhos até a fila', () => {
+  const PARADA_DO_SHIP = 'PR #9 aberta na dev (Card: #7); o merge é da orquestradora'
+  const URL = 'https://github.com/leonardo-amaral-3/operations-center/pull/9#issuecomment-5'
+  const concluirOShip = (base?: EstadoDaFabrica) => {
+    const r = comecar(7, '/gm-ship /x #7', T0, base)
+    const e = concluirDespacho(r.estado, r.despacho, {
+      saida: saida(`PARADA: ${PARADA_DO_SHIP}`),
+      agora: T1,
+      proibidos,
+    })
+    return { e, g4: e.despachos[1] as Despacho }
+  }
+  /** O G4 criado pelo ship termina com `resultado` (ou sem saída); devolve o tipo do item. */
+  const tipoAposOG4 = (resultado: string | null) => {
+    const { e, g4 } = concluirOShip()
+    const f = concluirDespacho(e, g4.id, {
+      saida: resultado === null ? '' : saida(resultado),
+      agora: T1,
+      proibidos,
+    })
+    expect(f.fila).toHaveLength(1)
+    const item = f.fila[0]!
+    return tipoDoItem(
+      item,
+      f.despachos.find((d) => d.id === item.despacho),
+    )
+  }
+
+  it('(a) revisada sem bloqueante → decisao', () => {
+    expect(tipoAposOG4(`ok\nPARADA: G4 da PR #9: sem bloqueante · parecer ${URL}`)).toBe('decisao')
+  })
+  it('(b) revisada com bloqueante → pergunta', () => {
+    expect(tipoAposOG4(`ok\nPARADA: G4 da PR #9: 2 bloqueantes · parecer ${URL}`)).toBe('pergunta')
+  })
+  it('(c) sem revisão: G4 com falha → pergunta', () => {
+    expect(tipoAposOG4(null)).toBe('pergunta')
+  })
+  it('(c) sem revisão: G4 com PARADA fora do contrato → pergunta', () => {
+    expect(tipoAposOG4('PARADA: não consegui ler a PR')).toBe('pergunta')
+  })
+  it('(c) sem revisão: G4 com PROXIMO → pergunta', () => {
+    expect(tipoAposOG4('PROXIMO: /gm-spec #7')).toBe('pergunta')
+  })
+  it('(c) sem revisão: ship no limite da frente → pergunta', () => {
+    const r = comecar(7, '/gm-ship /x #7')
+    const cheio: EstadoDaFabrica = {
+      ...r.estado,
+      despachos: [
+        ...r.estado.despachos,
+        ...Array.from({ length: 19 }, (_, i): Despacho => {
+          const base = r.estado.despachos[0] as Despacho
+          return { ...base, id: `d-9${String(i).padStart(3, '0')}`, estado: 'concluido' }
+        }),
+      ],
+    }
+    const e = concluirDespacho(cheio, r.despacho, {
+      saida: saida(`PARADA: ${PARADA_DO_SHIP}`),
+      agora: T1,
+      proibidos,
+    })
+    const item = e.fila[0]!
+    expect(
+      tipoDoItem(
+        item,
+        e.despachos.find((d) => d.id === item.despacho),
+      ),
+    ).toBe('pergunta')
   })
 })
 

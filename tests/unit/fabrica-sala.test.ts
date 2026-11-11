@@ -11,6 +11,7 @@ import {
   montarPergunta,
   montarSala,
   ondeRodaDo,
+  ondeRodaOComando,
   prDoMotivo,
   tipoDoItem,
   urlDaPr,
@@ -91,10 +92,10 @@ describe('tipo e estação (F1.5)', () => {
   })
 })
 
-describe('tipoDoItem: Decisão só pela origem (F3, CA-3.4)', () => {
-  const item = (motivo: string): ItemDaFila => ({
+describe('tipoDoItem: Decisão só pelo parecer do G4 sem bloqueante (#143, CA-2)', () => {
+  const item = (motivo: string, card = 1): ItemDaFila => ({
     id: 'q-0001',
-    card: 1,
+    card,
     motivo,
     despacho: 'd-0001',
     sessaoClaude: null,
@@ -102,10 +103,10 @@ describe('tipoDoItem: Decisão só pela origem (F3, CA-3.4)', () => {
     fechadoEm: null,
     resolucao: null,
   })
-  const origem = (comando: string, desfecho: Desfecho | null): Despacho => ({
+  const origem = (comando: string, desfecho: Desfecho | null, card = 1): Despacho => ({
     id: 'd-0001',
     frente: 'fr-0001',
-    card: 1,
+    card,
     comando,
     nota: null,
     estado: 'concluido',
@@ -117,33 +118,49 @@ describe('tipoDoItem: Decisão só pela origem (F3, CA-3.4)', () => {
     desfecho,
   })
   const COM_PR = 'PR #970 aberta na dev (Card: #962); o merge é da orquestradora'
+  const URL = 'https://github.com/leonardo-amaral-3/operations-center/pull'
+  const SEM = `G4 da PR #9: sem bloqueante · parecer ${URL}/9#issuecomment-5`
+  const DOIS = `G4 da PR #9: 2 bloqueantes · parecer ${URL}/9#issuecomment-5`
 
   it.each([
     [
-      '/gm-ship parada com PR',
-      origem('/gm-ship /x', { tipo: 'parada', motivo: COM_PR }),
-      COM_PR,
+      '/g4 com parecer sem bloqueante',
+      origem('/g4 #1 PR #9', { tipo: 'parada', motivo: SEM }),
+      SEM,
       'decisao',
     ],
     [
-      '/gm-ship parada sem PR',
-      origem('/gm-ship /x', { tipo: 'parada', motivo: 'sem pr' }),
-      'sem pr',
+      '/g4 com 2 bloqueantes',
+      origem('/g4 #1 PR #9', { tipo: 'parada', motivo: DOIS }),
+      DOIS,
       'pergunta',
     ],
     [
-      '/gm-ship falha citando PR',
-      origem('/gm-ship /x', { tipo: 'falha', motivo: COM_PR }),
-      COM_PR,
+      '/g4 com parecer de outro PR',
+      origem('/g4 #1 PR #8', { tipo: 'parada', motivo: SEM }),
+      SEM,
       'pergunta',
     ],
     [
-      '/gm-ship com proximo citando PR',
-      origem('/gm-ship /x', { tipo: 'proximo', comando: '/gm-release' }),
+      '/g4 com PARADA fora do contrato',
+      origem('/g4 #1 PR #9', { tipo: 'parada', motivo: 'não rodou: sem acesso' }),
+      'não rodou: sem acesso',
+      'pergunta',
+    ],
+    ['/g4 com falha', origem('/g4 #1 PR #9', { tipo: 'falha', motivo: SEM }), SEM, 'pergunta'],
+    [
+      '/g4 com proximo',
+      origem('/g4 #1 PR #9', { tipo: 'proximo', comando: '/gm-release' }),
+      SEM,
+      'pergunta',
+    ],
+    ['/g4 sem desfecho', origem('/g4 #1 PR #9', null), SEM, 'pergunta'],
+    [
+      '/gm-ship parada com PR (a regra antiga)',
+      origem('/gm-ship /x', { tipo: 'parada', motivo: COM_PR }),
       COM_PR,
       'pergunta',
     ],
-    ['/gm-ship sem desfecho', origem('/gm-ship /x', null), COM_PR, 'pergunta'],
     [
       '/gm-spec parada citando PR',
       origem('/gm-spec #1', { tipo: 'parada', motivo: COM_PR }),
@@ -154,11 +171,23 @@ describe('tipoDoItem: Decisão só pela origem (F3, CA-3.4)', () => {
     expect(tipoDoItem(item(motivo), o)).toBe(esperado)
   })
 
-  it('origem fora do estado → pergunta', () => {
-    expect(tipoDoItem(item(COM_PR), undefined)).toBe('pergunta')
+  it('origem /g4 #5 PR #9 num item do card 7 → pergunta', () => {
+    expect(
+      tipoDoItem(item(SEM, 7), origem('/g4 #5 PR #9', { tipo: 'parada', motivo: SEM }, 7)),
+    ).toBe('pergunta')
   })
 
-  it('o item real (q-0010, d-0009; valores da Q5, escritos aqui) é decisão e a PR é a 128', () => {
+  it('despacho de card diferente do comando /g4 → pergunta', () => {
+    expect(
+      tipoDoItem(item(SEM, 1), origem('/g4 #1 PR #9', { tipo: 'parada', motivo: SEM }, 2)),
+    ).toBe('pergunta')
+  })
+
+  it('origem ausente → pergunta', () => {
+    expect(tipoDoItem(item(SEM), undefined)).toBe('pergunta')
+  })
+
+  it('ship histórico (q-0010, d-0009) → pergunta, e a PR segue a 128', () => {
     const motivo = 'PR #128 aberta na dev (Card: #126); o merge é da orquestradora'
     const e: EstadoDaFabrica = {
       ...estadoDaF3(),
@@ -170,10 +199,39 @@ describe('tipoDoItem: Decisão só pela origem (F3, CA-3.4)', () => {
       ].map((d) => ({ ...d, id: 'd-0009' })),
       fila: [{ ...item(motivo), id: 'q-0010', card: 126, despacho: 'd-0009' }],
     }
-    expect(tipoDoItem(e.fila[0]!, e.despachos[0])).toBe('decisao')
+    expect(tipoDoItem(e.fila[0]!, e.despachos[0])).toBe('pergunta')
     const p = montarPergunta(e, 'q-0010', null)
-    expect(p?.item.tipo).toBe('decisao')
-    expect(p?.pr).toBe(128)
+    expect(p?.item.tipo).toBe('pergunta')
+    expect(p?.pr).toBeNull()
+  })
+})
+
+describe('ondeRodaOComando e o passo do ship para o G4 (#143)', () => {
+  it('o /g4 roda sem worktree; os demais seguem a estação', () => {
+    expect(ondeRodaOComando('/g4 #7 PR #9', 7, ['operations-center-7-x'])).toBe('sem worktree')
+    expect(ondeRodaOComando('/gm-ship /x #7', 7, ['operations-center-7-x'])).toBe(
+      'operations-center-7-x',
+    )
+    expect(ondeRodaOComando('/gm-spec #7', 7, [])).toBe('planning/')
+  })
+
+  it('montarDecisoes mostra o ship concluído em PARADA, sem item, como passou → g4', () => {
+    const e: EstadoDaFabrica = {
+      ...estadoDaF3(),
+      despachos: estadoDaF3().despachos.filter((d) => d.id === 'd-0010'),
+      fila: [],
+    }
+    const passo = montarDecisoes(e).find((x) => x.tipo === 'passou')
+    expect(passo).toMatchObject({ tipo: 'passou', id: 'd-0010', skill: 'gm-ship', seguinte: 'g4' })
+  })
+
+  it('PARADA de outra skill, ou com item na fila, não vira passo', () => {
+    const e = estadoDaF3()
+    const passos = montarDecisoes({
+      ...e,
+      despachos: e.despachos.filter((d) => d.id === 'd-0005' || d.id === 'd-0002'),
+    }).filter((x) => x.tipo === 'passou')
+    expect(passos).toEqual([])
   })
 })
 
@@ -309,7 +367,8 @@ describe('montarDecisoes (F2.2)', () => {
       d.id === 'd-0002' || d.id === 'd-0003' ? { ...d, concluidoEm: igual } : d,
     )
     const d = montarDecisoes({ ...e, despachos, fila: [] })
-    expect(d.map((x) => x.id)).toEqual(['d-0003', 'd-0002'])
+    // sem fila, o ship d-0021 (PARADA, sem item) também é passo: o G4 nasceu dele (#143)
+    expect(d.map((x) => x.id)).toEqual(['d-0003', 'd-0002', 'd-0021'])
   })
 
   it('12 passos → só os 8 mais recentes', () => {
@@ -449,7 +508,7 @@ describe('a fixture f3 (F3.7)', () => {
     expect(sala.fechados.map((i) => [i.id, i.tipo])).toEqual([['q-0003', 'pergunta']])
   })
 
-  it('montarPergunta do q-0013: parada, PR 970 e os três passos', () => {
+  it('montarPergunta do q-0013: parada, PR 970 e os quatro passos', () => {
     const p = montarPergunta(estadoDaF3(), 'q-0013', null)
     expect(p?.fim).toBe('parada')
     expect(p?.pr).toBe(970)
@@ -479,6 +538,15 @@ describe('a fixture f3 (F3.7)', () => {
         detalhe: 'PR #970 aberta na dev (Card: #962); o merge é da orquestradora',
         em: '2026-11-11T09:00:00.000Z',
       },
+      {
+        despacho: 'd-0018',
+        skill: 'g4',
+        comando: '/g4 #962 PR #970',
+        fim: 'parada',
+        detalhe:
+          'G4 da PR #970: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/970#issuecomment-1',
+        em: '2026-11-11T09:04:00.000Z',
+      },
     ])
   })
 
@@ -500,13 +568,13 @@ describe('a fixture f3 (F3.7)', () => {
   it('despacho sem desfecho na frente → fim, detalhe e em null', () => {
     const e = estadoDaF3()
     const despachos = e.despachos.map((d) =>
-      d.id === 'd-0010' ? { ...d, desfecho: null, concluidoEm: null } : d,
+      d.id === 'd-0018' ? { ...d, desfecho: null, concluidoEm: null } : d,
     )
     const p = montarPergunta({ ...e, despachos }, 'q-0013', null)
     expect(p?.fim).toBeNull()
     expect(p?.item.tipo).toBe('pergunta')
     expect(p?.passos.at(-1)).toMatchObject({
-      despacho: 'd-0010',
+      despacho: 'd-0018',
       fim: null,
       detalhe: null,
       em: null,

@@ -1,13 +1,13 @@
 {
   "versao": 1,
   "instancia": "00000000-0000-4000-8000-0000000000f3",
-  "contador": 17,
+  "contador": 19,
   "frentes": [
     { "id": "fr-0001", "card": 965, "criadaEm": "2026-11-11T07:00:00.000Z", "encerradaEm": "2026-11-11T07:20:00.000Z" },
     { "id": "fr-0004", "card": 961, "criadaEm": "2026-11-11T08:00:00.000Z", "encerradaEm": "2026-11-11T08:30:00.000Z" },
-    { "id": "fr-0006", "card": 962, "criadaEm": "2026-11-11T08:10:00.000Z", "encerradaEm": "2026-11-11T09:00:00.000Z" },
+    { "id": "fr-0006", "card": 962, "criadaEm": "2026-11-11T08:10:00.000Z", "encerradaEm": "2026-11-11T09:04:00.000Z" },
     { "id": "fr-0011", "card": 963, "criadaEm": "2026-11-11T08:50:00.000Z", "encerradaEm": "2026-11-11T09:05:00.000Z" },
-    { "id": "fr-0014", "card": 964, "criadaEm": "2026-11-11T09:00:00.000Z", "encerradaEm": "2026-11-11T09:10:00.000Z" }
+    { "id": "fr-0014", "card": 964, "criadaEm": "2026-11-11T09:00:00.000Z", "encerradaEm": "2026-11-11T09:14:00.000Z" }
   ],
   "despachos": [
     { "id": "d-0002", "frente": "fr-0001", "card": 965, "comando": "/gm-card #965", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T07:00:00.000Z", "lancadoEm": "2026-11-11T07:00:00.000Z", "concluidoEm": "2026-11-11T07:20:00.000Z", "sessaoClaude": "sessao-965", "desfecho": { "tipo": "parada", "motivo": "o card não diz qual board é o alvo" } },
@@ -16,13 +16,15 @@
     { "id": "d-0008", "frente": "fr-0006", "card": 962, "comando": "/gm-implement /home/u/pessoal/planning/962-fila", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T08:20:00.000Z", "lancadoEm": "2026-11-11T08:20:00.000Z", "concluidoEm": "2026-11-11T08:45:00.000Z", "sessaoClaude": "sessao-962-impl", "desfecho": { "tipo": "proximo", "comando": "/gm-ship /home/u/pessoal/planning/962-fila" } },
     { "id": "d-0010", "frente": "fr-0006", "card": 962, "comando": "/gm-ship /home/u/pessoal/planning/962-fila", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T08:45:00.000Z", "lancadoEm": "2026-11-11T08:45:00.000Z", "concluidoEm": "2026-11-11T09:00:00.000Z", "sessaoClaude": "sessao-962-ship", "desfecho": { "tipo": "parada", "motivo": "PR #970 aberta na dev (Card: #962); o merge é da orquestradora" } },
     { "id": "d-0012", "frente": "fr-0011", "card": 963, "comando": "/gm-implement /home/u/pessoal/planning/963-y", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T08:50:00.000Z", "lancadoEm": "2026-11-11T08:50:00.000Z", "concluidoEm": "2026-11-11T09:05:00.000Z", "sessaoClaude": null, "desfecho": { "tipo": "falha", "motivo": "a sessão terminou sem saída" } },
-    { "id": "d-0015", "frente": "fr-0014", "card": 964, "comando": "/gm-ship /home/u/pessoal/planning/964-z", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T09:00:00.000Z", "lancadoEm": "2026-11-11T09:00:00.000Z", "concluidoEm": "2026-11-11T09:10:00.000Z", "sessaoClaude": "sessao-964", "desfecho": { "tipo": "parada", "motivo": "PR #971 aberta na dev (Card: #964); o merge é da orquestradora" } }
+    { "id": "d-0015", "frente": "fr-0014", "card": 964, "comando": "/gm-ship /home/u/pessoal/planning/964-z", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T09:00:00.000Z", "lancadoEm": "2026-11-11T09:00:00.000Z", "concluidoEm": "2026-11-11T09:10:00.000Z", "sessaoClaude": "sessao-964", "desfecho": { "tipo": "parada", "motivo": "PR #971 aberta na dev (Card: #964); o merge é da orquestradora" } },
+    { "id": "d-0018", "frente": "fr-0006", "card": 962, "comando": "/g4 #962 PR #970", "nota": "o /gm-ship terminou com: PARADA: PR #970 aberta na dev (Card: #962); o merge é da orquestradora", "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T09:00:00.000Z", "lancadoEm": "2026-11-11T09:00:05.000Z", "concluidoEm": "2026-11-11T09:04:00.000Z", "sessaoClaude": "sessao-962-g4", "desfecho": { "tipo": "parada", "motivo": "G4 da PR #970: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/970#issuecomment-1" } },
+    { "id": "d-0019", "frente": "fr-0014", "card": 964, "comando": "/g4 #964 PR #971", "nota": "o /gm-ship terminou com: PARADA: PR #971 aberta na dev (Card: #964); o merge é da orquestradora", "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T09:10:00.000Z", "lancadoEm": "2026-11-11T09:10:05.000Z", "concluidoEm": "2026-11-11T09:14:00.000Z", "sessaoClaude": "sessao-964-g4", "desfecho": { "tipo": "parada", "motivo": "G4 da PR #971: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/971#issuecomment-2" } }
   ],
   "fila": [
     { "id": "q-0003", "card": 965, "motivo": "o card não diz qual board é o alvo", "despacho": "d-0002", "sessaoClaude": "sessao-965", "criadoEm": "2026-11-11T07:20:00.000Z", "fechadoEm": "2026-11-11T07:30:00.000Z", "resolucao": "o board da fábrica (Project 2)" },
     { "id": "q-0009", "card": 961, "motivo": "o card não diz se a resposta vai para o board ou para o cofre", "despacho": "d-0005", "sessaoClaude": "sessao-961", "criadoEm": "2026-11-11T08:30:00.000Z", "fechadoEm": null, "resolucao": null },
-    { "id": "q-0013", "card": 962, "motivo": "PR #970 aberta na dev (Card: #962); o merge é da orquestradora", "despacho": "d-0010", "sessaoClaude": "sessao-962-ship", "criadoEm": "2026-11-11T09:00:00.000Z", "fechadoEm": null, "resolucao": null },
+    { "id": "q-0013", "card": 962, "motivo": "G4 da PR #970: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/970#issuecomment-1", "despacho": "d-0018", "sessaoClaude": "sessao-962-g4", "criadoEm": "2026-11-11T09:04:00.000Z", "fechadoEm": null, "resolucao": null },
     { "id": "q-0016", "card": 963, "motivo": "a sessão terminou sem saída", "despacho": "d-0012", "sessaoClaude": null, "criadoEm": "2026-11-11T09:05:00.000Z", "fechadoEm": null, "resolucao": null },
-    { "id": "q-0017", "card": 964, "motivo": "PR #971 aberta na dev (Card: #964); o merge é da orquestradora", "despacho": "d-0015", "sessaoClaude": "sessao-964", "criadoEm": "2026-11-11T09:10:00.000Z", "fechadoEm": null, "resolucao": null }
+    { "id": "q-0017", "card": 964, "motivo": "G4 da PR #971: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/971#issuecomment-2", "despacho": "d-0019", "sessaoClaude": "sessao-964-g4", "criadoEm": "2026-11-11T09:14:00.000Z", "fechadoEm": null, "resolucao": null }
   ]
 }
