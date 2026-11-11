@@ -73,7 +73,8 @@ export function lerPergunta(pasta: string, id: string): PerguntaDaFila | null {
     if (item === undefined) return null
     let saida: string | null = null
     try {
-      saida = lerSaida(pasta, item.despacho)
+      // O `despacho` vem do `estado.json`, que pode estar torto: só `d-<n>` vira nome de pasta.
+      if (/^d-\d+$/.test(item.despacho)) saida = lerSaida(pasta, item.despacho)
     } catch {
       saida = null
     }

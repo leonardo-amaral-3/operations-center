@@ -128,6 +128,15 @@ describe('a leitura da sala', () => {
     expect(lerPergunta(p, 'q-0006')?.resultado).toBeNull()
   })
 
+  it('despacho torto no estado não vira caminho: a pergunta existe, sem resultado', () => {
+    const p = nova()
+    cpSync(FIXTURE, p, { recursive: true })
+    const e = estadoDaFixture()
+    const fila = e.fila.map((i) => (i.id === 'q-0003' ? { ...i, despacho: '../../x' } : i))
+    writeFileSync(join(p, 'estado.json'), JSON.stringify({ ...e, fila }))
+    expect(lerPergunta(p, 'q-0003')?.resultado).toBeNull()
+  })
+
   it('id que não é q-<n> ou não existe → null', () => {
     const p = nova()
     cpSync(FIXTURE, p, { recursive: true })

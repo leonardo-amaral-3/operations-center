@@ -18,8 +18,9 @@ const ESTADO_NA_TELA: Record<DespachoNaSala['estado'], string> = {
   rodando: 'rodando',
 }
 
-/** `dd/mm HH:MM`, a hora em que o item nasceu ou fechou (#122, §A6). */
+/** A hora em que o item nasceu ou fechou, no formato do pt-BR (#122, §A6); data ruim vira o texto cru. */
 function quando(iso: string): string {
+  if (Number.isNaN(new Date(iso).getTime())) return iso
   return new Date(iso).toLocaleString('pt-BR', {
     day: '2-digit',
     month: '2-digit',

@@ -32,7 +32,8 @@ export function useSala(): SalaDaFabrica | null {
           // Mantém o retrato e o intervalo: a próxima volta tenta de novo.
         })
         .finally(() => {
-          emVoo.current = false
+          // Uma resposta de um efeito já desmontado não libera a vez da leitura do efeito novo.
+          if (vivo) emVoo.current = false
         })
     }
 
