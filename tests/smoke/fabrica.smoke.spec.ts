@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import {
   cpSync,
   existsSync,
@@ -23,7 +23,7 @@ import { abrirItemDoCard } from './comparacao/fila-f3'
 import { tipoDoItem } from '../../src/core/fabrica/sala'
 import type { EstadoDaFabrica } from '../../src/core/fabrica/tipos'
 import { launchSmokeApp } from './smoke-app'
-import { REPO_ROOT, smokeFabricaItem, smokeFabricaReal } from './smoke-env'
+import { REPO_ROOT, smokeEnv, smokeFabricaItem, smokeFabricaReal } from './smoke-env'
 
 /**
  * O smoke da sala da fábrica (#122, §A10): a tela lê a pasta da fábrica, mostra a fila e **nunca
@@ -446,6 +446,111 @@ test('sala e agentes com a fixture da F2', async () => {
   }
 
   expect(retrato(pasta), 'a sala mudou a pasta da fábrica').toEqual(antes)
+})
+
+test('a Linha mostra a aba selecionada', async () => {
+  const pasta = pastaTemporaria('oc-sala-')
+  cpSync(FIXTURE_F2, pasta, { recursive: true })
+  const antes = retrato(pasta)
+  const { app, window } = await subir(pasta, {
+    OC_FABRICA_MANDATO_FIXTURE: join(FIXTURE_F2, 'mandato.txt'),
+  })
+  const coluna = (nome: string) =>
+    window.locator(`[data-testid="fabrica-coluna"][data-coluna="${nome}"]`)
+
+  try {
+    await abrirSala(window)
+    await expect(coluna('entrada')).toContainText('#952', { timeout: RELEITURA })
+    await expect(window.getByTestId('fabrica-linha-board')).toContainText('board Operations Center')
+
+    // Trocar de aba fecha a Fábrica (a volta ao kanban de hoje); reabrir mostra a aba nova.
+    await window.locator('[data-board-key="ICSF-Solutions/19"]').click()
+    await expect(window.getByTestId('fabrica-sala')).toHaveCount(0)
+    await window.getByTestId('fabrica-toggle').click()
+    await expect(window.getByTestId('fabrica-sala')).toBeVisible()
+    await expect(window.getByTestId('fabrica-linha-board')).toContainText('board Plataformas v2', {
+      timeout: RELEITURA,
+    })
+    await expect(coluna('spec')).toContainText('#910', { timeout: RELEITURA })
+    await expect(coluna('entrada')).not.toContainText('#952')
+
+    await window.locator('[data-board-key="leonardo-amaral-3/2"]').click()
+    await expect(window.getByTestId('fabrica-sala')).toHaveCount(0)
+    await window.getByTestId('fabrica-toggle').click()
+    await expect(coluna('entrada')).toContainText('#952', { timeout: RELEITURA })
+  } finally {
+    await app.close()
+  }
+
+  expect(retrato(pasta), 'a sala mudou a pasta da fábrica').toEqual(antes)
+})
+
+test('os Agentes listam as sessões da máquina', async () => {
+  test.skip(process.platform !== 'linux', 'as sessões vêm do /proc')
+
+  const base = pastaTemporaria('oc-sessoes-')
+  const pastaGit = (nome: string, origin: string): string => {
+    const dir = join(base, nome)
+    mkdirSync(dir, { recursive: true })
+    execFileSync('git', ['init', '-q'], { cwd: dir })
+    execFileSync('git', ['remote', 'add', 'origin', origin], { cwd: dir })
+    return dir
+  }
+  const dirOc = pastaGit(
+    'operations-center-777-smoke',
+    'https://github.com/leonardo-amaral-3/operations-center.git',
+  )
+  const dirIcsf = pastaGit(
+    'plataformas-910-smoke',
+    'https://github.com/ICSF-Solutions/plataformas.git',
+  )
+
+  const fabrica = pastaTemporaria('oc-sala-')
+  cpSync(FIXTURE_F2, fabrica, { recursive: true })
+
+  const ambiente = smokeEnv()
+  delete ambiente.OC_FABRICA_DESPACHO
+  const sessao = (cwd: string, extra: string[]) =>
+    spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)', ...extra], {
+      cwd,
+      argv0: 'claude',
+      env: ambiente,
+      stdio: 'ignore',
+    })
+  const despachada = sessao(dirOc, ['--', '-p', '/gm-spec #777'])
+  const interativa = sessao(dirIcsf, [])
+
+  try {
+    expect(despachada.pid).toBeDefined()
+    expect(interativa.pid).toBeDefined()
+    const { app, window } = await subir(fabrica, {
+      OC_FABRICA_MANDATO_FIXTURE: join(FIXTURE_F2, 'mandato.txt'),
+    })
+
+    try {
+      await abrirSala(window)
+      await window.getByTestId('fabrica-nav-agentes').click()
+
+      const linha = (pid: number | undefined) =>
+        window.locator(`[data-testid="fabrica-maquina-sessao"][data-pid="${pid}"]`)
+      const a = linha(despachada.pid)
+      await expect(a).toContainText('#777', { timeout: RELEITURA })
+      await expect(a).toContainText('leonardo-amaral-3/operations-center')
+      await expect(a).toContainText('despachada (-p)')
+      await expect(a).toContainText('gm-spec')
+      await expect(a).not.toContainText('yarn fabrica')
+
+      const b = linha(interativa.pid)
+      await expect(b).toContainText('#910', { timeout: RELEITURA })
+      await expect(b).toContainText('icsf-solutions/plataformas')
+      await expect(b).toContainText('interativa')
+    } finally {
+      await app.close()
+    }
+  } finally {
+    despachada.kill()
+    interativa.kill()
+  }
 })
 
 const FABRICA_REAL = smokeFabricaReal()
