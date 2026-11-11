@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { LIMITE_DO_TEXTO_DA_ENTRADA } from '../../core/fabrica/entrada'
+import { LIMITE_DA_REVISAO, NOME_DO_COFRE } from '../../core/fabrica/revisoes'
 import type { ComandoDaFabrica, ResultadoDoComando } from '../../shared/fabrica'
 import { IPC_INVOKE } from '../../shared/ipc'
 import { executar, type DepsDoCli } from './cli'
@@ -11,7 +12,14 @@ import { executar, type DepsDoCli } from './cli'
  */
 
 /** O que o app pode rodar. Cada fase acrescenta o seu; **nenhuma** acrescenta `rodar` nem `estado`. */
-export const SUBCOMANDOS_DO_APP = ['pausar', 'retomar', 'fechar', 'entrada'] as const
+export const SUBCOMANDOS_DO_APP = [
+  'pausar',
+  'retomar',
+  'fechar',
+  'entrada',
+  'confirmar',
+  'contestar',
+] as const
 
 /** O pedido do renderer virado em argv; qualquer coisa fora da união → `null`. */
 export function argvDoComando(pedido: unknown): string[] | null {
@@ -33,6 +41,15 @@ export function argvDoComando(pedido: unknown): string[] | null {
     // O `yarn fabrica entrada` recusa o vazio e o que passa do limite; recusar aqui poupa a ida.
     if (t === '' || t.length > LIMITE_DO_TEXTO_DA_ENTRADA) return null
     return ['entrada', t]
+  }
+  if (tipo === 'confirmar' || tipo === 'contestar') {
+    const { arquivo, motivo } = pedido as { arquivo?: unknown; motivo?: unknown }
+    if (typeof arquivo !== 'string' || !NOME_DO_COFRE.test(arquivo)) return null
+    if (tipo === 'confirmar') return ['confirmar', arquivo]
+    // O teto vale sobre o texto com `trim()`, como no `novaRevisao`; recusar aqui poupa a ida.
+    if (typeof motivo !== 'string' || motivo.trim() === '') return null
+    if (motivo.trim().length > LIMITE_DA_REVISAO) return null
+    return ['contestar', arquivo, motivo.trim()]
   }
   return null
 }

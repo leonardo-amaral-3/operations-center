@@ -18,6 +18,7 @@ const ok = (semFonte: number, dia = '2026-11-10'): RelatorioDaSala => ({
   markdown: `Relatório do dia ${dia}`,
   semFonte,
   geradoEm: '2026-11-11T12:00:00.000Z',
+  painel: { frases: [], decisoes: [], porRepo: [], noCofre: 0, commits: 0, objetivos: null },
 })
 
 const readRelatorio = vi.fn<(pedido: { dia: string }) => Promise<RelatorioDaSala>>()

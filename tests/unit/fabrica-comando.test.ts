@@ -284,3 +284,83 @@ describe('o comando entrada (F4, CA-4.3 e CA-E3)', () => {
     expect(gravada.itens[3]).toMatchObject({ id: 'e-0004', texto: 'o suporte pediu CSV' })
   })
 })
+
+describe('os comandos confirmar e contestar (F5, CA-5.2 e CA-E3)', () => {
+  const ARQUIVO = '2026-11-10-a-sala-le-o-mandato-pela-graphql.md'
+
+  it('confirmar vira ["confirmar", <arquivo>]', () => {
+    expect(argvDoComando({ tipo: 'confirmar', arquivo: ARQUIVO })).toEqual(['confirmar', ARQUIVO])
+  })
+
+  it('contestar vira ["contestar", <arquivo>, <motivo aparado>]; quebra de linha e --flag passam inteiras', () => {
+    expect(argvDoComando({ tipo: 'contestar', arquivo: ARQUIVO, motivo: '  não  ' })).toEqual([
+      'contestar',
+      ARQUIVO,
+      'não',
+    ])
+    expect(argvDoComando({ tipo: 'contestar', arquivo: ARQUIVO, motivo: 'a\nb --x' })).toEqual([
+      'contestar',
+      ARQUIVO,
+      'a\nb --x',
+    ])
+    expect(
+      argvDoComando({ tipo: 'contestar', arquivo: ARQUIVO, motivo: ` ${'a'.repeat(2000)} ` }),
+    ).not.toBeNull()
+  })
+
+  it.each([
+    { tipo: 'confirmar' },
+    { tipo: 'confirmar', arquivo: 7 },
+    { tipo: 'confirmar', arquivo: '../x.md' },
+    { tipo: 'confirmar', arquivo: 'x.md' },
+    { tipo: 'confirmar', arquivo: `pasta/${ARQUIVO}` },
+    { tipo: 'contestar', arquivo: ARQUIVO },
+    { tipo: 'contestar', arquivo: ARQUIVO, motivo: '' },
+    { tipo: 'contestar', arquivo: ARQUIVO, motivo: '   ' },
+    { tipo: 'contestar', arquivo: ARQUIVO, motivo: 9 },
+    { tipo: 'contestar', arquivo: ARQUIVO, motivo: 'a'.repeat(2001) },
+    { tipo: 'contestar', arquivo: 'x.md', motivo: 'm' },
+    { tipo: 'atender', arquivo: ARQUIVO, resolucao: 'feito' },
+  ])('%j → null', (pedido) => {
+    expect(argvDoComando(pedido)).toBeNull()
+  })
+
+  it('a lista fechada tem confirmar e contestar; atender, triar, rodar e estado ficam fora', () => {
+    const lista: readonly string[] = SUBCOMANDOS_DO_APP
+    expect(lista).toContain('confirmar')
+    expect(lista).toContain('contestar')
+    for (const fora of ['atender', 'triar', 'rodar', 'estado', 'iniciar']) {
+      expect(lista).not.toContain(fora)
+    }
+  })
+
+  it('o executor grava as duas linhas e devolve ok, com o cofre de fixture', async () => {
+    // Antes de agir: a pasta de teste nunca é a real.
+    expect(pasta).toContain('/node_modules/.oc-fabrica-teste-')
+    const executor = criarExecutorDeComando(
+      base({
+        OC_FABRICA_DIR: pasta,
+        OC_RELATORIO_COFRE: join(RAIZ, 'tests', 'fixtures', 'fabrica', 'f5-cofre'),
+      }),
+    )
+    const outro = '2026-11-10-o-relatorio-agrupa-pela-raiz-da-cadeia.md'
+    const a = await executor({ tipo: 'confirmar', arquivo: ARQUIVO })
+    const b = await executor({
+      tipo: 'contestar',
+      arquivo: outro,
+      motivo: 'a raiz tem de parar no épico',
+    })
+
+    expect(a).toMatchObject({ ok: true, codigo: 0, saida: `${ARQUIVO} confirmada` })
+    expect(b).toMatchObject({ ok: true, codigo: 0, saida: `${outro} contestada` })
+    const linhas = readFileSync(join(pasta, 'revisoes.jsonl'), 'utf8').trim().split('\n')
+    expect(linhas).toHaveLength(2)
+    expect(JSON.parse(linhas[0] ?? '')).toMatchObject({ tipo: 'confirmada', arquivo: ARQUIVO })
+    expect(JSON.parse(linhas[1] ?? '')).toMatchObject({
+      tipo: 'contestada',
+      arquivo: outro,
+      motivo: 'a raiz tem de parar no épico',
+    })
+    expect(existsSync(join(pasta, 'estado.json'))).toBe(false)
+  })
+})

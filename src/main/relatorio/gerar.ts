@@ -10,8 +10,12 @@ import {
   lerCommits,
   lerNumerosMovidos,
   lerObjetivos,
+  montarPainel,
   montarRelatorio,
+  resumirCofre,
 } from '../../core/relatorio'
+import type { EntradaDoRelatorio } from '../../core/relatorio'
+import type { PainelDoDia } from '../../shared/fabrica'
 
 /**
  * O miolo do relatório (#126, spec-p3 §B1): o que o `yarn relatorio` (#120) e a sala da fábrica
@@ -62,12 +66,15 @@ export function pastasDoRelatorio(
   }
 }
 
-/** Gera o markdown do dia. A exceção de qualquer leitura sobe para quem chamou. */
-export async function gerarRelatorio(
+/**
+ * Lê o dia (cofre, git e board) e monta a entrada do relatório, com os arquivos do cofre que o
+ * painel reaproveita para contar o cofre inteiro. Só lê.
+ */
+async function lerODia(
   deps: DepsDoRelatorio,
   pedido: PedidoDoRelatorio,
-): Promise<{ markdown: string; semFonte: number }> {
-  const { dia, pastaDoCofre, pastaDoRepo, geradoEm } = pedido
+): Promise<{ entrada: EntradaDoRelatorio; arquivos: { nome: string; texto: string }[] }> {
+  const { dia, pastaDoCofre, pastaDoRepo } = pedido
   const janela = janelaDoDia(dia)
   const nomes = (await deps.listarPasta(pastaDoCofre)).filter((n) => n.endsWith('.md'))
   // Em lotes: o cofre passa de mil arquivos e abri-los todos de uma vez estoura o limite de fds.
@@ -105,18 +112,45 @@ export async function gerarRelatorio(
   })
   const direcao = join(pastaDoRepo, 'fabrica', 'DIRECAO.md')
   const objetivos = deps.existe(direcao) ? lerObjetivos(await deps.lerArquivo(direcao)) : null
-  const r = montarRelatorio({
-    janela,
-    repo: REPO,
-    projeto: PROJETO,
-    pastaDoCofre,
-    pastaDoRepo,
-    decisoes,
-    ilegiveis,
-    cards,
-    commits,
-    objetivos,
-  })
 
-  return { markdown: emMarkdown(r, geradoEm), semFonte: r.semFonte }
+  return {
+    entrada: {
+      janela,
+      repo: REPO,
+      projeto: PROJETO,
+      pastaDoCofre,
+      pastaDoRepo,
+      decisoes,
+      ilegiveis,
+      cards,
+      commits,
+      objetivos,
+    },
+    arquivos,
+  }
+}
+
+/**
+ * O relatório do dia em markdown e em painel, da mesma leitura (spec-f5 §F5.7). A exceção de
+ * qualquer leitura sobe para quem chamou.
+ */
+export async function gerarRelatorioComPainel(
+  deps: DepsDoRelatorio,
+  pedido: PedidoDoRelatorio,
+): Promise<{ markdown: string; semFonte: number; painel: PainelDoDia }> {
+  const { entrada, arquivos } = await lerODia(deps, pedido)
+  const r = montarRelatorio(entrada)
+  const painel = montarPainel(entrada, r, resumirCofre(arquivos, pedido.dia))
+
+  return { markdown: emMarkdown(r, pedido.geradoEm), semFonte: r.semFonte, painel }
+}
+
+/** Gera o markdown do dia. A saída do `yarn relatorio` é a de sempre, byte a byte. */
+export async function gerarRelatorio(
+  deps: DepsDoRelatorio,
+  pedido: PedidoDoRelatorio,
+): Promise<{ markdown: string; semFonte: number }> {
+  const { markdown, semFonte } = await gerarRelatorioComPainel(deps, pedido)
+
+  return { markdown, semFonte }
 }

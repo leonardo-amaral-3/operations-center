@@ -6,6 +6,8 @@ export { lerObjetivos } from './direcao'
 export { argsDoGitLog, lerCommits } from './git'
 export { emMarkdown } from './markdown'
 export { montarRelatorio } from './montar'
+export { marcasDoPorque, montarPainel, resumirCofre } from './painel'
+export type { ResumoDoCofre } from './painel'
 export type {
   CardLido,
   Commit,

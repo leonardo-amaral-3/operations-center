@@ -12,6 +12,7 @@ import type {
   CardNaFabrica,
   ComandoDaFabrica,
   EntradaNaSala,
+  MandatoNaSala,
   PerguntaDaFila,
   AssumirDespachoRequest,
   AssumirDespachoResult,
@@ -20,6 +21,7 @@ import type {
   ReadRelatorioRequest,
   RelatorioDaSala,
   ResultadoDoComando,
+  RevisoesNaSala,
   SalaDaFabrica,
 } from './fabrica'
 import type {
@@ -148,7 +150,8 @@ export const IPC_INVOKE = {
   readFabricaPergunta: 'fabrica:read-pergunta',
   /**
    * O único canal que **escreve** na pasta da fábrica (#129), sempre por um subcomando do
-   * `yarn fabrica` numa lista fechada (`SUBCOMANDOS_DO_APP`); não toca o board.
+   * `yarn fabrica` numa lista fechada (`SUBCOMANDOS_DO_APP`; hoje `pausar`, `retomar`, `fechar`,
+   * `entrada`, `confirmar` e `contestar`); não toca o board.
    */
   comandoFabrica: 'fabrica:comando',
   /** O card e a entrada da fábrica (F4): só leem a pasta da fábrica. */
@@ -159,6 +162,12 @@ export const IPC_INVOKE = {
    * `conversations.json` do app e abre a janela do card, sem tocar a pasta da fábrica nem o board.
    */
   assumirDespacho: 'fabrica:assumir',
+  /**
+   * As revisões **leem** o `revisoes.jsonl` da pasta da fábrica; o mandato **lê** o
+   * `fabrica/MANDATO.md` da `dev` pela GraphQL (F5). Nenhum dos dois escreve nem toca o board.
+   */
+  readFabricaRevisoes: 'fabrica:read-revisoes',
+  readFabricaMandato: 'fabrica:read-mandato',
   /**
    * O relatório do dia (#126), o mesmo do `yarn relatorio`. **Lê** o cofre, o git e o board, e não
    * escreve em nenhum dos três.
@@ -773,6 +782,8 @@ export interface OcApi {
   readFabricaCard(pedido: ReadCardDaFabricaRequest): Promise<CardNaFabrica>
   readFabricaEntrada(): Promise<EntradaNaSala>
   assumirDespacho(pedido: AssumirDespachoRequest): Promise<AssumirDespachoResult>
+  readFabricaRevisoes(): Promise<RevisoesNaSala>
+  readFabricaMandato(): Promise<MandatoNaSala>
 }
 
 declare global {

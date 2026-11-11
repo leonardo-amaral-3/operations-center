@@ -8,7 +8,12 @@ import { ipcMain } from 'electron'
 import type { GraphQLFn } from '../../core/board/types'
 import type { RelatorioDaSala } from '../../shared/fabrica'
 import { IPC_INVOKE } from '../../shared/ipc'
-import { dataValida, gerarRelatorio, pastasDoRelatorio, type DepsDoRelatorio } from './gerar'
+import {
+  dataValida,
+  gerarRelatorioComPainel,
+  pastasDoRelatorio,
+  type DepsDoRelatorio,
+} from './gerar'
 
 /**
  * O canal do relatório da sala (#126, spec-p3 §B2). Só lê (cofre, git e board) e nunca rejeita: o
@@ -41,14 +46,14 @@ async function gerar(
   }
   try {
     const geradoEm = deps.agora().toISOString()
-    const { markdown, semFonte } = await gerarRelatorio(deps, {
+    const { markdown, semFonte, painel } = await gerarRelatorioComPainel(deps, {
       dia,
       pastaDoCofre,
       pastaDoRepo,
       geradoEm,
     })
 
-    return { kind: 'ok', dia, markdown, semFonte, geradoEm }
+    return { kind: 'ok', dia, markdown, semFonte, geradoEm, painel }
   } catch (err) {
     return { kind: 'erro', dia, erro: mensagem(err) }
   }

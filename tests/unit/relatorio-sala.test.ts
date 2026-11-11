@@ -81,13 +81,40 @@ describe('responderRelatorio (canal do relatório, spec-p3 §B2)', () => {
     })
     const r = await responderRelatorio(deps(), { dia: '2026-11-10' })
 
-    expect(r).toEqual({
+    expect(r).toMatchObject({
       kind: 'ok',
       dia: '2026-11-10',
       markdown: esperado.markdown,
       semFonte: esperado.semFonte,
       geradoEm: AGORA,
     })
+    expect(r.kind === 'ok' && r.painel).toBeDefined()
+  })
+
+  it('ok traz o painel do dia, montado da mesma leitura (f5-cofre)', async () => {
+    const f5 = join(fileURLToPath(new URL('../fixtures/fabrica/', import.meta.url)), 'f5-cofre')
+    const r = await responderRelatorio(
+      deps({
+        listarPasta: () => Promise.resolve(readdirSync(f5)),
+        lerArquivo: (caminho) =>
+          Promise.resolve(readFileSync(join(f5, caminho.split('/').pop()!), 'utf8')),
+      }),
+      { dia: '2026-11-10' },
+    )
+
+    expect(r.kind).toBe('ok')
+    if (r.kind !== 'ok') return
+    expect(r.painel.noCofre).toBe(12)
+    expect(r.painel.porRepo).toEqual([
+      { repo: 'operations-center', decisoes: 8 },
+      { repo: 'claude-brain', decisoes: 2 },
+      { repo: 'extractor', decisoes: 1 },
+    ])
+    expect(r.painel.decisoes).toHaveLength(9)
+    expect(r.painel.decisoes.filter((d) => d.secao === 'sem-repo').map((d) => d.escopo)).toEqual([
+      '46',
+    ])
+    expect(r.markdown).toContain('operations-center')
   })
 
   it('uma exceção do graphql vira erro com a mensagem, sem rejeitar', async () => {

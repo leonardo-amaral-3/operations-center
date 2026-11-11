@@ -42,6 +42,7 @@ import { criarAssumir, registerAssumirIpc } from './fabrica/assumir'
 import { lerEstado } from './fabrica/arquivos'
 import { criarExecutorDeComando, registerComandoIpc } from './fabrica/comando'
 import { lerMandato, lerMandatoPelaGraphQL } from './fabrica/github'
+import { registerMandatoIpc } from './fabrica/mandatoNaSala'
 import { criarMarcaEmCache, lerRecursos, portasReais, worktreesDo } from './fabrica/recursos'
 import { pastaDaSala, registerFabricaIpc } from './fabrica/sala'
 import { registerRelatorioIpc } from './relatorio/sala'
@@ -432,6 +433,14 @@ if (screen === 'kanban')
     home: homedir(),
     agora: () => new Date(),
   })
+
+// O mandato da `dev` para a tela Mandato (F5): um `createGraphQL()` por leitor, e sem cache, porque
+// a tela lê uma vez ao abrir.
+if (screen === 'kanban') {
+  const graphqlDoMandato = createGraphQL()
+
+  registerMandatoIpc(() => lerMandatoPelaGraphQL(graphqlDoMandato))
+}
 
 function publicarPerigo(): void {
   dangerIpc?.publish()

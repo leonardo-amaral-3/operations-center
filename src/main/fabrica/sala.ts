@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { ipcMain } from 'electron'
 import { despachoAtualDoCard, montarCard } from '../../core/fabrica/card'
 import { entradaNaSala } from '../../core/fabrica/entrada'
+import { lerRevisoes } from '../../core/fabrica/revisoes'
 import { montarPergunta, montarSala, urlDoCard } from '../../core/fabrica/sala'
 import {
   NOME_DO_PROJETO_DA_FABRICA,
@@ -21,11 +22,13 @@ import type {
   ReadCardDaFabricaRequest,
   ReadPerguntaRequest,
   RecursosDaFabrica,
+  RevisoesNaSala,
   SalaDaFabrica,
 } from '../../shared/fabrica'
 import { IPC_INVOKE } from '../../shared/ipc'
 import { identidade, lerEntrada, lerEstado, lerPausa, lerSaida, pastaDaFabrica } from './arquivos'
 import { acharDespacho, despachoVivo } from './processos'
+import { lerTextoDasRevisoes } from './revisoes'
 
 /**
  * A leitura da sala da fábrica (card 122, spec P3 §A3). **Só lê**: das portas da P2 entram aqui as
@@ -223,6 +226,17 @@ export function lerEntradaDaSala(pasta: string): EntradaNaSala {
   }
 }
 
+/** As revisões das decisões do cofre (F5): sem arquivo é vazio; arquivo que não abre é `ilegivel`. */
+export function lerRevisoesDaSala(pasta: string): RevisoesNaSala {
+  try {
+    const r = lerRevisoes(lerTextoDasRevisoes(pasta) ?? '')
+
+    return { kind: 'ok', ...r }
+  } catch (err) {
+    return { kind: 'ilegivel', erro: mensagem(err) }
+  }
+}
+
 export function registerFabricaIpc(pasta: string, fontes: FontesDaSala): void {
   ipcMain.handle(IPC_INVOKE.readFabrica, (): SalaDaFabrica =>
     lerSala(pasta, process.platform, () => new Date().toISOString(), fontes),
@@ -240,4 +254,5 @@ export function registerFabricaIpc(pasta: string, fontes: FontesDaSala): void {
         : { kind: 'ilegivel', card: 0, cardUrl: '', erro: 'pedido inválido' },
   )
   ipcMain.handle(IPC_INVOKE.readFabricaEntrada, (): EntradaNaSala => lerEntradaDaSala(pasta))
+  ipcMain.handle(IPC_INVOKE.readFabricaRevisoes, (): RevisoesNaSala => lerRevisoesDaSala(pasta))
 }
