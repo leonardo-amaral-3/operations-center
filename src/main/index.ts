@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { query } from '@anthropic-ai/claude-agent-sdk'
@@ -36,6 +37,7 @@ import {
   saveConversations,
 } from './conversations'
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
+import { pastaDaSala, registerFabricaIpc } from './fabrica/sala'
 import type { DangerGate } from './danger'
 import { createFixtureGraphQL, createFixtureRest } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
@@ -378,6 +380,10 @@ const dangerIpc = screen === 'kanban' ? registerDangerIpc(danger) : null
 // Em paralelo à janela, como a primeira leitura do board: o disco é lido antes de o renderer pedir o
 // primeiro retrato, e o `onChange` corrige a tela quando ele responder.
 dangerIpc?.refresh()
+
+// A sala da fábrica (#122): só quando o processo sobe na tela do kanban, como o `registerDangerIpc`
+// acima; as janelas de card do mesmo processo não chamam estes canais. Só lê a pasta da fábrica.
+if (screen === 'kanban') registerFabricaIpc(pastaDaSala(process.env, homedir()))
 
 function publicarPerigo(): void {
   dangerIpc?.publish()
