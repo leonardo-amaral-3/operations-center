@@ -54,6 +54,10 @@
     // `ARQUIVO_DO_PROTOTIPO` no programa do Node. Sem a linha, `tsc --build` reprova o import com
     // `TS6307` enquanto o `yarn test` passa verde.
     "src/renderer/fabrica/rotas.ts",
+    // A Linha da fábrica (#131): colunas, rótulos e textos puros que as duas telas dividem. Entra
+    // aqui porque `tests/unit/linha-prototipo.test.ts` a importa no programa do Node para conferir os
+    // nove rótulos contra o protótipo; sem a linha, `tsc --build` reprova o import com `TS6307`.
+    "src/renderer/fabrica/linha.ts",
 
     "tests/**/*.ts"
   ],
