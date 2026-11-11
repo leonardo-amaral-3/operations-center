@@ -20,6 +20,8 @@ export function Fabrica(): JSX.Element {
   // Mudar de tela volta ao topo.
   useEffect(() => {
     area.current?.scrollTo?.({ top: 0 })
+    // O erro do último comando era da tela de onde se saiu.
+    setResultado(null)
   }, [tela])
 
   // O botão só volta depois do retrato novo: `reler` resolve quando ele foi aplicado.

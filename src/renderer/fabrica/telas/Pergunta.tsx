@@ -25,6 +25,9 @@ export function Pergunta({ tela, sala, ir }: PropsDaTela): JSX.Element {
 
     let atual = true
 
+    // Outro item: o texto do anterior não fica na tela até a resposta nova chegar.
+    setPergunta(undefined)
+
     window.oc
       .readFabricaPergunta({ id })
       .then((resposta) => {
