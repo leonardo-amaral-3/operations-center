@@ -246,3 +246,17 @@ describe('Entrada · Mandar', () => {
     expect(screen.getAllByTestId('fabrica-entrada-item')).toHaveLength(4)
   })
 })
+
+describe('Entrada · o item triado abre o Card em qualquer ponto (#145, CA-2)', () => {
+  it('clicar no triado que cita #906 leva ao Card; sem card e aberto não navegam', async () => {
+    const { p } = await abrir()
+    const itens = screen.getAllByTestId('fabrica-entrada-item')
+    const por = (id: string) => itens.find((i) => i.getAttribute('data-id') === id)!
+    fireEvent.click(within(por('e-0002')).getByText('Erro ao exportar BPA.'))
+    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 906 })
+    vi.mocked(p.ir).mockClear()
+    fireEvent.click(within(por('e-0001')).getByText('Só uma ideia.'))
+    fireEvent.click(within(por('e-0003')).getByText(/filtro por competência/))
+    expect(p.ir).not.toHaveBeenCalled()
+  })
+})

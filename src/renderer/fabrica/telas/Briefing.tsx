@@ -6,6 +6,7 @@ import { Badge } from '../../ui/badge'
 import { Button } from '../../ui/button'
 import { Card } from '../../ui/card'
 import { cn } from '../../ui/cn'
+import { abrirAoClicar } from '../cartao'
 import { Input } from '../../ui/input'
 import { Textarea } from '../../ui/textarea'
 import {
@@ -74,6 +75,7 @@ function Frente({
   onMarcar,
   onPronto,
   onVer,
+  onAbrir,
 }: {
   frente: FrenteDoBriefing
   teto: string
@@ -83,6 +85,7 @@ function Frente({
   onMarcar: (marcar: boolean) => void
   onPronto: (texto: string) => void
   onVer: () => void
+  onAbrir: () => void
 }): JSX.Element {
   const { card, titulo, coluna, comando, emVoo, abertos } = frente
   return (
@@ -90,7 +93,9 @@ function Frente({
       data-testid="fabrica-briefing-frente"
       data-card={card}
       data-estado={emVoo ? 'em-voo' : 'candidata'}
-      className="gap-3 bg-secondary-background p-4"
+      data-abre-card={card}
+      onClick={abrirAoClicar(onAbrir)}
+      className="cursor-pointer gap-3 bg-secondary-background p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-heading text-[17px]">{`#${card} · ${titulo}`}</h2>
@@ -402,6 +407,7 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
             }
             onPronto={(texto) => setPronto((p) => ({ ...p, [f.card]: texto }))}
             onVer={() => ir({ tela: 'card', card: f.card })}
+            onAbrir={() => ir({ tela: 'card', card: f.card })}
           />
         ))}
       </>

@@ -396,3 +396,53 @@ describe('Sala · os outros ramos do retrato', () => {
     expect(within(coluna('implementacao')).queryByTitle(/^Tipo: /)).toBeNull()
   })
 })
+
+describe('Sala · o cartão de card abre a tela Card em qualquer ponto (#145, CA-2)', () => {
+  it('clicar no cartão de despacho, fora do título, leva ao Card', async () => {
+    await abrir()
+    const cartao = screen
+      .getAllByTestId('fabrica-em-voo')
+      .map((b) => b.closest('article'))
+      .find((a) => a?.dataset.abreCard === '1')
+    expect(cartao).toBeTruthy()
+    fireEvent.click(cartao!)
+    expect(telaAtual()).toBe('card')
+    expect(screen.getByTestId('fabrica-trilha').textContent).toContain('#1')
+  })
+
+  it('clicar na linha parada leva ao Card, e o badge PARADA continua indo ao item', async () => {
+    await abrir()
+    const parada = nth(screen.getAllByTestId('fabrica-linha-parada'), 0)
+    const n = parada.dataset.abreCard
+    expect(n).toBeTruthy()
+    fireEvent.click(parada)
+    expect(telaAtual()).toBe('card')
+    expect(screen.getByTestId('fabrica-trilha').textContent).toContain(`#${n}`)
+    fireEvent.click(screen.getByTestId('fabrica-trilha-0'))
+
+    const outra = nth(screen.getAllByTestId('fabrica-linha-parada'), 0)
+    const botao = within(outra).getByRole('button')
+    fireEvent.click(botao)
+    expect(['pergunta', 'decisao']).toContain(telaAtual())
+  })
+
+  it('"Fora da linha" abre o Card pelo botão', async () => {
+    const solto = {
+      ...nth(RETRATO_F2.emVoo, 0),
+      id: 'd-0099',
+      card: 960,
+      cardUrl: 'https://example.invalid/960',
+      estacao: null,
+      comando: 'yarn x',
+    }
+    await abrir(ok({ emVoo: [solto] }))
+    fireEvent.click(within(screen.getByTestId('fabrica-linha-fora')).getByTestId('fabrica-em-voo'))
+    expect(telaAtual()).toBe('card')
+  })
+
+  it('o cartão de "Esperando você" continua abrindo o item da fila', async () => {
+    await abrir()
+    fireEvent.click(nth(screen.getAllByTestId('fabrica-aberto'), 1))
+    expect(telaAtual()).toBe('pergunta')
+  })
+})

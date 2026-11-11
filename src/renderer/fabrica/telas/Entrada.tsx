@@ -6,6 +6,7 @@ import { Badge } from '../../ui/badge'
 import { Button } from '../../ui/button'
 import { Card } from '../../ui/card'
 import { cn } from '../../ui/cn'
+import { abrirAoClicar } from '../cartao'
 import { Textarea } from '../../ui/textarea'
 import { cardCitado } from '../emVoo'
 import { horaCurta } from '../linha'
@@ -61,7 +62,15 @@ function ItemDaEntrada({ item, ir }: { item: ItemNaEntrada; ir: PropsDaTela['ir'
       data-testid="fabrica-entrada-item"
       data-id={item.id}
       data-estado={triado ? 'triado' : 'aberto'}
-      className="gap-2.5 bg-secondary-background p-4"
+      data-abre-card={citado ?? undefined}
+      onClick={
+        citado === null
+          ? undefined
+          : abrirAoClicar(() => {
+              ir({ tela: 'card', card: citado })
+            })
+      }
+      className={cn('gap-2.5 bg-secondary-background p-4', citado !== null && 'cursor-pointer')}
     >
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge variant="neutral">Você</Badge>
