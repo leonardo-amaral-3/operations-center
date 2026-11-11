@@ -124,6 +124,7 @@ function createGraphQL(): GraphQLFn {
         boards: process.env.OC_BOARDS_FIXTURE,
         cards: process.env.OC_CARD_FIXTURE,
         pulls: process.env.OC_PR_FIXTURE,
+        relatorio: process.env.OC_RELATORIO_FIXTURE,
       })
     : createGitHubGraphQL(createGhTokenSource())
 }

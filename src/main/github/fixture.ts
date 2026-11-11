@@ -11,6 +11,7 @@ import { readFile } from 'node:fs/promises'
 
 import { CARD_QUERY, OWNERS_QUERY, PR_LINK_QUERY, PR_QUERY, PROJECTS_QUERY } from '../../core'
 import type { GraphQLFn, GraphQLResponse, RestGetFn } from '../../core'
+import { RELATORIO_MOVIDOS_QUERY } from '../../core/relatorio'
 
 export interface FixtureFiles {
   /** Mapa `"owner/number"` → envelope do `BOARD_QUERY`, sob a chave `boards`. */
@@ -27,6 +28,11 @@ export interface FixtureFiles {
    * card→PR **não** mora aqui: vem de `cards`, o mesmo envelope do `CARD_QUERY`.
    */
   pulls?: string
+  /**
+   * `{ "movidos": envelope do RELATORIO_MOVIDOS_QUERY, "cards": { "<n>": nó do issueOrPullRequest } }`.
+   * Ausente = os dois documentos do relatório respondem erro.
+   */
+  relatorio?: string
 }
 
 /**
@@ -51,6 +57,11 @@ export function createFixtureGraphQL(files: FixtureFiles): GraphQLFn {
     if (document === OWNERS_QUERY) return readOwners(files.boards)
     if (document === PROJECTS_QUERY) return readProjects(files.boards, variables['owner'])
 
+    if (document === RELATORIO_MOVIDOS_QUERY) return readRelatorioMovidos(files.relatorio)
+    if (document.startsWith('query RelatorioCards(')) {
+      return readRelatorioCards(files.relatorio, document)
+    }
+
     return readBoard(files.board, variables['owner'], variables['number'])
   }
 }
@@ -68,6 +79,52 @@ async function readBoard(path: string, owner: unknown, number: unknown): Promise
   if (envelope === undefined) throw new Error(`sem fixture de board para ${key}`)
 
   return narrow(envelope)
+}
+
+const SEM_RELATORIO = 'sem fixture do relatório (OC_RELATORIO_FIXTURE)'
+
+/** Os movidos do dia: o envelope do arquivo, como veio. */
+async function readRelatorioMovidos(path: string | undefined): Promise<GraphQLResponse> {
+  if (path === undefined) return { data: null, errors: [{ message: SEM_RELATORIO }] }
+
+  const movidos = (await readJson(path))['movidos']
+
+  if (movidos === undefined || movidos === null) {
+    throw new Error(`a fixture ${path} não tem a chave \`movidos\``)
+  }
+
+  return narrow(movidos as GraphQLResponse)
+}
+
+/**
+ * Um alias por número pedido. Número fora do arquivo vira `null` com o `NOT_FOUND` que o GitHub
+ * devolve, que é o caso "ausente" do leitor de cards.
+ */
+async function readRelatorioCards(
+  path: string | undefined,
+  document: string,
+): Promise<GraphQLResponse> {
+  if (path === undefined) return { data: null, errors: [{ message: SEM_RELATORIO }] }
+
+  const cards = (await readJson(path))['cards'] as Record<string, unknown> | undefined
+  const repository: Record<string, unknown> = {}
+  const errors: { message: string; type: string; path: string[] }[] = []
+
+  for (const [, n] of document.matchAll(/\bc(\d+): issueOrPullRequest/g)) {
+    const no = cards?.[String(n)]
+
+    repository[`c${n}`] = no ?? null
+
+    if (no === undefined) {
+      errors.push({
+        message: 'Could not resolve to an issue or pull request',
+        type: 'NOT_FOUND',
+        path: ['repository', `c${n}`],
+      })
+    }
+  }
+
+  return { data: { repository }, ...(errors.length > 0 ? { errors } : {}) }
 }
 
 /** Os donos a varrer. Sem fixture da descoberta não há o que responder — e calar seria pior. */
