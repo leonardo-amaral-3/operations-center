@@ -43,6 +43,27 @@ export interface DespachoNaSala {
   lancadoEm: string | null
 }
 
+/** Sessões da prova vivas contra o teto do mandato (F2 §F2.1); falha de leitura nunca vira número. */
+export type LeituraDeSessoes =
+  | { kind: 'ok'; vivas: number; teto: number }
+  | { kind: 'sem-leitura'; motivo: string; teto: number }
+
+/** O cadeado da suíte de smoke: livre, ou ocupado (com o card da pasta dona e quantos esperam). */
+export type LeituraDaSuite =
+  | { kind: 'livre' }
+  | { kind: 'ocupada'; card: number | null; esperando: number }
+  | { kind: 'sem-leitura'; motivo: string }
+
+/** O espaço livre onde a fábrica escreve, em bytes, contra o mínimo da esteira. */
+export type LeituraDoDisco =
+  { kind: 'ok'; livres: number; minimo: number } | { kind: 'sem-leitura'; motivo: string }
+
+export interface RecursosDaFabrica {
+  sessoes: LeituraDeSessoes
+  suite: LeituraDaSuite
+  disco: LeituraDoDisco
+}
+
 /** A pausa da fábrica (#129): `pausa.json` existe. `desde: null` quando o arquivo está torto. */
 export interface PausaDaFabrica {
   desde: string | null

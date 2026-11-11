@@ -11,6 +11,7 @@ import { readFile } from 'node:fs/promises'
 
 import { CARD_QUERY, OWNERS_QUERY, PR_LINK_QUERY, PR_QUERY, PROJECTS_QUERY } from '../../core'
 import type { GraphQLFn, GraphQLResponse, RestGetFn } from '../../core'
+import { MANDATO_DA_DEV_QUERY } from '../../core/fabrica/mandato'
 import { RELATORIO_MOVIDOS_QUERY } from '../../core/relatorio'
 
 export interface FixtureFiles {
@@ -33,6 +34,8 @@ export interface FixtureFiles {
    * Ausente = os dois documentos do relatório respondem erro.
    */
   relatorio?: string
+  /** Caminho de um texto puro: o `fabrica/MANDATO.md` da `dev`. Ausente = o documento lança. */
+  mandato?: string
 }
 
 /**
@@ -62,6 +65,8 @@ export function createFixtureGraphQL(files: FixtureFiles): GraphQLFn {
       return readRelatorioCards(files.relatorio, document)
     }
 
+    if (document === MANDATO_DA_DEV_QUERY) return readMandato(files.mandato)
+
     return readBoard(files.board, variables['owner'], variables['number'])
   }
 }
@@ -79,6 +84,15 @@ async function readBoard(path: string, owner: unknown, number: unknown): Promise
   if (envelope === undefined) throw new Error(`sem fixture de board para ${key}`)
 
   return narrow(envelope)
+}
+
+/** O texto do arquivo como o GitHub o devolveria; sem arquivo lança, como a fixture de card. */
+async function readMandato(path: string | undefined): Promise<GraphQLResponse> {
+  if (path === undefined) throw new Error('sem fixture do mandato (OC_FABRICA_MANDATO_FIXTURE)')
+
+  const text = await readFile(path, 'utf8')
+
+  return { data: { repository: { object: { text } } } }
 }
 
 const SEM_RELATORIO = 'sem fixture do relatório (OC_RELATORIO_FIXTURE)'

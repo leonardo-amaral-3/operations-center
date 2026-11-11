@@ -1,7 +1,11 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { MANDATO_DA_DEV_QUERY } from '../../src/core/fabrica/mandato'
+import { lerMandatoPelaGraphQL } from '../../src/main/fabrica/github'
 import { RELATORIO_MOVIDOS_QUERY, lerCards } from '../../src/core/relatorio'
 import { documentoDosCards } from '../../src/core/relatorio/board'
 import { createFixtureGraphQL } from '../../src/main/github/fixture'
@@ -74,5 +78,32 @@ describe('createFixtureGraphQL, os documentos do relatório', () => {
     const graphql = createFixtureGraphQL({ board: SEM_BOARD, relatorio: SMOKE })
 
     await expect(graphql('query Outro { x }', { owner: 'a', number: 1 })).rejects.toThrow()
+  })
+})
+
+describe('createFixtureGraphQL, o mandato da dev', () => {
+  it('com `mandato`, devolve o texto do arquivo no envelope do GitHub', async () => {
+    const pasta = mkdtempSync(join(tmpdir(), 'oc-mandato-'))
+    try {
+      const arquivo = join(pasta, 'mandato.txt')
+      writeFileSync(arquivo, 'MANDATO DA PROVA\nresto\n')
+      const graphql = createFixtureGraphQL({ board: SEM_BOARD, mandato: arquivo })
+
+      expect(await graphql(MANDATO_DA_DEV_QUERY, {})).toEqual({
+        data: { repository: { object: { text: 'MANDATO DA PROVA\nresto\n' } } },
+        errors: undefined,
+      })
+      expect(await lerMandatoPelaGraphQL(graphql)).toBe('MANDATO DA PROVA\nresto\n')
+    } finally {
+      rmSync(pasta, { recursive: true, force: true })
+    }
+  })
+
+  it('sem `mandato`, lança o aviso da fixture', async () => {
+    const graphql = createFixtureGraphQL({ board: SEM_BOARD })
+
+    await expect(graphql(MANDATO_DA_DEV_QUERY, {})).rejects.toThrow(
+      'sem fixture do mandato (OC_FABRICA_MANDATO_FIXTURE)',
+    )
   })
 })
