@@ -43,7 +43,7 @@ function Kpi({
   classe,
 }: {
   nome: string
-  n: number
+  n: number | null // null → "—": o número depende das revisões, que ainda não chegaram
   rotulo: string
   classe?: string
 }): JSX.Element {
@@ -53,7 +53,7 @@ function Kpi({
       data-kpi={nome}
       className={cn('flex-[1_1_180px] gap-0.5 bg-secondary-background px-4 py-3', classe)}
     >
-      <b className="font-heading text-3xl">{n}</b>
+      <b className="font-heading text-3xl">{n ?? '—'}</b>
       <span className="text-sm">{rotulo}</span>
     </Card>
   )
@@ -242,7 +242,9 @@ function Corpo({
         <Kpi nome="chaves" n={n.chaves} rotulo="decisões-chave abaixo" />
         <Kpi
           nome="provisorias"
-          n={n.provisorias}
+          // Sem as revisões (carregando ou ilegíveis), contar as provisórias tomaria todas por não
+          // revisadas (G4 da PR #140).
+          n={revisoes === null ? null : n.provisorias}
           rotulo="provisórias para você"
           classe="bg-warning"
         />

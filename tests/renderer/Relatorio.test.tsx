@@ -420,6 +420,24 @@ describe('Relatório: confirmar e contestar (CA-5.2)', () => {
     )
     for (const b of screen.getAllByTestId<HTMLButtonElement>('fabrica-confirmar'))
       expect(b.disabled).toBe(true)
+    // Sem revisões, o número de provisórias não é sabido: "—", não todas como não revisadas.
+    expect(kpi('provisorias')).toBe('—')
+    expect(kpi('cofre')).toBe('12')
+  })
+
+  it('enquanto as revisões carregam, provisórias mostra "—"; ao chegar, o número', async () => {
+    let resolver: (v: RevisoesNaSala) => void = () => undefined
+    readFabricaRevisoes.mockReturnValue(new Promise((r) => (resolver = r)))
+    await abrir()
+    expect(kpi('provisorias')).toBe('—')
+    expect(kpi('estacionadas')).toBe('1')
+    await act(async () => {
+      resolver(REVISOES)
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(kpi('provisorias')).toBe('2')
+    })
   })
 
   it('linhas ilegíveis: singular e plural', async () => {
