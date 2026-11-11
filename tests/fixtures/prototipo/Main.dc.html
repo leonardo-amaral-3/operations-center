@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Sala de controle</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ECE3F8}
+a{color:#000}a:hover{color:#4B2FA8}
+.nb{background:#fff;border:2px solid #000;border-radius:5px;box-shadow:4px 4px 0 #000;box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;gap:6px;border:2px solid #000;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700;line-height:18px;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;border:1.5px solid #000;border-radius:4px;padding:0 6px;font-size:11px;font-weight:700;line-height:18px}
+.colhead{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#A388EE;border:2px solid #000;border-radius:5px;padding:8px 10px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px}
+.lvl{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:2px solid #000;border-radius:4px;background:#fff;font-size:12px;font-weight:700}
+.empty{border:2px dashed #000;border-radius:5px;padding:12px;font-size:12px;color:#3D3D3D;background:rgba(255,255,255,.45)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 14px;border:2px solid #000;border-radius:5px;box-shadow:3px 3px 0 #000;font:700 13px 'DM Sans',sans-serif;text-decoration:none;color:#000;cursor:pointer}
+.dot{width:10px;height:10px;border-radius:50%;border:2px solid #000;display:inline-block}
+</style>
+</helmet>
+<div style="min-height: 1000px; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 20px; font-family: 'DM Sans', sans-serif; font-weight: 500; color: #000; background: #ECE3F8">
+
+<header class="nb" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px">
+  <div style="display: flex; align-items: center; gap: 12px">
+    <div style="width: 36px; height: 36px; background: #A388EE; border: 2px solid #000; border-radius: 5px; display: flex; align-items: center; justify-content: center">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21V10l5 3V10l5 3V6l8 4v11z"/></svg>
+    </div>
+    <div>
+      <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 20px; line-height: 22px">Operations Center</h1>
+      <div style="font-size: 12px; color: #3D3D3D">Sala de controle da fábrica</div>
+    </div>
+  </div>
+  <nav aria-label="Telas" style="display: flex; flex-wrap: wrap; gap: 8px">
+    <a class="btn" href="Main.dc.html" style="background: #A388EE">Sala de controle</a>
+    <a class="btn" href="Briefing.dc.html" style="background: #fff">Briefing</a>
+    <a class="btn" href="Relatorio.dc.html" style="background: #fff">Relatório</a>
+    <a class="btn" href="Portfolio.dc.html" style="background: #fff">Portfólio</a>
+    <a class="btn" href="Entrada.dc.html" style="background: #fff">Entrada</a>
+    <a class="btn" href="Agentes.dc.html" style="background: #fff">Agentes</a>
+    <a class="btn" href="Release.dc.html" style="background: #fff">Release</a>
+    <a class="btn" href="Mandato.dc.html" style="background: #fff">Mandato e placar</a>
+  </nav>
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+    <span class="chip" style="background: #fff">Plataformas v2 · Project 19</span>
+    <span class="chip" style="background: #86DB84"><span class="dot" style="background: #fff"></span>Fábrica ligada</span>
+    <button class="btn" type="button" style="background: #F07468">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+      Pausar fábrica
+    </button>
+  </div>
+</header>
+
+<section aria-label="Resumo" style="display: flex; flex-wrap: wrap; gap: 12px">
+  <div class="nb" style="flex: 1 1 200px; padding: 12px 16px; background: #EFC75E; display: flex; align-items: baseline; gap: 10px"><span style="font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700">4</span><span style="font-size: 14px; font-weight: 700">esperando você</span></div>
+  <div class="nb" style="flex: 1 1 200px; padding: 12px 16px; display: flex; align-items: baseline; gap: 10px"><span style="font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700">3</span><a href="Agentes.dc.html" style="font-size: 14px; font-weight: 700">agentes trabalhando</a></div>
+  <div class="nb" style="flex: 1 1 200px; padding: 12px 16px; display: flex; align-items: baseline; gap: 10px"><span style="font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700">1</span><span style="font-size: 14px; font-weight: 700">cadeado ocupado</span></div>
+  <div class="nb" style="flex: 1 1 200px; padding: 12px 16px; display: flex; align-items: baseline; gap: 10px"><span style="font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700">0</span><span style="font-size: 14px; font-weight: 700">sessões quebradas</span></div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+
+  <section aria-label="Esperando você" style="flex: 1 1 340px; max-width: 400px; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: baseline; justify-content: space-between">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Esperando você</h2>
+      <span style="font-size: 12px; color: #3D3D3D">mais antiga primeiro</span>
+    </div>
+
+    <article class="nb" style="padding: 14px; display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; flex-wrap: wrap; gap: 6px"><span class="chip" style="background: #6CC4EE">Pergunta</span><span class="tag" style="background: #fff">extractor#2 · fase 5</span></div>
+      <h3 style="margin: 0; font-size: 15px; line-height: 20px">O registro civil passa a ser checado por bloco?</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 18px; color: #2B2B2B">A tradução trava aqui. A resposta decide 13 glosas da leva 7, a maior trava da lista.</p>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap"><a class="btn" href="Pergunta.dc.html" style="background: #6CC4EE">Responder</a><button class="btn" type="button" style="background: #fff">Ver contexto</button></div>
+    </article>
+
+    <article class="nb" style="padding: 14px; display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; flex-wrap: wrap; gap: 6px"><span class="chip" style="background: #EFC75E">Aprovar · nível B</span><span class="tag" style="background: #fff">modulo-processos#1851</span></div>
+      <h3 style="margin: 0; font-size: 15px; line-height: 20px">Validação em dev: regras do DATASUS em linguagem natural</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 18px; color: #2B2B2B">O agente rodou o roteiro da PR #1857 e anexou a evidência. Dois pontos pedem o seu olho.</p>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap"><a class="btn" href="Decisao.dc.html" style="background: #EFC75E">Revisar evidência</a></div>
+    </article>
+
+    <article class="nb" style="padding: 14px; display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; flex-wrap: wrap; gap: 6px"><span class="chip" style="background: #EFC75E">Merge na dev · nível B</span><span class="tag" style="background: #fff">PR #1871</span></div>
+      <h3 style="margin: 0; font-size: 15px; line-height: 20px">BDNAIH e TB_MUN avaliam na rodada (#1868)</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 18px; color: #2B2B2B">Toca dado: o merge fica com você até o mandato dizer outra coisa.</p>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap"><button class="btn" type="button" style="background: #EFC75E">Aprovar merge</button><button class="btn" type="button" style="background: #fff">Abrir PR</button></div>
+    </article>
+
+    <article class="nb" style="padding: 14px; display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; flex-wrap: wrap; gap: 6px"><span class="chip" style="background: #EFC75E">Merge na dev · nível B</span><span class="tag" style="background: #fff">PR #1862</span></div>
+      <h3 style="margin: 0; font-size: 15px; line-height: 20px">CI mais rápido (#1510)</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 18px; color: #2B2B2B">Aguarda a terceira repetição verde da infra antes do merge.</p>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap"><button class="btn" type="button" style="background: #fff">Ver repetições</button></div>
+    </article>
+  </section>
+
+  <section aria-label="Linha de produção" style="flex: 999 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Linha de produção</h2>
+      <span style="font-size: 12px; color: #3D3D3D">A a fábrica decide · B você aprova · C só você</span>
+    </div>
+    <div style="overflow-x: auto; padding: 0 6px 10px 0">
+      <div style="display: grid; grid-template-columns: repeat(9, 210px); gap: 12px; align-items: start">
+
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div class="colhead"><span>Entrada</span><span class="lvl">A</span></div>
+          <article class="nb" style="padding: 10px; display: flex; flex-direction: column; gap: 6px">
+            <span class="tag" style="background: #F3C9C4; align-self: flex-start">Bug</span>
+            <a href="Entrada.dc.html" style="font-size: 13px; font-weight: 700; line-height: 17px">Alerta do Vigia: regras não avaliadas</a>
+            <div style="font-size: 12px; color: #3D3D3D; line-height: 16px">Rascunho do agente de entrada. Nenhum card igual no board.</div>
+            <span class="chip" style="background: #86DB84; align-self: flex-start">pronto para o G1</span>
+          </article>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div class="colhead"><span>Card · G1</span><span class="lvl">A</span></div>
+          <div class="empty">Nenhum card esperando promoção.</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div class="colhead"><span>Spec · G2</span><span class="lvl">C</span></div>
+          <article class="nb" style="padding: 10px; display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; gap: 4px; flex-wrap: wrap"><span class="tag" style="background: #C8E7C5">Melhoria</span><span class="tag" style="background: #E2EFEE">Completa</span></div>
+            <div style="font-size: 13px; font-weight: 700; line-height: 17px">#1779 Fase 3a do #1775: regras do SIHD2 na dev</div>
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 12px"><span class="dot" style="background: #86DB84"></span>gm-spec · Opus 5.5 · escrevendo</div>
+            <div style="font-size: 12px; color: #3D3D3D; line-height: 16px">Toca dado: o G2 vai para você, depois do revisor independente.</div>
+          </article>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div class="colhead"><span>Implementação</span><span class="lvl">A</span></div>
+          <article class="nb" style="padding: 10px; display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; gap: 4px; flex-wrap: wrap"><span class="tag" style="background: #C8E7C5">Melhoria</span><span class="tag" style="background: #E2EFEE">Completa</span></div>
+            <a href="Card.dc.html" style="font-size: 13px; font-weight: 700; line-height: 17px">#1852 Crítica legível e auditar</a>
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 12px"><span class="dot" style="background: #86DB84"></span>task 2 de 8 · Sonnet 5.5</div>
+            <span class="chip" style="background: #fff; align-self: flex-start"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>suíte db</span>
+          </article>
+          <article class="nb" style="padding: 10px; display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; gap: 4px; flex-wrap: wrap"><span class="tag" style="background: #C8E7C5">Melhoria</span></div>
+            <div style="font-size: 13px; font-weight: 700; line-height: 17px">extractor#2 · leva 7 da tradução</div>
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 12px"><span class="dot" style="background: #6CC4EE"></span>parada na sua pergunta</div>
+            <span class="chip" style="background: #6CC4EE; align-self: flex-start">PARADA</span>
+          </article>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div class="colhead"><span>Integração</span><span class="lvl">A</span></div>
+          <div class="empty">A leva 7 entra aqui quando as sessões fecharem. Lint antes do teste, conflito de código à mão.</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div class="colhead"><span>Revisão · G4</span><span class="lvl">B</span></div>
+          <article class="nb" style="padding: 10px; display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; gap: 4px; flex-wrap: wrap"><span class="tag" style="background: #C8E7C5">Melhoria</span></div>
+            <div style="font-size: 13px; font-weight: 700; line-height: 17px">#1868 BDNAIH e TB_MUN do SIHD2</div>
+            <div style="font-size: 12px">PR #1871</div>
+            <span class="chip" style="background: #EFC75E; align-self: flex-start">seu merge</span>
+          </article>
+          <article class="nb" style="padding: 10px; display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; gap: 4px; flex-wrap: wrap"><span class="tag" style="background: #EBDDB8">Débito técnico</span></div>
+            <div style="font-size: 13px; font-weight: 700; line-height: 17px">#1510 CI mais rápido</div>
+            <div style="font-size: 12px">PR #1862</div>
+            <span class="chip" style="background: #EFC75E; align-self: flex-start">seu merge</span>
+          </article>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div class="colhead"><span>Validação dev</span><span class="lvl">B</span></div>
+          <article class="nb" style="padding: 10px; display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; gap: 4px; flex-wrap: wrap"><span class="tag" style="background: #C8E7C5">Melhoria</span></div>
+            <div style="font-size: 13px; font-weight: 700; line-height: 17px">#1851 Regras do DATASUS em linguagem natural</div>
+            <div style="font-size: 12px">evidência anexada à PR #1857</div>
+            <a class="chip" href="Decisao.dc.html" style="background: #EFC75E; align-self: flex-start; text-decoration: none">revisar</a>
+          </article>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div class="colhead"><span>Release · G5</span><span class="lvl">C</span></div>
+          <div class="empty">Trem vazio. Release e produção são sempre seus.</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div class="colhead"><span>Operação</span><span class="lvl">A</span></div>
+          <article class="nb" style="padding: 10px; display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700"><span class="dot" style="background: #86DB84"></span>Observando produção</div>
+            <div style="font-size: 12px; color: #3D3D3D; line-height: 16px">Lê o Vigia. O último alerta virou rascunho em Entrada.</div>
+          </article>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <aside aria-label="Recursos e atividade" style="flex: 1 1 280px; max-width: 340px; display: flex; flex-direction: column; gap: 16px">
+    <section class="nb" style="padding: 14px; display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Recursos</h2>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 700"><span>Sessões simultâneas</span><span>3 de 6</span></div>
+        <div style="height: 14px; border: 2px solid #000; border-radius: 4px; background: #fff; overflow: hidden"><div style="width: 50%; height: 100%; background: #A388EE; border-right: 2px solid #000"></div></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px"><span style="font-weight: 700">Suíte db</span><span class="chip" style="background: #EFC75E">#1852 · fila vazia</span></div>
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px"><span style="font-weight: 700">Cópias do Ghidra</span><span class="chip" style="background: #fff">livres</span></div>
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px"><span style="font-weight: 700">Disco</span><span class="chip" style="background: #86DB84">acima de 2 GB</span></div>
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px"><span style="font-weight: 700">Cota do plano</span><span class="chip" style="background: #86DB84">normal</span></div>
+    </section>
+    <section class="nb" style="padding: 14px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">O que a fábrica decidiu</h2>
+      <div style="border-left: 0; display: flex; flex-direction: column; gap: 10px; font-size: 12px; line-height: 16px">
+        <div><span class="lvl" style="width: 18px; height: 18px; font-size: 11px; margin-right: 6px">A</span><b>G3 do #1852</b> em 8 tasks. Registrado no card e no cofre.</div>
+        <div><span class="lvl" style="width: 18px; height: 18px; font-size: 11px; margin-right: 6px">A</span><b>Rascunho em Entrada</b> a partir do alerta do Vigia.</div>
+        <div><span class="lvl" style="width: 18px; height: 18px; font-size: 11px; margin-right: 6px; background: #6CC4EE">?</span><b>extractor#2</b> parou e mandou a pergunta para a sua fila.</div>
+        <div><span class="lvl" style="width: 18px; height: 18px; font-size: 11px; margin-right: 6px">A</span><b>#1851</b>: evidência de validação anexada à PR #1857.</div>
+      </div>
+      <a href="Mandato.dc.html" style="font-size: 12px; font-weight: 700">Ver mandato em vigor</a>
+    </section>
+  </aside>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

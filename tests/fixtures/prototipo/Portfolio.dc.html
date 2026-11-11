@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Portfólio e trilha de decisões</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ECE3F8}
+a{color:#000}a:hover{color:#4B2FA8}
+.nb{background:#fff;border:2px solid #000;border-radius:5px;box-shadow:4px 4px 0 #000;box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;gap:6px;border:2px solid #000;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700;line-height:18px;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;border:1.5px solid #000;border-radius:4px;padding:0 6px;font-size:11px;font-weight:700;line-height:18px;white-space:nowrap}
+.flt{min-height:40px;padding:0 14px;border:2px solid #000;border-radius:5px;font:700 13px 'DM Sans',sans-serif;cursor:pointer;color:#000}
+.obj{flex:1 1 300px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.bar{height:16px;border:2px solid #000;border-radius:4px;background:#fff;overflow:hidden}
+.row{display:grid;grid-template-columns:170px 130px minmax(0,1fr) 110px 110px;gap:12px;align-items:center;width:100%;padding:10px 14px;border:0;border-bottom:2px solid #000;font:500 13px 'DM Sans',sans-serif;text-align:left;cursor:pointer;color:#000}
+.h3{margin:0;font-family:'Space Grotesk',sans-serif;font-size:18px}
+</style>
+</helmet>
+<div style="min-height: 1200px; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 20px; font-family: 'DM Sans', sans-serif; font-weight: 500; color: #000; background: #ECE3F8">
+
+<header class="nb" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px">
+  <nav aria-label="Caminho" style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700">
+    <a href="Main.dc.html">Sala de controle</a><span aria-hidden="true">/</span><span>Portfólio</span>
+  </nav>
+  <div style="display: flex; flex-wrap: wrap; gap: 8px"><span class="chip" style="background: #fff">10/11/2026</span><a class="chip" href="Relatorio.dc.html" style="background: #A388EE; text-decoration: none">relatório do dia</a></div>
+</header>
+
+<section aria-label="Objetivos" style="display: flex; flex-direction: column; gap: 12px">
+  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px">
+    <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 24px">A empresa está indo na direção certa?</h1>
+    <span style="font-size: 12px; color: #3D3D3D">objetivos de exemplo: a Direção ainda precisa ser escrita</span>
+  </div>
+  <div style="display: flex; flex-wrap: wrap; gap: 16px">
+    <article class="nb obj">
+      <span class="chip" style="background: #E2EFEE; align-self: flex-start">objetivo</span>
+      <h2 class="h3">Tradução 100% das glosas do SIHD2</h2>
+      <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 700"><span>238 de 363 glosas inteiras</span><span>66%</span></div>
+      <div class="bar"><div style="width: 66%; height: 100%; background: #A388EE; border-right: 2px solid #000"></div></div>
+      <div style="font-size: 13px; line-height: 18px">Frentes: extractor#2, #1868, #1779 · <b>63 decisões hoje</b></div>
+    </article>
+    <article class="nb obj">
+      <span class="chip" style="background: #E2EFEE; align-self: flex-start">objetivo</span>
+      <h2 class="h3">Bancos fechados à internet</h2>
+      <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 700"><span>F1 do #1872 em andamento</span><span>[fases]</span></div>
+      <div class="bar"><div style="width: 20%; height: 100%; background: #A388EE; border-right: 2px solid #000"></div></div>
+      <div style="font-size: 13px; line-height: 18px">Frentes: #1872, #1882 · <b>19 decisões hoje</b></div>
+    </article>
+    <article class="nb obj" style="background: #FBF1D3">
+      <span class="chip" style="background: #F07468; align-self: flex-start">sem objetivo</span>
+      <h2 class="h3">Ferramenta interna (claude-brain)</h2>
+      <div style="font-size: 13px; line-height: 18px">#41, #42, #43, #44, #45, #46 · <b>32 decisões hoje</b>, um quarto do dia.</div>
+      <div style="font-size: 13px; line-height: 18px">Ou vira objetivo na Direção, ou é esforço fora dela. A decisão é sua.</div>
+    </article>
+  </div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <section aria-label="Trilha de decisões" style="flex: 999 1 760px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px">
+      <h2 class="h3">Trilha de decisões</h2>
+      <div role="group" aria-label="Filtro" style="display: flex; flex-wrap: wrap; gap: 8px">
+        <sc-for list="{{filtros}}" as="f" hint-placeholder-count="6">
+          <button type="button" class="flt" aria-pressed="{{f.on}}" onClick="{{f.pick}}" style="{{f.style}}">{{f.nome}}</button>
+        </sc-for>
+      </div>
+    </div>
+    <div class="nb" style="overflow-x: auto">
+      <div style="min-width: 760px">
+        <div class="row" style="background: #A388EE; cursor: default; font-weight: 700; font-family: 'Space Grotesk', sans-serif"><span>Frente</span><span>Quem decidiu</span><span>Decisão</span><span>Reversível</span><span>Estado</span></div>
+        <sc-for list="{{linhas}}" as="l" hint-placeholder-count="6">
+          <button type="button" class="row" onClick="{{l.pick}}" aria-pressed="{{l.on}}" style="{{l.style}}">
+            <span style="font-weight: 700">{{l.frente}}</span>
+            <span>{{l.quem}}</span>
+            <span>{{l.titulo}}</span>
+            <span><span class="tag" style="{{l.revStyle}}">{{l.rev}}</span></span>
+            <span><span class="chip" style="{{l.stStyle}}">{{l.estado}}</span></span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+    <p style="margin: 0; font-size: 12px; color: #3D3D3D">{{contagem}} de 117 decisões de 10/11 nesta amostra. Os textos vêm do cofre; os estados de revisão são ilustrativos.</p>
+  </section>
+
+  <aside class="nb" style="flex: 1 1 320px; max-width: 420px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+    <span style="font-size: 12px; font-weight: 700; color: #3D3D3D">{{sel.frente}} · {{sel.quem}}</span>
+    <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 17px; line-height: 23px">{{sel.titulo}}</h2>
+    <p style="margin: 0; font-size: 13px; line-height: 19px"><b>Por quê:</b> {{sel.porque}}</p>
+    <p style="margin: 0; font-size: 13px; line-height: 19px"><b>Descartado:</b> {{sel.desc}}</p>
+    <p style="margin: 0; font-size: 13px; line-height: 19px"><b>Sob:</b> {{sel.sob}}</p>
+    <p style="margin: 0; font-size: 13px; line-height: 19px"><b>Objetivo:</b> {{sel.obj}}</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px">
+      <button type="button" class="flt" style="background: #86DB84">Confirmar</button>
+      <button type="button" class="flt" style="background: #fff">Contestar</button>
+      <button type="button" class="flt" style="background: #fff">Abrir transcrito</button>
+    </div>
+  </aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1200}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { f: 'Todas', sel: 'vpc' };
+  }
+  renderVals() {
+    const rows = [
+      { id: 'escopo', frente: 'modulo-processos#1872', quem: 'você', titulo: 'Escopo do épico: bancos do processos, faturamento, auth e template fecham à internet', rev: 'sim', estado: 'confirmada', chave: true, sem: false, alerta: false, porque: 'Substitui a decisão anterior, que deixava o plataformas-auth fora.', desc: 'modulo-erp e modulo-suporte, que ficam para cards próprios.', sob: 'conversa com você', obj: 'Bancos fechados à internet' },
+      { id: 'vpc', frente: 'modulo-processos#1872', quem: 'tech lead', titulo: 'Lambdas do banco na VPC, saída pelo NAT, S3 por endpoint gateway', rev: 'toca deploy', estado: 'provisória', chave: true, sem: false, alerta: false, porque: 'Quase todas falam com a internet (Slack, auth, DATASUS, a IA do faturamento), então o NAT é obrigatório; o volume do S3 vai pelo endpoint gratuito.', desc: 'Endpoints de interface para SQS, Secrets e Logs; um security group por lambda; NAT por zona.', sob: '«assuma» do épico #1872', obj: 'Bancos fechados à internet' },
+      { id: 'achados', frente: 'modulo-processos#1882', quem: 'tech lead', titulo: 'Destino dos 4 achados da revisão da PR #1886', rev: 'sim', estado: 'provisória', chave: true, sem: false, alerta: false, porque: '[do cofre]', desc: '[do cofre]', sob: '«assuma» do épico #1872', obj: 'Bancos fechados à internet' },
+      { id: 'leva7', frente: 'extractor#2', quem: 'tech lead', titulo: 'Leva 7 medida: 238 de 363 glosas inteiras, nenhuma perdida', rev: 'sim', estado: 'confirmada', chave: true, sem: false, alerta: false, porque: 'É a medição da PR. A base dos lotes 1, 8 e 9 é a refeita da leva 6, porque a rodada original caiu com o KeyError.', desc: '—', sob: 'frente da tradução 100%', obj: 'Tradução 100% das glosas' },
+      { id: '060159', frente: 'extractor#2', quem: 'agente', titulo: 'A 060159 nunca é emitida pelo SIHD2 23.50', rev: 'sim', estado: 'rotina', chave: false, sem: false, alerta: false, porque: 'O único chamador da função nunca chega à emissão.', desc: '—', sob: 'frente da tradução 100%', obj: 'Tradução 100% das glosas' },
+      { id: 'lite', frente: 'claude-brain#46', quem: 'tech lead', titulo: 'G2: spec do freio de contradição em profundidade Lite', rev: 'sim', estado: 'provisória', chave: true, sem: true, alerta: false, porque: 'Mudança contida numa tool só, mas com decisões que quem implementa não pode tomar sozinho.', desc: 'Profundidade Completa: sem migração nem mudança de contrato.', sob: 'card entregue ao braço direito em 10/11', obj: 'nenhum' },
+      { id: 'tri46', frente: '46 (sem repo)', quem: 'agente', titulo: 'Card #46 triado: Melhoria, S3, Padrão, Rota Curta', rev: 'sim', estado: 'alerta', chave: false, sem: true, alerta: true, porque: 'Triagem despachada.', desc: '—', sob: 'triagem despachada', obj: 'nenhum; escopo gravado sem o repo' },
+      { id: 'b43', frente: 'claude-brain#43', quem: 'agente', titulo: 'A implementação do #43 empilha na branch do #42', rev: 'sim', estado: 'rotina', chave: false, sem: true, alerta: false, porque: 'O #43 obedece à flag e à chave do cliente do #42.', desc: '—', sob: 'card entregue ao braço direito', obj: 'nenhum' }
+    ];
+    const f = this.state.f;
+    const passa = (r) => f === 'Todas' || (f === 'Chave' && r.chave) || (f === 'Provisórias' && r.estado === 'provisória') || (f === 'Suas' && r.quem === 'você') || (f === 'Sem objetivo' && r.sem) || (f === 'Alertas' && r.alerta);
+    const cores = { 'confirmada': 'background: #86DB84', 'provisória': 'background: #EFC75E', 'rotina': 'background: #fff', 'alerta': 'background: #F07468' };
+    const vis = rows.filter(passa);
+    const sel = rows.find((r) => r.id === this.state.sel) || rows[0];
+    return {
+      filtros: ['Todas', 'Chave', 'Provisórias', 'Suas', 'Sem objetivo', 'Alertas'].map((n) => {
+        const on = f === n;
+        return { nome: n, on: on ? 'true' : 'false', style: on ? 'background: #A388EE' : 'background: #fff', pick: () => this.setState({ f: n }) };
+      }),
+      linhas: vis.map((r) => {
+        const on = r.id === this.state.sel;
+        return Object.assign({}, r, {
+          on: on ? 'true' : 'false',
+          style: on ? 'background: #F4F0FA; box-shadow: inset 4px 0 0 #A388EE' : 'background: #fff',
+          revStyle: r.rev === 'toca deploy' ? 'background: #FBF1D3' : 'background: #fff',
+          stStyle: cores[r.estado],
+          pick: () => this.setState({ sel: r.id })
+        });
+      }),
+      contagem: vis.length,
+      sel: sel
+    };
+  }
+}
+</script>
+</body>
+</html>
