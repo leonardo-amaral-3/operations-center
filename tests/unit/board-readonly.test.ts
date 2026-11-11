@@ -21,8 +21,15 @@ import { IPC_EVENT, IPC_INVOKE } from '../../src/shared/ipc'
  *    conter um. Ela pega um documento novo em **qualquer arquivo** deles, e não só o `BOARD_QUERY`.
  */
 
-/** Onde um documento GraphQL pode nascer: o `core` que os escreve e o main que os envia. */
-const DIRETORIOS_DE_DOCUMENTO = ['../../src/core/board', '../../src/main/github']
+/**
+ * Onde um documento GraphQL pode nascer: o `core` que os escreve, o main que os envia e o relatório
+ * do dia (#120), que tem os seus.
+ */
+const DIRETORIOS_DE_DOCUMENTO = [
+  '../../src/core/board',
+  '../../src/main/github',
+  '../../src/core/relatorio',
+]
 
 /**
  * A palavra procurada. Ela não aparece em nenhum arquivo daqueles diretórios — nem em comentário,
