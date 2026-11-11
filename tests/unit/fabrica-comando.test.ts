@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -184,5 +184,45 @@ describe('o executor', () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true })
     }
+  })
+})
+
+describe('o comando entrada (F4, CA-4.3 e CA-E3)', () => {
+  it('vira ["entrada", <texto aparado>]; quebra de linha e --flag passam inteiras', () => {
+    expect(argvDoComando({ tipo: 'entrada', texto: '  a  ' })).toEqual(['entrada', 'a'])
+    expect(argvDoComando({ tipo: 'entrada', texto: 'a\nb' })).toEqual(['entrada', 'a\nb'])
+    expect(argvDoComando({ tipo: 'entrada', texto: '--x' })).toEqual(['entrada', '--x'])
+    expect(argvDoComando({ tipo: 'entrada', texto: 'a'.repeat(4000) })).not.toBeNull()
+  })
+
+  it.each([
+    { tipo: 'entrada', texto: '' },
+    { tipo: 'entrada', texto: '   ' },
+    { tipo: 'entrada', texto: 'a'.repeat(4001) },
+    { tipo: 'entrada', texto: 7 },
+    { tipo: 'entrada' },
+  ])('%j → null', (pedido) => {
+    expect(argvDoComando(pedido)).toBeNull()
+  })
+
+  it('só entrada entra na lista fechada: triar, rodar, estado e iniciar ficam fora', () => {
+    const lista: readonly string[] = SUBCOMANDOS_DO_APP
+    expect(lista).toContain('entrada')
+    for (const fora of ['triar', 'rodar', 'estado', 'iniciar']) expect(lista).not.toContain(fora)
+  })
+
+  it('o executor, numa cópia de f4, grava o e-0004', async () => {
+    // Antes de agir: a pasta de teste nunca é a real.
+    expect(pasta).toContain('/node_modules/.oc-fabrica-teste-')
+    cpSync(join(RAIZ, 'tests', 'fixtures', 'fabrica', 'f4'), pasta, { recursive: true })
+    const executor = criarExecutorDeComando(base({ OC_FABRICA_DIR: pasta }))
+    const r = await executor({ tipo: 'entrada', texto: 'o suporte pediu CSV' })
+    expect(r).toMatchObject({ ok: true, codigo: 0, saida: 'e-0004 na entrada' })
+    const gravada = JSON.parse(readFileSync(join(pasta, 'entrada.json'), 'utf8')) as {
+      contador: number
+      itens: Array<{ id: string; texto: string }>
+    }
+    expect(gravada.contador).toBe(4)
+    expect(gravada.itens[3]).toMatchObject({ id: 'e-0004', texto: 'o suporte pediu CSV' })
   })
 })

@@ -9,8 +9,11 @@
 
 import type { BoardsSnapshot, CardContent, PullRequestView } from './board'
 import type {
+  CardNaFabrica,
   ComandoDaFabrica,
+  EntradaNaSala,
   PerguntaDaFila,
+  ReadCardDaFabricaRequest,
   ReadPerguntaRequest,
   ReadRelatorioRequest,
   RelatorioDaSala,
@@ -146,6 +149,9 @@ export const IPC_INVOKE = {
    * `yarn fabrica` numa lista fechada (`SUBCOMANDOS_DO_APP`); não toca o board.
    */
   comandoFabrica: 'fabrica:comando',
+  /** O card e a entrada da fábrica (F4): só leem a pasta da fábrica. */
+  readFabricaCard: 'fabrica:read-card',
+  readFabricaEntrada: 'fabrica:read-entrada',
   /**
    * O relatório do dia (#126), o mesmo do `yarn relatorio`. **Lê** o cofre, o git e o board, e não
    * escreve em nenhum dos três.
@@ -757,6 +763,8 @@ export interface OcApi {
   readFabricaPergunta(pedido: ReadPerguntaRequest): Promise<PerguntaDaFila | null>
   readRelatorio(pedido: ReadRelatorioRequest): Promise<RelatorioDaSala>
   comandoFabrica(pedido: ComandoDaFabrica): Promise<ResultadoDoComando>
+  readFabricaCard(pedido: ReadCardDaFabricaRequest): Promise<CardNaFabrica>
+  readFabricaEntrada(): Promise<EntradaNaSala>
 }
 
 declare global {

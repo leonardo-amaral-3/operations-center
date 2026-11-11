@@ -10,8 +10,11 @@ import type {
   OpenClaudeResult,
 } from '../shared/claude'
 import type {
+  CardNaFabrica,
   ComandoDaFabrica,
+  EntradaNaSala,
   PerguntaDaFila,
+  ReadCardDaFabricaRequest,
   ReadPerguntaRequest,
   ReadRelatorioRequest,
   RelatorioDaSala,
@@ -220,6 +223,10 @@ const api: OcApi = {
     ipcRenderer.invoke(IPC_INVOKE.readRelatorio, pedido) as Promise<RelatorioDaSala>,
   comandoFabrica: (pedido: ComandoDaFabrica) =>
     ipcRenderer.invoke(IPC_INVOKE.comandoFabrica, pedido) as Promise<ResultadoDoComando>,
+  readFabricaCard: (pedido: ReadCardDaFabricaRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaCard, pedido) as Promise<CardNaFabrica>,
+  readFabricaEntrada: () =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaEntrada) as Promise<EntradaNaSala>,
   openCardWindow: (request: OpenCardWindowRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.openCardWindow, request) as Promise<void>,
   bringBackCardWindow: (request: CardWindowRequest) =>

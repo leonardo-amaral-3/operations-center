@@ -100,7 +100,8 @@ export type SalaDaFabrica =
     } & CabecalhoDaSala)
 
 /** Os comandos do `yarn fabrica` que o app pode rodar (#129). Cada fase acrescenta os seus. */
-export type ComandoDaFabrica = { tipo: 'pausar' } | { tipo: 'retomar' }
+export type ComandoDaFabrica =
+  { tipo: 'pausar' } | { tipo: 'retomar' } | { tipo: 'entrada'; texto: string } // F4
 
 export interface ResultadoDoComando {
   ok: boolean // codigo === 0
@@ -128,6 +129,40 @@ export type RelatorioDaSala =
   | { kind: 'ok'; dia: string; markdown: string; semFonte: number; geradoEm: string }
   | { kind: 'erro'; dia: string; erro: string }
 
+/** Um despacho de um card, para a tela Card (F4). */
+export interface DespachoDoCard {
+  id: string
+  comando: string
+  estacao: EstacaoDaFabrica | null
+  estado: 'pendente' | 'lancando' | 'rodando' | 'concluido'
+  criadoEm: string
+  lancadoEm: string | null
+  concluidoEm: string | null
+  sessao: string | null // o `sessaoClaude`: só existe depois que a sessão termina (M4)
+  fim: 'proximo' | 'parada' | 'falha' | null // o `desfecho.tipo`; null sem desfecho
+  detalhe: string | null // proximo → o comando seguinte; parada/falha → o motivo; null sem desfecho
+}
+
+/** O card na fábrica (F4): o despacho atual, o fim dele e os despachos terminados. */
+export type CardNaFabrica =
+  | { kind: 'sem-estado'; card: number; cardUrl: string }
+  | { kind: 'ilegivel'; card: number; cardUrl: string; erro: string }
+  | { kind: 'sem-despacho'; card: number; cardUrl: string }
+  | {
+      kind: 'ok'
+      card: number
+      cardUrl: string
+      atual: DespachoDoCard // o em voo; sem ele, o terminado mais recente
+      ondeRoda: string // `ondeRodaDo` do atual; nunca caminho absoluto
+      viva: boolean | null // só para `lancando`/`rodando`; null nos outros e fora do Linux
+      resultado: string | null // o `result` do `saida.json` do atual, só quando ele terminou
+      terminados: DespachoDoCard[] // os concluídos do card, do mais novo ao mais velho
+    }
+
+export interface ReadCardDaFabricaRequest {
+  card: number
+}
+
 /** Um item da entrada da fábrica (F4). */
 export interface ItemNaEntrada {
   id: string // 'e-0001'
@@ -141,3 +176,13 @@ export interface ItemNaEntrada {
 export type EntradaNaSala =
   | { kind: 'ok'; itens: ItemNaEntrada[]; total: number } // itens: os 20 mais novos, mais novo primeiro
   | { kind: 'ilegivel'; erro: string }
+
+/** Assumir a sessão de um despacho terminado no cartão do card (F4). */
+export interface AssumirDespachoRequest {
+  despacho: string // 'd-0007'
+  itemId: string // o `itemId` do card no board do app
+}
+
+export type AssumirDespachoResult =
+  | { ok: true; anterior: string | null } // a conversa que o cartão tinha, quando era outra
+  | { ok: false; motivo: string }

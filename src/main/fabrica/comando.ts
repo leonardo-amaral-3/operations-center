@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import { LIMITE_DO_TEXTO_DA_ENTRADA } from '../../core/fabrica/entrada'
 import type { ComandoDaFabrica, ResultadoDoComando } from '../../shared/fabrica'
 import { IPC_INVOKE } from '../../shared/ipc'
 import { executar, type DepsDoCli } from './cli'
@@ -10,7 +11,7 @@ import { executar, type DepsDoCli } from './cli'
  */
 
 /** O que o app pode rodar. Cada fase acrescenta o seu; **nenhuma** acrescenta `rodar` nem `estado`. */
-export const SUBCOMANDOS_DO_APP = ['pausar', 'retomar'] as const
+export const SUBCOMANDOS_DO_APP = ['pausar', 'retomar', 'entrada'] as const
 
 /** O pedido do renderer virado em argv; qualquer coisa fora da união → `null`. */
 export function argvDoComando(pedido: unknown): string[] | null {
@@ -18,6 +19,14 @@ export function argvDoComando(pedido: unknown): string[] | null {
   const tipo = (pedido as { tipo?: unknown }).tipo
   if (tipo === 'pausar') return ['pausar']
   if (tipo === 'retomar') return ['retomar']
+  if (tipo === 'entrada') {
+    const texto = (pedido as { texto?: unknown }).texto
+    if (typeof texto !== 'string') return null
+    const t = texto.trim()
+    // O `yarn fabrica entrada` recusa o vazio e o que passa do limite; recusar aqui poupa a ida.
+    if (t === '' || t.length > LIMITE_DO_TEXTO_DA_ENTRADA) return null
+    return ['entrada', t]
+  }
   return null
 }
 

@@ -202,7 +202,7 @@ export function montarSala(
 }
 
 /** O `result` da saída JSON da sessão, inteiro e sem `trim`; qualquer coisa fora do formato → `null`. */
-function resultadoDaSaida(saida: string | null): string | null {
+export function resultadoDaSaida(saida: string | null): string | null {
   if (saida === null) return null
   let bruto: unknown
   try {

@@ -17,7 +17,14 @@ import {
 import type { RecursosDaFabrica } from '../../src/shared/fabrica'
 import type { EstadoDaFabrica, ItemDaFila } from '../../src/core/fabrica/tipos'
 import { identidade } from '../../src/main/fabrica/arquivos'
-import { estadoDoDespachante, lerPergunta, lerSala, pastaDaSala } from '../../src/main/fabrica/sala'
+import {
+  estadoDoDespachante,
+  lerCardDaFabrica,
+  lerEntradaDaSala,
+  lerPergunta,
+  lerSala,
+  pastaDaSala,
+} from '../../src/main/fabrica/sala'
 
 const FIXTURE = join(__dirname, '..', 'fixtures', 'fabrica', 'sala')
 const estadoDaFixture = (): EstadoDaFabrica =>
@@ -556,4 +563,68 @@ describe('a sala só lê', () => {
       ).toEqual([])
     },
   )
+})
+
+describe('lerCardDaFabrica e lerEntradaDaSala (F4)', () => {
+  const RAIZ = join(__dirname, '..', '..')
+  const F4 = join(__dirname, '..', 'fixtures', 'fabrica', 'f4')
+  const copias: string[] = []
+  afterEach(() => {
+    for (const c of copias.splice(0)) rmSync(c, { recursive: true, force: true })
+  })
+  function copiaDeF4(): string {
+    const pasta = mkdtempSync(join(RAIZ, 'node_modules', '.oc-fabrica-teste-'))
+    copias.push(pasta)
+    // Antes de qualquer escrita: a pasta de teste nunca é a real.
+    expect(pasta).toContain('/node_modules/.oc-fabrica-teste-')
+    cpSync(F4, pasta, { recursive: true })
+    return pasta
+  }
+  const card = (pasta: string, n: number) => lerCardDaFabrica(pasta, n, 'linux', FONTES)
+
+  it('#4 ok sem resultado; #906 com o result; #1 sem-despacho', () => {
+    const pasta = copiaDeF4()
+    const quatro = card(pasta, 4)
+    expect(quatro.kind === 'ok' ? quatro.resultado : 'x').toBeNull()
+    expect(quatro.kind === 'ok' ? quatro.viva : 'x').toBe(false) // o pid 999999 não existe
+    const nove = card(pasta, 906)
+    expect(nove.kind === 'ok' ? nove.resultado : '').toContain('Portão local')
+    expect(card(pasta, 1).kind).toBe('sem-despacho')
+  })
+
+  it('sem estado.json → sem-estado; estado.json torto → ilegivel', () => {
+    const pasta = copiaDeF4()
+    writeFileSync(join(pasta, 'entrada.json'), '{}') // não importa para o card
+    rmSync(join(pasta, 'estado.json'))
+    expect(card(pasta, 4)).toMatchObject({ kind: 'sem-estado', card: 4 })
+    writeFileSync(join(pasta, 'estado.json'), '{torto')
+    const torto = card(pasta, 4)
+    expect(torto.kind).toBe('ilegivel')
+    expect(torto.card).toBe(4)
+  })
+
+  it('o id torto do atual não vira nome de pasta: a saída não é lida', () => {
+    const pasta = copiaDeF4()
+    const caminho = join(pasta, 'estado.json')
+    const e = JSON.parse(readFileSync(caminho, 'utf8')) as { despachos: Array<{ id: string }> }
+    for (const d of e.despachos) if (d.id === 'd-0007') d.id = '../../x'
+    writeFileSync(caminho, JSON.stringify(e))
+    const c = card(pasta, 906)
+    expect(c.kind === 'ok' ? c.resultado : 'x').toBeNull()
+  })
+
+  it('lerEntradaDaSala: a cópia de f4, sem arquivo e com arquivo torto', () => {
+    const pasta = copiaDeF4()
+    const ok = lerEntradaDaSala(pasta)
+    expect(ok.kind === 'ok' ? ok.itens.map((i) => i.id) : []).toEqual([
+      'e-0003',
+      'e-0002',
+      'e-0001',
+    ])
+    expect(ok.kind === 'ok' ? ok.total : 0).toBe(3)
+    rmSync(join(pasta, 'entrada.json'))
+    expect(lerEntradaDaSala(pasta)).toEqual({ kind: 'ok', itens: [], total: 0 })
+    writeFileSync(join(pasta, 'entrada.json'), '{torto')
+    expect(lerEntradaDaSala(pasta).kind).toBe('ilegivel')
+  })
 })
