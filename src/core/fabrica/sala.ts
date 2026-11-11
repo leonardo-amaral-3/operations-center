@@ -10,6 +10,7 @@ import type {
   RecursosDaFabrica,
   SalaDaFabrica,
 } from '../../shared/fabrica'
+import { lerComandoDoG4, lerParecer } from './g4'
 import { REPO_DA_FABRICA } from './mandato'
 import type { Despacho, EstadoDaFabrica, ItemDaFila } from './tipos'
 
@@ -44,15 +45,20 @@ function comparar(a: string, b: string): number {
 }
 
 /**
- * Decisão: o despacho de origem é da estação `revisao` (`/gm-ship`), terminou com PARADA e o motivo
- * cita uma PR. É o único fim de sessão que entrega trabalho pronto esperando aprovação; todo o
- * resto (PARADA de outra estação, falha, PROXIMO recusado, origem fora do estado) é pergunta.
+ * Decisão: a origem é o despacho `/g4` (a revisão do #143), terminou em PARADA com um parecer do
+ * contrato, da mesma PR do comando e sem bloqueante. Todo o resto — inclusive a PARADA de um
+ * `/gm-ship`, que agora só vira item quando o G4 não pôde nascer — é pergunta.
  */
 export function tipoDoItem(item: ItemDaFila, origem: Despacho | undefined): 'pergunta' | 'decisao' {
-  return origem !== undefined &&
-    estacaoDoComando(origem.comando) === 'revisao' &&
-    origem.desfecho?.tipo === 'parada' &&
-    prDoMotivo(item.motivo) !== null
+  if (origem === undefined || origem.desfecho?.tipo !== 'parada') return 'pergunta'
+  const g4 = lerComandoDoG4(origem.comando)
+  const parecer = lerParecer(item.motivo)
+  return g4 !== null &&
+    g4.card === item.card &&
+    g4.card === origem.card &&
+    parecer !== null &&
+    parecer.pr === g4.pr &&
+    parecer.bloqueantes === 0
     ? 'decisao'
     : 'pergunta'
 }
@@ -65,6 +71,7 @@ const ESTACAO_DA_SKILL: Record<string, EstacaoDaFabrica> = {
   '/gm-implement': 'implementacao',
   '/gm-correcao': 'implementacao',
   '/gm-ship': 'revisao',
+  '/g4': 'revisao',
 }
 
 /** A estação pela skill do começo do comando; qualquer outro comando → `null`. */
@@ -93,6 +100,20 @@ export function ondeRodaDo(
   return 'sem worktree'
 }
 
+/**
+ * Onde roda a sessão de um despacho: a do G4 roda no workspace, sem worktree; as demais seguem
+ * `ondeRodaDo` pela estação do comando.
+ */
+export function ondeRodaOComando(
+  comando: string,
+  card: number,
+  worktrees: readonly string[],
+): string {
+  return lerComandoDoG4(comando) !== null
+    ? 'sem worktree'
+    : ondeRodaDo(estacaoDoComando(comando), card, worktrees)
+}
+
 function skillDe(comando: string): string {
   return /^\/(\S+)/.exec(comando)?.[1] ?? comando
 }
@@ -106,15 +127,20 @@ export function montarDecisoes(e: EstadoDaFabrica): DecisaoNaSala[] {
   const passos: DecisaoNaSala[] = e.despachos
     .flatMap((d) =>
       d.estado === 'concluido' && d.desfecho?.tipo === 'proximo' && !comItem.has(d.id)
-        ? [{ d, seguinte: d.desfecho.comando }]
-        : [],
+        ? [{ d, seguinte: skillDe(d.desfecho.comando) }]
+        : d.estado === 'concluido' &&
+            d.desfecho?.tipo === 'parada' &&
+            !comItem.has(d.id) &&
+            d.comando.trimStart().split(/\s+/)[0] === '/gm-ship'
+          ? [{ d, seguinte: 'g4' }]
+          : [],
     )
     .map(({ d, seguinte }) => ({
       tipo: 'passou' as const,
       id: d.id,
       card: d.card,
       skill: skillDe(d.comando),
-      seguinte: skillDe(seguinte),
+      seguinte,
       em: d.concluidoEm ?? d.criadoEm,
     }))
     .sort((a, b) => comparar(b.em, a.em) || comparar(b.id, a.id))
@@ -201,7 +227,7 @@ export function montarSala(
         estado: d.estado as DespachoNaSala['estado'],
         criadoEm: d.criadoEm,
         lancadoEm: d.lancadoEm,
-        ondeRoda: ondeRodaDo(estacao, d.card, ctx.worktrees),
+        ondeRoda: ondeRodaOComando(d.comando, d.card, ctx.worktrees),
         viva: d.estado === 'pendente' || ctx.vivos === null ? null : ctx.vivos.has(d.id),
       }
     })

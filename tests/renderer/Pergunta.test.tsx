@@ -107,7 +107,7 @@ describe('Pergunta · a tela do protótipo (CA-3.1)', () => {
     expect(outras).toHaveLength(3)
     expect(screen.queryByTestId('fabrica-outras-vazio')).toBeNull()
     expect(outras[0]?.textContent).toBe(
-      'PR #970 aberta na dev (Card: #962); o merge é da orquestradora',
+      'G4 da PR #970: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/970#issuecomment-1',
     )
 
     fireEvent.click(outras[0] as HTMLElement)
@@ -121,6 +121,21 @@ describe('Pergunta · a tela do protótipo (CA-3.1)', () => {
     expect(texto('fabrica-por-que')).toBe(
       'Por que chegou a você' +
         'A sessão do /gm-spec #961 terminou com PARADA em vez de decidir sozinha, e o despachante encerrou a frente do #961.',
+    )
+  })
+
+  it('"Por que chegou a você" do G4 diz que o parecer não aprovou a PR', async () => {
+    const g4 = PERGUNTAS_F3['q-0013'] as PerguntaDaFila
+    readFabricaPergunta.mockResolvedValueOnce({
+      ...g4,
+      item: { ...g4.item, tipo: 'pergunta' },
+    })
+    montar('q-0013')
+    await screen.findByTestId('fabrica-pergunta')
+
+    expect(texto('fabrica-por-que')).toBe(
+      'Por que chegou a você' +
+        `O G4 da /g4 #962 PR #970 terminou sem aprovar a PR para o merge (${g4.item.motivo}), e o despachante encerrou a frente do #962.`,
     )
   })
 

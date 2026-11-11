@@ -85,7 +85,8 @@ export const ROTULO_DO_PASSO: Record<string, string> = {
   'gm-plan-tasks': 'G3',
   'gm-implement': 'Task',
   'gm-correcao': 'Correção',
-  'gm-ship': 'G4',
+  'gm-ship': 'PR',
+  g4: 'G4',
 }
 
 /** `'/gm-spec #4'` → `'gm-spec'`; o que não começa por `/skill` volta inteiro. */
@@ -128,7 +129,8 @@ export function previsaoDosPendentes(sala: Extract<SalaDaFabrica, { kind: 'ok' }
     .filter((d) => d.estado === 'pendente')
     .map((_, i) => {
       if (sala.pausa !== null) return 'espera a fábrica ser retomada'
-      if (sala.despachante === 'desconhecido') return 'sobe quando o despachante rodar (sem leitura dele)'
+      if (sala.despachante === 'desconhecido')
+        return 'sobe quando o despachante rodar (sem leitura dele)'
       if (sala.despachante !== 'rodando') return 'espera o yarn fabrica rodar'
       if (sessoes.kind !== 'ok') return 'sobe quando houver vaga (sessões sem leitura)'
       if (i < Math.max(0, sessoes.teto - sessoes.vivas))

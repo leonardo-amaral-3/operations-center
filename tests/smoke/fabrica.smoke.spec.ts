@@ -20,6 +20,8 @@ import type { Page } from '@playwright/test'
 import { BOARDS_FIXTURE_PATH, BOARD_FIXTURE_PATH } from './boards-fixture'
 import { repoDoRelatorio } from './repo-do-relatorio'
 import { abrirItemDoCard } from './comparacao/fila-f3'
+import { tipoDoItem } from '../../src/core/fabrica/sala'
+import type { EstadoDaFabrica } from '../../src/core/fabrica/tipos'
 import { launchSmokeApp } from './smoke-app'
 import { REPO_ROOT, smokeFabricaItem, smokeFabricaReal } from './smoke-env'
 
@@ -486,21 +488,12 @@ test('um item da pasta de verdade', async () => {
   const id = ITEM_REAL as string
   const antes = retrato(pasta)
 
-  const estado = JSON.parse(readFileSync(join(pasta, 'estado.json'), 'utf8')) as {
-    fila: { id: string; motivo: string; despacho: string }[]
-    despachos: { id: string; comando: string; desfecho: { tipo: string } | null }[]
-  }
+  const estado = JSON.parse(readFileSync(join(pasta, 'estado.json'), 'utf8')) as EstadoDaFabrica
   const item = estado.fila.find((q) => q.id === id)
   if (item === undefined) throw new Error(`o item ${id} não está no estado.json`)
   const origem = estado.despachos.find((d) => d.id === item.despacho)
-  // A regra de Decisão (spec F3 §F3.2): `/gm-ship` terminado em PARADA cujo motivo cita `PR #<n>`.
-  const tipo =
-    origem !== undefined &&
-    origem.comando.trimStart().startsWith('/gm-ship') &&
-    origem.desfecho?.tipo === 'parada' &&
-    /\bPR #[1-9]\d*\b/.test(item.motivo)
-      ? 'decisao'
-      : 'pergunta'
+  // A regra de Decisão é a do núcleo (#143 §G4.4): só o parecer do G4 sem bloqueante.
+  const tipo = tipoDoItem(item, origem)
   const saida = JSON.parse(
     readFileSync(join(pasta, 'sessoes', item.despacho, 'saida.json'), 'utf8'),
   ) as { result: string }

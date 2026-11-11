@@ -1,5 +1,5 @@
 import type { CardNaFabrica, DespachoDoCard } from '../../shared/fabrica'
-import { estacaoDoComando, ondeRodaDo, resultadoDaSaida, urlDoCard } from './sala'
+import { estacaoDoComando, ondeRodaOComando, resultadoDaSaida, urlDoCard } from './sala'
 import type { Despacho, EstadoDaFabrica } from './tipos'
 
 /**
@@ -53,7 +53,7 @@ export function montarCard(
     card,
     cardUrl,
     atual: paraDespachoDoCard(atual),
-    ondeRoda: ondeRodaDo(estacaoDoComando(atual.comando), card, ctx.worktrees),
+    ondeRoda: ondeRodaOComando(atual.comando, card, ctx.worktrees),
     viva: emAndamento && ctx.vivos !== null ? ctx.vivos.has(atual.id) : null,
     resultado: atual.estado === 'concluido' ? resultadoDaSaida(ctx.saida) : null,
     terminados: e.despachos

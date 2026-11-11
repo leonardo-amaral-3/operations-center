@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { closeSync, mkdirSync, openSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
+import { FERRAMENTAS_DO_G4, lerComandoDoG4, promptDoG4 } from '../../core/fabrica/g4'
 import { montarPrompt } from '../../core/fabrica/mandato'
 import type { Despacho } from '../../core/fabrica/tipos'
 import { pastaDaSessao } from './arquivos'
@@ -53,7 +54,12 @@ export async function lancar(
   let fdErro: number | undefined
   try {
     mkdirSync(pastaDaSessaoAtual, { recursive: true })
-    const prompt = montarPrompt(d.comando, ctx.mandato, d.nota)
+    const g4 = lerComandoDoG4(d.comando)
+    const prompt = montarPrompt(
+      g4 === null ? d.comando : promptDoG4(g4.card, g4.pr),
+      ctx.mandato,
+      d.nota,
+    )
     writeFileSync(join(pastaDaSessaoAtual, 'prompt.txt'), prompt)
 
     // Daqui em diante `saida.json` existe, e é isso que diz ao `rodar` que o lançamento aconteceu.
@@ -66,6 +72,7 @@ export async function lancar(
       'auto',
       '--permission-prompts',
       'none',
+      ...(g4 === null ? [] : ['--tools', FERRAMENTAS_DO_G4.join(',')]),
       `--add-dir=${ctx.pasta}`,
       `--add-dir=${join(ctx.workspace, 'planning')}`,
       '--output-format',

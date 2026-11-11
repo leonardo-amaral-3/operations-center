@@ -1,0 +1,1 @@
+{"type":"result","subtype":"success","is_error":false,"session_id":"sessao-962-g4","result":"Revisei a PR #970 contra a spec do #962.\n\n- **Portão local:** não roda no G4; o diff traz os testes que a spec pede.\n- **Parecer:** comentado na PR.\n\nPARADA: G4 da PR #970: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/970#issuecomment-1"}
