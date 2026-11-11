@@ -46,7 +46,7 @@ export function envLimpo(env: NodeJS.ProcessEnv, raizDoRepo: string): NodeJS.Pro
 }
 
 export async function lancar(
-  d: Despacho,
+  d: Pick<Despacho, 'id' | 'comando' | 'nota'>,
   ctx: ContextoDoLancamento,
 ): Promise<{ pid: number } | { erro: string }> {
   const pastaDaSessaoAtual = pastaDaSessao(ctx.pasta, d.id)

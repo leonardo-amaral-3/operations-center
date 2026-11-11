@@ -5,6 +5,7 @@ import type { ReadCardResult } from '../../../shared/ipc'
 import { Badge } from '../../ui/badge'
 import { Button } from '../../ui/button'
 import { Card } from '../../ui/card'
+import { abrirAoClicar } from '../cartao'
 import { CabecalhoInterno, LinkDoCard } from '../Moldura'
 import { trilhaDa } from '../rotas'
 import type { PropsDaTela } from '../telas'
@@ -111,7 +112,11 @@ export function Release({ tela, ir }: PropsDaTela): JSX.Element {
               key={c.itemId}
               data-testid="fabrica-release-card"
               data-card={c.number}
-              className="flex-row flex-wrap items-center gap-3 bg-secondary-background px-4 py-3.5"
+              data-abre-card={c.number}
+              onClick={abrirAoClicar(() => {
+                ir({ tela: 'card', card: c.number })
+              })}
+              className="cursor-pointer flex-row flex-wrap items-center gap-3 bg-secondary-background px-4 py-3.5"
             >
               {tipo !== null && <Badge className={tipo.classe}>{tipo.rotulo}</Badge>}
               <span className="flex-[1_1_280px] font-bold">
@@ -187,6 +192,7 @@ export function Release({ tela, ir }: PropsDaTela): JSX.Element {
       <CabecalhoInterno
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
+        atual={tela.tela}
         direita={<Badge className="bg-danger text-danger-foreground">G5 · nível C · só você</Badge>}
       />
       <Card className="flex-row flex-wrap items-center justify-between gap-4 bg-secondary-background p-5">

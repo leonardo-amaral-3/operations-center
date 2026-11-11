@@ -61,6 +61,7 @@ export function Agentes({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
       <CabecalhoInterno
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
+        atual={tela.tela}
         direita={
           <div className="flex flex-wrap items-center gap-2">
             {recursos !== null && <Cracha sessoes={recursos.sessoes} />}

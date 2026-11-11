@@ -4,11 +4,11 @@ import type { ComandoDaFabrica, SalaDaFabrica } from '../../shared/fabrica'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Card } from '../ui/card'
-import { NAVEGACAO_DA_SALA, type Migalha, type TelaDaFabrica } from './rotas'
+import { NAVEGACAO_DA_SALA, type Migalha, type NomeDaTela, type TelaDaFabrica } from './rotas'
 
 /**
  * A moldura da fábrica (#130, F1.2): o cabeçalho da Sala, o das telas internas, o crachá de estado,
- * o botão Pausar e o marcador de tela por vir. Só primitivas de `src/renderer/ui/` e tokens; a
+ * o botão Pausar, o menu das telas (#145) e o marcador de tela por vir. Só primitivas de `src/renderer/ui/` e tokens; a
  * tabela de cores do protótipo para os tokens está no §F1.2 da spec do épico #129.
  */
 
@@ -113,6 +113,35 @@ export function BotaoPausar({
   )
 }
 
+/** Os oito botões de tela (#145): os mesmos em todo cabeçalho, com a tela atual marcada. */
+export function NavegacaoDasTelas({
+  atual,
+  onIr,
+}: {
+  atual: NomeDaTela
+  onIr: (tela: TelaDaFabrica) => void
+}): JSX.Element {
+  return (
+    <nav aria-label="Telas" data-testid="fabrica-nav" className="flex flex-wrap items-center gap-2">
+      {NAVEGACAO_DA_SALA.map(({ tela, rotulo }) => (
+        <Button
+          key={tela}
+          type="button"
+          size="sm"
+          variant={tela === atual ? 'default' : 'neutral'}
+          aria-current={tela === atual ? 'page' : undefined}
+          data-testid={`fabrica-nav-${tela}`}
+          onClick={() => {
+            onIr({ tela } as TelaDaFabrica)
+          }}
+        >
+          {rotulo}
+        </Button>
+      ))}
+    </nav>
+  )
+}
+
 export function CabecalhoDaSala({
   sala,
   emVoo,
@@ -148,22 +177,7 @@ export function CabecalhoDaSala({
         </div>
       </div>
 
-      <nav aria-label="Telas" className="flex flex-wrap items-center gap-2">
-        {NAVEGACAO_DA_SALA.map(({ tela, rotulo }) => (
-          <Button
-            key={tela}
-            type="button"
-            size="sm"
-            variant={tela === 'sala' ? 'default' : 'neutral'}
-            data-testid={`fabrica-nav-${tela}`}
-            onClick={() => {
-              onIr({ tela } as TelaDaFabrica)
-            }}
-          >
-            {rotulo}
-          </Button>
-        ))}
-      </nav>
+      <NavegacaoDasTelas atual="sala" onIr={onIr} />
 
       <div className="flex items-center gap-2">
         {sala !== null && (
@@ -182,10 +196,12 @@ export function CabecalhoInterno({
   trilha,
   direita,
   onIr,
+  atual,
 }: {
   trilha: Migalha[]
   direita?: ReactNode
   onIr: (tela: TelaDaFabrica) => void
+  atual: NomeDaTela
 }): JSX.Element {
   return (
     <Card
@@ -217,6 +233,7 @@ export function CabecalhoInterno({
           </span>
         ))}
       </nav>
+      <NavegacaoDasTelas atual={atual} onIr={onIr} />
       {direita}
     </Card>
   )

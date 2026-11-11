@@ -190,6 +190,7 @@ export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
       <CabecalhoInterno
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
+        atual={tela.tela}
         direita={
           <div className="flex flex-wrap gap-2">
             {ok !== null && (

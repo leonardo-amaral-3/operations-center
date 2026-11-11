@@ -25,6 +25,8 @@ const ABERTO: ItemNaEntrada = {
   criadoEm: '2026-11-11T12:00:00.000Z',
   triadoEm: null,
   resolucao: null,
+  triagem: 'esperando',
+  parou: null,
 }
 const TRIADO: ItemNaEntrada = {
   id: 'e-0002',
@@ -33,6 +35,8 @@ const TRIADO: ItemNaEntrada = {
   criadoEm: '2026-11-10T12:00:00.000Z',
   triadoEm: '2026-11-10T13:00:00.000Z',
   resolucao: 'virou o #906',
+  triagem: null,
+  parou: null,
 }
 const TRIADO_SEM_CARD: ItemNaEntrada = {
   id: 'e-0001',
@@ -41,6 +45,8 @@ const TRIADO_SEM_CARD: ItemNaEntrada = {
   criadoEm: '2026-11-09T12:00:00.000Z',
   triadoEm: '2026-11-09T13:00:00.000Z',
   resolucao: 'só a PR #930',
+  triagem: null,
+  parou: null,
 }
 const TRES: EntradaNaSala = { kind: 'ok', itens: [ABERTO, TRIADO, TRIADO_SEM_CARD], total: 3 }
 
@@ -82,7 +88,7 @@ describe('Entrada · a lista', () => {
     await abrir()
     expect(screen.getByTestId('fabrica-trilha').textContent).toContain('Entrada')
     expect(screen.getByTestId('fabrica-entrada-aviso').textContent).toBe(
-      'Grava pelo yarn fabrica entrada · o app não cria card',
+      'Grava pelo yarn fabrica entrada · quem cria o card é a /gm-triage',
     )
     expect(screen.getByRole('heading', { name: 'O que chegou' })).toBeTruthy()
     const grupo = screen.getByRole('group', { name: 'Fontes' })
@@ -105,7 +111,11 @@ describe('Entrada · a lista', () => {
       HTMLElement,
     ]
     expect(itens.map((i) => i.getAttribute('data-id'))).toEqual(['e-0003', 'e-0002', 'e-0001'])
-    expect(itens.map((i) => i.getAttribute('data-estado'))).toEqual(['aberto', 'triado', 'triado'])
+    expect(itens.map((i) => i.getAttribute('data-estado'))).toEqual([
+      'esperando',
+      'triado',
+      'triado',
+    ])
     expect(within(itens[0]).getByText('esperando triagem')).toBeTruthy()
     expect(within(itens[1]).getByText('triada')).toBeTruthy()
     expect(within(itens[1]).getByText(/virou o #906/)).toBeTruthy()
@@ -244,5 +254,91 @@ describe('Entrada · Mandar', () => {
       return Promise.resolve()
     })
     expect(screen.getAllByTestId('fabrica-entrada-item')).toHaveLength(4)
+  })
+})
+
+describe('Entrada · o item triado abre o Card em qualquer ponto (#145, CA-2)', () => {
+  it('clicar no triado que cita #906 leva ao Card; sem card e aberto não navegam', async () => {
+    const { p } = await abrir()
+    const itens = screen.getAllByTestId('fabrica-entrada-item')
+    const por = (id: string) => itens.find((i) => i.getAttribute('data-id') === id)!
+    fireEvent.click(within(por('e-0002')).getByText('Erro ao exportar BPA.'))
+    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 906 })
+    vi.mocked(p.ir).mockClear()
+    fireEvent.click(within(por('e-0001')).getByText('Só uma ideia.'))
+    fireEvent.click(within(por('e-0003')).getByText(/filtro por competência/))
+    expect(p.ir).not.toHaveBeenCalled()
+  })
+})
+
+describe('Entrada · a triagem da fábrica (#145)', () => {
+  const EM_TRIAGEM: ItemNaEntrada = { ...ABERTO, id: 'e-0004', triagem: 'triando' }
+  const PAROU: ItemNaEntrada = {
+    ...ABERTO,
+    id: 'e-0005',
+    triagem: 'parou',
+    parou: 'PARADA: isso é suporte',
+  }
+
+  it('mostra os quatro estados com o data-estado e o texto de cada um', async () => {
+    readFabricaEntrada.mockResolvedValue({
+      kind: 'ok',
+      itens: [ABERTO, EM_TRIAGEM, PAROU, TRIADO],
+      total: 4,
+    })
+    await abrir()
+    const itens = screen.getAllByTestId('fabrica-entrada-item')
+    expect(itens.map((i) => i.getAttribute('data-estado'))).toEqual([
+      'esperando',
+      'triando',
+      'parou',
+      'triado',
+    ])
+    const situacao = itens.map((i) => within(i).getByTestId('fabrica-entrada-situacao').textContent)
+    expect(situacao).toEqual(['esperando triagem', 'em triagem', 'a triagem parou', 'triada'])
+    expect(
+      within(itens[1] as HTMLElement).getByText(/A \/gm-triage está lendo o relato/),
+    ).toBeTruthy()
+    expect(
+      within(itens[2] as HTMLElement).getByText(
+        'A triagem parou sem card: PARADA: isso é suporte. A orquestradora fecha o item com yarn fabrica triar.',
+      ),
+    ).toBeTruthy()
+    expect(document.body.textContent).not.toMatch(PROIBIDO)
+  })
+
+  const SALA_BASE = RETRATO_F2
+  const variantes: [string, Partial<SalaDaFabrica>, string][] = [
+    [
+      'pausada',
+      { pausa: { desde: '2026-11-11T10:00:00.000Z' } },
+      'A fábrica está pausada: a triagem começa quando você retomar.',
+    ],
+    [
+      'rodando',
+      { pausa: null, despachante: 'rodando' },
+      'O despachante lança a /gm-triage para este item no próximo passo em que houver vaga.',
+    ],
+    [
+      'desconhecido',
+      { pausa: null, despachante: 'desconhecido' },
+      'Não deu para saber se o despachante está rodando: a triagem começa quando ele rodar.',
+    ],
+    [
+      'parado',
+      { pausa: null, despachante: 'parado' },
+      'O despachante não está rodando: a triagem começa quando a orquestradora ligar o yarn fabrica rodar.',
+    ],
+  ]
+  it.each(variantes)('o aviso do esperando com o despachante %s', async (_n, extra, texto) => {
+    await abrir({ sala: { ...SALA_BASE, ...extra } as SalaDaFabrica })
+    const item = screen.getAllByTestId('fabrica-entrada-item')[0] as HTMLElement
+    expect(within(item).getByText(texto)).toBeTruthy()
+  })
+
+  it('o aviso do esperando sem sala é o do despachante parado', async () => {
+    await abrir({ sala: null })
+    const item = screen.getAllByTestId('fabrica-entrada-item')[0] as HTMLElement
+    expect(within(item).getByText(/O despachante não está rodando/)).toBeTruthy()
   })
 })

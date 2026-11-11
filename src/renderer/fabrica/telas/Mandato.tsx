@@ -212,7 +212,12 @@ export function Mandato({ tela, ir }: PropsDaTela): JSX.Element {
 
   return (
     <>
-      <CabecalhoInterno trilha={trilhaDa(tela, new Date())} direita={direita} onIr={ir} />
+      <CabecalhoInterno
+        trilha={trilhaDa(tela, new Date())}
+        direita={direita}
+        onIr={ir}
+        atual={tela.tela}
+      />
       <div className="flex flex-wrap items-start gap-5">
         <main className="flex min-w-0 flex-[999_1_680px] flex-col gap-3">
           <h1 className="font-heading text-2xl">Quem decide cada portão</h1>

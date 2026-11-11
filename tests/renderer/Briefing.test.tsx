@@ -429,3 +429,23 @@ describe('Briefing · plano devolvido', () => {
     expect(texto).not.toMatch(/\[proj\.\]|\[horas\]|\[n\]|allowlist|O que pode alargar/)
   })
 })
+
+describe('Briefing · a frente abre o Card em qualquer ponto (#145, CA-2)', () => {
+  it('clicar na frente leva ao Card', async () => {
+    const p = await abrir()
+    const f = frente(941)
+    fireEvent.click(f)
+    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 941 })
+  })
+
+  it('checkbox, rótulo e campo Pronto quando não abrem o Card', async () => {
+    const p = await abrir()
+    const f = frente(941)
+    const caixa = within(f).getByTestId<HTMLInputElement>('fabrica-briefing-entra')
+    fireEvent.click(caixa)
+    expect(caixa.checked).toBe(true)
+    fireEvent.click(within(f).getByText('Entra no dia', { exact: false }))
+    fireEvent.click(within(f).getByTestId('fabrica-briefing-pronto'))
+    expect(p.ir).not.toHaveBeenCalled()
+  })
+})

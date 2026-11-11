@@ -220,6 +220,10 @@ export interface ItemNaEntrada {
   criadoEm: string
   triadoEm: string | null
   resolucao: string | null
+  /** Onde está a triagem da fábrica (#145); `null` no item já triado. */
+  triagem: 'esperando' | 'triando' | 'parou' | null
+  /** O motivo, só com `triagem: 'parou'`. */
+  parou: string | null
 }
 
 export type EntradaNaSala =

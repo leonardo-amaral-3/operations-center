@@ -13,6 +13,7 @@ import { Badge } from '../../ui/badge'
 import { Button } from '../../ui/button'
 import { Card } from '../../ui/card'
 import { cn } from '../../ui/cn'
+import { abrirAoClicar } from '../cartao'
 import {
   COLUNAS_DA_LINHA,
   ROTULO_DA_ESTACAO,
@@ -581,8 +582,13 @@ function CartaoDeDespacho({
   ir: Ir
 }): JSX.Element {
   return (
-    <Card asChild className="gap-1.5 bg-secondary-background p-2.5">
-      <article>
+    <Card asChild className="cursor-pointer gap-1.5 bg-secondary-background p-2.5">
+      <article
+        data-abre-card={d.card}
+        onClick={abrirAoClicar(() => {
+          ir({ tela: 'card', card: d.card })
+        })}
+      >
         <Etiquetas card={card} />
         <button
           type="button"
@@ -617,8 +623,14 @@ function CartaoParado({
   const quebrada = item.sessaoQuebrada
 
   return (
-    <Card asChild className="gap-1.5 bg-secondary-background p-2.5">
-      <article data-testid="fabrica-linha-parada">
+    <Card asChild className="cursor-pointer gap-1.5 bg-secondary-background p-2.5">
+      <article
+        data-testid="fabrica-linha-parada"
+        data-abre-card={item.card}
+        onClick={abrirAoClicar(() => {
+          ir({ tela: 'card', card: item.card })
+        })}
+      >
         <Etiquetas card={card} />
         <div className="text-[13px] leading-[17px] font-bold">
           {rotuloDoCard(item.card, card?.title ?? null)}

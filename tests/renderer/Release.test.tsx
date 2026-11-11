@@ -268,3 +268,17 @@ describe('Release · só leitura (CA-6.4)', () => {
     expect(comandoFabrica).not.toHaveBeenCalled()
   })
 })
+
+describe('Release · o card abre a tela Card em qualquer ponto (#145, CA-2)', () => {
+  it('clicar na linha leva ao Card, e o link #n não navega', async () => {
+    const p = props()
+    render(<Release {...p} />)
+    await screen.findAllByTestId('fabrica-release-card')
+    const linha = screen.getAllByTestId('fabrica-release-card')[0]!
+    fireEvent.click(within(linha).getByText('Título 210', { exact: false }))
+    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 210 })
+    vi.mocked(p.ir).mockClear()
+    fireEvent.click(within(linha).getByRole('link'))
+    expect(p.ir).not.toHaveBeenCalled()
+  })
+})
