@@ -60,6 +60,10 @@ const pergunta: PerguntaDaFila = {
   item: aberto,
   resultado: 'A sessão perguntou.',
   fechar: 'yarn fabrica fechar q-0001 "<resolução>"',
+  fim: 'parada',
+  pr: null,
+  prUrl: null,
+  passos: [],
 }
 
 const readFabrica = vi.fn<() => Promise<SalaDaFabrica>>()
