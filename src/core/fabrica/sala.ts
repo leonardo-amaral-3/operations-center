@@ -4,13 +4,14 @@ import type {
   EstacaoDaFabrica,
   EstadoDoDespachante,
   ItemNaSala,
+  PassoDaFrente,
   PausaDaFabrica,
   PerguntaDaFila,
   RecursosDaFabrica,
   SalaDaFabrica,
 } from '../../shared/fabrica'
 import { REPO_DA_FABRICA } from './mandato'
-import type { EstadoDaFabrica, ItemDaFila } from './tipos'
+import type { Despacho, EstadoDaFabrica, ItemDaFila } from './tipos'
 
 /**
  * O retrato da sala da fábrica (card 122, spec P3 §A2): a transformação pura do `EstadoDaFabrica`
@@ -28,14 +29,32 @@ export function urlDoCard(card: number): string {
   return `https://github.com/${REPO_DA_FABRICA.owner}/${REPO_DA_FABRICA.name}/issues/${card}`
 }
 
+/** O número da PR que o motivo cita (`PR #<n>`, n ≥ 1, a primeira); nenhuma → `null`. */
+export function prDoMotivo(motivo: string): number | null {
+  const m = /\bPR #([1-9]\d*)\b/.exec(motivo)
+  return m?.[1] === undefined ? null : Number(m[1])
+}
+
+export function urlDaPr(pr: number): string {
+  return `https://github.com/${REPO_DA_FABRICA.owner}/${REPO_DA_FABRICA.name}/pull/${pr}`
+}
+
 function comparar(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
-/** O tipo do item da fila; na F1 é sempre pergunta (a F3 é dona da classificação). */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- a F3 classifica por aqui
-export function tipoDoItem(_item: ItemDaFila): 'pergunta' | 'decisao' {
-  return 'pergunta'
+/**
+ * Decisão: o despacho de origem é da estação `revisao` (`/gm-ship`), terminou com PARADA e o motivo
+ * cita uma PR. É o único fim de sessão que entrega trabalho pronto esperando aprovação; todo o
+ * resto (PARADA de outra estação, falha, PROXIMO recusado, origem fora do estado) é pergunta.
+ */
+export function tipoDoItem(item: ItemDaFila, origem: Despacho | undefined): 'pergunta' | 'decisao' {
+  return origem !== undefined &&
+    estacaoDoComando(origem.comando) === 'revisao' &&
+    origem.desfecho?.tipo === 'parada' &&
+    prDoMotivo(item.motivo) !== null
+    ? 'decisao'
+    : 'pergunta'
 }
 
 const ESTACAO_DA_SKILL: Record<string, EstacaoDaFabrica> = {
@@ -130,7 +149,7 @@ function paraItem(e: EstadoDaFabrica, item: ItemDaFila): ItemNaSala {
   const comando = origem?.comando ?? null
   return {
     id: item.id,
-    tipo: tipoDoItem(item),
+    tipo: tipoDoItem(item, origem),
     card: item.card,
     cardUrl: urlDoCard(item.card),
     motivo: item.motivo,
@@ -215,16 +234,47 @@ function resultadoDaSaida(saida: string | null): string | null {
   return typeof result === 'string' && result.trim() !== '' ? result : null
 }
 
+/** O primeiro termo do comando, sem a barra: `'/gm-ship /x'` → `'gm-ship'`. */
+function skillDoComando(comando: string): string {
+  return (comando.trimStart().split(/\s+/)[0] ?? '').replace(/^\//, '')
+}
+
+function passoDaFrente(d: Despacho): PassoDaFrente {
+  const f = d.desfecho
+  return {
+    despacho: d.id,
+    skill: skillDoComando(d.comando),
+    comando: d.comando,
+    fim: f?.tipo ?? null,
+    detalhe: f === null ? null : f.tipo === 'proximo' ? f.comando : f.motivo,
+    em: d.concluidoEm,
+  }
+}
+
 export function montarPergunta(
   e: EstadoDaFabrica,
   id: string,
   saida: string | null,
 ): PerguntaDaFila | null {
-  const item = e.fila.find((i) => i.id === id)
-  if (item === undefined) return null
+  const achado = e.fila.find((i) => i.id === id)
+  if (achado === undefined) return null
+  const item = paraItem(e, achado)
+  const origem = e.despachos.find((d) => d.id === achado.despacho)
+  const pr = item.tipo === 'decisao' ? prDoMotivo(item.motivo) : null
+  const passos =
+    origem === undefined
+      ? []
+      : e.despachos
+          .filter((d) => d.frente === origem.frente)
+          .sort((a, b) => comparar(a.criadoEm, b.criadoEm) || comparar(a.id, b.id))
+          .map(passoDaFrente)
   return {
-    item: paraItem(e, item),
+    item,
     resultado: resultadoDaSaida(saida),
     fechar: `yarn fabrica fechar ${id} "<resolução>"`,
+    fim: origem?.desfecho?.tipo ?? null,
+    pr,
+    prUrl: pr === null ? null : urlDaPr(pr),
+    passos,
   }
 }

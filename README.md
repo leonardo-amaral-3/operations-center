@@ -133,8 +133,8 @@ Agentes, Release e Mandato e placar), o projeto, o crachá de estado (**Fábrica
 trabalhando, cadeados e sessões quebradas), a fila **Esperando você**, a **Linha de produção** com as nove
 estações do protótipo (cada despacho em voo e cada item aberto na coluna da estação do despacho de
 origem, com as etiquetas do card quando ele está no board), os **Recursos** e **O que a fábrica decidiu**,
-relidos do `estado.json` a cada 5 s. Clicar num item da fila abre a tela Pergunta (o texto final da sessão
-que o gerou e o comando para fechá-lo), e clicar num despacho em voo abre a tela do card. A tela **Agentes**
+relidos do `estado.json` a cada 5 s. Clicar num item da fila abre a tela Pergunta ou a tela Decisão (ver o
+parágrafo seguinte), e clicar num despacho em voo abre a tela do card. A tela **Agentes**
 lista as sessões da fábrica (card, estação, agente, onde roda e estado), os cadeados, os próximos despachos
 e o que fazer se o PC cair. Os recursos vêm de leituras só de leitura: as **sessões simultâneas** são os
 processos da máquina que carregam a marca do mandato da `dev` (lido do GitHub e guardado por 60 s) contra o
@@ -143,9 +143,19 @@ em que o dono roda); o **disco** é o espaço livre da partição da pasta da f�
 Fora do Linux, sessões e suíte aparecem como "sem leitura". O Relatório gera o relatório de um dia com o mesmo código do `yarn relatorio`,
 lendo o cofre de `OC_RELATORIO_COFRE` (default `~/notoria/claude/decisoes`) e o git de
 `OC_RELATORIO_REPO` (default `~/pessoal/operations-center`). As outras telas chegam nas fases F2 a F6
-do épico #129. Pausar e retomar são a única escrita do app na pasta da fábrica: o app roda `yarn fabrica
-pausar`/`retomar` pelo canal `fabrica:comando`, e fechar um item continua sendo `yarn fabrica fechar`.
+do épico #129. Pausar, retomar e fechar um item são as únicas escritas do app na pasta da fábrica: o app roda `yarn fabrica
+pausar`/`retomar`/`fechar` pelo canal `fabrica:comando`.
 Sem `OC_FABRICA_DIR`, o app lê `~/pessoal/claude/despachos-fabrica`.
+
+Os itens da fila viram uma de duas telas, pela origem do item. A **Decisão** é o item cujo despacho de origem
+foi um `/gm-ship` que terminou em PARADA citando `PR #<n>` no motivo: a tela mostra a PR, o que a esteira
+conferiu, o que precisa do seu olho e o caminho que o item percorreu, com **Aprovar e fechar o item** (resolução
+`aprovado`, ou `aprovado: <nota>`) e **Devolver com correção** (a nota é obrigatória; resolução `devolvido: <nota>`).
+Qualquer outro item é uma **Pergunta**: o motivo, o texto final da sessão que a gerou e uma caixa de resposta,
+com **Responder e fechar o item**, que grava a resposta como resolução. Os três botões fecham o item pelo
+`yarn fabrica fechar` (o canal `fabrica:comando`, com a pasta da fábrica ou `OC_FABRICA_DIR`), e a Sala perde o
+item na releitura seguinte. Fechar só grava a resolução no `estado.json`: não lança despacho, não retoma a sessão
+e não escreve no card, na PR nem no cofre.
 
 A comparação com o protótipo se gera com `OC_SMOKE_HEADLESS=1 yarn smoke -- tests/smoke/comparacao.smoke.spec.ts`
 (só no Linux, sem sessão do Claude): para cada uma das 11 telas, `<Tela>-prototipo.png` (o render

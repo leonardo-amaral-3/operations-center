@@ -11,7 +11,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -19,6 +19,7 @@ import type { Page } from '@playwright/test'
 
 import { BOARDS_FIXTURE_PATH, BOARD_FIXTURE_PATH } from './boards-fixture'
 import { repoDoRelatorio } from './repo-do-relatorio'
+import { abrirItemDoCard } from './comparacao/fila-f3'
 import { launchSmokeApp } from './smoke-app'
 import { REPO_ROOT, smokeFabricaItem, smokeFabricaReal } from './smoke-env'
 
@@ -138,9 +139,9 @@ test('a sala mostra a fila e não escreve', async () => {
 
     await abertos.nth(0).click()
     await expect(window.getByTestId('fabrica-pergunta')).toContainText('O nome do campo')
-    await expect(window.getByTestId('fabrica-pergunta-fechar')).toHaveText(
-      'yarn fabrica fechar q-0003 "<resolução>"',
-    )
+    // O fechar é da tela (F3), mas este teste só olha: a caixa está lá e o botão espera a resposta.
+    await expect(window.getByTestId('fabrica-resposta')).toBeVisible()
+    await expect(window.getByTestId('fabrica-responder-fechar')).toBeDisabled()
 
     // A Pergunta é uma tela: a volta à Sala é pela migalha 0 da trilha.
     await window.getByTestId('fabrica-trilha-0').click()
@@ -255,6 +256,84 @@ test('pausar e retomar pela tela', async () => {
   } finally {
     await app.close()
   }
+})
+
+const FIXTURE_F3 = join(REPO_ROOT, 'tests', 'fixtures', 'fabrica', 'f3')
+
+interface EstadoEmDisco {
+  frentes: unknown[]
+  despachos: unknown[]
+  fila: { id: string; resolucao: string | null; fechadoEm: string | null }[]
+}
+
+function estadoEmDisco(pasta: string): EstadoEmDisco {
+  return JSON.parse(readFileSync(join(pasta, 'estado.json'), 'utf8')) as EstadoEmDisco
+}
+
+test('responder, aprovar e devolver fecham pela tela', async () => {
+  // O fechar regrava o `estado.json`: a pasta da fábrica deste teste mora em `test-results/`, nunca
+  // em `/tmp` (a escrita recusa) e nunca na pasta real do despachante.
+  const base = join(REPO_ROOT, 'test-results', `fabrica-f3-${randomUUID()}`)
+  const pasta = join(base, 'fabrica')
+  expect(pasta, 'a pasta do fechar tem de morar em test-results/').toContain('/test-results/')
+  rmSync(base, { recursive: true, force: true })
+  mkdirSync(base, { recursive: true })
+  pastasTemporarias.push(base)
+  cpSync(FIXTURE_F3, pasta, { recursive: true })
+  const original = estadoEmDisco(pasta)
+  const { app, window } = await subir(pasta)
+
+  try {
+    await abrirSala(window)
+    const abertos = window.getByTestId('fabrica-aberto')
+    await expect(abertos).toHaveCount(4)
+
+    // Responder: a Pergunta do #961.
+    await abrirItemDoCard(961)(window)
+    await expect(window.getByTestId('fabrica-tela')).toHaveAttribute('data-tela', 'pergunta')
+    await window.getByTestId('fabrica-resposta').fill('gravar no cofre')
+    await window.getByTestId('fabrica-responder-fechar').click()
+    await expect(window.getByTestId('fabrica-item-fechado')).toContainText('gravar no cofre', {
+      timeout: 20_000,
+    })
+    expect(estadoEmDisco(pasta).fila.find((q) => q.id === 'q-0009')?.resolucao).toBe(
+      'gravar no cofre',
+    )
+
+    // A Sala perdeu o item sem reiniciar.
+    await window.getByTestId('fabrica-trilha-0').click()
+    await expect(abertos).toHaveCount(3)
+
+    // Aprovar: a Decisão do #962.
+    await abrirItemDoCard(962)(window)
+    await expect(window.getByTestId('fabrica-tela')).toHaveAttribute('data-tela', 'decisao')
+    await window.getByTestId('fabrica-aprovar').click()
+    await expect(window.getByTestId('fabrica-item-fechado')).toBeVisible({ timeout: 20_000 })
+    expect(estadoEmDisco(pasta).fila.find((q) => q.id === 'q-0013')?.resolucao).toBe('aprovado')
+    await window.getByTestId('fabrica-trilha-0').click()
+    await expect(abertos).toHaveCount(2)
+
+    // Devolver: a Decisão do #964, que só vale com a nota.
+    await abrirItemDoCard(964)(window)
+    await expect(window.getByTestId('fabrica-tela')).toHaveAttribute('data-tela', 'decisao')
+    await expect(window.getByTestId('fabrica-devolver')).toBeDisabled()
+    await window.getByTestId('fabrica-nota').fill('faltou o teste do fechar')
+    await window.getByTestId('fabrica-devolver').click()
+    await expect(window.getByTestId('fabrica-item-fechado')).toBeVisible({ timeout: 20_000 })
+    expect(estadoEmDisco(pasta).fila.find((q) => q.id === 'q-0017')?.resolucao).toBe(
+      'devolvido: faltou o teste do fechar',
+    )
+    await window.getByTestId('fabrica-trilha-0').click()
+    await expect(abertos).toHaveCount(1)
+    await expect(abertos.first()).toContainText('#963')
+  } finally {
+    await app.close()
+  }
+
+  // Fechar não lança nada: frentes e despachos seguem os da cópia original.
+  const depois = estadoEmDisco(pasta)
+  expect(depois.frentes).toEqual(original.frentes)
+  expect(depois.despachos).toEqual(original.despachos)
 })
 
 const FIXTURE_F2 = join(REPO_ROOT, 'tests', 'fixtures', 'fabrica', 'f2')
@@ -409,9 +488,19 @@ test('um item da pasta de verdade', async () => {
 
   const estado = JSON.parse(readFileSync(join(pasta, 'estado.json'), 'utf8')) as {
     fila: { id: string; motivo: string; despacho: string }[]
+    despachos: { id: string; comando: string; desfecho: { tipo: string } | null }[]
   }
   const item = estado.fila.find((q) => q.id === id)
   if (item === undefined) throw new Error(`o item ${id} não está no estado.json`)
+  const origem = estado.despachos.find((d) => d.id === item.despacho)
+  // A regra de Decisão (spec F3 §F3.2): `/gm-ship` terminado em PARADA cujo motivo cita `PR #<n>`.
+  const tipo =
+    origem !== undefined &&
+    origem.comando.trimStart().startsWith('/gm-ship') &&
+    origem.desfecho?.tipo === 'parada' &&
+    /\bPR #[1-9]\d*\b/.test(item.motivo)
+      ? 'decisao'
+      : 'pergunta'
   const saida = JSON.parse(
     readFileSync(join(pasta, 'sessoes', item.despacho, 'saida.json'), 'utf8'),
   ) as { result: string }
@@ -425,14 +514,17 @@ test('um item da pasta de verdade', async () => {
 
   try {
     await abrirSala(window)
-    await window.getByTestId('fabrica-aberto').filter({ hasText: item.motivo }).click()
+    // O item pode estar aberto ou já fechado: o cartão é um dos dois.
+    await window
+      .locator('[data-testid="fabrica-aberto"], [data-testid="fabrica-fechado"]')
+      .filter({ hasText: item.motivo })
+      .click({ position: { x: 6, y: 6 } })
 
-    const pergunta = window.getByTestId('fabrica-pergunta')
-    await expect(pergunta).toContainText(item.motivo)
-    await expect(pergunta).toContainText(ultima)
-    await expect(window.getByTestId('fabrica-pergunta-fechar')).toHaveText(
-      `yarn fabrica fechar ${id} "<resolução>"`,
-    )
+    await expect(window.getByTestId('fabrica-tela')).toHaveAttribute('data-tela', tipo)
+    const corpo = window.getByTestId(tipo === 'decisao' ? 'fabrica-decisao' : 'fabrica-pergunta')
+    await expect(corpo).toContainText(item.motivo)
+    await expect(corpo).toContainText(ultima)
+    await expect(window.getByTestId('fabrica-tela')).not.toContainText('yarn fabrica fechar')
   } finally {
     await app.close()
   }

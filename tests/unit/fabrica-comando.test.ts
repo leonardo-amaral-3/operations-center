@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -62,7 +62,11 @@ describe('argvDoComando', () => {
   })
 
   it('para cada membro da união, o argv é não vazio e está na lista fechada', () => {
-    const uniao: ComandoDaFabrica[] = [{ tipo: 'pausar' }, { tipo: 'retomar' }]
+    const uniao: ComandoDaFabrica[] = [
+      { tipo: 'pausar' },
+      { tipo: 'retomar' },
+      { tipo: 'fechar', item: 'q-0009', resolucao: 'gravar no cofre' },
+    ]
     for (const pedido of uniao) {
       const argv = argvDoComando(pedido)
       expect(argv).not.toBeNull()
@@ -71,8 +75,32 @@ describe('argvDoComando', () => {
     }
   })
 
-  it('a lista fechada não tem rodar nem estado', () => {
+  it('fechar vira o argv com a resolução aparada, e passa inteira com quebra de linha e --flag', () => {
+    expect(
+      argvDoComando({ tipo: 'fechar', item: 'q-0009', resolucao: '  gravar no cofre ' }),
+    ).toEqual(['fechar', 'q-0009', 'gravar no cofre'])
+    expect(
+      argvDoComando({ tipo: 'fechar', item: 'q-0009', resolucao: 'linha 1\nlinha 2 --flag' }),
+    ).toEqual(['fechar', 'q-0009', 'linha 1\nlinha 2 --flag'])
+  })
+
+  it.each([
+    { tipo: 'fechar', item: 'q-', resolucao: 'x' },
+    { tipo: 'fechar', item: 'd-0005', resolucao: 'x' },
+    { tipo: 'fechar', item: 'q-1 x', resolucao: 'x' },
+    { tipo: 'fechar', item: 3, resolucao: 'x' },
+    { tipo: 'fechar', item: 'q-0009', resolucao: '' },
+    { tipo: 'fechar', item: 'q-0009', resolucao: '   ' },
+    { tipo: 'fechar', item: 'q-0009', resolucao: 7 },
+    { tipo: 'fechar', item: 'q-0009' },
+  ])('fechar fora da forma %j → null', (pedido) => {
+    expect(argvDoComando(pedido)).toBeNull()
+  })
+
+  it('a lista fechada tem fechar e não tem rodar, estado nem iniciar', () => {
     const lista: readonly string[] = SUBCOMANDOS_DO_APP
+    expect(lista).toContain('fechar')
+    expect(lista).not.toContain('iniciar')
     expect(lista).not.toContain('rodar')
     expect(lista).not.toContain('estado')
   })
@@ -92,6 +120,35 @@ describe('o executor', () => {
     expect(retomou).toMatchObject({ ok: true, codigo: 0, argv: ['retomar'], erro: '' })
     expect(retomou.saida).toContain('fábrica retomada')
     expect(existsSync(join(pasta, 'pausa.json'))).toBe(false)
+  })
+
+  it('fechar fecha o item numa cópia da f3 e recusa o segundo fechar', async () => {
+    // Q14: o CLI regrava o estado.json até quando recusa; a pasta nunca é a real.
+    expect(pasta).toContain('/node_modules/.oc-fabrica-teste-')
+    cpSync(join(RAIZ, 'tests', 'fixtures', 'fabrica', 'f3'), pasta, { recursive: true })
+    const executor = criarExecutorDeComando(base({ OC_FABRICA_DIR: pasta }))
+
+    const fechou = await executor({
+      tipo: 'fechar',
+      item: 'q-0009',
+      resolucao: ' gravar no cofre ',
+    })
+    expect(fechou).toMatchObject({
+      ok: true,
+      codigo: 0,
+      argv: ['fechar', 'q-0009', 'gravar no cofre'],
+      saida: 'q-0009 fechado',
+    })
+    const estado = JSON.parse(readFileSync(join(pasta, 'estado.json'), 'utf8')) as {
+      fila: { id: string; resolucao: string | null; fechadoEm: string | null }[]
+    }
+    const item = estado.fila.find((i) => i.id === 'q-0009')
+    expect(item?.resolucao).toBe('gravar no cofre')
+    expect(item?.fechadoEm).toEqual(expect.any(String))
+
+    const denovo = await executor({ tipo: 'fechar', item: 'q-0009', resolucao: 'outra' })
+    expect(denovo).toMatchObject({ ok: false, codigo: 1 })
+    expect(denovo.erro).toContain('já foi fechado')
   })
 
   it('pedido desconhecido não chama o executar', async () => {

@@ -100,7 +100,8 @@ export type SalaDaFabrica =
     } & CabecalhoDaSala)
 
 /** Os comandos do `yarn fabrica` que o app pode rodar (#129). Cada fase acrescenta os seus. */
-export type ComandoDaFabrica = { tipo: 'pausar' } | { tipo: 'retomar' }
+export type ComandoDaFabrica =
+  { tipo: 'pausar' } | { tipo: 'retomar' } | { tipo: 'fechar'; item: string; resolucao: string }
 
 export interface ResultadoDoComando {
   ok: boolean // codigo === 0
@@ -110,10 +111,27 @@ export interface ResultadoDoComando {
   erro: string // o que ele avisou, idem
 }
 
+/** Como terminou o despacho de origem de um item (o `Desfecho['tipo']` do core, do lado de cá). */
+export type FimDoDespacho = 'proximo' | 'parada' | 'falha'
+
+/** Um despacho da frente de um item, para "Como chegou aqui" (F3). */
+export interface PassoDaFrente {
+  despacho: string // 'd-0007'
+  skill: string // 'gm-plan-tasks': o primeiro termo do comando, sem a barra
+  comando: string
+  fim: FimDoDespacho | null // null: o despacho não concluiu
+  detalhe: string | null // proximo → o comando seguinte; parada/falha → o motivo; null sem fim
+  em: string | null // o `concluidoEm`
+}
+
 export interface PerguntaDaFila {
   item: ItemNaSala
   resultado: string | null // o `result` do saida.json da sessão de origem
-  fechar: string // 'yarn fabrica fechar q-0003 "<resolução>"'
+  fechar: string // 'yarn fabrica fechar q-0003 "<resolução>"'; as telas da F3 não o mostram
+  fim: FimDoDespacho | null // o desfecho do despacho de origem; null se ele não está no estado ou não concluiu
+  pr: number | null // só quando `item.tipo === 'decisao'`: a PR citada no motivo
+  prUrl: string | null // `urlDaPr(pr)`, ou null
+  passos: PassoDaFrente[] // os despachos da frente do item, do mais antigo ao mais novo
 }
 
 export interface ReadPerguntaRequest {
