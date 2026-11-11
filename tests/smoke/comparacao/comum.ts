@@ -9,6 +9,8 @@ import type { NomeDaTela, TelaDaFabrica } from '../../../src/renderer/fabrica/ro
 export interface TelaDoHarness {
   /** A pasta da fábrica que a tela mostra; telas com a mesma pasta dividem uma subida do app. */
   fixture: string
+  /** Variáveis a mais na subida do app; telas com a mesma `fixture` e o mesmo `ambiente` dividem uma subida. */
+  ambiente?: Readonly<Record<string, string>>
   /** Leva o app até a tela, partindo da Sala; `null` quando ela ainda não é alcançável. */
   comoChegar: ((janela: Page) => Promise<void>) | null
   /** Textos fixos (que não dependem de dado) que a tela tem de mostrar, um a um. */

@@ -112,14 +112,19 @@ test('prints do protótipo e do app, lado a lado', async () => {
     })(),
   )
 
-  // Uma subida do app por pasta de fixture distinta entre as telas (na F1, uma só).
-  const fixtures = [...new Set(Object.values(TELAS_DO_HARNESS).map((t) => t.fixture))]
+  // Uma subida do app por grupo: a pasta da fixture mais o ambiente a mais das telas.
+  const chaveDoGrupo = (t: { fixture: string; ambiente?: Readonly<Record<string, string>> }) =>
+    `${t.fixture}\u0000${JSON.stringify(t.ambiente ?? {})}`
+  const grupos = new Map<string, { fixture: string; ambiente: Readonly<Record<string, string>> }>()
+  for (const t of Object.values(TELAS_DO_HARNESS)) {
+    grupos.set(chaveDoGrupo(t), { fixture: t.fixture, ambiente: t.ambiente ?? {} })
+  }
   const linhas: Array<{ arquivo: string; app: boolean }> = []
   const prototipos: string[] = []
 
-  for (const [indice, fixture] of fixtures.entries()) {
+  for (const [indice, [chave, grupo]] of [...grupos.entries()].entries()) {
     const fabrica = join(temporaria, `fabrica-${indice}`)
-    cpSync(fixture, fabrica, { recursive: true })
+    cpSync(grupo.fixture, fabrica, { recursive: true })
     const app = await launchSmokeApp({
       stateDir: join(temporaria, `estado-${indice}`),
       env: {
@@ -129,6 +134,7 @@ test('prints do protótipo e do app, lado a lado', async () => {
         OC_RELATORIO_COFRE: join(FIXTURES_RELATORIO, 'cofre-2026-11-10'),
         OC_RELATORIO_REPO: repo,
         OC_RELATORIO_FIXTURE: join(FIXTURES_RELATORIO, 'smoke.json'),
+        ...grupo.ambiente,
       },
     })
 
@@ -137,7 +143,7 @@ test('prints do protótipo e do app, lado a lado', async () => {
 
       for (const { tela, arquivo } of TELAS_DO_PROTOTIPO) {
         const modulo = TELAS_DO_HARNESS[tela]
-        if (modulo.fixture !== fixture) continue
+        if (chaveDoGrupo(modulo) !== chave) continue
         const nome = arquivo.replace(/\.dc\.html$/, '')
 
         // O protótipo: duas janelas, o mesmo sha256 (CA-1.3).

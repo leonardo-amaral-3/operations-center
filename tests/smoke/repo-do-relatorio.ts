@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { smokeEnv } from './smoke-env'
+import { REPO_ROOT, smokeEnv } from './smoke-env'
 
 /**
  * Um repo git descartável com um commit de 10/11 que cita o #118, o que o `git log` do relatório lê.
@@ -20,7 +20,12 @@ export function repoDoRelatorio(repo: string): string {
   }
   git('init', '-b', 'dev')
   writeFileSync(join(repo, 'arquivo.txt'), 'smoke\n')
-  git('add', 'arquivo.txt')
+  mkdirSync(join(repo, 'fabrica'))
+  copyFileSync(
+    join(REPO_ROOT, 'tests', 'fixtures', 'relatorio', 'direcao.md'),
+    join(repo, 'fabrica', 'DIRECAO.md'),
+  )
+  git('add', 'arquivo.txt', 'fabrica/DIRECAO.md')
   git(
     '-c',
     'user.name=smoke',
