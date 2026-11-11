@@ -18,7 +18,7 @@ const TEXTO_DO_961 =
   'A spec do #961 está escrita até o Q&A.\n\n- **Onde parou:** a resposta da pergunta tem de ir para algum lugar, e o card não diz qual.\n- **O que muda:** gravar no board exige escrita no GitHub; gravar no cofre não.\n\nPARADA: o card não diz se a resposta vai para o board ou para o cofre'
 
 const TEXTO_DO_962 =
-  'PR #970 está aberta na `dev`, com `Card: #962` na primeira linha.\n\n- **Portão local:** `yarn lint`, `yarn typecheck` e `yarn test` passaram.\n- **CI:** pendente.\n\nPARADA: PR #970 aberta na dev (Card: #962); o merge é da orquestradora'
+  'Revisei a PR #970 contra a spec do #962.\n\n- **Portão local:** não roda no G4; o diff traz os testes que a spec pede.\n- **Parecer:** comentado na PR.\n\nPARADA: G4 da PR #970: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/970#issuecomment-1'
 
 const q0003: ItemNaSala = {
   id: 'q-0003',
@@ -57,11 +57,12 @@ const q0013: ItemNaSala = {
   tipo: 'decisao',
   card: 962,
   cardUrl: `${URL_DO_CARD}/962`,
-  motivo: 'PR #970 aberta na dev (Card: #962); o merge é da orquestradora',
-  despacho: 'd-0010',
-  comando: '/gm-ship /home/u/pessoal/planning/962-fila',
-  sessaoClaude: 'sessao-962-ship',
-  criadoEm: '2026-11-11T09:00:00.000Z',
+  motivo:
+    'G4 da PR #970: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/970#issuecomment-1',
+  despacho: 'd-0018',
+  comando: '/g4 #962 PR #970',
+  sessaoClaude: 'sessao-962-g4',
+  criadoEm: '2026-11-11T09:04:00.000Z',
   fechadoEm: null,
   resolucao: null,
   estacao: 'revisao',
@@ -89,11 +90,12 @@ const q0017: ItemNaSala = {
   tipo: 'decisao',
   card: 964,
   cardUrl: `${URL_DO_CARD}/964`,
-  motivo: 'PR #971 aberta na dev (Card: #964); o merge é da orquestradora',
-  despacho: 'd-0015',
-  comando: '/gm-ship /home/u/pessoal/planning/964-z',
-  sessaoClaude: 'sessao-964',
-  criadoEm: '2026-11-11T09:10:00.000Z',
+  motivo:
+    'G4 da PR #971: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/971#issuecomment-2',
+  despacho: 'd-0019',
+  comando: '/g4 #964 PR #971',
+  sessaoClaude: 'sessao-964-g4',
+  criadoEm: '2026-11-11T09:14:00.000Z',
   fechadoEm: null,
   resolucao: null,
   estacao: 'revisao',
@@ -200,6 +202,14 @@ export const PERGUNTAS_F3: Record<string, PerguntaDaFila> = {
         'PR #970 aberta na dev (Card: #962); o merge é da orquestradora',
         '2026-11-11T09:00:00.000Z',
       ),
+      passo(
+        'd-0018',
+        'g4',
+        '/g4 #962 PR #970',
+        'parada',
+        'G4 da PR #970: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/970#issuecomment-1',
+        '2026-11-11T09:04:00.000Z',
+      ),
     ],
   },
   'q-0016': {
@@ -235,6 +245,14 @@ export const PERGUNTAS_F3: Record<string, PerguntaDaFila> = {
         'parada',
         'PR #971 aberta na dev (Card: #964); o merge é da orquestradora',
         '2026-11-11T09:10:00.000Z',
+      ),
+      passo(
+        'd-0019',
+        'g4',
+        '/g4 #964 PR #971',
+        'parada',
+        'G4 da PR #971: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/971#issuecomment-2',
+        '2026-11-11T09:14:00.000Z',
       ),
     ],
   },

@@ -12,8 +12,8 @@ import type { PropsDaTela } from '../telas'
 import { ChipDaPosicao, Etiqueta, ItemFechado, TextoFinal, useItemDaFila } from './item'
 
 /**
- * A tela Decisão (#132, §F3.5): o item da fila que é um `/gm-ship` parado com PR aberta, esperando a
- * aprovação de quem lê. As três ações (aprovar, devolver) rodam só `fechar`, com a resolução
+ * A tela Decisão (#132, §F3.5): o item da fila que é o parecer do G4 sem bloqueante de uma PR aberta
+ * pelo `/gm-ship`, esperando a aprovação de quem lê. As três ações (aprovar, devolver) rodam só `fechar`, com a resolução
  * `aprovado`, `aprovado: <nota>` ou `devolvido: <nota>`; o app não faz merge nem mexe no board.
  */
 export function Decisao({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.Element {

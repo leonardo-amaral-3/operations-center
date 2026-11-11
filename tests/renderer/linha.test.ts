@@ -88,7 +88,8 @@ describe('rótulos', () => {
       'gm-plan-tasks': 'G3',
       'gm-implement': 'Task',
       'gm-correcao': 'Correção',
-      'gm-ship': 'G4',
+      'gm-ship': 'PR',
+      g4: 'G4',
     })
   })
 })
