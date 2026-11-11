@@ -1,7 +1,12 @@
 import { execFile } from 'node:child_process'
 import type { GraphQLFn } from '../../core/board/types'
 import type { ItemNoBoard } from '../../core/fabrica/estacao'
-import { PROJETO_DA_FABRICA, REPO_DA_FABRICA } from '../../core/fabrica/mandato'
+import {
+  MANDATO_DA_DEV_QUERY,
+  PROJETO_DA_FABRICA,
+  REPO_DA_FABRICA,
+  textoDoMandato,
+} from '../../core/fabrica/mandato'
 
 /**
  * A fábrica só **lê** o GitHub (card 121, spec P2 §9): o mandato da `dev` e o Status de um card.
@@ -27,6 +32,16 @@ export function lerMandato(): Promise<string> {
       },
     )
   })
+}
+
+/** O mesmo mandato, pela GraphQL do app: é a que tem fixture, então o smoke não toca a rede. */
+export async function lerMandatoPelaGraphQL(graphql: GraphQLFn): Promise<string> {
+  return textoDoMandato(
+    await graphql(MANDATO_DA_DEV_QUERY, {
+      owner: REPO_DA_FABRICA.owner,
+      name: REPO_DA_FABRICA.name,
+    }),
+  )
 }
 
 const DOCUMENTO = `query ($owner: String!, $name: String!, $n: Int!) {

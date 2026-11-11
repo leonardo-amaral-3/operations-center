@@ -1,4 +1,5 @@
 import { join, relative } from 'node:path/posix'
+import type { GraphQLResponse } from '../board/types'
 
 /**
  * O que o mandato da prova (cofre 1439) deixa a fábrica despachar. Tudo aqui é constante ou função
@@ -127,4 +128,23 @@ export function cardDoComando(comando: string): number | null {
   const argumento = /^\/\S+\s+([\s\S]*)$/.exec(comando)?.[1]?.trim()
   if (argumento !== undefined && /^\d+$/.test(argumento)) return Number(argumento)
   return null
+}
+
+/** O `fabrica/MANDATO.md` da `dev` pela GraphQL, que tem porta de fixture (F2 §F2.4, Decisão 4). */
+export const MANDATO_DA_DEV_QUERY = `query MandatoDaDev($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    object(expression: "dev:fabrica/MANDATO.md") { ... on Blob { text } }
+  }
+}`
+
+/** O texto do `fabrica/MANDATO.md` da `dev` na resposta; erro, objeto ausente ou vazio lança. */
+export function textoDoMandato(resposta: GraphQLResponse): string {
+  const primeiro = resposta.errors?.[0]
+  if (primeiro !== undefined) throw new Error(primeiro.message)
+  const data = resposta.data as {
+    repository?: { object?: { text?: unknown } | null } | null
+  } | null
+  const texto = data?.repository?.object?.text
+  if (typeof texto === 'string' && texto.trim() !== '') return texto
+  throw new Error('mandato ilegível na dev: vazio')
 }

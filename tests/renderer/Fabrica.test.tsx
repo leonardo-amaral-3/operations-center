@@ -29,6 +29,8 @@ const aberto: ItemNaSala = {
   criadoEm: '2026-11-11T12:00:00.000Z',
   fechadoEm: null,
   resolucao: null,
+  estacao: 'spec',
+  sessaoQuebrada: false,
 }
 
 function retrato(extra: { pausa?: SalaDaFabrica['pausa'] } = {}): SalaDaFabrica {
@@ -38,6 +40,11 @@ function retrato(extra: { pausa?: SalaDaFabrica['pausa'] } = {}): SalaDaFabrica 
     projeto: 'Operations Center · Project 2',
     despachante: 'rodando',
     pausa: extra.pausa ?? null,
+    recursos: {
+      sessoes: { kind: 'ok', vivas: 0, teto: 3 },
+      suite: { kind: 'livre' },
+      disco: { kind: 'ok', livres: 50 * 1024 ** 3, minimo: 2 * 1024 ** 3 },
+    },
     emVoo: [
       {
         id: 'd-0002',
@@ -48,10 +55,13 @@ function retrato(extra: { pausa?: SalaDaFabrica['pausa'] } = {}): SalaDaFabrica 
         estado: 'rodando',
         criadoEm: '2026-11-11T12:00:00.000Z',
         lancadoEm: null,
+        ondeRoda: 'worktree ainda não criada',
+        viva: true,
       },
     ],
     abertos: [aberto],
     fechados: [],
+    decisoes: [],
     frentesAbertas: 1,
   }
 }
@@ -72,7 +82,15 @@ beforeEach(() => {
   readFabricaPergunta.mockReset().mockResolvedValue(pergunta)
   comandoFabrica.mockReset()
   Object.defineProperty(window, 'oc', {
-    value: { readFabrica, readFabricaPergunta, readRelatorio, comandoFabrica },
+    value: {
+      readFabrica,
+      readFabricaPergunta,
+      readRelatorio,
+      comandoFabrica,
+      // Sala e Agentes (F2) juntam título e etiquetas dos cards pelo retrato de boards.
+      readBoards: () => Promise.resolve({ boards: [], activeKey: null, discoveryError: null }),
+      onBoards: () => () => {},
+    },
     configurable: true,
   })
 })
@@ -134,11 +152,13 @@ describe('Fabrica · moldura e navegação (CA-1.1)', () => {
 
   it('as telas sem corpo mostram o marcador da fase', () => {
     render(<Fabrica />)
-    fireEvent.click(screen.getByTestId('fabrica-nav-agentes'))
+    fireEvent.click(screen.getByTestId('fabrica-nav-briefing'))
     expect(screen.getByTestId('fabrica-por-vir').textContent).toBe(
-      'Esta tela chega na F2 do épico #129.',
+      'Esta tela chega na F6 do épico #129.',
     )
     // O botão Pausar também fica no cabeçalho de Agentes.
+    fireEvent.click(screen.getByTestId('fabrica-trilha-0'))
+    fireEvent.click(screen.getByTestId('fabrica-nav-agentes'))
     expect(screen.getByTestId('fabrica-pausar')).toBeTruthy()
   })
 

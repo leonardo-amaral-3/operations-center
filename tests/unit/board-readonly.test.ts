@@ -151,8 +151,10 @@ describe('a superfície de board é somente-leitura', () => {
     // como alguém liga o botão errado.
     //
     // **E a dos dois canais da sala da fábrica (#122)**: `fabrica:read` e `fabrica:read-pergunta`
-    // leem a pasta da fábrica, não escrevem nela e não tocam o board. Prefixo novo, sem exceção
-    // nominal no filtro de `boards:`/`card:`.
+    // leem a pasta da fábrica e não escrevem nela. Desde a F2 (#131) o `fabrica:read` também lê o
+    // GitHub: o `fabrica/MANDATO.md` da `dev`, pela GraphQL, para contar as sessões contra o teto.
+    // É leitura, e não toca o board nem o Project. Prefixo novo, sem exceção nominal no filtro de
+    // `boards:`/`card:`; a lista da asserção abaixo o registra.
     //
     // **E a do canal de escrita da fábrica (#129)**: `fabrica:comando` é o **único** canal que
     // escreve na pasta da fábrica, e só por um subcomando do `yarn fabrica` numa lista fechada
@@ -284,7 +286,10 @@ describe('a superfície de board é somente-leitura', () => {
     // exceção nominal é uma canária a caminho de ser desligada.
     const canaisDoGitHub = [...Object.values(IPC_INVOKE), ...Object.values(IPC_EVENT)].filter(
       (canal) =>
-        canal.startsWith('boards:') || canal.startsWith('card:') || canal.startsWith('relatorio:'),
+        canal.startsWith('boards:') ||
+        canal.startsWith('card:') ||
+        canal.startsWith('relatorio:') ||
+        canal === 'fabrica:read',
     )
 
     // A ordem é a de declaração dos mapas: os `invoke` primeiro, o evento depois.
@@ -292,6 +297,7 @@ describe('a superfície de board é somente-leitura', () => {
       'boards:read',
       'card:read',
       'card:read-pr',
+      'fabrica:read',
       'relatorio:read',
       'boards:changed',
     ])

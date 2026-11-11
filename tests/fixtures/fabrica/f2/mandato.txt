@@ -1,0 +1,2 @@
+MANDATO DE TESTE DA F2 (#131, fixture do smoke)
+- Não é o mandato da prova.

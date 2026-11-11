@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
@@ -39,7 +39,8 @@ import {
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
 import { REPO_DA_FABRICA } from '../core/fabrica/mandato'
 import { criarExecutorDeComando, registerComandoIpc } from './fabrica/comando'
-import { lerMandato } from './fabrica/github'
+import { lerMandato, lerMandatoPelaGraphQL } from './fabrica/github'
+import { criarMarcaEmCache, lerRecursos, portasReais, worktreesDo } from './fabrica/recursos'
 import { pastaDaSala, registerFabricaIpc } from './fabrica/sala'
 import { registerRelatorioIpc } from './relatorio/sala'
 import type { DangerGate } from './danger'
@@ -128,6 +129,7 @@ function createGraphQL(): GraphQLFn {
         cards: process.env.OC_CARD_FIXTURE,
         pulls: process.env.OC_PR_FIXTURE,
         relatorio: process.env.OC_RELATORIO_FIXTURE,
+        mandato: process.env.OC_FABRICA_MANDATO_FIXTURE,
       })
     : createGitHubGraphQL(createGhTokenSource())
 }
@@ -388,7 +390,20 @@ dangerIpc?.refresh()
 
 // A sala da fábrica (#122): só quando o processo sobe na tela do kanban, como o `registerDangerIpc`
 // acima; as janelas de card do mesmo processo não chamam estes canais. Só lê a pasta da fábrica.
-if (screen === 'kanban') registerFabricaIpc(pastaDaSala(process.env, homedir()))
+if (screen === 'kanban') {
+  const pasta = pastaDaSala(process.env, homedir())
+  // O mandato da `dev` vem pela GraphQL, em cache de 60 s: a sala relê a cada 5 s.
+  const graphql = createGraphQL()
+  const marca = criarMarcaEmCache(
+    () => lerMandatoPelaGraphQL(graphql),
+    () => Date.now(),
+  )
+  registerFabricaIpc(pasta, {
+    recursos: () => lerRecursos(portasReais({ env: process.env, pastaDaFabrica: pasta, marca })),
+    // O avô da pasta da fábrica é o inverso do default (`<workspace>/claude/despachos-fabrica`).
+    worktrees: () => worktreesDo(dirname(dirname(pasta))),
+  })
+}
 
 // O canal de escrita da fábrica (#129): roda `pausar`/`retomar` do `yarn fabrica` em processo, pela
 // mesma pasta que a sala lê (`OC_FABRICA_DIR` vale para os dois). Não toca o board.

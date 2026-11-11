@@ -108,6 +108,11 @@ beforeEach(() => {
         projeto: 'Operations Center · Project 2',
         despachante: 'parado',
         pausa: null,
+        recursos: {
+          sessoes: { kind: 'ok', vivas: 0, teto: 3 },
+          suite: { kind: 'livre' },
+          disco: { kind: 'ok', livres: 50 * 1024 ** 3, minimo: 2 * 1024 ** 3 },
+        },
       }),
     readFabricaPergunta: () => Promise.resolve(null),
     readRelatorio: () => new Promise(() => {}),

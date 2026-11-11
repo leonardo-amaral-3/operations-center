@@ -65,6 +65,8 @@ describe('rotaDoItem', () => {
     criadoEm: '2026-11-11T00:00:00.000Z',
     fechadoEm: null,
     resolucao: null,
+    estacao: null,
+    sessaoQuebrada: false,
   })
 
   it('a rota segue o tipo do item', () => {
