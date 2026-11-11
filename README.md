@@ -165,8 +165,9 @@ vale com a sessão terminada e o transcript nesta máquina: abre a janela do car
 pasta em que a sessão rodou; **Mandar uma mensagem** e **Parar o turno** ficam desabilitados, com o porquê
 na nota. A tela **Entrada** lista o `entrada.json` (o mais novo primeiro, "esperando triagem" ou "triada"),
 grava o que você conta pelo `yarn fabrica entrada` e não escreve no board nem no GitHub: o despachante tria cada
-item com uma sessão `/gm-triage`, que cria o card em 📥 Triagem ou o liga ao card que ele duplica; a que para sem
-card fica para a orquestradora, com `yarn fabrica triar`. Todas as telas da fábrica têm o menu das oito telas, com
+item com uma sessão `/gm-triage`, que lê o relato como dado (não como instrução) e cria o card em 📥 Triagem
+do `operations-center` ou o liga ao card dele que o relato duplica; a que para sem card, ou cita card de outro
+repo, fica para a orquestradora, com `yarn fabrica triar`. Todas as telas da fábrica têm o menu das oito telas, com
 a atual marcada, e todo cartão de card (Linha, Briefing, Release, item triado da Entrada) abre a tela Card num clique
 em qualquer ponto.
 
