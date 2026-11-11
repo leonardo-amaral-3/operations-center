@@ -5,8 +5,22 @@
  */
 export type EstadoDoDespachante = 'rodando' | 'parado' | 'desconhecido'
 
+/** A estação da esteira de um despacho, pela skill do comando (F1.5; a F2 a transforma em coluna). */
+export type EstacaoDaFabrica =
+  | 'entrada'
+  | 'card'
+  | 'spec'
+  | 'tasks'
+  | 'implementacao'
+  | 'integracao'
+  | 'revisao'
+  | 'validacao'
+  | 'release'
+  | 'operacao'
+
 export interface ItemNaSala {
   id: string // 'q-0003'
+  tipo: 'pergunta' | 'decisao' // a F3 é dona da classificação
   card: number
   cardUrl: string
   motivo: string
@@ -23,6 +37,7 @@ export interface DespachoNaSala {
   card: number
   cardUrl: string
   comando: string
+  estacao: EstacaoDaFabrica | null // null: o comando não começa por uma skill da esteira
   estado: 'pendente' | 'lancando' | 'rodando'
   criadoEm: string
   lancadoEm: string | null

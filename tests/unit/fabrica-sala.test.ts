@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { parseEstado } from '../../src/core/fabrica/estado'
-import { montarPergunta, montarSala, urlDoCard } from '../../src/core/fabrica/sala'
+import {
+  estacaoDoComando,
+  montarPergunta,
+  montarSala,
+  tipoDoItem,
+  urlDoCard,
+} from '../../src/core/fabrica/sala'
 import type { EstadoDaFabrica, ItemDaFila } from '../../src/core/fabrica/tipos'
 import { identidade } from '../../src/main/fabrica/arquivos'
 import { estadoDoDespachante, lerPergunta, lerSala, pastaDaSala } from '../../src/main/fabrica/sala'
@@ -13,6 +19,45 @@ const FIXTURE = join(__dirname, '..', 'fixtures', 'fabrica', 'sala')
 const estadoDaFixture = (): EstadoDaFabrica =>
   parseEstado(readFileSync(join(FIXTURE, 'estado.json'), 'utf8'))
 const CTX = { despachante: 'parado', lidoEm: '2026-11-11T12:00:00.000Z' } as const
+
+describe('tipo e estação (F1.5)', () => {
+  it('estacaoDoComando: as sete skills e um comando qualquer', () => {
+    expect(
+      [
+        '/gm-triage #1',
+        '/gm-card #1',
+        '/gm-spec #1',
+        '/gm-plan-tasks pasta',
+        '/gm-implement pasta',
+        '/gm-ship pasta',
+        '/gm-correcao #1',
+        'yarn lint',
+        '',
+      ].map(estacaoDoComando),
+    ).toEqual([
+      'entrada',
+      'card',
+      'spec',
+      'tasks',
+      'implementacao',
+      'revisao',
+      'implementacao',
+      null,
+      null,
+    ])
+    expect(estacaoDoComando('/gm-constructor')).toBeNull()
+  })
+
+  it('tipoDoItem é sempre pergunta na F1, e a sala o preenche', () => {
+    const e = estadoDaFixture()
+    expect(e.fila.map(tipoDoItem).every((t) => t === 'pergunta')).toBe(true)
+    const sala = montarSala(e, CTX)
+    expect([...sala.abertos, ...sala.fechados].every((i) => i.tipo === 'pergunta')).toBe(true)
+    expect(sala.emVoo.map((d) => d.estacao)).toEqual(
+      sala.emVoo.map((d) => estacaoDoComando(d.comando)),
+    )
+  })
+})
 
 describe('montarSala sobre a fixture', () => {
   const sala = montarSala(estadoDaFixture(), CTX)

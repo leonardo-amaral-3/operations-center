@@ -1,5 +1,6 @@
 import type {
   DespachoNaSala,
+  EstacaoDaFabrica,
   EstadoDoDespachante,
   ItemNaSala,
   PerguntaDaFila,
@@ -25,9 +26,32 @@ function comparar(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
+/** O tipo do item da fila; na F1 é sempre pergunta (a F3 é dona da classificação). */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- a F3 classifica por aqui
+export function tipoDoItem(_item: ItemDaFila): 'pergunta' | 'decisao' {
+  return 'pergunta'
+}
+
+const ESTACAO_DA_SKILL: Record<string, EstacaoDaFabrica> = {
+  '/gm-triage': 'entrada',
+  '/gm-card': 'card',
+  '/gm-spec': 'spec',
+  '/gm-plan-tasks': 'tasks',
+  '/gm-implement': 'implementacao',
+  '/gm-correcao': 'implementacao',
+  '/gm-ship': 'revisao',
+}
+
+/** A estação pela skill do começo do comando; qualquer outro comando → `null`. */
+export function estacaoDoComando(comando: string): EstacaoDaFabrica | null {
+  const skill = comando.trimStart().split(/\s+/)[0] ?? ''
+  return ESTACAO_DA_SKILL[skill] ?? null
+}
+
 function paraItem(e: EstadoDaFabrica, item: ItemDaFila): ItemNaSala {
   return {
     id: item.id,
+    tipo: tipoDoItem(item),
     card: item.card,
     cardUrl: urlDoCard(item.card),
     motivo: item.motivo,
@@ -61,6 +85,7 @@ export function montarSala(
       card: d.card,
       cardUrl: urlDoCard(d.card),
       comando: d.comando,
+      estacao: estacaoDoComando(d.comando),
       estado: d.estado as DespachoNaSala['estado'],
       criadoEm: d.criadoEm,
       lancadoEm: d.lancadoEm,
