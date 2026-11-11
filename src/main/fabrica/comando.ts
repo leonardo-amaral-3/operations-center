@@ -11,7 +11,10 @@ import { executar, type DepsDoCli } from './cli'
  * argv, manda uma união tipada, e o `rodar` e o `estado` não cabem nela.
  */
 
-/** O que o app pode rodar. Cada fase acrescenta o seu; **nenhuma** acrescenta `rodar` nem `estado`. */
+/**
+ * O que o app pode rodar. Cada fase acrescenta o seu; **nenhuma** acrescenta `rodar` nem `estado`.
+ * O `iniciar` do app nunca leva `--comando` nem `--ensaio`: o comando vem do board, no CLI.
+ */
 export const SUBCOMANDOS_DO_APP = [
   'pausar',
   'retomar',
@@ -19,7 +22,11 @@ export const SUBCOMANDOS_DO_APP = [
   'entrada',
   'confirmar',
   'contestar',
+  'iniciar',
 ] as const
+
+/** O tamanho máximo da nota do `iniciar`, depois do `trim()`. */
+export const LIMITE_DA_NOTA_DO_APP = 1000
 
 /** O pedido do renderer virado em argv; qualquer coisa fora da união → `null`. */
 export function argvDoComando(pedido: unknown): string[] | null {
@@ -51,7 +58,29 @@ export function argvDoComando(pedido: unknown): string[] | null {
     if (motivo.trim().length > LIMITE_DA_REVISAO) return null
     return ['contestar', arquivo, motivo.trim()]
   }
+  if (tipo === 'iniciar') {
+    const { card, nota } = pedido as { card?: unknown; nota?: unknown }
+    if (typeof card !== 'number' || !Number.isSafeInteger(card) || card <= 0) return null
+    if (typeof nota !== 'string') return null
+    const n = nota.trim()
+    // A nota vira a linha "- Nesta sessão: <nota>" do argumento do despacho (`montarPrompt`): quebra
+    // de linha aqui seria linha nova no mandato, e caractere de controle quebraria o spawn. `--` no
+    // começo o CLI leria como flag.
+    if (n === '' || n.length > LIMITE_DA_NOTA_DO_APP || temControle(n) || n.startsWith('--')) {
+      return null
+    }
+    return ['iniciar', String(card), '--nota', n]
+  }
   return null
+}
+
+/** Algum caractere de controle (U+0000–U+001F, U+007F, U+0085) ou separador de linha (U+2028, U+2029). */
+function temControle(texto: string): boolean {
+  for (const ch of texto) {
+    const c = ch.codePointAt(0) ?? 0
+    if (c < 0x20 || c === 0x7f || c === 0x85 || c === 0x2028 || c === 0x2029) return true
+  }
+  return false
 }
 
 function ehSubcomandoDoApp(sub: string | undefined): boolean {
@@ -75,7 +104,13 @@ export function criarExecutorDeComando(
   async function uma(pedido: unknown): Promise<ResultadoDoComando> {
     const argv = paraArgv(pedido)
     // A segunda guarda não confia na primeira: argv vazio viraria `rodar` (P19).
-    if (argv === null || argv.length === 0 || !ehSubcomandoDoApp(argv[0])) {
+    // E, só para o `iniciar`, recusa toda forma que não seja `iniciar <card> --nota <nota>`: um
+    // `--comando` ou um `--ensaio` nunca chega ao CLI.
+    const formaInvalida =
+      argv !== null &&
+      argv[0] === 'iniciar' &&
+      !(argv.length === 4 && argv[2] === '--nota' && /^[1-9]\d*$/.test(argv[1] ?? ''))
+    if (argv === null || argv.length === 0 || !ehSubcomandoDoApp(argv[0]) || formaInvalida) {
       return { ok: false, codigo: 1, argv: argv ?? [], saida: '', erro: 'comando desconhecido' }
     }
     const saida: string[] = []

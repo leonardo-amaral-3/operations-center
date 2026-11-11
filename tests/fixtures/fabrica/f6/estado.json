@@ -1,0 +1,13 @@
+{
+  "versao": 1,
+  "instancia": "00000000-0000-4000-8000-0000000000f6",
+  "contador": 3,
+  "frentes": [
+    { "id": "fr-0001", "card": 908, "criadaEm": "2026-11-11T08:00:00.000Z", "encerradaEm": null }
+  ],
+  "despachos": [
+    { "id": "d-0002", "frente": "fr-0001", "card": 908, "comando": "/gm-spec #908", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T08:00:00.000Z", "lancadoEm": "2026-11-11T08:00:05.000Z", "concluidoEm": "2026-11-11T08:10:00.000Z", "sessaoClaude": "sessao-908-spec", "desfecho": { "tipo": "proximo", "comando": "/gm-plan-tasks /home/u/pessoal/planning/908-fase fase F1 (#908)" } },
+    { "id": "d-0003", "frente": "fr-0001", "card": 908, "comando": "/gm-plan-tasks /home/u/pessoal/planning/908-fase fase F1 (#908)", "nota": null, "estado": "pendente", "pid": null, "criadoEm": "2026-11-11T08:10:00.000Z", "lancadoEm": null, "concluidoEm": null, "sessaoClaude": null, "desfecho": null }
+  ],
+  "fila": []
+}

@@ -151,7 +151,8 @@ export const IPC_INVOKE = {
   /**
    * O único canal que **escreve** na pasta da fábrica (#129), sempre por um subcomando do
    * `yarn fabrica` numa lista fechada (`SUBCOMANDOS_DO_APP`; hoje `pausar`, `retomar`, `fechar`,
-   * `entrada`, `confirmar` e `contestar`); não toca o board.
+   * `entrada`, `confirmar`, `contestar` e `iniciar`). O `iniciar` **lê** o Status do card no Project 2
+   * pela GraphQL para escolher o comando; continua sem escrever no board nem no GitHub.
    */
   comandoFabrica: 'fabrica:comando',
   /** O card e a entrada da fábrica (F4): só leem a pasta da fábrica. */

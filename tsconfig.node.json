@@ -58,6 +58,12 @@
     // aqui porque `tests/unit/linha-prototipo.test.ts` a importa no programa do Node para conferir os
     // nove rótulos contra o protótipo; sem a linha, `tsc --build` reprova o import com `TS6307`.
     "src/renderer/fabrica/linha.ts",
+    // O Briefing e o Release (#135): os três módulos puros entram aqui porque
+    // `tests/unit/fabrica-briefing.test.ts` os importa no programa do Node para comparar os literais
+    // com os do core; sem as linhas, `tsc --build` reprova o import com `TS6307`.
+    "src/renderer/fabrica/boardDaFabrica.ts",
+    "src/renderer/fabrica/briefing.ts",
+    "src/renderer/fabrica/trem.ts",
 
     "tests/**/*.ts"
   ],

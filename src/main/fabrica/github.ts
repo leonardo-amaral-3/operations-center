@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import type { GraphQLFn } from '../../core/board/types'
-import type { ItemNoBoard } from '../../core/fabrica/estacao'
+import { ITEM_NO_BOARD_QUERY, type ItemNoBoard } from '../../core/fabrica/estacao'
 import {
   MANDATO_DA_DEV_QUERY,
   PROJETO_DA_FABRICA,
@@ -44,22 +44,6 @@ export async function lerMandatoPelaGraphQL(graphql: GraphQLFn): Promise<string>
   )
 }
 
-const DOCUMENTO = `query ($owner: String!, $name: String!, $n: Int!) {
-  repository(owner: $owner, name: $name) {
-    issue(number: $n) {
-      state
-      projectItems(first: 20) {
-        nodes {
-          project { number }
-          fieldValueByName(name: "Status") {
-            ... on ProjectV2ItemFieldSingleSelectValue { name }
-          }
-        }
-      }
-    }
-  }
-}`
-
 interface Resposta {
   repository: {
     issue: {
@@ -73,7 +57,7 @@ interface Resposta {
 
 /** Onde o card está no Project 2. Card fechado ou inexistente lança. */
 export async function lerItemNoBoard(graphql: GraphQLFn, card: number): Promise<ItemNoBoard> {
-  const resposta = await graphql(DOCUMENTO, {
+  const resposta = await graphql(ITEM_NO_BOARD_QUERY, {
     owner: REPO_DA_FABRICA.owner,
     name: REPO_DA_FABRICA.name,
     n: card,

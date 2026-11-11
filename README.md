@@ -148,9 +148,13 @@ operations-center, as estacionadas e a rotina), do dia escolhido no seletor, len
 a trilha de decisões do dia, com filtros; nos dois, Confirmar e Contestar uma provisória gravam pelo
 `yarn fabrica confirmar`/`contestar`. O **Mandato** mostra, só leitura, quem decide cada portão
 segundo o `fabrica/MANDATO.md` da `dev`, as regras e a linha de base do placar (claude-brain#28). O
-Briefing e o Release chegam na F6 do épico #129. Pausar, retomar, fechar um item, mandar para a entrada e
-confirmar ou contestar uma decisão são as únicas escritas do app na pasta da fábrica: o app roda `yarn
-fabrica pausar`/`retomar`/`fechar`/`entrada`/`confirmar`/`contestar` pelo canal `fabrica:comando`. Fora
+Briefing lista os cards do 📋 Backlog e da 📥 Triagem do Project 2, e **Soltar o dia** roda `yarn fabrica
+iniciar <n> --nota` para cada frente marcada (o comando sai do board, como no terminal, e a nota passa pelo
+filtro do mandato). O Release lista a 🚂 Release do board, o rascunho das notas e a verificação pós-deploy da
+spec de cada card, e só lê: o merge na branch principal, a tag e a publicação são do Leonardo, pelo
+`/gm-release`. Pausar, retomar, fechar um item, mandar para a entrada, confirmar ou contestar uma decisão e
+soltar o dia são as únicas escritas do app na pasta da fábrica: o app roda `yarn
+fabrica pausar`/`retomar`/`fechar`/`entrada`/`confirmar`/`contestar`/`iniciar` pelo canal `fabrica:comando`. Fora
 dela, **Assumir a sessão** grava no `conversations.json` do app a sessão do despacho como a conversa do
 cartão. Sem `OC_FABRICA_DIR`, o app lê `~/pessoal/claude/despachos-fabrica`.
 
@@ -178,6 +182,8 @@ A comparação com o protótipo se gera com `OC_SMOKE_HEADLESS=1 yarn smoke -- t
 estático do `.dc.html` de `tests/fixtures/prototipo/`) e `<Tela>-app.png` (a tela no app, com fixture), e um
 `index.html` que os põe lado a lado, em `test-results/comparacao/`. `OC_COMPARACAO_DIR=<pasta>` troca a
 pasta de saída, que o smoke apaga e recria. A variável é lida só pelo smoke, nunca pelo app.
+
+O fluxo do Briefing e do Release, com board próprio: `OC_SMOKE_HEADLESS=1 yarn smoke -- tests/smoke/fabrica-f6.smoke.spec.ts`.
 
 ## Executável
 

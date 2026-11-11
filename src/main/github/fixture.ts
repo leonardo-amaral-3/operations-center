@@ -11,7 +11,12 @@ import { readFile } from 'node:fs/promises'
 
 import { CARD_QUERY, OWNERS_QUERY, PR_LINK_QUERY, PR_QUERY, PROJECTS_QUERY } from '../../core'
 import type { GraphQLFn, GraphQLResponse, RestGetFn } from '../../core'
-import { MANDATO_DA_DEV_QUERY } from '../../core/fabrica/mandato'
+import { ITEM_NO_BOARD_QUERY } from '../../core/fabrica/estacao'
+import {
+  MANDATO_DA_DEV_QUERY,
+  PROJETO_DA_FABRICA,
+  REPO_DA_FABRICA,
+} from '../../core/fabrica/mandato'
 import { RELATORIO_MOVIDOS_QUERY } from '../../core/relatorio'
 
 export interface FixtureFiles {
@@ -45,7 +50,7 @@ export interface FixtureFiles {
  * O despacho é por **igualdade de documento**, e não por `includes` de um trecho: com quatro
  * documentos em jogo, casar por pedaço de texto é o tipo de acerto que segue verde enquanto serve o
  * envelope errado. Documento desconhecido cai no board — o comportamento único de quando não havia
- * um segundo documento.
+ * um segundo documento. Serve também o Status de um card, tirado do mesmo `board.json` (F6).
  *
  * Os caminhos são usados como vieram: o smoke passa caminho **absoluto**, para não depender de qual
  * é a `cwd` do processo do Electron.
@@ -63,6 +68,10 @@ export function createFixtureGraphQL(files: FixtureFiles): GraphQLFn {
     if (document === RELATORIO_MOVIDOS_QUERY) return readRelatorioMovidos(files.relatorio)
     if (document.startsWith('query RelatorioCards(')) {
       return readRelatorioCards(files.relatorio, document)
+    }
+
+    if (document === ITEM_NO_BOARD_QUERY) {
+      return readItemNoBoard(files.board, variables['owner'], variables['name'], variables['n'])
     }
 
     if (document === MANDATO_DA_DEV_QUERY) return readMandato(files.mandato)
@@ -84,6 +93,68 @@ async function readBoard(path: string, owner: unknown, number: unknown): Promise
   if (envelope === undefined) throw new Error(`sem fixture de board para ${key}`)
 
   return narrow(envelope)
+}
+
+function registro(valor: unknown): Record<string, unknown> | undefined {
+  return typeof valor === 'object' && valor !== null
+    ? (valor as Record<string, unknown>)
+    : undefined
+}
+
+/**
+ * O Status de um card, tirado do envelope do board da fábrica: o item com aquele número naquele
+ * repositório. Sem item → `issue: null`, porque a fixture só conhece os cards do board.
+ */
+async function readItemNoBoard(
+  path: string,
+  owner: unknown,
+  name: unknown,
+  n: unknown,
+): Promise<GraphQLResponse> {
+  const key = `${REPO_DA_FABRICA.owner}/${PROJETO_DA_FABRICA}`
+  const envelope = (await readMap(path, 'boards'))[key]
+
+  if (envelope === undefined) throw new Error(`sem fixture de board para ${key}`)
+
+  const data = registro(envelope.data)
+  const projeto = registro(
+    registro(data?.['user'])?.['projectV2'] ?? registro(data?.['organization'])?.['projectV2'],
+  )
+  const itens = registro(projeto?.['items'])?.['nodes']
+  const nome = `${String(owner)}/${String(name)}`
+  const no = (Array.isArray(itens) ? itens : []).map(registro).find((item) => {
+    const content = registro(item?.['content'])
+
+    return (
+      content?.['number'] === Number(n) &&
+      registro(content['repository'])?.['nameWithOwner'] === nome
+    )
+  })
+
+  if (no === undefined) return { data: { repository: { issue: null } } }
+
+  const valores = registro(no['fieldValues'])?.['nodes']
+  const status = (Array.isArray(valores) ? valores : [])
+    .map(registro)
+    .find((valor) => registro(valor?.['field'])?.['name'] === 'Status')?.['name']
+
+  return {
+    data: {
+      repository: {
+        issue: {
+          state: registro(no['content'])?.['closed'] === true ? 'CLOSED' : 'OPEN',
+          projectItems: {
+            nodes: [
+              {
+                project: { number: PROJETO_DA_FABRICA },
+                fieldValueByName: typeof status === 'string' ? { name: status } : null,
+              },
+            ],
+          },
+        },
+      },
+    },
+  }
 }
 
 /** O texto do arquivo como o GitHub o devolveria; sem arquivo lança, como a fixture de card. */
