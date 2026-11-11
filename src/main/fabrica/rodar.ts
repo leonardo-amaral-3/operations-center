@@ -9,7 +9,7 @@ import {
 } from '../../core/fabrica/despachante'
 import { marcaDaProva, marcaDoDespacho, TETO_DE_SESSOES } from '../../core/fabrica/mandato'
 import type { Despacho, EstadoDaFabrica } from '../../core/fabrica/tipos'
-import { alterarEstado, lerSaida, tomarRodar } from './arquivos'
+import { alterarEstado, lerPausa, lerSaida, tomarRodar } from './arquivos'
 import type { DepsDoCli } from './cli'
 import { lancar } from './lancador'
 import { acharDespacho, contarSessoesDaProva, despachoVivo } from './processos'
@@ -51,7 +51,7 @@ export async function rodar(ctx: ContextoDoRodar): Promise<number> {
     deps.avisar(`fabrica: já há um yarn fabrica rodando (pid ${dono.pid})`)
     return 4
   }
-  const memoria = { falhasDoMandato: 0, ultimoN: null as number | null }
+  const memoria = { falhasDoMandato: 0, ultimoN: null as number | null, pausaAvisada: false }
   try {
     while (!deps.sinal.aborted) {
       const codigo = await passo(ctx, memoria)
@@ -67,6 +67,7 @@ export async function rodar(ctx: ContextoDoRodar): Promise<number> {
 interface Memoria {
   falhasDoMandato: number
   ultimoN: number | null
+  pausaAvisada: boolean
 }
 
 /** Um passo. Devolve o código de saída quando o laço deve terminar, ou `null` para seguir. */
@@ -116,6 +117,14 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
     return 0
   }
 
+  // Pausada: o recolher acima rodou igual, mas nada novo é lançado. Avisa uma vez por pausa.
+  if (lerPausa(pasta) !== null) {
+    if (!memoria.pausaAvisada) linha('pausada: nada novo é despachado')
+    memoria.pausaAvisada = true
+    return null
+  }
+  memoria.pausaAvisada = false
+
   // 3. Lançar, só com algum pendente.
   const temPendente = await alterarEstado(pasta, (e) => ({
     estado: e,
@@ -149,6 +158,8 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
   for (const id of ids) {
     // Depois de Ctrl-C ou SIGTERM nada novo nasce; o que sobrou continua pendente.
     if (deps.sinal.aborted) break
+    // Uma pausa gravada enquanto o `lerMandato` ia à rede: o que sobrou continua pendente.
+    if (lerPausa(pasta) !== null) break
     const preparado = await alterarEstado(pasta, (e) => {
       const d = e.despachos.find((x) => x.id === id)
       if (d === undefined || d.estado !== 'pendente') return { estado: e, resultado: null }
