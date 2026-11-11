@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 
 import type { ItemNaSala, PerguntaDaFila, SalaDaFabrica } from '../../../shared/fabrica'
@@ -23,6 +23,7 @@ export function useItemDaFila(
 ): { id: string | null; pergunta: PerguntaDaFila | null | undefined } {
   const id = tela.tela === 'pergunta' || tela.tela === 'decisao' ? tela.item : null
   const [pergunta, setPergunta] = useState<PerguntaDaFila | null | undefined>(undefined)
+  const idLido = useRef<string | null>(null)
 
   const itens = sala?.kind === 'ok' ? [...sala.abertos, ...sala.fechados] : []
   // Muda quando o item é fechado (pela tela ou por fora): a pergunta é relida e mostra a resolução.
@@ -33,8 +34,10 @@ export function useItemDaFila(
 
     let atual = true
 
-    // Outro item: o texto do anterior não fica na tela até a resposta nova chegar.
-    setPergunta(undefined)
+    // Outro item: o texto do anterior não fica na tela até a resposta nova chegar. Reler o mesmo item (ele
+    // fechou) mantém o texto na tela, sem piscar.
+    if (idLido.current !== id) setPergunta(undefined)
+    idLido.current = id
 
     window.oc
       .readFabricaPergunta({ id })
