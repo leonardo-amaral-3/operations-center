@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import {
   cpSync,
   existsSync,
@@ -18,7 +18,7 @@ import type { Page } from '@playwright/test'
 
 import { BOARDS_FIXTURE_PATH, BOARD_FIXTURE_PATH } from './boards-fixture'
 import { launchSmokeApp } from './smoke-app'
-import { REPO_ROOT, smokeFabricaItem, smokeFabricaReal } from './smoke-env'
+import { REPO_ROOT, smokeEnv, smokeFabricaItem, smokeFabricaReal } from './smoke-env'
 
 /**
  * O smoke da sala da fábrica (#122, §A10): a tela lê a pasta da fábrica, mostra a fila e **nunca
@@ -291,4 +291,86 @@ test('um item da pasta de verdade', async () => {
   }
 
   expect(retrato(pasta), 'a sala mudou a pasta da fábrica').toEqual(antes)
+})
+
+const FIXTURES_RELATORIO = join(REPO_ROOT, 'tests', 'fixtures', 'relatorio')
+
+/** Um repo git descartável com um commit de 10/11 que cita o #118, o que o `git log` do relatório lê. */
+function repoDoRelatorio(): string {
+  const repo = pastaTemporaria('oc-relatorio-repo-')
+  const env = {
+    ...smokeEnv(),
+    GIT_AUTHOR_DATE: '2026-11-10T15:00:00Z',
+    GIT_COMMITTER_DATE: '2026-11-10T15:00:00Z',
+  }
+  const git = (...args: string[]): void => {
+    execFileSync('git', args, { cwd: repo, env, stdio: 'ignore' })
+  }
+  git('init', '-b', 'dev')
+  writeFileSync(join(repo, 'arquivo.txt'), 'smoke\n')
+  git('add', 'arquivo.txt')
+  git(
+    '-c',
+    'user.name=smoke',
+    '-c',
+    'user.email=smoke@example.invalid',
+    'commit',
+    '-m',
+    'Smoke do relatório',
+    '-m',
+    'Card: #118',
+  )
+  return repo
+}
+
+async function subirRelatorio(cofre: string, repo: string) {
+  const app = await launchSmokeApp({
+    stateDir: pastaTemporaria('oc-sala-estado-'),
+    env: {
+      OC_BOARD_FIXTURE: BOARD_FIXTURE_PATH,
+      OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
+      OC_FABRICA_DIR: pastaTemporaria('oc-sala-'),
+      OC_RELATORIO_COFRE: cofre,
+      OC_RELATORIO_REPO: repo,
+      OC_RELATORIO_FIXTURE: join(FIXTURES_RELATORIO, 'smoke.json'),
+    },
+  })
+  const window = await app.firstWindow()
+  return { app, window }
+}
+
+async function gerarDoDia(window: Page): Promise<void> {
+  await abrirSala(window)
+  await window.getByTestId('fabrica-aba-relatorio').click()
+  await window.getByTestId('relatorio-dia').fill('2026-11-10')
+  await window.getByTestId('relatorio-gerar').click()
+}
+
+test('o relatório na sala', async () => {
+  const repo = repoDoRelatorio()
+  const { app, window } = await subirRelatorio(join(FIXTURES_RELATORIO, 'cofre-2026-11-10'), repo)
+
+  try {
+    await gerarDoDia(window)
+    const corpo = window.getByTestId('relatorio-corpo')
+    await expect(corpo).toContainText('Relatório do dia 2026-11-10', { timeout: 20_000 })
+    await expect(corpo).toContainText(
+      'Fábrica agêntica: o Operations Center despacha, governa e presta contas',
+    )
+  } finally {
+    await app.close()
+  }
+
+  const ausente = join(pastaTemporaria('oc-relatorio-vazio-'), 'nao-existe')
+  const segundo = await subirRelatorio(ausente, repo)
+
+  try {
+    await gerarDoDia(segundo.window)
+    await expect(segundo.window.getByTestId('relatorio-erro')).toContainText(
+      'a pasta do cofre não existe',
+      { timeout: 20_000 },
+    )
+  } finally {
+    await segundo.app.close()
+  }
 })

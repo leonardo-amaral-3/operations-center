@@ -118,6 +118,9 @@ describe('README', () => {
       'OC_STATE_DIR',
       'OC_CLAUDE_BIN',
       'OC_FABRICA_DIR',
+      'OC_RELATORIO_COFRE',
+      'OC_RELATORIO_REPO',
+      'OC_RELATORIO_FIXTURE',
     ]) {
       expect(readme).toContain(variavel)
     }
