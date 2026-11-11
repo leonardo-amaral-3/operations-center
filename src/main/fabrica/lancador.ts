@@ -49,14 +49,16 @@ export async function lancar(
   ctx: ContextoDoLancamento,
 ): Promise<{ pid: number } | { erro: string }> {
   const pastaDaSessaoAtual = pastaDaSessao(ctx.pasta, d.id)
-  mkdirSync(pastaDaSessaoAtual, { recursive: true })
-  const prompt = montarPrompt(d.comando, ctx.mandato, d.nota)
-  writeFileSync(join(pastaDaSessaoAtual, 'prompt.txt'), prompt)
-
-  // Daqui em diante `saida.json` existe, e é isso que diz ao `rodar` que o lançamento aconteceu.
-  const fdSaida = openSync(join(pastaDaSessaoAtual, 'saida.json'), 'w')
-  const fdErro = openSync(join(pastaDaSessaoAtual, 'erro.txt'), 'w')
+  let fdSaida: number | undefined
+  let fdErro: number | undefined
   try {
+    mkdirSync(pastaDaSessaoAtual, { recursive: true })
+    const prompt = montarPrompt(d.comando, ctx.mandato, d.nota)
+    writeFileSync(join(pastaDaSessaoAtual, 'prompt.txt'), prompt)
+
+    // Daqui em diante `saida.json` existe, e é isso que diz ao `rodar` que o lançamento aconteceu.
+    fdSaida = openSync(join(pastaDaSessaoAtual, 'saida.json'), 'w')
+    fdErro = openSync(join(pastaDaSessaoAtual, 'erro.txt'), 'w')
     const args = [
       '-p',
       prompt,
@@ -83,8 +85,11 @@ export async function lancar(
     }
     filho.unref()
     return { pid: filho.pid }
+  } catch (err) {
+    // Falha de disco ou permissão antes do spawn vira `erro`, e o `rodar` a leva à fila.
+    return { erro: `não foi possível preparar o lançamento: ${(err as Error).message}` }
   } finally {
-    closeSync(fdSaida)
-    closeSync(fdErro)
+    if (fdSaida !== undefined) closeSync(fdSaida)
+    if (fdErro !== undefined) closeSync(fdErro)
   }
 }

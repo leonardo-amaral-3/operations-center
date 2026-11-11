@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -29,7 +28,6 @@ export interface DepsDoCli {
   platform: NodeJS.Platform
   home: string
   agora: () => string
-  novaInstancia: () => string
   lerMandato: () => Promise<string>
   graphql: GraphQLFn
   intervaloMs: number
@@ -235,7 +233,6 @@ export async function main(sinal: AbortSignal): Promise<number> {
     platform: process.platform,
     home: homedir(),
     agora: () => new Date().toISOString(),
-    novaInstancia: () => randomUUID(),
     lerMandato,
     graphql: createGitHubGraphQL(createGhTokenSource()),
     intervaloMs: 5000,

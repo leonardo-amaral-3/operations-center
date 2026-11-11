@@ -147,6 +147,8 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
     resultado: escolherLancamentos(e, n),
   }))
   for (const id of ids) {
+    // Depois de Ctrl-C ou SIGTERM nada novo nasce; o que sobrou continua pendente.
+    if (deps.sinal.aborted) break
     const preparado = await alterarEstado(pasta, (e) => {
       const d = e.despachos.find((x) => x.id === id)
       if (d === undefined || d.estado !== 'pendente') return { estado: e, resultado: null }

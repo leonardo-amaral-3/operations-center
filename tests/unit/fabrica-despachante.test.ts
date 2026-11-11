@@ -292,4 +292,14 @@ describe('cadeia', () => {
     })
     expect(e.despachos[1]?.card).toBe(5)
   })
+  it('PROXIMO que cita outro card não nasce na frente: item na fila', () => {
+    const r = comecar(5, '/gm-card #5')
+    const e = concluirDespacho(r.estado, r.despacho, {
+      saida: saida('PROXIMO: /gm-spec #999'),
+      agora: T1,
+      proibidos,
+    })
+    expect(e.despachos).toHaveLength(1)
+    expect(e.fila[0]?.motivo).toBe('PROXIMO cita o card #999, e a frente é do #5: /gm-spec #999')
+  })
 })

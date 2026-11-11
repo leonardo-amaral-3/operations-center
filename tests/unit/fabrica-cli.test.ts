@@ -104,7 +104,6 @@ function montar(
     platform: 'linux',
     home: homedir(),
     agora: () => AGORA,
-    novaInstancia: () => randomUUID(),
     lerMandato: () => Promise.resolve(MANDATO),
     graphql: () => Promise.reject(new Error('graphql não esperado')),
     intervaloMs: 100,

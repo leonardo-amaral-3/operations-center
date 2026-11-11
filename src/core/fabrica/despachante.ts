@@ -128,9 +128,12 @@ export function concluirDespacho(
   let motivo: string | null = null
   if (desfecho.tipo === 'proximo') {
     const avaliacao = avaliarComando(desfecho.comando, p.proibidos)
+    const citadoNoProximo = cardDoComando(desfecho.comando)
     const naFrente = e.despachos.filter((d) => d.frente === atual.frente).length
     if (!avaliacao.ok) {
       motivo = `PROXIMO fora do mandato: ${avaliacao.motivo}: ${desfecho.comando}`
+    } else if (citadoNoProximo !== null && citadoNoProximo !== atual.card) {
+      motivo = `PROXIMO cita o card #${citadoNoProximo}, e a frente é do #${atual.card}: ${desfecho.comando}`
     } else if (naFrente >= LIMITE_DE_DESPACHOS_POR_FRENTE) {
       motivo = `a frente passou de ${LIMITE_DE_DESPACHOS_POR_FRENTE} despachos: ${desfecho.comando}`
     } else {
@@ -142,7 +145,7 @@ export function concluirDespacho(
           {
             id: novo.id,
             frente: atual.frente,
-            card: cardDoComando(desfecho.comando) ?? atual.card,
+            card: atual.card,
             comando: desfecho.comando,
             nota: null,
             estado: 'pendente',
