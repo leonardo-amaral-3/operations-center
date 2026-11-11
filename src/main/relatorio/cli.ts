@@ -6,19 +6,9 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 import type { GraphQLFn } from '../../core/board/types'
-import {
-  argsDoGitLog,
-  decisoesDoDia,
-  emMarkdown,
-  janelaDoDia,
-  lerCards,
-  lerCommits,
-  lerNumerosMovidos,
-  lerObjetivos,
-  montarRelatorio,
-} from '../../core/relatorio'
 import { createGitHubGraphQL } from '../github/graphql'
 import { createGhTokenSource } from '../github/token'
+import { dataValida, gerarRelatorio } from './gerar'
 
 /**
  * O comando `yarn relatorio` (#120, spec-p1 §8): o relatório de um dia da fábrica em markdown no
@@ -26,8 +16,6 @@ import { createGhTokenSource } from '../github/token'
  * fábrica, que é este repo (Technical Decisions, 11).
  */
 
-const REPO = { owner: 'leonardo-amaral-3', name: 'operations-center' }
-const PROJETO = 2
 const USO = 'uso: yarn relatorio [AAAA-MM-DD] [--cofre <pasta>]'
 
 export interface DepsDoCli {
@@ -69,15 +57,6 @@ function lerArgumentos(argv: readonly string[]): Argumentos {
   return { dia, cofre }
 }
 
-/** `AAAA-MM-DD` que existe no calendário: `2026-02-30` e `2026-13-01` não passam. */
-function dataValida(dia: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return false
-
-  const d = new Date(`${dia}T00:00:00Z`)
-
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === dia
-}
-
 export async function executar(deps: DepsDoCli): Promise<number> {
   const args = lerArgumentos(deps.argv)
 
@@ -104,62 +83,16 @@ export async function executar(deps: DepsDoCli): Promise<number> {
   }
 
   try {
-    const janela = janelaDoDia(dia)
-    const nomes = (await deps.listarPasta(pastaDoCofre)).filter((n) => n.endsWith('.md'))
-    // Em lotes: o cofre passa de mil arquivos e abri-los todos de uma vez estoura o limite de fds.
-    const arquivos: { nome: string; texto: string }[] = []
-    for (let i = 0; i < nomes.length; i += 64) {
-      arquivos.push(
-        ...(await Promise.all(
-          nomes
-            .slice(i, i + 64)
-            .map(async (nome) => ({
-              nome,
-              texto: await deps.lerArquivo(join(pastaDoCofre, nome)),
-            })),
-        )),
-      )
-    }
-    const { decisoes, ilegiveis } = decisoesDoDia(arquivos, dia, REPO)
-    const commits = lerCommits(await deps.git(argsDoGitLog(janela), deps.cwd), janela)
-    const movidos = await lerNumerosMovidos(deps.graphql, {
-      owner: REPO.owner,
-      repo: `${REPO.owner}/${REPO.name}`,
-      projeto: PROJETO,
-      inicio: janela.inicio,
-    })
-    const numeros = [
-      ...new Set([
-        ...decisoes.flatMap((d) => (d.card === null ? [] : [d.card])),
-        ...commits.flatMap((c) => (c.card === null ? [] : [c.card])),
-        ...movidos,
-      ]),
-    ].sort((a, b) => a - b)
-    const cards = await lerCards(deps.graphql, {
-      owner: REPO.owner,
-      name: REPO.name,
-      projeto: PROJETO,
-      numeros,
-    })
-    const direcao = join(deps.cwd, 'fabrica', 'DIRECAO.md')
-    const objetivos = deps.existe(direcao) ? lerObjetivos(await deps.lerArquivo(direcao)) : null
-    const r = montarRelatorio({
-      janela,
-      repo: REPO,
-      projeto: PROJETO,
+    const { markdown, semFonte } = await gerarRelatorio(deps, {
+      dia,
       pastaDoCofre,
       pastaDoRepo: deps.cwd,
-      decisoes,
-      ilegiveis,
-      cards,
-      commits,
-      objetivos,
+      geradoEm: deps.agora().toISOString(),
     })
 
-    deps.escrever(emMarkdown(r, deps.agora().toISOString()))
-    if (r.semFonte === 1) deps.avisar('relatorio: 1 linha sem fonte ficou de fora')
-    else if (r.semFonte > 1)
-      deps.avisar(`relatorio: ${r.semFonte} linhas sem fonte ficaram de fora`)
+    deps.escrever(markdown)
+    if (semFonte === 1) deps.avisar('relatorio: 1 linha sem fonte ficou de fora')
+    else if (semFonte > 1) deps.avisar(`relatorio: ${semFonte} linhas sem fonte ficaram de fora`)
 
     return 0
   } catch (erro) {
