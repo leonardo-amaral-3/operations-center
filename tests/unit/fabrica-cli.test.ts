@@ -18,7 +18,7 @@ import type { GraphQLFn } from '../../src/core/board/types'
 import { marcarLancando } from '../../src/core/fabrica/despachante'
 import { montarPrompt } from '../../src/core/fabrica/mandato'
 import type { ItemDaFila } from '../../src/core/fabrica/tipos'
-import { alterarEstado, lerEstado } from '../../src/main/fabrica/arquivos'
+import { alterarEstado, lerEstado, lerPausa, pausar } from '../../src/main/fabrica/arquivos'
 import { executar, type DepsDoCli } from '../../src/main/fabrica/cli'
 import { lerItemNoBoard } from '../../src/main/fabrica/github'
 import { envLimpo } from '../../src/main/fabrica/lancador'
@@ -237,6 +237,8 @@ describe('CLI', () => {
       ['iniciar', '1', '--tudo'],
       ['iniciar', '1', '2'],
       ['fechar', 'q-0001'],
+      ['pausar', 'x'],
+      ['retomar', 'x'],
     ]) {
       const m = montar()
       expect(await executar({ ...m.deps, argv }), argv.join(' ')).toBe(1)
@@ -550,6 +552,125 @@ describe.skipIf(process.platform !== 'linux')('o laço do despachante', { timeou
     expect(m2.avisos[0]).toMatch(/^fabrica: já há um yarn fabrica rodando \(pid \d+\)$/)
     controlador.abort()
     expect(await primeiro).toBe(130)
+  })
+
+  describe('pausa', () => {
+    const arquivo = (): string => join(pasta, 'pausa.json')
+
+    it('pausar cria pausa.json com desde e sai 0; de novo diz que já estava e não muda o arquivo', async () => {
+      const m = montar()
+      expect(await executar({ ...m.deps, argv: ['pausar'] })).toBe(0)
+      expect(JSON.parse(readFileSync(arquivo(), 'utf8'))).toEqual({ desde: AGORA })
+      expect(m.saida).toEqual(['fábrica pausada: nada novo é despachado até yarn fabrica retomar'])
+      expect(existsSync(arquivo() + '.tmp')).toBe(false)
+
+      const depois = montar({}, { agora: () => '2026-11-12T00:00:00.000Z' })
+      expect(await executar({ ...depois.deps, argv: ['pausar'] })).toBe(0)
+      expect(depois.saida).toEqual([`a fábrica já estava pausada desde ${AGORA}`])
+      expect(JSON.parse(readFileSync(arquivo(), 'utf8'))).toEqual({ desde: AGORA })
+    })
+
+    it('retomar apaga e sai 0; de novo diz que não estava pausada', async () => {
+      const m = montar()
+      await executar({ ...m.deps, argv: ['pausar'] })
+      m.saida.length = 0
+      expect(await executar({ ...m.deps, argv: ['retomar'] })).toBe(0)
+      expect(existsSync(arquivo())).toBe(false)
+      expect(await executar({ ...m.deps, argv: ['retomar'] })).toBe(0)
+      expect(m.saida).toEqual(['fábrica retomada', 'a fábrica não estava pausada'])
+    })
+
+    it('pausar no /tmp é recusado com 2, sem criar a pasta', async () => {
+      const fora = join(tmpdir(), `oc-pausa-${randomUUID()}`)
+      const m = montar({}, {}, { OC_FABRICA_DIR: fora })
+      expect(await executar({ ...m.deps, argv: ['pausar'] })).toBe(2)
+      expect(existsSync(fora)).toBe(false)
+    })
+
+    it('estado com pausa começa por "pausada desde", com ou sem estado.json', async () => {
+      const m = montar()
+      await executar({ ...m.deps, argv: ['pausar'] })
+      m.saida.length = 0
+      expect(await executar({ ...m.deps, argv: ['estado'] })).toBe(0)
+      expect(m.saida).toEqual([`pausada desde ${AGORA}`])
+
+      await abrirFrente(m, 1, '/gm-card #1')
+      m.saida.length = 0
+      await executar({ ...m.deps, argv: ['estado'] })
+      expect(m.saida[0]).toBe(`pausada desde ${AGORA}`)
+      expect(m.saida.length).toBeGreaterThan(1)
+    })
+
+    it('pausa.json torto ou que é pasta vira { desde: null } sem lançar', () => {
+      expect(lerPausa(pasta)).toBeNull()
+      writeFileSync(arquivo(), '{torto')
+      expect(lerPausa(pasta)).toEqual({ desde: null })
+      writeFileSync(arquivo(), '{"desde":7}')
+      expect(lerPausa(pasta)).toEqual({ desde: null })
+      rmSync(arquivo())
+      mkdirSync(arquivo())
+      expect(lerPausa(pasta)).toEqual({ desde: null })
+      expect(pausar(pasta, AGORA)).toEqual({ jaEstava: true, desde: null })
+    })
+
+    it('rodar pausada: nada é lançado, uma linha de aviso em dois passos, e o recolher roda igual', async () => {
+      const controlador = new AbortController()
+      const m = montar({}, { sinal: controlador.signal })
+      await abrirFrente(m, 1, '/gm-card #1')
+      await abrirFrente(m, 2, '/gm-card #2')
+      // O do card 2 caiu no meio do lançamento e deixou saida.json: o recolher o conclui mesmo pausada.
+      const ids: string[] = (lerEstado(pasta)?.despachos ?? []).map((d) => d.id)
+      const [primeiro, segundo] = [ids[0] as string, ids[1] as string]
+      await alterarEstado(pasta, (e) => ({
+        estado: marcarLancando(e, segundo, AGORA),
+        resultado: undefined,
+      }))
+      mkdirSync(join(pasta, 'sessoes', segundo), { recursive: true })
+      writeFileSync(join(pasta, 'sessoes', segundo, 'saida.json'), '')
+      pausar(pasta, AGORA)
+      setTimeout(() => {
+        controlador.abort()
+      }, 350)
+      expect(await rodar(m)).toBe(130)
+      expect(m.saida.filter((l) => l.includes('pausada: nada novo é despachado'))).toHaveLength(1)
+      expect(m.saida.filter((l) => l.includes('lançado'))).toEqual([])
+      expect(lancados()).toEqual([])
+      const e = lerEstado(pasta)
+      expect(e?.despachos.map((d) => [d.id, d.estado])).toEqual([
+        [primeiro, 'pendente'],
+        [segundo, 'concluido'],
+      ])
+    })
+
+    it('retomada, o rodar volta a lançar e avisa de novo numa pausa seguinte', async () => {
+      const m = montar({ '/gm-card #1': 'PARADA: fim' })
+      await abrirFrente(m, 1, '/gm-card #1')
+      pausar(pasta, AGORA)
+      const controlador = new AbortController()
+      m.deps.sinal = controlador.signal
+      setTimeout(() => {
+        rmSync(arquivo())
+      }, 250)
+      expect(await rodar(m)).toBe(0)
+      expect(lancados()).toEqual(['d-0002.json'])
+    })
+
+    it('uma pausa gravada enquanto o lerMandato ia à rede não deixa lançar nada', async () => {
+      const m = montar({ '/gm-card #1': 'PARADA: fim' })
+      m.deps.lerMandato = () => {
+        pausar(pasta, AGORA)
+        return Promise.resolve(MANDATO)
+      }
+      const controlador = new AbortController()
+      m.deps.sinal = controlador.signal
+      await abrirFrente(m, 1, '/gm-card #1')
+      setTimeout(() => {
+        controlador.abort()
+      }, 350)
+      expect(await rodar(m)).toBe(130)
+      expect(lancados()).toEqual([])
+      expect(lerEstado(pasta)?.despachos[0]?.estado).toBe('pendente')
+    })
   })
 
   it('concorrência: um iniciar entre o passo 1 e o 3 do rodar não se perde', async () => {

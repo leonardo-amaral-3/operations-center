@@ -228,3 +228,50 @@ export function pastaDaSessao(pasta: string, id: string): string {
 export function lerSaida(pasta: string, id: string): string | null {
   return lerOuNulo(join(pastaDaSessao(pasta, id), 'saida.json'))
 }
+
+/** O arquivo que pausa a fábrica: existindo, o `rodar` não lança nada novo (§F1.4 do #129). */
+export const ARQUIVO_DA_PAUSA = 'pausa.json'
+
+/**
+ * Só lê e nunca lança. Sem arquivo → `null`; com `desde` texto → `{ desde }`; JSON torto ou qualquer
+ * outro erro de leitura (`EACCES`, `EISDIR`…) → `{ desde: null }`: na dúvida, a fábrica fica pausada.
+ */
+export function lerPausa(pasta: string): { desde: string | null } | null {
+  let texto: string
+  try {
+    texto = readFileSync(join(pasta, ARQUIVO_DA_PAUSA), 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    return { desde: null }
+  }
+  try {
+    const lido: unknown = JSON.parse(texto)
+    const desde = (lido as { desde?: unknown } | null)?.desde
+    return { desde: typeof desde === 'string' ? desde : null }
+  } catch {
+    return { desde: null }
+  }
+}
+
+/** Já pausada → devolve o `desde` sem tocar o arquivo; senão grava por troca atômica (`.tmp` + `rename`). */
+export function pausar(pasta: string, agora: string): { jaEstava: boolean; desde: string | null } {
+  const atual = lerPausa(pasta)
+  if (atual !== null) return { jaEstava: true, desde: atual.desde }
+  recusarTemporaria(pasta)
+  mkdirSync(pasta, { recursive: true })
+  const tmp = join(pasta, `${ARQUIVO_DA_PAUSA}.tmp`)
+  writeFileSync(tmp, JSON.stringify({ desde: agora }) + '\n')
+  renameSync(tmp, join(pasta, ARQUIVO_DA_PAUSA))
+  return { jaEstava: false, desde: agora }
+}
+
+/** Apaga `pausa.json`: `true` se apagou, `false` se não existia. */
+export function retomar(pasta: string): boolean {
+  try {
+    unlinkSync(join(pasta, ARQUIVO_DA_PAUSA))
+    return true
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw err
+  }
+}

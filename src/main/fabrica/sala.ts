@@ -2,15 +2,20 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ipcMain } from 'electron'
 import { montarPergunta, montarSala } from '../../core/fabrica/sala'
-import { REPO_DA_FABRICA } from '../../core/fabrica/mandato'
+import {
+  NOME_DO_PROJETO_DA_FABRICA,
+  PROJETO_DA_FABRICA,
+  REPO_DA_FABRICA,
+} from '../../core/fabrica/mandato'
 import type {
   EstadoDoDespachante,
+  PausaDaFabrica,
   PerguntaDaFila,
   ReadPerguntaRequest,
   SalaDaFabrica,
 } from '../../shared/fabrica'
 import { IPC_INVOKE } from '../../shared/ipc'
-import { identidade, lerEstado, lerSaida, pastaDaFabrica } from './arquivos'
+import { identidade, lerEstado, lerPausa, lerSaida, pastaDaFabrica } from './arquivos'
 
 /**
  * A leitura da sala da fábrica (card 122, spec P3 §A3). **Só lê**: das portas da P2 entram aqui as
@@ -47,6 +52,23 @@ function mensagem(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+function despachanteSeguro(pasta: string, plataforma: NodeJS.Platform): EstadoDoDespachante {
+  try {
+    return estadoDoDespachante(pasta, plataforma)
+  } catch {
+    return 'desconhecido'
+  }
+}
+
+/** Na dúvida, pausada: `lerPausa` já não lança, e se lançar mesmo assim o retrato diz `desde: null`. */
+function pausaSegura(pasta: string): PausaDaFabrica | null {
+  try {
+    return lerPausa(pasta)
+  } catch {
+    return { desde: null }
+  }
+}
+
 /** Nunca lança: o `parseEstado` valida só o envelope, e um item torto pode derrubar o `montarSala`. */
 export function lerSala(
   pasta: string,
@@ -54,12 +76,16 @@ export function lerSala(
   agora: () => string,
 ): SalaDaFabrica {
   const lidoEm = agora()
+  const projeto = `${NOME_DO_PROJETO_DA_FABRICA} · Project ${PROJETO_DA_FABRICA}`
+  // O despachante e a pausa vêm antes do estado, cada um no seu `try`: os três ramos os carregam.
+  const despachante = despachanteSeguro(pasta, plataforma)
+  const pausa = pausaSegura(pasta)
   try {
     const e = lerEstado(pasta)
-    if (e === null) return { kind: 'sem-estado', lidoEm }
-    return montarSala(e, { despachante: estadoDoDespachante(pasta, plataforma), lidoEm })
+    if (e === null) return { kind: 'sem-estado', lidoEm, projeto, despachante, pausa }
+    return montarSala(e, { despachante, lidoEm, projeto, pausa })
   } catch (err) {
-    return { kind: 'ilegivel', lidoEm, erro: mensagem(err) }
+    return { kind: 'ilegivel', lidoEm, projeto, despachante, pausa, erro: mensagem(err) }
   }
 }
 

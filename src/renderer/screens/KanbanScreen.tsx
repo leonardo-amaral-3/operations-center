@@ -8,7 +8,7 @@ import { CardTabs } from '../components/CardTabs'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
 import { ThemePicker } from '../components/ThemePicker'
-import { SalaDaFabrica } from '../fabrica/SalaDaFabrica'
+import { Fabrica } from '../fabrica/Fabrica'
 import { useTerminalAqui } from '../mesa/terminalAqui'
 import { end } from '../terminal/claudeTerminals'
 import { Badge } from '../ui/badge'
@@ -273,7 +273,7 @@ export function KanbanScreen(): JSX.Element {
           dentro do `overflow-x-auto` dele rolaria junto com as colunas. */}
       <div data-testid="kanban-area" className="relative flex min-h-0 flex-1 flex-col">
         {vista === 'fabrica' ? (
-          <SalaDaFabrica />
+          <Fabrica />
         ) : board ? (
           <main className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3">
             {board.columns.map((column) => (

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Card em voo: #1852</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ECE3F8}
+a{color:#000}a:hover{color:#4B2FA8}
+.nb{background:#fff;border:2px solid #000;border-radius:5px;box-shadow:4px 4px 0 #000;box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;gap:6px;border:2px solid #000;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700;line-height:18px;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;border:1.5px solid #000;border-radius:4px;padding:0 6px;font-size:11px;font-weight:700;line-height:18px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 16px;border:2px solid #000;border-radius:5px;box-shadow:3px 3px 0 #000;font:700 14px 'DM Sans',sans-serif;text-decoration:none;color:#000;cursor:pointer}
+.st{flex:1 1 90px;min-width:90px;border:2px solid #000;border-radius:5px;padding:8px;font-size:12px;font-weight:700;text-align:center}
+.task{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:2px solid #000;font-size:14px}
+.task:last-child{border-bottom:0}
+.n{flex:0 0 auto;width:28px;height:28px;border:2px solid #000;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.log{margin:0;font:12px/20px ui-monospace,monospace;color:#F4F0FA;white-space:pre-wrap}
+</style>
+</helmet>
+<div style="min-height: 1000px; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 20px; font-family: 'DM Sans', sans-serif; font-weight: 500; color: #000; background: #ECE3F8">
+
+<header class="nb" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px">
+  <nav aria-label="Caminho" style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700">
+    <a href="Main.dc.html">Sala de controle</a><span aria-hidden="true">/</span><a href="Main.dc.html">Linha</a><span aria-hidden="true">/</span><span>#1852</span>
+  </nav>
+  <div style="display: flex; gap: 8px; flex-wrap: wrap"><span class="chip" style="background: #fff">worktree modulo-processos-1852</span><span class="chip" style="background: #EFC75E">cadeado: suíte db</span></div>
+</header>
+
+<section class="nb" style="padding: 20px; display: flex; flex-direction: column; gap: 14px">
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px"><span class="tag" style="background: #C8E7C5">Melhoria</span><span class="tag" style="background: #E2EFEE">Completa</span><span class="tag" style="background: #fff">modulo-processos#1852 · fase 3</span></div>
+  <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 26px">Crítica legível e auditar</h1>
+  <div role="list" aria-label="Estações" style="display: flex; flex-wrap: wrap; gap: 8px">
+    <div role="listitem" class="st" style="background: #C8E7C5">Entrada</div>
+    <div role="listitem" class="st" style="background: #C8E7C5">Card · G1</div>
+    <div role="listitem" class="st" style="background: #C8E7C5">Spec · G2</div>
+    <div role="listitem" class="st" style="background: #C8E7C5">Tasks · G3</div>
+    <div role="listitem" class="st" style="background: #A388EE; box-shadow: 3px 3px 0 #000">Implementação</div>
+    <div role="listitem" class="st" style="background: #fff">Integração</div>
+    <div role="listitem" class="st" style="background: #fff">Revisão · G4</div>
+    <div role="listitem" class="st" style="background: #fff">Validação</div>
+    <div role="listitem" class="st" style="background: #fff">Release · G5</div>
+  </div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <section aria-label="Tasks" style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Tasks da fase 3</h2>
+    <div class="nb">
+      <div class="task"><span class="n" style="background: #86DB84">1</span><span style="flex: 1">O contrato e a carga sem cache</span><span class="tag" style="background: #fff">7c955a43</span></div>
+      <div class="task" style="background: #F4F0FA"><span class="n" style="background: #A388EE">2</span><span style="flex: 1; font-weight: 700">O modo auditar crítica</span><span class="chip" style="background: #86DB84">trabalhando</span></div>
+      <div class="task"><span class="n" style="background: #fff">3</span><span style="flex: 1">Os endpoints de auditoria</span><span style="font-size: 12px; color: #3D3D3D">na fila</span></div>
+      <div class="task"><span class="n" style="background: #fff">4</span><span style="flex: 1">Os dados e o admin no web</span><span style="font-size: 12px; color: #3D3D3D">na fila</span></div>
+      <div class="task"><span class="n" style="background: #fff">5</span><span style="flex: 1">A árvore anotada</span><span style="font-size: 12px; color: #3D3D3D">na fila</span></div>
+      <div class="task"><span class="n" style="background: #fff">6</span><span style="flex: 1">A aba auditar no modal</span><span style="font-size: 12px; color: #3D3D3D">na fila</span></div>
+      <div class="task"><span class="n" style="background: #fff">7</span><span style="flex: 1">O painel no Editar AIH</span><span style="font-size: 12px; color: #3D3D3D">na fila</span></div>
+      <div class="task"><span class="n" style="background: #fff">8</span><span style="flex: 1">Testar com as edições</span><span style="font-size: 12px; color: #3D3D3D">na fila</span></div>
+    </div>
+    <section class="nb" style="padding: 14px; display: flex; flex-direction: column; gap: 8px">
+      <h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px">Decisões deste card</h3>
+      <div style="font-size: 13px; line-height: 18px"><span class="tag" style="background: #fff; margin-right: 6px">A</span>G3 em 8 tasks, decidido pela fábrica e registrado no cofre.</div>
+      <div style="font-size: 13px; line-height: 18px"><span class="tag" style="background: #fff; margin-right: 6px">retomada</span>Depois da queda de 09/11: a task 1 já estava commitada; a cadeia voltou da task 2 em ambiente limpo.</div>
+    </section>
+  </section>
+
+  <section aria-label="Sessão ao vivo" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Sessão da task 2, ao vivo</h2>
+      <span style="font-size: 12px; color: #3D3D3D">gm-implement · Sonnet 5.5 · despachada pela fábrica</span>
+    </div>
+    <div class="nb" style="background: #1E1B24; padding: 16px; min-height: 360px; display: flex; flex-direction: column; gap: 4px">
+      <pre class="log">› lê a task: planning/1852-critica-legivel-e-auditar/tasks/fase-3/2-o-modo-auditar-critica.md</pre>
+      <pre class="log">› cérebro: search_context «modo auditar crítica»</pre>
+      <pre class="log">› edita os arquivos que a task lista</pre>
+      <pre class="log">› pede o cadeado da suíte db · concedido</pre>
+      <pre class="log">› yarn tsc --noEmit -p tsconfig.ci.json</pre>
+      <pre class="log" style="color: #A388EE">● rodando os testes que o diff toca…</pre>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px">
+      <button class="btn" type="button" style="background: #A388EE">Assumir a sessão</button>
+      <button class="btn" type="button" style="background: #fff">Mandar uma mensagem</button>
+      <button class="btn" type="button" style="background: #fff">Parar o turno</button>
+    </div>
+    <p style="margin: 0; font-size: 13px; line-height: 18px; color: #2B2B2B">Assumir abre o mesmo chat que o cartão abre hoje: a sessão vira sua até você devolver. Enquanto isso, a fábrica não despacha nada neste card.</p>
+  </section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

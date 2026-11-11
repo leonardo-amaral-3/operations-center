@@ -12,7 +12,15 @@ import {
 } from '../../core/fabrica/mandato'
 import { createGhTokenSource } from '../github/token'
 import { createGitHubGraphQL } from '../github/graphql'
-import { alterarEstado, lerEstado, pastaDaFabrica, recusarTemporaria } from './arquivos'
+import {
+  alterarEstado,
+  lerEstado,
+  lerPausa,
+  pastaDaFabrica,
+  pausar,
+  recusarTemporaria,
+  retomar,
+} from './arquivos'
 import { lerItemNoBoard, lerMandato } from './github'
 import { rodar } from './rodar'
 
@@ -37,19 +45,21 @@ export interface DepsDoCli {
 }
 
 const USO =
-  'uso: yarn fabrica [iniciar <n> [--comando "<cmd>"] [--nota "<texto>"] [--ensaio] | rodar | estado | fechar <item> "<resolução>"]'
+  'uso: yarn fabrica [iniciar <n> [--comando "<cmd>"] [--nota "<texto>"] [--ensaio] | rodar | estado | fechar <item> "<resolução>" | pausar | retomar]'
 
 type Comando =
   | { tipo: 'iniciar'; card: number; comando: string | null; nota: string | null; ensaio: boolean }
   | { tipo: 'rodar' }
   | { tipo: 'estado' }
+  | { tipo: 'pausar' }
+  | { tipo: 'retomar' }
   | { tipo: 'fechar'; item: string; resolucao: string }
 
 /** Lê os argumentos; devolve o que estava errado, em texto, quando não servem. */
 function lerArgumentos(argv: readonly string[]): Comando | { erro: string } {
   const sub = argv[0] ?? 'rodar'
   const resto = argv.slice(1)
-  if (sub === 'rodar' || sub === 'estado') {
+  if (sub === 'rodar' || sub === 'estado' || sub === 'pausar' || sub === 'retomar') {
     return resto.length === 0 ? { tipo: sub } : { erro: `argumento a mais: ${resto[0]}` }
   }
   if (sub === 'fechar') {
@@ -124,6 +134,20 @@ export async function executar(deps: DepsDoCli): Promise<number> {
     if (lido.tipo === 'estado') return estado(deps, pasta)
     if (lido.tipo === 'iniciar' && !lido.ensaio) mkdirSync(pasta, { recursive: true })
     if (lido.tipo === 'rodar' || lido.tipo === 'fechar') mkdirSync(pasta, { recursive: true })
+    if (lido.tipo === 'pausar') {
+      mkdirSync(pasta, { recursive: true })
+      const r = pausar(pasta, deps.agora())
+      deps.escrever(
+        r.jaEstava
+          ? `a fábrica já estava pausada desde ${r.desde ?? '?'}`
+          : 'fábrica pausada: nada novo é despachado até yarn fabrica retomar',
+      )
+      return 0
+    }
+    if (lido.tipo === 'retomar') {
+      deps.escrever(retomar(pasta) ? 'fábrica retomada' : 'a fábrica não estava pausada')
+      return 0
+    }
 
     if (lido.tipo === 'iniciar') return await iniciar(deps, pasta, proibidos, lido)
     if (lido.tipo === 'fechar') {
@@ -201,8 +225,10 @@ async function iniciar(
 /** Sem cadeado: a troca atômica do `estado.json` garante uma leitura inteira. */
 function estado(deps: DepsDoCli, pasta: string): number {
   const e = lerEstado(pasta)
+  const pausa = lerPausa(pasta)
+  if (pausa !== null) deps.escrever(`pausada desde ${pausa.desde ?? '?'}`)
   if (e === null) {
-    deps.escrever('nada registrado')
+    if (pausa === null) deps.escrever('nada registrado')
     return 0
   }
   for (const f of e.frentes.filter((x) => x.encerradaEm === null)) {

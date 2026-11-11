@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { parseEstado } from '../../src/core/fabrica/estado'
-import { montarPergunta, montarSala, urlDoCard } from '../../src/core/fabrica/sala'
+import {
+  estacaoDoComando,
+  montarPergunta,
+  montarSala,
+  tipoDoItem,
+  urlDoCard,
+} from '../../src/core/fabrica/sala'
 import type { EstadoDaFabrica, ItemDaFila } from '../../src/core/fabrica/tipos'
 import { identidade } from '../../src/main/fabrica/arquivos'
 import { estadoDoDespachante, lerPergunta, lerSala, pastaDaSala } from '../../src/main/fabrica/sala'
@@ -12,7 +18,51 @@ import { estadoDoDespachante, lerPergunta, lerSala, pastaDaSala } from '../../sr
 const FIXTURE = join(__dirname, '..', 'fixtures', 'fabrica', 'sala')
 const estadoDaFixture = (): EstadoDaFabrica =>
   parseEstado(readFileSync(join(FIXTURE, 'estado.json'), 'utf8'))
-const CTX = { despachante: 'parado', lidoEm: '2026-11-11T12:00:00.000Z' } as const
+const CTX = {
+  despachante: 'parado',
+  lidoEm: '2026-11-11T12:00:00.000Z',
+  projeto: 'Operations Center · Project 2',
+  pausa: null,
+} as const
+
+describe('tipo e estação (F1.5)', () => {
+  it('estacaoDoComando: as sete skills e um comando qualquer', () => {
+    expect(
+      [
+        '/gm-triage #1',
+        '/gm-card #1',
+        '/gm-spec #1',
+        '/gm-plan-tasks pasta',
+        '/gm-implement pasta',
+        '/gm-ship pasta',
+        '/gm-correcao #1',
+        'yarn lint',
+        '',
+      ].map(estacaoDoComando),
+    ).toEqual([
+      'entrada',
+      'card',
+      'spec',
+      'tasks',
+      'implementacao',
+      'revisao',
+      'implementacao',
+      null,
+      null,
+    ])
+    expect(estacaoDoComando('/gm-constructor')).toBeNull()
+  })
+
+  it('tipoDoItem é sempre pergunta na F1, e a sala o preenche', () => {
+    const e = estadoDaFixture()
+    expect(e.fila.map(tipoDoItem).every((t) => t === 'pergunta')).toBe(true)
+    const sala = montarSala(e, CTX)
+    expect([...sala.abertos, ...sala.fechados].every((i) => i.tipo === 'pergunta')).toBe(true)
+    expect(sala.emVoo.map((d) => d.estacao)).toEqual(
+      sala.emVoo.map((d) => estacaoDoComando(d.comando)),
+    )
+  })
+})
 
 describe('montarSala sobre a fixture', () => {
   const sala = montarSala(estadoDaFixture(), CTX)
@@ -30,6 +80,16 @@ describe('montarSala sobre a fixture', () => {
     ])
     expect(sala.frentesAbertas).toBe(2)
     expect(sala.despachante).toBe('parado')
+  })
+
+  it('o ctx novo (projeto e pausa) vai inteiro para o retrato', () => {
+    const pausada = montarSala(estadoDaFixture(), {
+      ...CTX,
+      pausa: { desde: '2026-11-11T11:00:00Z' },
+    })
+    expect(pausada.projeto).toBe('Operations Center · Project 2')
+    expect(pausada.pausa).toEqual({ desde: '2026-11-11T11:00:00Z' })
+    expect(sala.pausa).toBeNull()
   })
 
   it('cardUrl aponta para o card no repositório da fábrica', () => {
@@ -101,7 +161,52 @@ describe('a leitura da sala', () => {
   const agora = (): string => '2026-11-11T12:00:00.000Z'
 
   it('sem estado.json → sem-estado', () => {
-    expect(lerSala(nova(), 'linux', agora)).toEqual({ kind: 'sem-estado', lidoEm: agora() })
+    expect(lerSala(nova(), 'linux', agora)).toEqual({
+      kind: 'sem-estado',
+      lidoEm: agora(),
+      projeto: 'Operations Center · Project 2',
+      despachante: 'parado',
+      pausa: null,
+    })
+  })
+
+  describe('a pausa, nos três ramos (F1.5)', () => {
+    const comPausa = (conteudo: string | null, estado: 'nenhum' | 'torto' | 'fixture'): string => {
+      const p = nova()
+      if (estado === 'torto') writeFileSync(join(p, 'estado.json'), '{')
+      if (estado === 'fixture') cpSync(FIXTURE, p, { recursive: true })
+      if (conteudo !== null) writeFileSync(join(p, 'pausa.json'), conteudo)
+      return p
+    }
+    it.each([
+      ['sem-estado', 'nenhum'],
+      ['ilegivel', 'torto'],
+      ['ok', 'fixture'],
+    ] as const)('ramo %s: sem pausa.json → pausa null, e o projeto vem junto', (kind, estado) => {
+      const s = lerSala(comPausa(null, estado), 'linux', agora)
+      expect(s.kind).toBe(kind)
+      expect(s.pausa).toBeNull()
+      expect(s.projeto).toBe('Operations Center · Project 2')
+      expect(s.despachante).toBe('parado')
+    })
+    it.each([
+      ['sem-estado', 'nenhum'],
+      ['ilegivel', 'torto'],
+      ['ok', 'fixture'],
+    ] as const)('ramo %s: com pausa.json → a data dela', (kind, estado) => {
+      const s = lerSala(comPausa('{"desde":"2026-11-11T11:00:00Z"}\n', estado), 'linux', agora)
+      expect(s.kind).toBe(kind)
+      expect(s.pausa).toEqual({ desde: '2026-11-11T11:00:00Z' })
+    })
+    it.each([
+      ['sem-estado', 'nenhum'],
+      ['ilegivel', 'torto'],
+      ['ok', 'fixture'],
+    ] as const)('ramo %s: pausa.json torto → desde null (na dúvida, pausada)', (kind, estado) => {
+      const s = lerSala(comPausa('{torto', estado), 'linux', agora)
+      expect(s.kind).toBe(kind)
+      expect(s.pausa).toEqual({ desde: null })
+    })
   })
 
   it('estado torto → ilegivel com a mensagem do parseEstado', () => {
@@ -213,15 +318,19 @@ describe('a sala só lê', () => {
     'copyFile',
     'openSync',
   ]
-  it('src/main/fabrica/sala.ts não nomeia nenhuma porta de escrita', () => {
-    const texto = readFileSync(
-      join(__dirname, '..', '..', 'src', 'main', 'fabrica', 'sala.ts'),
-      'utf8',
-    )
-    const achados = PROIBIDOS.filter((nome) => texto.includes(nome))
-    expect(
-      achados,
-      `a sala da fábrica só lê (#122, CA-3a.3): ${achados.join(', ')} é porta de escrita. Fechar um item é do \`yarn fabrica fechar\`, que passa pelo cadeado do estado.json`,
-    ).toEqual([])
-  })
+  // O `comando.ts` entra na mesma lista (#129): ele só chega à pasta pelo `executar` do CLI.
+  it.each(['sala.ts', 'comando.ts'])(
+    'src/main/fabrica/%s não nomeia nenhuma porta de escrita',
+    (arquivo) => {
+      const texto = readFileSync(
+        join(__dirname, '..', '..', 'src', 'main', 'fabrica', arquivo),
+        'utf8',
+      )
+      const achados = PROIBIDOS.filter((nome) => texto.includes(nome))
+      expect(
+        achados,
+        `${arquivo} só chega à pasta da fábrica pelo \`executar\` (#122, CA-3a.3): ${achados.join(', ')} é porta de escrita. Fechar um item é do \`yarn fabrica fechar\`, que passa pelo cadeado do estado.json`,
+      ).toEqual([])
+    },
+  )
 })

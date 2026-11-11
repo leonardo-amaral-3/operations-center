@@ -109,7 +109,50 @@ vazia e ninguém é avisado. Confira com `gh auth status`; se faltar, `gh auth r
 | `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                                                                                                                                    |
 | `yarn format`    | Prettier                                                                                                                                                                                                                                                                                                                                                         |
 | `yarn -s relatorio` | o relatório de um dia da fábrica (#118), em markdown no stdout: por frente, a partir do cofre de decisões, do board e do git, e toda linha cita a fonte. `yarn -s relatorio 2026-11-10` escolhe o dia (em UTC, como o cofre); `--cofre <pasta>` troca a pasta do cofre, que por padrão é `~/notoria/claude/decisoes`. O `-s` tira as linhas do próprio yarn do stdout. Só lê: não escreve no cofre, no board nem no git |
-| `yarn fabrica` | despacha as sessões `claude -p` da prova da fábrica (#118): `iniciar <n>`, `estado`, `fechar <item> "<resolução>"`; sem subcomando, gira até não sobrar nada em voo. Só no Linux |
+| `yarn fabrica` | despacha as sessões `claude -p` da prova da fábrica (#118): `iniciar <n>`, `estado`, `fechar <item> "<resolução>"`, `pausar` e `retomar` (a pausa é o `pausa.json` da pasta: com ele o `rodar` não lança despacho novo, mas segue recolhendo os que terminam); sem subcomando, gira até não sobrar nada em voo. Só no Linux |
+
+`yarn lint`, `yarn typecheck` e `yarn test` formam o portão de qualidade, e são exatamente o que o
+CI roda a cada PR para `dev` e `main`. Os smokes ficam de fora do CI de propósito: o runner nem
+baixa o binário do Electron, e os que sobem sessão ainda dependem do login local, que ele
+não tem.
+
+No Linux, `OC_SMOKE_HEADLESS=1` sobe o Electron sem janela (`--ozone-platform=headless`, tela
+virtual de 1920×1080), e os smokes rodam sem roubar o foco de quem trabalha. É lida só pelo smoke,
+nunca pelo app.
+
+O `yarn fabrica` guarda o estado em `OC_FABRICA_DIR` (default: `<pasta-mãe do repo>/claude/despachos-fabrica`):
+`estado.json` e uma pasta `sessoes/<id>/` por sessão, com o prompt, a saída JSON e o stderr. Uma
+pasta no `/tmp` é recusada. O mandato é lido de `fabrica/MANDATO.md` da `dev` a cada despacho. As
+sessões sobem destacadas: matar o despachante (o pid em `rodar.pid`, e não o do `yarn`) não mata
+nenhuma, e ele as adota quando é religado.
+
+No app, o botão **Fábrica** do cabeçalho troca o kanban pela sala da fábrica, com o cabeçalho do
+protótipo: a marca, os oito botões de tela (Sala de controle, Briefing, Relatório, Portfólio, Entrada,
+Agentes, Release e Mandato e placar), o projeto, o crachá de estado (**Fábrica ligada**, **parada** ou
+**pausada**) e o botão **Pausar fábrica** / **Retomar fábrica**. A Sala mostra a fila de decisões, os
+despachos em voo e os fechados, relidos do `estado.json` a cada 5 s; clicar num item da fila abre a
+tela Pergunta (o texto final da sessão que o gerou e o comando para fechá-lo), e clicar num despacho em
+voo abre a tela do card. O Relatório gera o relatório de um dia com o mesmo código do `yarn relatorio`,
+lendo o cofre de `OC_RELATORIO_COFRE` (default `~/notoria/claude/decisoes`) e o git de
+`OC_RELATORIO_REPO` (default `~/pessoal/operations-center`). As outras telas chegam nas fases F2 a F6
+do épico #129. Pausar e retomar são a única escrita do app na pasta da fábrica: o app roda `yarn fabrica
+pausar`/`retomar` pelo canal `fabrica:comando`, e fechar um item continua sendo `yarn fabrica fechar`.
+Sem `OC_FABRICA_DIR`, o app lê `~/pessoal/claude/despachos-fabrica`.
+
+A comparação com o protótipo se gera com `OC_SMOKE_HEADLESS=1 yarn smoke -- tests/smoke/comparacao.smoke.spec.ts`
+(só no Linux, sem sessão do Claude): para cada uma das 11 telas, `<Tela>-prototipo.png` (o render
+estático do `.dc.html` de `tests/fixtures/prototipo/`) e `<Tela>-app.png` (a tela no app, com fixture), e um
+`index.html` que os põe lado a lado, em `test-results/comparacao/`. `OC_COMPARACAO_DIR=<pasta>` troca a
+pasta de saída, que o smoke apaga e recria. A variável é lida só pelo smoke, nunca pelo app.
+
+## Executável`)                                                                                                                                                                                                                                                                           |
+| `yarn test`      | Vitest — as unidades do core. Sem rede, sem credencial, determinístico                                                                                                                                                                                                                                                                                           |
+| `yarn smoke`     | compila e roda todos os smokes de ponta a ponta (Playwright + Electron): os que **leem fixture** e não tocam a rede — o do kanban, o do conteúdo do cartão, o da aba PR, o do tema, o da triagem, o da janela e o do terminal —, e os que **sobem sessão real** — o da fatia vertical, o do terminal Claude no cartão, o da retomada, o das abas, o da sessão livre e o da janela do card —, que precisam do login e **consomem cota**. No Linux, uma suíte por vez na máquina: a segunda espera o cadeado da primeira; `npx playwright test` direto passa por fora dele |
+| `yarn lint`      | ESLint                                                                                                                                                                                                                                                                                                                                                           |
+| `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                                                                                                                                    |
+| `yarn format`    | Prettier                                                                                                                                                                                                                                                                                                                                                         |
+| `yarn -s relatorio` | o relatório de um dia da fábrica (#118), em markdown no stdout: por frente, a partir do cofre de decisões, do board e do git, e toda linha cita a fonte. `yarn -s relatorio 2026-11-10` escolhe o dia (em UTC, como o cofre); `--cofre <pasta>` troca a pasta do cofre, que por padrão é `~/notoria/claude/decisoes`. O `-s` tira as linhas do próprio yarn do stdout. Só lê: não escreve no cofre, no board nem no git |
+| `yarn fabrica` | despacha as sessões `claude -p` da prova da fábrica (#118): `iniciar <n>`, `estado`, `fechar <item> "<resolução>"`, `pausar` e `retomar` (a pausa é o `pausa.json` da pasta: com ele o `rodar` não lança despacho novo, mas segue recolhendo os que terminam); sem subcomando, gira até não sobrar nada em voo. Só no Linux |
 
 `yarn lint`, `yarn typecheck` e `yarn test` formam o portão de qualidade, e são exatamente o que o
 CI roda a cada PR para `dev` e `main`. Os smokes ficam de fora do CI de propósito: o runner nem
