@@ -101,8 +101,17 @@ beforeEach(() => {
     readCardWindows: () => Promise.resolve([]),
     focusCardWindow,
     openCardWindow,
-    readFabrica: () => Promise.resolve({ kind: 'sem-estado', lidoEm: '2026-11-11T12:00:00.000Z' }),
+    readFabrica: () =>
+      Promise.resolve({
+        kind: 'sem-estado',
+        lidoEm: '2026-11-11T12:00:00.000Z',
+        projeto: 'Operations Center · Project 2',
+        despachante: 'parado',
+        pausa: null,
+      }),
     readFabricaPergunta: () => Promise.resolve(null),
+    readRelatorio: () => new Promise(() => {}),
+    comandoFabrica: () => Promise.resolve({ ok: true, codigo: 0, argv: [], saida: '', erro: '' }),
   }
 
   Object.defineProperty(window, 'oc', { value: ponte, configurable: true })

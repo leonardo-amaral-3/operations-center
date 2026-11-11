@@ -38,13 +38,13 @@ describe('useSala', () => {
 
     const { result } = renderHook(() => useSala())
 
-    expect(result.current).toBeNull()
+    expect(result.current.sala).toBeNull()
     expect(readFabrica).toHaveBeenCalledTimes(1)
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
-    expect(result.current).toEqual(lido('a'))
+    expect(result.current.sala).toEqual(lido('a'))
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(INTERVALO_DA_SALA_MS - 1)
@@ -92,19 +92,19 @@ describe('useSala', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
-    expect(result.current).toEqual(lido('a'))
+    expect(result.current.sala).toEqual(lido('a'))
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(INTERVALO_DA_SALA_MS)
     })
     expect(readFabrica).toHaveBeenCalledTimes(2)
-    expect(result.current).toEqual(lido('a'))
+    expect(result.current.sala).toEqual(lido('a'))
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(INTERVALO_DA_SALA_MS)
     })
     expect(readFabrica).toHaveBeenCalledTimes(3)
-    expect(result.current).toEqual(lido('c'))
+    expect(result.current.sala).toEqual(lido('c'))
   })
 
   it('resposta que chega depois da desmontagem não é aplicada, e nada mais é chamado', async () => {
@@ -125,7 +125,57 @@ describe('useSala', () => {
       await vi.advanceTimersByTimeAsync(INTERVALO_DA_SALA_MS * 3)
     })
 
-    expect(result.current).toBeNull()
+    expect(result.current.sala).toBeNull()
     expect(readFabrica).toHaveBeenCalledTimes(1)
+  })
+
+  it('reler faz uma leitura fora do intervalo e resolve com o retrato novo aplicado', async () => {
+    readFabrica.mockResolvedValueOnce(lido('a'))
+    readFabrica.mockResolvedValueOnce(lido('b'))
+
+    const { result } = renderHook(() => useSala())
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(result.current.sala).toEqual(lido('a'))
+
+    await act(async () => {
+      await result.current.reler()
+    })
+    expect(readFabrica).toHaveBeenCalledTimes(2)
+    expect(result.current.sala).toEqual(lido('b'))
+  })
+
+  it('reler com uma leitura em voo espera ela e faz mais uma; nunca rejeita', async () => {
+    let responder: (sala: SalaDaFabrica) => void = () => {}
+
+    readFabrica.mockImplementationOnce(
+      () =>
+        new Promise<SalaDaFabrica>((resolve) => {
+          responder = resolve
+        }),
+    )
+    readFabrica.mockRejectedValueOnce(new Error('falhou'))
+
+    const { result } = renderHook(() => useSala())
+    let resolvido = false
+    let pedido: Promise<void> = Promise.resolve()
+
+    act(() => {
+      pedido = result.current.reler().then(() => {
+        resolvido = true
+      })
+    })
+    expect(readFabrica).toHaveBeenCalledTimes(1)
+    expect(resolvido).toBe(false)
+
+    await act(async () => {
+      responder(lido('a'))
+      await pedido
+    })
+    expect(readFabrica).toHaveBeenCalledTimes(2)
+    expect(resolvido).toBe(true)
+    expect(result.current.sala).toEqual(lido('a'))
   })
 })

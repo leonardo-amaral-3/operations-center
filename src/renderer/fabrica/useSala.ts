@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { SalaDaFabrica } from '../../shared/fabrica'
 
 /** A cada quanto a sala relê o estado (#122, CA-3a.1: um item novo aparece em até 8 s). */
 export const INTERVALO_DA_SALA_MS = 5000
+
+export interface UsoDaSala {
+  sala: SalaDaFabrica | null
+  /** Uma leitura fora do intervalo; resolve quando o retrato novo foi aplicado. Nunca rejeita. */
+  reler: () => Promise<void>
+}
 
 /**
  * O retrato da sala da fábrica, relido enquanto a tela que o usa está montada (#122, §A5).
@@ -12,41 +18,55 @@ export const INTERVALO_DA_SALA_MS = 5000
  * leitura lenta não empilhar. Uma rejeição do `invoke` não muda o retrato e não para o intervalo: o
  * que a tela mostra é o último estado lido, e a próxima volta tenta de novo. Resposta que chega
  * depois da desmontagem é ignorada, como no `useCardWindows`.
+ *
+ * `reler` (#130, §F1.5) serve ao botão Pausar: com uma leitura em voo, espera ela e faz mais uma,
+ * porque a em voo pode ter lido o estado de antes do comando.
  */
-export function useSala(): SalaDaFabrica | null {
+export function useSala(): UsoDaSala {
   const [sala, setSala] = useState<SalaDaFabrica | null>(null)
-  const emVoo = useRef(false)
+  const emVoo = useRef<Promise<void> | null>(null)
+  const vivo = useRef(true)
 
-  useEffect(() => {
-    let vivo = true
+  const ler = useCallback((): Promise<void> => {
+    if (emVoo.current !== null) return emVoo.current
 
-    const ler = () => {
-      if (emVoo.current) return
-      emVoo.current = true
-      window.oc
-        .readFabrica()
-        .then((retrato) => {
-          if (vivo) setSala(retrato)
-        })
-        .catch(() => {
-          // Mantém o retrato e o intervalo: a próxima volta tenta de novo.
-        })
-        .finally(() => {
-          // Uma resposta de um efeito já desmontado não libera a vez da leitura do efeito novo.
-          if (vivo) emVoo.current = false
-        })
-    }
+    const leitura: Promise<void> = window.oc
+      .readFabrica()
+      .then((retrato) => {
+        if (vivo.current) setSala(retrato)
+      })
+      .catch(() => {
+        // Mantém o retrato e o intervalo: a próxima volta tenta de novo.
+      })
+      .finally(() => {
+        // Uma leitura de um efeito já desmontado não libera a vez da leitura do efeito novo.
+        if (emVoo.current === leitura) emVoo.current = null
+      })
 
-    ler()
+    emVoo.current = leitura
 
-    const intervalo = setInterval(ler, INTERVALO_DA_SALA_MS)
-
-    return () => {
-      vivo = false
-      clearInterval(intervalo)
-      emVoo.current = false
-    }
+    return leitura
   }, [])
 
-  return sala
+  const reler = useCallback(async (): Promise<void> => {
+    if (emVoo.current !== null) await emVoo.current
+    await ler()
+  }, [ler])
+
+  useEffect(() => {
+    vivo.current = true
+    void ler()
+
+    const intervalo = setInterval(() => {
+      void ler()
+    }, INTERVALO_DA_SALA_MS)
+
+    return () => {
+      vivo.current = false
+      clearInterval(intervalo)
+      emVoo.current = null
+    }
+  }, [ler])
+
+  return { sala, reler }
 }
