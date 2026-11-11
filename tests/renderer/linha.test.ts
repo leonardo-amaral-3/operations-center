@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import type { EstacaoDaFabrica } from '../../src/shared/fabrica'
+import type { DespachoNaSala, EstacaoDaFabrica, SalaDaFabrica } from '../../src/shared/fabrica'
 import {
   COLUNAS_DA_LINHA,
   colunaDaEstacao,
+  estadoNaLinha,
   gigas,
   horaCurta,
   plural,
+  previsaoDosPendentes,
   ROTULO_DA_ESTACAO,
   ROTULO_DO_PASSO,
   rotuloDoCard,
@@ -134,5 +136,106 @@ describe('gigas', () => {
     expect(gigas(50 * 1024 ** 3)).toBe('50,0 GB')
     expect(gigas(1.5 * 1024 ** 3)).toBe('1,5 GB')
     expect(gigas(0)).toBe('0,0 GB')
+  })
+})
+
+describe('previsaoDosPendentes', () => {
+  const pendente = (id: string): DespachoNaSala => ({
+    id,
+    card: 2,
+    cardUrl: 'u',
+    comando: '/gm-card #2',
+    estacao: 'card',
+    estado: 'pendente',
+    criadoEm: '2026-11-11T09:40:00.000Z',
+    lancadoEm: null,
+    ondeRoda: 'sem worktree',
+    viva: null,
+  })
+  const sala = (
+    extra: Partial<Extract<SalaDaFabrica, { kind: 'ok' }>> = {},
+  ): Extract<SalaDaFabrica, { kind: 'ok' }> => ({
+    kind: 'ok',
+    lidoEm: '2026-11-11T12:00:00.000Z',
+    projeto: 'p',
+    despachante: 'rodando',
+    pausa: null,
+    recursos: {
+      sessoes: { kind: 'ok', vivas: 2, teto: 3 },
+      suite: { kind: 'livre' },
+      disco: { kind: 'ok', livres: 1, minimo: 1 },
+    },
+    emVoo: [pendente('d-1'), pendente('d-2')],
+    abertos: [],
+    fechados: [],
+    decisoes: [],
+    frentesAbertas: 2,
+    ...extra,
+  })
+
+  it('dois pendentes e uma vaga: o primeiro sobe, o segundo espera', () => {
+    expect(previsaoDosPendentes(sala())).toEqual([
+      'sobe no próximo passo do despachante',
+      'espera vaga (teto de 3)',
+    ])
+  })
+
+  it('só os pendentes entram, na ordem', () => {
+    const rodando = { ...pendente('d-0'), estado: 'rodando' as const }
+    expect(previsaoDosPendentes(sala({ emVoo: [rodando, pendente('d-1')] }))).toEqual([
+      'sobe no próximo passo do despachante',
+    ])
+  })
+
+  it('pausada', () => {
+    expect(previsaoDosPendentes(sala({ pausa: { desde: null } }))).toEqual([
+      'espera a fábrica ser retomada',
+      'espera a fábrica ser retomada',
+    ])
+  })
+
+  it('despachante parado', () => {
+    expect(previsaoDosPendentes(sala({ despachante: 'parado' }))[0]).toBe(
+      'espera o yarn fabrica rodar',
+    )
+  })
+
+  it('sessões sem leitura', () => {
+    const s = sala()
+    s.recursos.sessoes = { kind: 'sem-leitura', motivo: 'x', teto: 3 }
+    expect(previsaoDosPendentes(s)[0]).toBe('sobe quando houver vaga (sessões sem leitura)')
+  })
+
+  it('teto estourado (vivas > teto) nunca dá vaga negativa', () => {
+    const s = sala()
+    s.recursos.sessoes = { kind: 'ok', vivas: 5, teto: 3 }
+    expect(previsaoDosPendentes(s)).toEqual(['espera vaga (teto de 3)', 'espera vaga (teto de 3)'])
+  })
+})
+
+describe('estadoNaLinha', () => {
+  const d = (estado: DespachoNaSala['estado'], viva: boolean | null): DespachoNaSala => ({
+    id: 'd-1',
+    card: 1,
+    cardUrl: 'u',
+    comando: '/gm-spec #1',
+    estacao: 'spec',
+    estado,
+    criadoEm: '2026-11-11T09:40:00.000Z',
+    lancadoEm: null,
+    ondeRoda: 'planning/',
+    viva,
+  })
+
+  it.each([
+    ['rodando', true, 'rodando', 'trabalhando'],
+    ['lancando', true, 'subindo', 'subindo a sessão'],
+    ['pendente', null, 'na fila de lançamento', 'na fila de lançamento'],
+    ['rodando', false, 'sem sessão viva', 'sem sessão viva; o despachante recolhe quando rodar'],
+    ['lancando', false, 'sem sessão viva', 'sem sessão viva; o despachante recolhe quando rodar'],
+    ['rodando', null, 'rodando', 'trabalhando'],
+  ] as const)('%s, viva %s', (estado, viva, sala, agentes) => {
+    expect(estadoNaLinha(d(estado, viva), 'sala')).toBe(sala)
+    expect(estadoNaLinha(d(estado, viva), 'agentes')).toBe(agentes)
   })
 })

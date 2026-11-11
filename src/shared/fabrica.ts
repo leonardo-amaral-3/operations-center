@@ -30,6 +30,8 @@ export interface ItemNaSala {
   criadoEm: string
   fechadoEm: string | null
   resolucao: string | null
+  estacao: EstacaoDaFabrica | null // a do comando do despacho de origem (`estacaoDoComando`)
+  sessaoQuebrada: boolean // o despacho de origem terminou com desfecho `falha`
 }
 
 export interface DespachoNaSala {
@@ -41,7 +43,14 @@ export interface DespachoNaSala {
   estado: 'pendente' | 'lancando' | 'rodando'
   criadoEm: string
   lancadoEm: string | null
+  ondeRoda: string // `ondeRodaDo`; nunca caminho absoluto
+  viva: boolean | null // a sessão existe em /proc; null = pendente ou fora do Linux
 }
+
+/** O que a sala mostra em "O que a fábrica decidiu": um passo da esteira, ou um item da fila. */
+export type DecisaoNaSala =
+  | { tipo: 'passou'; id: string; card: number; skill: string; seguinte: string; em: string }
+  | { tipo: 'fila'; id: string; card: number; item: ItemNaSala; em: string }
 
 /** Sessões da prova vivas contra o teto do mandato (F2 §F2.1); falha de leitura nunca vira número. */
 export type LeituraDeSessoes =
@@ -69,12 +78,13 @@ export interface PausaDaFabrica {
   desde: string | null
 }
 
-/** O que os três ramos do retrato dividem: o projeto, o despachante e a pausa (F1.5). */
+/** O que os três ramos do retrato dividem: o projeto, o despachante, a pausa e os recursos. */
 interface CabecalhoDaSala {
   lidoEm: string
   projeto: string // 'Operations Center · Project 2'
   despachante: EstadoDoDespachante
   pausa: PausaDaFabrica | null // null: não está pausada
+  recursos: RecursosDaFabrica
 }
 
 export type SalaDaFabrica =
@@ -85,6 +95,7 @@ export type SalaDaFabrica =
       emVoo: DespachoNaSala[]
       abertos: ItemNaSala[]
       fechados: ItemNaSala[]
+      decisoes: DecisaoNaSala[]
       frentesAbertas: number
     } & CabecalhoDaSala)
 

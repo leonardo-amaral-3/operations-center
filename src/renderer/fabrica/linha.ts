@@ -1,9 +1,9 @@
-import type { EstacaoDaFabrica } from '../../shared/fabrica'
+import type { DespachoNaSala, EstacaoDaFabrica, SalaDaFabrica } from '../../shared/fabrica'
 
 /**
  * A Linha da fábrica (#131, §F2.6): as nove colunas da Sala e os textos que as duas telas dividem.
  * Sem React, para o teste do protótipo importá-lo no programa do Node. `estadoNaLinha` e
- * `previsaoDosPendentes` chegam com o retrato da F2, que é quem lhes dá o `viva` e os `recursos`.
+ * `previsaoDosPendentes` leem o `viva` e os `recursos` do retrato da F2.
  */
 export type ColunaDaLinha =
   | 'entrada'
@@ -115,4 +115,34 @@ export function horaCurta(iso: string): string {
 
 export function gigas(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1).replace('.', ',')} GB`
+}
+
+/**
+ * Uma frase por despacho `pendente`, na ordem de lançamento: a `i`-ésima sobe se ainda há vaga
+ * contra o teto. Um pendente nunca divide a frente com outro em voo (M22), então não há "espera a
+ * frente".
+ */
+export function previsaoDosPendentes(sala: Extract<SalaDaFabrica, { kind: 'ok' }>): string[] {
+  const { sessoes } = sala.recursos
+  return sala.emVoo
+    .filter((d) => d.estado === 'pendente')
+    .map((_, i) => {
+      if (sala.pausa !== null) return 'espera a fábrica ser retomada'
+      if (sala.despachante !== 'rodando') return 'espera o yarn fabrica rodar'
+      if (sessoes.kind !== 'ok') return 'sobe quando houver vaga (sessões sem leitura)'
+      if (i < Math.max(0, sessoes.teto - sessoes.vivas))
+        return 'sobe no próximo passo do despachante'
+      return `espera vaga (teto de ${sessoes.teto})`
+    })
+}
+
+/** O texto do estado de um despacho; `agentes` é a variante mais explicada da tela de Agentes. */
+export function estadoNaLinha(d: DespachoNaSala, onde: 'sala' | 'agentes'): string {
+  const agentes = onde === 'agentes'
+  if (d.viva === false) {
+    return agentes ? 'sem sessão viva; o despachante recolhe quando rodar' : 'sem sessão viva'
+  }
+  if (d.estado === 'rodando') return agentes ? 'trabalhando' : 'rodando'
+  if (d.estado === 'lancando') return agentes ? 'subindo a sessão' : 'subindo'
+  return 'na fila de lançamento'
 }
