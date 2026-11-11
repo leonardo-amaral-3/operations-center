@@ -14,6 +14,12 @@ export interface FrenteDoBriefing {
   coluna: string // o nome da coluna como o board diz: '📋 Backlog'
   comando: string // o que o `iniciar` vai rodar: '/gm-spec #940'
   emVoo: boolean // a sala tem despacho em voo deste card
+  /**
+   * Os ids dos itens abertos da fila deste card (`sala.abertos`, ramo `ok`): um despacho dele parou
+   * em PARADA e espera resposta. O `iniciar` abre frente nova mesmo assim; a tela avisa (G4 da PR
+   * #141, menor 3).
+   */
+  abertos: string[]
 }
 
 /**
@@ -24,6 +30,8 @@ export interface FrenteDoBriefing {
 export function frentesDoBriefing(board: Board, sala: SalaDaFabrica | null): FrenteDoBriefing[] {
   const emVoo = (card: number): boolean =>
     sala?.kind === 'ok' && sala.emVoo.some((d) => d.card === card)
+  const abertos = (card: number): string[] =>
+    sala?.kind === 'ok' ? sala.abertos.filter((i) => i.card === card).map((i) => i.id) : []
   const doGrupo = (estacao: 'backlog' | 'triagem'): FrenteDoBriefing[] =>
     board.cards
       .filter(
@@ -39,6 +47,7 @@ export function frentesDoBriefing(board: Board, sala: SalaDaFabrica | null): Fre
         coluna: colunaDoCard(board, c),
         comando: comandoDaFrente(estacao, c.number),
         emVoo: emVoo(c.number),
+        abertos: abertos(c.number),
       }))
   return [...doGrupo('backlog'), ...doGrupo('triagem')]
 }

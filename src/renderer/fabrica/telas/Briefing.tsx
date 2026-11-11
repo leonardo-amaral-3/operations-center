@@ -59,6 +59,12 @@ function mensagem(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
+/** O aviso da frente com item aberto na fila: o `iniciar` abre frente nova sem fechar o item. */
+function avisoDoAberto(card: number, abertos: readonly string[]): string {
+  const um = abertos.length === 1
+  return `O #${card} tem ${um ? 'o item' : 'os itens'} ${abertos.join(', ')} ${um ? 'aberto' : 'abertos'} na fila: um despacho dele parou e espera resposta. Soltar abre uma frente nova sem fechar ${um ? 'o item' : 'os itens'}; se é a mesma frente, responda na Fila antes.`
+}
+
 function Frente({
   frente,
   teto,
@@ -78,7 +84,7 @@ function Frente({
   onPronto: (texto: string) => void
   onVer: () => void
 }): JSX.Element {
-  const { card, titulo, coluna, comando, emVoo } = frente
+  const { card, titulo, coluna, comando, emVoo, abertos } = frente
   return (
     <Card
       data-testid="fabrica-briefing-frente"
@@ -93,8 +99,21 @@ function Frente({
             {`${coluna} · ${comando}`}
           </Badge>
           {emVoo && <Badge className="bg-warning text-warning-foreground">já em voo</Badge>}
+          {abertos.length > 0 && (
+            <Badge
+              data-testid="fabrica-briefing-aberto"
+              className="bg-warning text-warning-foreground"
+            >
+              item aberto na fila
+            </Badge>
+          )}
         </div>
       </div>
+      {abertos.length > 0 && (
+        <p data-testid="fabrica-briefing-aberto-aviso" role="note" className="text-sm font-bold">
+          {avisoDoAberto(card, abertos)}
+        </p>
+      )}
       <div className="grid grid-cols-3 gap-3">
         <label className="col-span-3 flex flex-col gap-1 text-xs font-bold">
           Pronto quando

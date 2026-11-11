@@ -123,11 +123,32 @@ describe('frentesDoBriefing', () => {
   })
 
   it('emVoo pela sala ok; falso com sem-estado ou null', () => {
-    const ok = { kind: 'ok', emVoo: [{ card: 7 }] } as unknown as SalaDaFabrica
+    const ok = { kind: 'ok', emVoo: [{ card: 7 }], abertos: [] } as unknown as SalaDaFabrica
     const semEstado = { kind: 'sem-estado' } as unknown as SalaDaFabrica
     expect(frentesDoBriefing(board, ok).map((x) => x.emVoo)).toEqual([false, true, false, false])
     expect(frentesDoBriefing(board, semEstado).some((x) => x.emVoo)).toBe(false)
     expect(frentesDoBriefing(board, null).some((x) => x.emVoo)).toBe(false)
+  })
+
+  it('abertos: os itens abertos da fila de cada card (G4 da PR #141, menor 3)', () => {
+    const ok = {
+      kind: 'ok',
+      emVoo: [],
+      abertos: [
+        { id: 'q-0003', card: 7 },
+        { id: 'q-0005', card: 99 },
+        { id: 'q-0008', card: 7 },
+      ],
+    } as unknown as SalaDaFabrica
+    expect(frentesDoBriefing(board, ok).map((x) => [x.card, x.abertos])).toEqual([
+      [2, []],
+      [7, ['q-0003', 'q-0008']],
+      [1, []],
+      [8, []],
+    ])
+    const semEstado = { kind: 'sem-estado' } as unknown as SalaDaFabrica
+    expect(frentesDoBriefing(board, semEstado).every((x) => x.abertos.length === 0)).toBe(true)
+    expect(frentesDoBriefing(board, null).every((x) => x.abertos.length === 0)).toBe(true)
   })
 
   it('comandoDaFrente', () => {

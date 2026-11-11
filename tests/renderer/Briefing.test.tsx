@@ -177,6 +177,20 @@ describe('Briefing · as frentes (CA-6.1)', () => {
     expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 941 })
   })
 
+  it('card com item aberto na fila: avisa na frente, e ela segue marcável (G4 da PR #141, menor 3)', async () => {
+    const aberto = { ...RETRATO_F2.abertos[0]!, id: 'q-0031', card: 941 }
+    await abrir({ sala: sala([], { abertos: [aberto] }) })
+    expect(within(frente(941)).getByTestId('fabrica-briefing-aberto').textContent).toBe(
+      'item aberto na fila',
+    )
+    expect(within(frente(941)).getByTestId('fabrica-briefing-aberto-aviso').textContent).toBe(
+      'O #941 tem o item q-0031 aberto na fila: um despacho dele parou e espera resposta. Soltar abre uma frente nova sem fechar o item; se é a mesma frente, responda na Fila antes.',
+    )
+    expect(within(frente(941)).queryByTestId('fabrica-briefing-entra')).not.toBeNull()
+    expect(within(frente(940)).queryByTestId('fabrica-briefing-aberto')).toBeNull()
+    expect(within(frente(940)).queryByTestId('fabrica-briefing-aberto-aviso')).toBeNull()
+  })
+
   it('a nota passa do limite: avisa e desabilita', async () => {
     await abrir()
     marcar(940)
