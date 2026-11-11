@@ -97,11 +97,34 @@ export function itensDaSecao(corpo: string): string[] | null {
   return inteira === '' ? [] : [inteira]
 }
 
+const PARTE_DA_SPEC = /^spec(?:-(\d+))?$/
+const LINHA_DO_MARCADOR = /^<!--[^\n]*-->[^\S\n]*\r?\n?/
+
+/**
+ * A spec inteira de um card: o `gm:spec` e os `gm:spec-N` (o GitHub corta o comentário em 65 536
+ * caracteres, e a spec longa sai em partes), na ordem da parte (`spec` é a 1), o primeiro de cada
+ * número, sem a linha do marcador, juntos por linha vazia. `null` sem parte nenhuma.
+ */
+export function specDoConteudo(conteudo: CardContent): string | null {
+  const partes = new Map<number, string>()
+  for (const c of conteudo.comments) {
+    const m = c.kind === null ? null : PARTE_DA_SPEC.exec(c.kind)
+    if (m === null) continue
+    const n = m[1] === undefined ? 1 : Number(m[1])
+    if (!partes.has(n)) partes.set(n, c.body.replace(LINHA_DO_MARCADOR, ''))
+  }
+  if (partes.size === 0) return null
+  return [...partes.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, corpo]) => corpo)
+    .join('\n\n')
+}
+
 /** A verificação pós-deploy de um card, pelo `kind` que o leitor do card já preenche. */
 export function verificacaoDoConteudo(conteudo: CardContent): VerificacaoDoCard {
-  const spec = conteudo.comments.find((c) => c.kind === 'spec')
-  if (spec !== undefined) {
-    const itens = itensDaSecao(spec.body)
+  const spec = specDoConteudo(conteudo)
+  if (spec !== null) {
+    const itens = itensDaSecao(spec)
     return itens === null || itens.length === 0 ? { kind: 'vazia' } : { kind: 'itens', itens }
   }
   if (conteudo.comments.some((c) => c.kind === 'spec-ref')) return { kind: 'ref' }

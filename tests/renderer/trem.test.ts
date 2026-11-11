@@ -8,6 +8,7 @@ import {
   linhasDasNotas,
   linhasDaVerificacao,
   repoDoTrem,
+  specDoConteudo,
   textoDasNotas,
   tipoDoCard,
   verificacaoDoConteudo,
@@ -147,6 +148,47 @@ describe('verificacaoDoConteudo', () => {
         conteudo({ comments: [comentario('spec', '## Verificação pós-deploy\n')] }),
       ),
     ).toEqual({ kind: 'vazia' })
+  })
+  it('spec dividida em gm:spec + gm:spec-2: a seção só na parte 2 é achada (G4 da PR #141, bloqueante 1)', () => {
+    // O formato do #133: spec-ref, a parte 1 sem a seção, a parte 2 com ela.
+    const c = conteudo({
+      comments: [
+        comentario('spec-ref', '<!-- gm:spec-ref -->\n## F4 promovida'),
+        comentario(
+          'spec',
+          '<!-- gm:spec -->\n> Parte 1 de 2. A parte 2 é o comentário `gm:spec-2` logo abaixo.\n\n## Implementation Details\nx',
+        ),
+        comentario(
+          'spec-2',
+          '<!-- gm:spec-2 -->\n> Parte 2 de 2 (continua o comentário `gm:spec`).\n\n## Verificação pós-deploy\n**Obrigatória.**\n1. abrir o app\n2. conferir a fila\n\n## Plano de testes\nN/A',
+        ),
+      ],
+    })
+    expect(verificacaoDoConteudo(c)).toEqual({
+      kind: 'itens',
+      itens: ['abrir o app', 'conferir a fila'],
+    })
+  })
+  it('as partes vão na ordem do número, não na dos comentários; a seção pode atravessar o corte', () => {
+    const c = conteudo({
+      comments: [
+        comentario('spec-3', '<!-- gm:spec-3 -->\n3. terceiro\n\n## Emendas\n(nenhuma)'),
+        comentario('spec', '<!-- gm:spec -->\n## Verificação pós-deploy\n1. primeiro'),
+        comentario('spec-2', '<!-- gm:spec-2 -->\n2. segundo'),
+        comentario('spec-2', '<!-- gm:spec-2 -->\n9. repetido, ignorado'),
+      ],
+    })
+    expect(verificacaoDoConteudo(c)).toEqual({
+      kind: 'itens',
+      itens: ['primeiro', 'segundo', 'terceiro'],
+    })
+  })
+  it('spec dividida sem a seção em parte nenhuma continua vazia; spec-ref não é parte', () => {
+    const c = conteudo({
+      comments: [comentario('spec', '<!-- gm:spec -->\nx'), comentario('spec-2', 'y')],
+    })
+    expect(verificacaoDoConteudo(c)).toEqual({ kind: 'vazia' })
+    expect(specDoConteudo(conteudo({ comments: [comentario('spec-ref', 'x')] }))).toBeNull()
   })
   it('spec-ref é ref; o spec vence o spec-ref', () => {
     expect(verificacaoDoConteudo(conteudo({ comments: [comentario('spec-ref', 'x')] }))).toEqual({
