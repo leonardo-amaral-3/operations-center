@@ -198,6 +198,7 @@ export function Entrada({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
       <CabecalhoInterno
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
+        atual={tela.tela}
         direita={
           <Badge variant="neutral" data-testid="fabrica-entrada-aviso">
             Grava pelo yarn fabrica entrada · o app não cria card

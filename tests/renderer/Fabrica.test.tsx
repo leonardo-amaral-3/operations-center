@@ -154,6 +154,48 @@ describe('Fabrica · moldura e navegação (CA-1.1)', () => {
     expect(telaAtual()).toBe('sala')
   })
 
+  it.each(['briefing', 'relatorio', 'portfolio', 'entrada', 'agentes', 'release', 'mandato'])(
+    'na tela %s o botão dela está marcado e outro botão leva direto à próxima, sem passar pela Sala',
+    async (tela) => {
+      const ordem = [
+        'sala',
+        'briefing',
+        'relatorio',
+        'portfolio',
+        'entrada',
+        'agentes',
+        'release',
+        'mandato',
+      ]
+      const outra = ordem[(ordem.indexOf(tela) + 1) % ordem.length] as string
+
+      render(<Fabrica />)
+      await screen.findByTestId('fabrica-aberto')
+      fireEvent.click(screen.getByTestId(`fabrica-nav-${tela}`))
+      expect(telaAtual()).toBe(tela)
+      expect(screen.getByTestId(`fabrica-nav-${tela}`).getAttribute('aria-current')).toBe('page')
+      expect(
+        screen
+          .getAllByTestId(/^fabrica-nav-/)
+          .filter((b) => b.getAttribute('aria-current') !== null),
+      ).toHaveLength(1)
+
+      fireEvent.click(screen.getByTestId(`fabrica-nav-${outra}`))
+      expect(telaAtual()).toBe(outra)
+    },
+  )
+
+  it('a Pergunta mostra o menu sem nenhum botão marcado', async () => {
+    render(<Fabrica />)
+    fireEvent.click(await screen.findByTestId('fabrica-aberto'))
+
+    expect(telaAtual()).toBe('pergunta')
+    expect(screen.getByTestId('fabrica-nav')).toBeTruthy()
+    expect(
+      screen.getAllByTestId(/^fabrica-nav-/).filter((b) => b.getAttribute('aria-current') !== null),
+    ).toEqual([])
+  })
+
   it('o Briefing tem corpo, e o botão Pausar também fica no cabeçalho de Agentes', () => {
     render(<Fabrica />)
     fireEvent.click(screen.getByTestId('fabrica-nav-briefing'))

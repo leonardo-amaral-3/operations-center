@@ -24,6 +24,7 @@ export function Decisao({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
       <CabecalhoInterno
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
+        atual={tela.tela}
         direita={
           <div className="flex flex-wrap gap-2">
             <Badge data-testid="fabrica-chip-tipo" className="bg-warning text-warning-foreground">

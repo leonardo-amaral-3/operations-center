@@ -187,6 +187,7 @@ export function Release({ tela, ir }: PropsDaTela): JSX.Element {
       <CabecalhoInterno
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
+        atual={tela.tela}
         direita={<Badge className="bg-danger text-danger-foreground">G5 · nível C · só você</Badge>}
       />
       <Card className="flex-row flex-wrap items-center justify-between gap-4 bg-secondary-background p-5">

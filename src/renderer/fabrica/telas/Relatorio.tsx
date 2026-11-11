@@ -442,7 +442,12 @@ export function Relatorio({ tela, ir, comando, emVoo }: PropsDaTela): JSX.Elemen
 
   return (
     <>
-      <CabecalhoInterno trilha={trilhaDa(tela, new Date())} direita={direita} onIr={ir} />
+      <CabecalhoInterno
+        trilha={trilhaDa(tela, new Date())}
+        direita={direita}
+        onIr={ir}
+        atual={tela.tela}
+      />
       {relatorio === null && (
         <p data-testid="relatorio-gerando">Gerando o relatório de {diaCurto(dia)}…</p>
       )}
