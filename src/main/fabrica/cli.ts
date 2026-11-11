@@ -2,6 +2,11 @@ import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { GraphQLFn } from '../../core/board/types'
+import {
+  abertosDaEntrada,
+  registrarNaEntrada,
+  triarItemDaEntrada,
+} from '../../core/fabrica/entrada'
 import { fecharItem, iniciarFrente } from '../../core/fabrica/despachante'
 import { comandoDaEstacao } from '../../core/fabrica/estacao'
 import {
@@ -13,7 +18,9 @@ import {
 import { createGhTokenSource } from '../github/token'
 import { createGitHubGraphQL } from '../github/graphql'
 import {
+  alterarEntrada,
   alterarEstado,
+  lerEntrada,
   lerEstado,
   lerPausa,
   pastaDaFabrica,
@@ -45,7 +52,7 @@ export interface DepsDoCli {
 }
 
 const USO =
-  'uso: yarn fabrica [iniciar <n> [--comando "<cmd>"] [--nota "<texto>"] [--ensaio] | rodar | estado | fechar <item> "<resolução>" | pausar | retomar]'
+  'uso: yarn fabrica [iniciar <n> [--comando "<cmd>"] [--nota "<texto>"] [--ensaio] | rodar | estado | fechar <item> "<resolução>" | pausar | retomar | entrada "<texto>" | triar <item> "<resolução>"]'
 
 type Comando =
   | { tipo: 'iniciar'; card: number; comando: string | null; nota: string | null; ensaio: boolean }
@@ -54,6 +61,8 @@ type Comando =
   | { tipo: 'pausar' }
   | { tipo: 'retomar' }
   | { tipo: 'fechar'; item: string; resolucao: string }
+  | { tipo: 'entrada'; texto: string }
+  | { tipo: 'triar'; item: string; resolucao: string }
 
 /** Lê os argumentos; devolve o que estava errado, em texto, quando não servem. */
 function lerArgumentos(argv: readonly string[]): Comando | { erro: string } {
@@ -66,6 +75,16 @@ function lerArgumentos(argv: readonly string[]): Comando | { erro: string } {
     if (resto.length < 2) return { erro: 'faltam argumentos: fechar <item> "<resolução>"' }
     if (resto.length > 2) return { erro: `argumento a mais: ${resto[2]}` }
     return { tipo: 'fechar', item: resto[0] as string, resolucao: resto[1] as string }
+  }
+  if (sub === 'entrada') {
+    if (resto.length < 1) return { erro: 'falta o texto: entrada "<texto>"' }
+    if (resto.length > 1) return { erro: `argumento a mais: ${resto[1]}` }
+    return { tipo: 'entrada', texto: resto[0] as string }
+  }
+  if (sub === 'triar') {
+    if (resto.length < 2) return { erro: 'faltam argumentos: triar <item> "<resolução>"' }
+    if (resto.length > 2) return { erro: `argumento a mais: ${resto[2]}` }
+    return { tipo: 'triar', item: resto[0] as string, resolucao: resto[1] as string }
   }
   if (sub !== 'iniciar') return { erro: `subcomando desconhecido: ${sub}` }
 
@@ -133,7 +152,14 @@ export async function executar(deps: DepsDoCli): Promise<number> {
   try {
     if (lido.tipo === 'estado') return estado(deps, pasta)
     if (lido.tipo === 'iniciar' && !lido.ensaio) mkdirSync(pasta, { recursive: true })
-    if (lido.tipo === 'rodar' || lido.tipo === 'fechar') mkdirSync(pasta, { recursive: true })
+    if (
+      lido.tipo === 'rodar' ||
+      lido.tipo === 'fechar' ||
+      lido.tipo === 'entrada' ||
+      lido.tipo === 'triar'
+    ) {
+      mkdirSync(pasta, { recursive: true })
+    }
     if (lido.tipo === 'pausar') {
       mkdirSync(pasta, { recursive: true })
       const r = pausar(pasta, deps.agora())
@@ -149,6 +175,34 @@ export async function executar(deps: DepsDoCli): Promise<number> {
       return 0
     }
 
+    if (lido.tipo === 'entrada') {
+      const r = await alterarEntrada(pasta, (e) => {
+        const x = registrarNaEntrada(e, { texto: lido.texto, agora: deps.agora() })
+        return { estado: 'erro' in x ? null : x.estado, resultado: x }
+      })
+      if ('erro' in r) {
+        deps.avisar(`fabrica: ${r.erro}`)
+        return 1
+      }
+      deps.escrever(`${r.id} na entrada`)
+      return 0
+    }
+    if (lido.tipo === 'triar') {
+      const r = await alterarEntrada(pasta, (e) => {
+        const x = triarItemDaEntrada(e, {
+          id: lido.item,
+          resolucao: lido.resolucao,
+          agora: deps.agora(),
+        })
+        return { estado: 'erro' in x ? null : x.estado, resultado: x }
+      })
+      if ('erro' in r) {
+        deps.avisar(`fabrica: ${r.erro}`)
+        return 1
+      }
+      deps.escrever(`${lido.item} triado`)
+      return 0
+    }
     if (lido.tipo === 'iniciar') return await iniciar(deps, pasta, proibidos, lido)
     if (lido.tipo === 'fechar') {
       const resultado = await alterarEstado(pasta, (e) => {
@@ -226,21 +280,36 @@ async function iniciar(
 function estado(deps: DepsDoCli, pasta: string): number {
   const e = lerEstado(pasta)
   const pausa = lerPausa(pasta)
+  let entrada: ReturnType<typeof lerEntrada> = null
+  let ilegivel: string | null = null
+  try {
+    entrada = lerEntrada(pasta)
+  } catch (erro) {
+    ilegivel = mensagemDe(erro)
+  }
   if (pausa !== null) deps.escrever(`pausada desde ${pausa.desde ?? '?'}`)
-  if (e === null) {
-    if (pausa === null) deps.escrever('nada registrado')
-    return 0
+  if (e !== null) {
+    for (const f of e.frentes.filter((x) => x.encerradaEm === null)) {
+      deps.escrever(`${f.id} #${f.card} aberta em ${f.criadaEm}`)
+    }
+    for (const d of e.despachos.filter((x) => x.estado !== 'concluido')) {
+      deps.escrever(`${d.id} #${d.card} ${d.estado} ${d.comando}`)
+    }
+    for (const q of e.fila.filter((x) => x.fechadoEm === null)) {
+      deps.escrever(
+        `${q.id} #${q.card} ${q.motivo} (de ${q.despacho}, sessão ${q.sessaoClaude ?? '-'})`,
+      )
+    }
   }
-  for (const f of e.frentes.filter((x) => x.encerradaEm === null)) {
-    deps.escrever(`${f.id} #${f.card} aberta em ${f.criadaEm}`)
+  const abertos = abertosDaEntrada(entrada)
+  for (const i of abertos) {
+    const primeira = i.texto.split('\n')[0] as string
+    const resumo = primeira.length > 80 ? primeira.slice(0, 79) + '…' : primeira
+    deps.escrever(`${i.id} na entrada desde ${i.criadoEm}: ${resumo}`)
   }
-  for (const d of e.despachos.filter((x) => x.estado !== 'concluido')) {
-    deps.escrever(`${d.id} #${d.card} ${d.estado} ${d.comando}`)
-  }
-  for (const q of e.fila.filter((x) => x.fechadoEm === null)) {
-    deps.escrever(
-      `${q.id} #${q.card} ${q.motivo} (de ${q.despacho}, sessão ${q.sessaoClaude ?? '-'})`,
-    )
+  if (ilegivel !== null) deps.avisar(`fabrica: ${ilegivel}`)
+  if (e === null && pausa === null && abertos.length === 0 && ilegivel === null) {
+    deps.escrever('nada registrado')
   }
   return 0
 }

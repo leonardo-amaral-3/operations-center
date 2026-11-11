@@ -127,3 +127,17 @@ export interface ReadRelatorioRequest {
 export type RelatorioDaSala =
   | { kind: 'ok'; dia: string; markdown: string; semFonte: number; geradoEm: string }
   | { kind: 'erro'; dia: string; erro: string }
+
+/** Um item da entrada da fábrica (F4). */
+export interface ItemNaEntrada {
+  id: string // 'e-0001'
+  texto: string
+  fonte: 'voce'
+  criadoEm: string
+  triadoEm: string | null
+  resolucao: string | null
+}
+
+export type EntradaNaSala =
+  | { kind: 'ok'; itens: ItemNaEntrada[]; total: number } // itens: os 20 mais novos, mais novo primeiro
+  | { kind: 'ilegivel'; erro: string }
