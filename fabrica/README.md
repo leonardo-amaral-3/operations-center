@@ -2,10 +2,10 @@
 
 O que governa a prova da fábrica agêntica (épico #118). São dois arquivos, lidos por quem despacha as sessões, e **não** pelo `CLAUDE.md`.
 
-| Arquivo      | O que é                                                                                                   | Quem lê                                                                                |
-| ------------ | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `DIRECAO.md` | a direção e os objetivos P0..P3 do experimento                                                            | a orquestradora e, a partir da P2, o `yarn fabrica`                                    |
-| `MANDATO.md` | o argumento de despacho de toda sessão `claude -p` da prova, literal: o arquivo inteiro vai para o prompt | a orquestradora (a versão da `dev`, pelo `gh api`) e, a partir da P2, o `yarn fabrica` |
+| Arquivo      | O que é                                                                                                   | Quem lê                                                                                          |
+| ------------ | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `DIRECAO.md` | a direção e os objetivos P0..P3 do experimento                                                            | a orquestradora (o `yarn fabrica` não lê este arquivo: Decisão 9 de `spec-p2.md`)                |
+| `MANDATO.md` | o argumento de despacho de toda sessão `claude -p` da prova, literal: o arquivo inteiro vai para o prompt | a orquestradora e o `yarn fabrica`, os dois pela versão da `dev` com o `gh api`, a cada despacho |
 
 ## Por que não no CLAUDE.md
 

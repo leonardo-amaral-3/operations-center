@@ -104,11 +104,12 @@ vazia e ninguém é avisado. Confira com `gh auth status`; se faltar, `gh auth r
 | `yarn build`     | compila os três bundles (main, preload, renderer) em `out/`                                                                                                                                                                                                                                                                                                      |
 | `yarn package`   | compila e empacota o executável em `dist/win-unpacked/` (Windows; ver `## Executável`)                                                                                                                                                                                                                                                                           |
 | `yarn test`      | Vitest — as unidades do core. Sem rede, sem credencial, determinístico                                                                                                                                                                                                                                                                                           |
-| `yarn smoke`     | compila e roda todos os smokes de ponta a ponta (Playwright + Electron): os que **leem fixture** e não tocam a rede — o do kanban, o do conteúdo do cartão, o da aba PR, o do tema, o da triagem, o da janela e o do terminal —, e os que **sobem sessão real** — o da fatia vertical, o do terminal Claude no cartão, o da retomada, o das abas, o da sessão livre e o da janela do card —, que precisam do login e **consomem cota** |
+| `yarn smoke`     | compila e roda todos os smokes de ponta a ponta (Playwright + Electron): os que **leem fixture** e não tocam a rede — o do kanban, o do conteúdo do cartão, o da aba PR, o do tema, o da triagem, o da janela e o do terminal —, e os que **sobem sessão real** — o da fatia vertical, o do terminal Claude no cartão, o da retomada, o das abas, o da sessão livre e o da janela do card —, que precisam do login e **consomem cota**. No Linux, uma suíte por vez na máquina: a segunda espera o cadeado da primeira; `npx playwright test` direto passa por fora dele |
 | `yarn lint`      | ESLint                                                                                                                                                                                                                                                                                                                                                           |
 | `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                                                                                                                                    |
 | `yarn format`    | Prettier                                                                                                                                                                                                                                                                                                                                                         |
 | `yarn -s relatorio` | o relatório de um dia da fábrica (#118), em markdown no stdout: por frente, a partir do cofre de decisões, do board e do git, e toda linha cita a fonte. `yarn -s relatorio 2026-11-10` escolhe o dia (em UTC, como o cofre); `--cofre <pasta>` troca a pasta do cofre, que por padrão é `~/notoria/claude/decisoes`. O `-s` tira as linhas do próprio yarn do stdout. Só lê: não escreve no cofre, no board nem no git |
+| `yarn fabrica` | despacha as sessões `claude -p` da prova da fábrica (#118): `iniciar <n>`, `estado`, `fechar <item> "<resolução>"`; sem subcomando, gira até não sobrar nada em voo. Só no Linux |
 
 `yarn lint`, `yarn typecheck` e `yarn test` formam o portão de qualidade, e são exatamente o que o
 CI roda a cada PR para `dev` e `main`. Os smokes ficam de fora do CI de propósito: o runner nem
@@ -118,6 +119,12 @@ não tem.
 No Linux, `OC_SMOKE_HEADLESS=1` sobe o Electron sem janela (`--ozone-platform=headless`, tela
 virtual de 1920×1080), e os smokes rodam sem roubar o foco de quem trabalha. É lida só pelo smoke,
 nunca pelo app.
+
+O `yarn fabrica` guarda o estado em `OC_FABRICA_DIR` (default: `<pasta-mãe do repo>/claude/despachos-fabrica`):
+`estado.json` e uma pasta `sessoes/<id>/` por sessão, com o prompt, a saída JSON e o stderr. Uma
+pasta no `/tmp` é recusada. O mandato é lido de `fabrica/MANDATO.md` da `dev` a cada despacho. As
+sessões sobem destacadas: matar o despachante (o pid em `rodar.pid`, e não o do `yarn`) não mata
+nenhuma, e ele as adota quando é religado.
 
 ## Executável
 

@@ -11,6 +11,7 @@
     "!**/node_modules/node-pty/prebuilds/{darwin-*,win32-arm64}/**",
     "!src/**",
     "!tests/**",
+    "!scripts/**",
     "!out/**/*.map",
     "!test-results/**",
     "!playwright-report/**",

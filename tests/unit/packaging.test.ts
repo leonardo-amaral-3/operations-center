@@ -65,6 +65,18 @@ describe('empacotamento', () => {
     expect(builder.files).toContain('!**/node_modules/node-pty/prebuilds/{darwin-*,win32-arm64}/**')
   })
 
+  it('`scripts/` fica fora do artefato, logo depois de `tests/`', () => {
+    // #121 N17: o lançador da fábrica e o cadeado do smoke são ferramenta de desenvolvimento.
+    const files = builder.files as string[]
+    expect(files[files.indexOf('!tests/**') + 1]).toBe('!scripts/**')
+  })
+
+  it('o `yarn smoke` passa pelo cadeado e o `yarn fabrica` pela ponte (#121)', () => {
+    const scripts = pkg.scripts as Record<string, string | undefined>
+    expect(scripts.smoke).toBe('electron-vite build && node scripts/smoke.mjs')
+    expect(scripts.fabrica).toBe('node scripts/fabrica.mjs')
+  })
+
   it('o alvo do Windows é `dir`', () => {
     // D3. `portable` seria "um executável" ao pé da letra, mas descomprime ~370 MB no `%TEMP%` a
     // cada abertura — segundos de espera num app que se abre dezenas de vezes por dia. `dir` abre
