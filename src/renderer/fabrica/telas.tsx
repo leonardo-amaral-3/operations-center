@@ -4,6 +4,7 @@ import type { ComandoDaFabrica, SalaDaFabrica } from '../../shared/fabrica'
 import { CabecalhoInterno, TelaPorVir } from './Moldura'
 import { trilhaDa, type NomeDaTela, type TelaDaFabrica } from './rotas'
 import { Agentes } from './telas/Agentes'
+import { Briefing } from './telas/Briefing'
 import { CardEmVoo } from './telas/Card'
 import { Decisao } from './telas/Decisao'
 import { Entrada } from './telas/Entrada'
@@ -46,6 +47,6 @@ export const TELAS: Record<NomeDaTela, (p: PropsDaTela) => JSX.Element> = {
   entrada: Entrada,
   portfolio: Portfolio,
   mandato: Mandato,
-  briefing: porVir('F6'),
+  briefing: Briefing,
   release: porVir('F6'),
 }

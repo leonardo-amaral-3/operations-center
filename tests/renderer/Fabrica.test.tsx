@@ -154,12 +154,10 @@ describe('Fabrica · moldura e navegação (CA-1.1)', () => {
     expect(telaAtual()).toBe('sala')
   })
 
-  it('as telas sem corpo mostram o marcador da fase', () => {
+  it('o Briefing tem corpo, e o botão Pausar também fica no cabeçalho de Agentes', () => {
     render(<Fabrica />)
     fireEvent.click(screen.getByTestId('fabrica-nav-briefing'))
-    expect(screen.getByTestId('fabrica-por-vir').textContent).toBe(
-      'Esta tela chega na F6 do épico #129.',
-    )
+    expect(screen.queryByTestId('fabrica-por-vir')).toBeNull()
     // O botão Pausar também fica no cabeçalho de Agentes.
     fireEvent.click(screen.getByTestId('fabrica-trilha-0'))
     fireEvent.click(screen.getByTestId('fabrica-nav-agentes'))
