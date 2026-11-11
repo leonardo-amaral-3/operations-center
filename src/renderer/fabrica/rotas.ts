@@ -82,7 +82,7 @@ function restoDaTrilha(t: Exclude<TelaDaFabrica, { tela: 'sala' }>, hoje: Date):
     case 'decisao':
       return [
         { rotulo: 'Esperando você', para: SALA },
-        { rotulo: 'Validação em dev', para: null },
+        { rotulo: 'Revisão · G4', para: null },
       ]
     case 'card':
       return [
