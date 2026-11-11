@@ -5,6 +5,7 @@ import { CabecalhoInterno, TelaPorVir } from './Moldura'
 import { RelatorioDaSalaView } from './Relatorio'
 import { trilhaDa, type NomeDaTela, type TelaDaFabrica } from './rotas'
 import { Agentes } from './telas/Agentes'
+import { CardEmVoo } from './telas/Card'
 import { Pergunta } from './telas/Pergunta'
 import { Sala } from './telas/Sala'
 
@@ -42,7 +43,7 @@ export const TELAS: Record<NomeDaTela, (p: PropsDaTela) => JSX.Element> = {
   ),
   agentes: Agentes,
   decisao: porVir('F3'),
-  card: porVir('F4'),
+  card: CardEmVoo,
   entrada: porVir('F4'),
   portfolio: porVir('F5'),
   mandato: porVir('F5'),
