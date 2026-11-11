@@ -1,4 +1,4 @@
-export { lerCards, lerNumerosMovidos } from './board'
+export { lerCards, lerNumerosMovidos, RELATORIO_MOVIDOS_QUERY } from './board'
 export { classificar } from './classificar'
 export type { Classe } from './classificar'
 export { decisoesDoDia, janelaDoDia } from './cofre'

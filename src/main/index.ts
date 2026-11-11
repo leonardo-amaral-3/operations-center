@@ -38,6 +38,7 @@ import {
 } from './conversations'
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
 import { pastaDaSala, registerFabricaIpc } from './fabrica/sala'
+import { registerRelatorioIpc } from './relatorio/sala'
 import type { DangerGate } from './danger'
 import { createFixtureGraphQL, createFixtureRest } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
@@ -123,6 +124,7 @@ function createGraphQL(): GraphQLFn {
         boards: process.env.OC_BOARDS_FIXTURE,
         cards: process.env.OC_CARD_FIXTURE,
         pulls: process.env.OC_PR_FIXTURE,
+        relatorio: process.env.OC_RELATORIO_FIXTURE,
       })
     : createGitHubGraphQL(createGhTokenSource())
 }
@@ -384,6 +386,15 @@ dangerIpc?.refresh()
 // A sala da fábrica (#122): só quando o processo sobe na tela do kanban, como o `registerDangerIpc`
 // acima; as janelas de card do mesmo processo não chamam estes canais. Só lê a pasta da fábrica.
 if (screen === 'kanban') registerFabricaIpc(pastaDaSala(process.env, homedir()))
+
+// O relatório do dia (#126), na mesma tela e pela mesma razão. Um `createGraphQL()` por leitor (O19).
+if (screen === 'kanban')
+  registerRelatorioIpc({
+    graphql: createGraphQL(),
+    env: process.env,
+    home: homedir(),
+    agora: () => new Date(),
+  })
 
 function publicarPerigo(): void {
   dangerIpc?.publish()

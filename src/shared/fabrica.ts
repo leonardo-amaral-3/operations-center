@@ -50,3 +50,11 @@ export interface PerguntaDaFila {
 export interface ReadPerguntaRequest {
   id: string
 }
+
+export interface ReadRelatorioRequest {
+  dia: string
+}
+
+export type RelatorioDaSala =
+  | { kind: 'ok'; dia: string; markdown: string; semFonte: number; geradoEm: string }
+  | { kind: 'erro'; dia: string; erro: string }
