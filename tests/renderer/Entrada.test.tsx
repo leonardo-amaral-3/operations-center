@@ -25,6 +25,8 @@ const ABERTO: ItemNaEntrada = {
   criadoEm: '2026-11-11T12:00:00.000Z',
   triadoEm: null,
   resolucao: null,
+  triagem: 'esperando',
+  parou: null,
 }
 const TRIADO: ItemNaEntrada = {
   id: 'e-0002',
@@ -33,6 +35,8 @@ const TRIADO: ItemNaEntrada = {
   criadoEm: '2026-11-10T12:00:00.000Z',
   triadoEm: '2026-11-10T13:00:00.000Z',
   resolucao: 'virou o #906',
+  triagem: null,
+  parou: null,
 }
 const TRIADO_SEM_CARD: ItemNaEntrada = {
   id: 'e-0001',
@@ -41,6 +45,8 @@ const TRIADO_SEM_CARD: ItemNaEntrada = {
   criadoEm: '2026-11-09T12:00:00.000Z',
   triadoEm: '2026-11-09T13:00:00.000Z',
   resolucao: 'só a PR #930',
+  triagem: null,
+  parou: null,
 }
 const TRES: EntradaNaSala = { kind: 'ok', itens: [ABERTO, TRIADO, TRIADO_SEM_CARD], total: 3 }
 

@@ -377,6 +377,7 @@ describe('CLI', () => {
           criadoEm: AGORA,
           triadoEm: null,
           resolucao: null,
+          triagem: null,
         },
       ])
       expect(existsSync(join(pasta, 'estado.json'))).toBe(false)
