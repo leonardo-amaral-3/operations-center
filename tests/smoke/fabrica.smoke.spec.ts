@@ -19,8 +19,12 @@ import type { Page } from '@playwright/test'
 
 import { BOARDS_FIXTURE_PATH, BOARD_FIXTURE_PATH } from './boards-fixture'
 import { repoDoRelatorio } from './repo-do-relatorio'
+import { TELAS_DO_HARNESS } from './comparacao'
+import { abrirFabrica } from './comparacao/comum'
 import { abrirItemDoCard } from './comparacao/fila-f3'
 import { launchSmokeApp } from './smoke-app'
+import { NAVEGACAO_DA_SALA } from '../../src/renderer/fabrica/rotas'
+import type { NomeDaTela } from '../../src/renderer/fabrica/rotas'
 import { REPO_ROOT, smokeFabricaItem, smokeFabricaReal } from './smoke-env'
 
 /**
@@ -591,4 +595,95 @@ test('o relatório na sala', async () => {
   } finally {
     await segundo.app.close()
   }
+})
+
+test('o menu está nas 11 telas e leva direto a cada uma', async () => {
+  test.setTimeout(240_000)
+  const botoes = NAVEGACAO_DA_SALA.map(({ tela }) => tela)
+  const raiz = join(REPO_ROOT, 'tests', 'fixtures', 'relatorio')
+  const temporaria = pastaTemporaria('oc-menu-')
+  const repo = repoDoRelatorio(
+    (() => {
+      const pasta = join(temporaria, 'repo')
+      mkdirSync(pasta)
+      return pasta
+    })(),
+  )
+
+  // Uma subida do app por grupo de fixture, como o `comparacao.smoke.spec.ts`.
+  const chaveDoGrupo = (t: { fixture: string; ambiente?: Readonly<Record<string, string>> }) =>
+    `${t.fixture}\u0000${JSON.stringify(t.ambiente ?? {})}`
+  const grupos = new Map<
+    string,
+    {
+      fixture: string
+      ambiente: Readonly<Record<string, string>>
+      telas: Array<[NomeDaTela, (typeof TELAS_DO_HARNESS)[NomeDaTela]]>
+    }
+  >()
+  for (const [tela, modulo] of Object.entries(TELAS_DO_HARNESS) as Array<
+    [NomeDaTela, (typeof TELAS_DO_HARNESS)[NomeDaTela]]
+  >) {
+    const chave = chaveDoGrupo(modulo)
+    const grupo = grupos.get(chave) ?? {
+      fixture: modulo.fixture,
+      ambiente: modulo.ambiente ?? {},
+      telas: [],
+    }
+    grupo.telas.push([tela, modulo])
+    grupos.set(chave, grupo)
+  }
+
+  let conferidas = 0
+  for (const [indice, grupo] of [...grupos.values()].entries()) {
+    const fabrica = join(temporaria, `fabrica-${indice}`)
+    cpSync(grupo.fixture, fabrica, { recursive: true })
+    const app = await launchSmokeApp({
+      stateDir: join(temporaria, `estado-${indice}`),
+      env: {
+        OC_BOARD_FIXTURE: BOARD_FIXTURE_PATH,
+        OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
+        OC_FABRICA_DIR: fabrica,
+        OC_RELATORIO_COFRE: join(raiz, 'cofre-2026-11-10'),
+        OC_RELATORIO_REPO: repo,
+        OC_RELATORIO_FIXTURE: join(raiz, 'smoke.json'),
+        ...grupo.ambiente,
+      },
+    })
+    try {
+      const janela = await app.firstWindow()
+      await janela.getByTestId('fabrica-toggle').waitFor()
+      const tela = janela.getByTestId('fabrica-tela')
+      const voltarASala = async (): Promise<void> => {
+        const nav = janela.getByTestId('fabrica-nav-sala')
+        if ((await nav.count()) > 0) await nav.click()
+        else await abrirFabrica(janela)
+        await expect(tela).toHaveAttribute('data-tela', 'sala')
+      }
+
+      for (const [nome, modulo] of grupo.telas) {
+        if (modulo.comoChegar === null) continue
+        await voltarASala()
+        await modulo.comoChegar(janela)
+        await expect(tela).toHaveAttribute('data-tela', nome)
+        for (const botao of botoes) {
+          const el = janela.getByTestId(`fabrica-nav-${botao}`)
+          await expect(el, `${nome}: falta o botão ${botao}`).toBeVisible()
+          if (botao === nome) await expect(el).toHaveAttribute('aria-current', 'page')
+          else await expect(el).not.toHaveAttribute('aria-current', /.*/)
+        }
+        conferidas += 1
+
+        for (const destino of botoes) {
+          await voltarASala()
+          await modulo.comoChegar(janela)
+          await janela.getByTestId(`fabrica-nav-${destino}`).click()
+          await expect(tela, `${nome} → ${destino}`).toHaveAttribute('data-tela', destino)
+        }
+      }
+    } finally {
+      await app.close()
+    }
+  }
+  expect(conferidas).toBe(Object.keys(TELAS_DO_HARNESS).length)
 })

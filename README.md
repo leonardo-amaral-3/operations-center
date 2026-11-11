@@ -109,7 +109,7 @@ vazia e ninguém é avisado. Confira com `gh auth status`; se faltar, `gh auth r
 | `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                                                                                                                                    |
 | `yarn format`    | Prettier                                                                                                                                                                                                                                                                                                                                                         |
 | `yarn -s relatorio` | o relatório de um dia da fábrica (#118), em markdown no stdout: por frente, a partir do cofre de decisões, do board e do git, e toda linha cita a fonte. `yarn -s relatorio 2026-11-10` escolhe o dia (em UTC, como o cofre); `--cofre <pasta>` troca a pasta do cofre, que por padrão é `~/notoria/claude/decisoes`. O `-s` tira as linhas do próprio yarn do stdout. Só lê: não escreve no cofre, no board nem no git |
-| `yarn fabrica` | despacha as sessões `claude -p` da prova da fábrica (#118): `iniciar <n>`, `estado`, `fechar <item> "<resolução>"`, `entrada "<texto>"`, `triar <item> "<resolução>"`, `confirmar <arquivo>`, `contestar <arquivo> "<motivo>"`, `atender <arquivo> "<resolução>"`, `pausar` e `retomar` (a pausa é o `pausa.json` da pasta: com ele o `rodar` não lança despacho novo, mas segue recolhendo os que terminam); a `entrada` grava o texto no `entrada.json` da pasta da fábrica, o `estado` lista o que ainda não foi triado, e o `rodar` não despacha nada da entrada; as revisões das decisões do cofre ficam no `revisoes.jsonl` da pasta da fábrica, só de acréscimo, e vale a primeira de cada arquivo; o `estado` lista as contestações até o `atender`; sem subcomando, gira até não sobrar nada em voo. Só no Linux |
+| `yarn fabrica` | despacha as sessões `claude -p` da prova da fábrica (#118): `iniciar <n>`, `estado`, `fechar <item> "<resolução>"`, `entrada "<texto>"`, `triar <item> "<resolução>"`, `confirmar <arquivo>`, `contestar <arquivo> "<motivo>"`, `atender <arquivo> "<resolução>"`, `pausar` e `retomar` (a pausa é o `pausa.json` da pasta: com ele o `rodar` não lança despacho novo, mas segue recolhendo os que terminam); a `entrada` grava o texto no `entrada.json` da pasta da fábrica, o `estado` lista o que ainda não foi triado, e o `rodar` lança uma `/gm-triage` para cada item novo da entrada, nas vagas que os despachos deixam, e fecha o item com o card criado ou a duplicata; a triagem que para sem card fica para o `triar`; as revisões das decisões do cofre ficam no `revisoes.jsonl` da pasta da fábrica, só de acréscimo, e vale a primeira de cada arquivo; o `estado` lista as contestações até o `atender`; sem subcomando, gira até não sobrar nada em voo. Só no Linux |
 
 `yarn lint`, `yarn typecheck` e `yarn test` formam o portão de qualidade, e são exatamente o que o
 CI roda a cada PR para `dev` e `main`. Os smokes ficam de fora do CI de propósito: o runner nem
@@ -164,8 +164,11 @@ sessão do despacho atual, com o comando e, quando terminou, o resultado e o fim
 vale com a sessão terminada e o transcript nesta máquina: abre a janela do card com `claude --resume` na
 pasta em que a sessão rodou; **Mandar uma mensagem** e **Parar o turno** ficam desabilitados, com o porquê
 na nota. A tela **Entrada** lista o `entrada.json` (o mais novo primeiro, "esperando triagem" ou "triada"),
-grava o que você conta pelo `yarn fabrica entrada` e não cria card nem escreve no board ou no GitHub; quem
-tria é a orquestradora, com `yarn fabrica triar`.
+grava o que você conta pelo `yarn fabrica entrada` e não escreve no board nem no GitHub: o despachante tria cada
+item com uma sessão `/gm-triage`, que cria o card em 📥 Triagem ou o liga ao card que ele duplica; a que para sem
+card fica para a orquestradora, com `yarn fabrica triar`. Todas as telas da fábrica têm o menu das oito telas, com
+a atual marcada, e todo cartão de card (Linha, Briefing, Release, item triado da Entrada) abre a tela Card num clique
+em qualquer ponto.
 
 Os itens da fila viram uma de duas telas, pela origem do item. A **Decisão** é o item cujo despacho de origem
 foi um `/gm-ship` que terminou em PARADA citando `PR #<n>` no motivo: a tela mostra a PR, o que a esteira
