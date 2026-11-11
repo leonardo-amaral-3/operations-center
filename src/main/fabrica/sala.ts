@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ipcMain } from 'electron'
-import { montarPergunta, montarSala } from '../../core/fabrica/sala'
+import { despachoAtualDoCard, montarCard } from '../../core/fabrica/card'
+import { entradaNaSala } from '../../core/fabrica/entrada'
+import { montarPergunta, montarSala, urlDoCard } from '../../core/fabrica/sala'
 import {
   NOME_DO_PROJETO_DA_FABRICA,
   PROJETO_DA_FABRICA,
@@ -11,15 +13,18 @@ import {
 } from '../../core/fabrica/mandato'
 import type { EstadoDaFabrica } from '../../core/fabrica/tipos'
 import type {
+  CardNaFabrica,
+  EntradaNaSala,
   EstadoDoDespachante,
   PausaDaFabrica,
   PerguntaDaFila,
+  ReadCardDaFabricaRequest,
   ReadPerguntaRequest,
   RecursosDaFabrica,
   SalaDaFabrica,
 } from '../../shared/fabrica'
 import { IPC_INVOKE } from '../../shared/ipc'
-import { identidade, lerEstado, lerPausa, lerSaida, pastaDaFabrica } from './arquivos'
+import { identidade, lerEntrada, lerEstado, lerPausa, lerSaida, pastaDaFabrica } from './arquivos'
 import { acharDespacho, despachoVivo } from './processos'
 
 /**
@@ -116,7 +121,7 @@ function despachosVivos(e: EstadoDaFabrica, plataforma: NodeJS.Platform): Set<st
   }
 }
 
-function worktreesSeguras(fontes: FontesDaSala): readonly string[] {
+function worktreesSeguras(fontes: Pick<FontesDaSala, 'worktrees'>): readonly string[] {
   try {
     return fontes.worktrees()
   } catch {
@@ -176,6 +181,48 @@ export function lerPergunta(pasta: string, id: string): PerguntaDaFila | null {
   }
 }
 
+/**
+ * O card na fábrica (F4). Nunca lança. O `id` do despacho vem do `estado.json`, que pode estar
+ * torto: só `d-<n>` vira nome de pasta para ler a saída.
+ */
+export function lerCardDaFabrica(
+  pasta: string,
+  card: number,
+  plataforma: NodeJS.Platform,
+  fontes: Pick<FontesDaSala, 'worktrees'>,
+): CardNaFabrica {
+  const cardUrl = urlDoCard(card)
+  try {
+    const e = lerEstado(pasta)
+    if (e === null) return { kind: 'sem-estado', card, cardUrl }
+    const atual = despachoAtualDoCard(e, card)
+    let saida: string | null = null
+    if (atual?.estado === 'concluido' && /^d-\d+$/.test(atual.id)) {
+      try {
+        saida = lerSaida(pasta, atual.id)
+      } catch {
+        saida = null
+      }
+    }
+    return montarCard(e, card, {
+      worktrees: worktreesSeguras(fontes),
+      vivos: despachosVivos(e, plataforma),
+      saida,
+    })
+  } catch (err) {
+    return { kind: 'ilegivel', card, cardUrl, erro: mensagem(err) }
+  }
+}
+
+/** A entrada da fábrica (F4): sem arquivo é entrada vazia; arquivo torto é `ilegivel`. */
+export function lerEntradaDaSala(pasta: string): EntradaNaSala {
+  try {
+    return entradaNaSala(lerEntrada(pasta))
+  } catch (err) {
+    return { kind: 'ilegivel', erro: mensagem(err) }
+  }
+}
+
 export function registerFabricaIpc(pasta: string, fontes: FontesDaSala): void {
   ipcMain.handle(IPC_INVOKE.readFabrica, (): SalaDaFabrica =>
     lerSala(pasta, process.platform, () => new Date().toISOString(), fontes),
@@ -185,4 +232,12 @@ export function registerFabricaIpc(pasta: string, fontes: FontesDaSala): void {
     (_event, pedido: ReadPerguntaRequest): PerguntaDaFila | null =>
       typeof pedido?.id === 'string' ? lerPergunta(pasta, pedido.id) : null,
   )
+  ipcMain.handle(
+    IPC_INVOKE.readFabricaCard,
+    (_event, pedido: ReadCardDaFabricaRequest): CardNaFabrica =>
+      Number.isInteger(pedido?.card) && pedido.card > 0
+        ? lerCardDaFabrica(pasta, pedido.card, process.platform, fontes)
+        : { kind: 'ilegivel', card: 0, cardUrl: '', erro: 'pedido inválido' },
+  )
+  ipcMain.handle(IPC_INVOKE.readFabricaEntrada, (): EntradaNaSala => lerEntradaDaSala(pasta))
 }

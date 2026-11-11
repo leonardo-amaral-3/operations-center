@@ -158,8 +158,18 @@ describe('a superfície de board é somente-leitura', () => {
     //
     // **E a do canal de escrita da fábrica (#129)**: `fabrica:comando` é o **único** canal que
     // escreve na pasta da fábrica, e só por um subcomando do `yarn fabrica` numa lista fechada
-    // (`SUBCOMANDOS_DO_APP`: `pausar`, `retomar`, `fechar`). Não toca o board, nem para ler; fica na família
-    // `fabrica:`, sem exceção nominal no filtro de `boards:`/`card:`.
+    // (`SUBCOMANDOS_DO_APP`: `pausar`, `retomar`, `fechar`, `entrada`). Não toca o board, nem para
+    // ler; fica na família `fabrica:`, sem exceção nominal no filtro de `boards:`/`card:`.
+    //
+    // **E os dois de leitura da F4 (#133)**: `fabrica:read-card` e `fabrica:read-entrada` só leem a
+    // pasta da fábrica (o despacho de um card, o `entrada.json`), nunca escrevem e não tocam o
+    // board. O card chega por número, e a pasta não atravessa a ponte.
+    //
+    // **E a do `fabrica:assumir` (#133)**: assumir a sessão de um despacho no cartão do card. Grava a
+    // conversa do cartão (`itemId → sessão`) no `conversations.json` do app, como abrir o chat de um
+    // card já faz, e abre a janela do card. **Nunca escreve na pasta da fábrica** (a canária "a sala
+    // só lê" varre o `assumir.ts`) **nem toca o board**: o `itemId` só é conferido contra o card que
+    // o main já tem em memória. Fica na família `fabrica:`, sem exceção nominal no filtro.
     //
     // **E a dos onze canais do #74** (terminal embutido, sessão livre, disposição da mesa).
     // **Nenhum toca o board, nem para ler**: `terminal:*` fala com um shell local; `free:*` e
@@ -207,6 +217,9 @@ describe('a superfície de board é somente-leitura', () => {
       readFabrica: 'fabrica:read',
       readFabricaPergunta: 'fabrica:read-pergunta',
       comandoFabrica: 'fabrica:comando',
+      readFabricaCard: 'fabrica:read-card',
+      readFabricaEntrada: 'fabrica:read-entrada',
+      assumirDespacho: 'fabrica:assumir',
       readRelatorio: 'relatorio:read',
     })
   })

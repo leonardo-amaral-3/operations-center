@@ -69,6 +69,8 @@ export interface ClaudeTerminalIpc {
    * que não é de terminal Claude aceita qualquer sender (é do `terminal.ts`).
    */
   isOwner(id: string, sender: WebContents): boolean
+  /** O `sessionId` do terminal vivo daquele escopo, ou `null`. */
+  sessaoAberta(scope: ClaudeScope): string | null
 }
 
 interface Entry {
@@ -406,6 +408,7 @@ export function registerClaudeTerminalIpc(deps: ClaudeTerminalDeps): ClaudeTermi
       }
       return true
     },
+    sessaoAberta: (scope) => live.get(scopeKey(scope))?.sessionId ?? null,
   }
 }
 

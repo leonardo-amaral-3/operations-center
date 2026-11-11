@@ -109,7 +109,7 @@ vazia e ninguém é avisado. Confira com `gh auth status`; se faltar, `gh auth r
 | `yarn typecheck` | `tsc --build`                                                                                                                                                                                                                                                                                                                                                    |
 | `yarn format`    | Prettier                                                                                                                                                                                                                                                                                                                                                         |
 | `yarn -s relatorio` | o relatório de um dia da fábrica (#118), em markdown no stdout: por frente, a partir do cofre de decisões, do board e do git, e toda linha cita a fonte. `yarn -s relatorio 2026-11-10` escolhe o dia (em UTC, como o cofre); `--cofre <pasta>` troca a pasta do cofre, que por padrão é `~/notoria/claude/decisoes`. O `-s` tira as linhas do próprio yarn do stdout. Só lê: não escreve no cofre, no board nem no git |
-| `yarn fabrica` | despacha as sessões `claude -p` da prova da fábrica (#118): `iniciar <n>`, `estado`, `fechar <item> "<resolução>"`, `pausar` e `retomar` (a pausa é o `pausa.json` da pasta: com ele o `rodar` não lança despacho novo, mas segue recolhendo os que terminam); sem subcomando, gira até não sobrar nada em voo. Só no Linux |
+| `yarn fabrica` | despacha as sessões `claude -p` da prova da fábrica (#118): `iniciar <n>`, `estado`, `fechar <item> "<resolução>"`, `entrada "<texto>"`, `triar <item> "<resolução>"`, `pausar` e `retomar` (a pausa é o `pausa.json` da pasta: com ele o `rodar` não lança despacho novo, mas segue recolhendo os que terminam); a `entrada` grava o texto no `entrada.json` da pasta da fábrica, o `estado` lista o que ainda não foi triado, e o `rodar` não despacha nada da entrada; sem subcomando, gira até não sobrar nada em voo. Só no Linux |
 
 `yarn lint`, `yarn typecheck` e `yarn test` formam o portão de qualidade, e são exatamente o que o
 CI roda a cada PR para `dev` e `main`. Os smokes ficam de fora do CI de propósito: o runner nem
@@ -143,9 +143,19 @@ em que o dono roda); o **disco** é o espaço livre da partição da pasta da f�
 Fora do Linux, sessões e suíte aparecem como "sem leitura". O Relatório gera o relatório de um dia com o mesmo código do `yarn relatorio`,
 lendo o cofre de `OC_RELATORIO_COFRE` (default `~/notoria/claude/decisoes`) e o git de
 `OC_RELATORIO_REPO` (default `~/pessoal/operations-center`). As outras telas chegam nas fases F2 a F6
-do épico #129. Pausar, retomar e fechar um item são as únicas escritas do app na pasta da fábrica: o app roda `yarn fabrica
-pausar`/`retomar`/`fechar` pelo canal `fabrica:comando`.
-Sem `OC_FABRICA_DIR`, o app lê `~/pessoal/claude/despachos-fabrica`.
+do épico #129. Pausar, retomar, fechar um item e mandar para a entrada são as únicas escritas do app na pasta
+da fábrica: o app roda `yarn fabrica pausar`/`retomar`/`fechar`/`entrada` pelo canal `fabrica:comando`. Fora
+dela, **Assumir a sessão** grava no `conversations.json` do app a sessão do despacho como a conversa do
+cartão. Sem `OC_FABRICA_DIR`, o app lê `~/pessoal/claude/despachos-fabrica`.
+
+A tela **Card** (clicar num despacho em voo da Sala) mostra o card como o protótipo: as nove estações, as
+tasks do comentário `gm:tasks` (lidas pelo `card:read`), as decisões do card (os despachos terminados) e a
+sessão do despacho atual, com o comando e, quando terminou, o resultado e o fim. **Assumir a sessão** só
+vale com a sessão terminada e o transcript nesta máquina: abre a janela do card com `claude --resume` na
+pasta em que a sessão rodou; **Mandar uma mensagem** e **Parar o turno** ficam desabilitados, com o porquê
+na nota. A tela **Entrada** lista o `entrada.json` (o mais novo primeiro, "esperando triagem" ou "triada"),
+grava o que você conta pelo `yarn fabrica entrada` e não cria card nem escreve no board ou no GitHub; quem
+tria é a orquestradora, com `yarn fabrica triar`.
 
 Os itens da fila viram uma de duas telas, pela origem do item. A **Decisão** é o item cujo despacho de origem
 foi um `/gm-ship` que terminou em PARADA citando `PR #<n>` no motivo: a tela mostra a PR, o que a esteira
@@ -242,7 +252,7 @@ Sem banco e sem arquivo de config. Variáveis de ambiente lidas no main:
 | `OC_PR_FIXTURE`      | ausente: nenhum cartão tem aba PR com conteúdo                                | caminho de um JSON `{ "pulls": { "<pr>": resposta da API }, "files": { "<pr>": lista de arquivos } }` com o PR inteiro — conversa, CI e arquivos com patch. A ligação cartão → PR **não** mora nele: vem da `timelineItems` do `OC_CARD_FIXTURE`. É o par dele no **smoke da aba PR**; PR sem entrada no mapa vira erro dentro da aba, e não aba vazia |
 | `OC_CLAUDE_PROJECTS` | ausente: `CLAUDE_CONFIG_DIR` se houver, senão `~/.claude/projects`            | raiz dos transcripts do Claude Code, de onde sai o mapa `repo → pasta local` em que a sessão de um cartão roda. Existe **para os smokes do cartão-chat e das abas**, que apontam para uma raiz temporária e fazem a descoberta rodar inteira sobre repos descartáveis                                                                                                                                                                                                                                                                                                                                                                               |
 | `OC_STATE_DIR`       | ausente: o `userData` do Electron — no Windows, `%APPDATA%\operations-center` | pasta em que o app grava o próprio estado, hoje em cinco arquivos: `conversations.json`, o vínculo `cartão → sessão do Claude Code` que faz a conversa voltar depois de fechar e reabrir; `dangerous.json`, a lista dos cartões marcados para rodar sem pedir permissão; `preferences.json`, a aba que estava ativa e a combinação de cores escolhida quando o app fechou; `free-sessions.json`, as sessões livres (sem cartão), com pasta, título e a conversa a retomar; e `layout.json`, a mesa — terminais abertos, painel lateral e tamanhos. Ser diretório, e não arquivo, é o que permitiu os outros nascerem sem uma segunda variável. Com ela, o Chromium do app também grava o dele em `<OC_STATE_DIR>/chromium`, e o smoke não toca o userData real. Existe **para os smokes da retomada, do cartão-chat, das abas, do tema, do terminal e da sessão livre**, que apontam para uma pasta temporária em vez de sujar o estado real de quem os roda |
-| `OC_FABRICA_DIR` | ausente: `~/pessoal/claude/despachos-fabrica` | a pasta da fábrica que a sala lê (#122): `estado.json`, `rodar.pid` e `sessoes/`. O app só lê; quem escreve é o `yarn fabrica`, que usa a mesma variável. Nos smokes da sala, uma cópia da fixture |
+| `OC_FABRICA_DIR` | ausente: `~/pessoal/claude/despachos-fabrica` | a pasta da fábrica que a sala lê (#122): `estado.json`, `entrada.json`, `rodar.pid` e `sessoes/`. O app lê; quando escreve, é pelos subcomandos do `yarn fabrica` do canal `fabrica:comando`, que usa a mesma variável. Nos smokes da sala, uma cópia da fixture |
 | `OC_RELATORIO_COFRE` | ausente: `~/notoria/claude/decisoes` | o cofre de decisões que a aba Relatório da sala lê (#126). O app só lê |
 | `OC_RELATORIO_REPO` | ausente: `~/pessoal/operations-center` | o repo cujo `git log` entra no relatório da aba Relatório |
 | `OC_RELATORIO_FIXTURE` | ausente: os documentos do relatório respondem erro na fixture | caminho de um JSON com as respostas de GraphQL do relatório. Só é consultada com `OC_BOARD_FIXTURE`, e é o par dela no smoke da aba Relatório |

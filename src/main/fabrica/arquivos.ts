@@ -13,6 +13,12 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
+import {
+  entradaVazia,
+  parseEntrada,
+  serializarEntrada,
+  type EntradaDaFabrica,
+} from '../../core/fabrica/entrada'
 import { estadoVazio, parseEstado, serializarEstado } from '../../core/fabrica/estado'
 import type { EstadoDaFabrica } from '../../core/fabrica/tipos'
 
@@ -152,25 +158,57 @@ export function lerEstado(pasta: string): EstadoDaFabrica | null {
 
 /**
  * Troca atômica: temporário com `fsync`, `rename` e `fsync` da pasta, para o `rename` sobreviver a
- * uma queda de energia (R-16).
+ * uma queda de energia (R-16). Serve ao estado e à entrada.
  */
-export function gravarEstado(pasta: string, e: EstadoDaFabrica): void {
-  recusarTemporaria(pasta)
-  mkdirSync(pasta, { recursive: true })
-  const tmp = join(pasta, `estado.json.${process.pid}.tmp`)
+function gravarAtomico(pasta: string, nome: string, texto: string): void {
+  const tmp = join(pasta, `${nome}.${process.pid}.tmp`)
   const fd = openSync(tmp, 'w')
   try {
-    writeSync(fd, serializarEstado(e))
+    writeSync(fd, texto)
     fsyncSync(fd)
   } finally {
     closeSync(fd)
   }
-  renameSync(tmp, join(pasta, 'estado.json'))
+  renameSync(tmp, join(pasta, nome))
   const dir = openSync(pasta, 'r')
   try {
     fsyncSync(dir)
   } finally {
     closeSync(dir)
+  }
+}
+
+export function gravarEstado(pasta: string, e: EstadoDaFabrica): void {
+  recusarTemporaria(pasta)
+  mkdirSync(pasta, { recursive: true })
+  gravarAtomico(pasta, 'estado.json', serializarEstado(e))
+}
+
+/**
+ * Espera e toma o cadeado da pasta, roda `f` e solta. A regra de espera é uma só para o estado e para
+ * a entrada; `preso` monta a mensagem de cada um quando a espera vence.
+ */
+async function sobCadeado<R>(
+  pasta: string,
+  cadeado: string,
+  preso: (pid: number | null) => string,
+  esperaMaxMs: number,
+  f: () => R,
+): Promise<R> {
+  recusarTemporaria(pasta)
+  mkdirSync(pasta, { recursive: true })
+  const caminho = join(pasta, cadeado)
+  const limite = Date.now() + esperaMaxMs
+  for (;;) {
+    const t = tentarTomar(caminho)
+    if (t.ok) break
+    if (Date.now() >= limite) throw new Error(preso(t.pid))
+    await dormir(50)
+  }
+  try {
+    return f()
+  } finally {
+    soltarCadeado(caminho)
   }
 }
 
@@ -184,28 +222,58 @@ export async function alterarEstado<R>(
   f: (e: EstadoDaFabrica) => { estado: EstadoDaFabrica; resultado: R },
   esperaMaxMs = 10_000,
 ): Promise<R> {
+  return await sobCadeado(
+    pasta,
+    'estado.lock',
+    (pid) =>
+      `o estado está preso pelo processo ${pid === null ? 'desconhecido' : String(pid)} (${pasta}/estado.lock)`,
+    esperaMaxMs,
+    () => {
+      const atual = lerEstado(pasta) ?? estadoVazio(randomUUID())
+      const { estado, resultado } = f(atual)
+      gravarEstado(pasta, estado)
+      return resultado
+    },
+  )
+}
+
+/** O arquivo da entrada da fábrica (F4 do #129), separado do `estado.json`. */
+export const ARQUIVO_DA_ENTRADA = 'entrada.json'
+
+/** Sem arquivo → `null`; arquivo torto lança `entrada.json ilegível: …` (`parseEntrada`). */
+export function lerEntrada(pasta: string): EntradaDaFabrica | null {
+  const texto = lerOuNulo(join(pasta, ARQUIVO_DA_ENTRADA))
+  return texto === null ? null : parseEntrada(texto)
+}
+
+export function gravarEntrada(pasta: string, e: EntradaDaFabrica): void {
   recusarTemporaria(pasta)
   mkdirSync(pasta, { recursive: true })
-  const caminho = join(pasta, 'estado.lock')
-  const limite = Date.now() + esperaMaxMs
-  for (;;) {
-    const t = tentarTomar(caminho)
-    if (t.ok) break
-    if (Date.now() >= limite) {
-      throw new Error(
-        `o estado está preso pelo processo ${t.pid === null ? 'desconhecido' : String(t.pid)} (${pasta}/estado.lock)`,
-      )
-    }
-    await dormir(50)
-  }
-  try {
-    const atual = lerEstado(pasta) ?? estadoVazio(randomUUID())
-    const { estado, resultado } = f(atual)
-    gravarEstado(pasta, estado)
-    return resultado
-  } finally {
-    soltarCadeado(caminho)
-  }
+  gravarAtomico(pasta, ARQUIVO_DA_ENTRADA, serializarEntrada(e))
+}
+
+/**
+ * Sob `entrada.lock`: relê, aplica `f` e grava, salvo quando `f` devolve `estado: null` (um pedido
+ * recusado não cria nem regrava o arquivo). Uma entrada ilegível sobe como erro e não é sobrescrita.
+ */
+export async function alterarEntrada<R>(
+  pasta: string,
+  f: (e: EntradaDaFabrica) => { estado: EntradaDaFabrica | null; resultado: R },
+  esperaMaxMs = 10_000,
+): Promise<R> {
+  return await sobCadeado(
+    pasta,
+    'entrada.lock',
+    (pid) =>
+      `a entrada está presa pelo processo ${pid === null ? 'desconhecido' : String(pid)} (${pasta}/entrada.lock)`,
+    esperaMaxMs,
+    () => {
+      const atual = lerEntrada(pasta) ?? entradaVazia()
+      const { estado, resultado } = f(atual)
+      if (estado !== null) gravarEntrada(pasta, estado)
+      return resultado
+    },
+  )
 }
 
 /** Garante um despachante por pasta (`rodar.pid`), sem espera. */

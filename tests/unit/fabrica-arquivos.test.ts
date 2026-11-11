@@ -12,11 +12,14 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { entradaVazia, registrarNaEntrada } from '../../src/core/fabrica/entrada'
 import { estadoVazio } from '../../src/core/fabrica/estado'
 import {
   alterarEstado,
   gravarEstado,
+  alterarEntrada,
   identidade,
+  lerEntrada,
   lerEstado,
   lerSaida,
   pastaDaFabrica,
@@ -175,5 +178,54 @@ describe.skipIf(process.platform !== 'linux')('cadeados', { timeout: 20_000 }, (
     expect(identidade(process.pid)).toMatch(new RegExp(`^${process.pid} \\d+$`))
     const morto = spawnSync('true')
     expect(identidade(morto.pid)).toBeNull()
+  })
+})
+
+describe.skipIf(process.platform !== 'linux')('entrada.json em disco', { timeout: 20_000 }, () => {
+  const arquivo = (): string => join(pasta, 'entrada.json')
+  const acrescenta = (texto: string) => (e: ReturnType<typeof entradaVazia>) => {
+    const r = registrarNaEntrada(e, { texto, agora: '2026-11-11T10:00:00.000Z' })
+    return 'erro' in r ? { estado: null, resultado: r.erro } : { estado: r.estado, resultado: r.id }
+  }
+
+  it('lerEntrada: sem arquivo é null; torto lança', () => {
+    expect(lerEntrada(pasta)).toBeNull()
+    writeFileSync(arquivo(), '{')
+    expect(() => lerEntrada(pasta)).toThrow('entrada.json ilegível')
+  })
+
+  it('alterarEntrada grava, solta o cadeado e não toca no estado.json', async () => {
+    expect(await alterarEntrada(pasta, acrescenta('a'))).toBe('e-0001')
+    expect(await alterarEntrada(pasta, acrescenta('b'))).toBe('e-0002')
+    expect(lerEntrada(pasta)?.itens.map((i) => i.texto)).toEqual(['a', 'b'])
+    expect(existsSync(join(pasta, 'entrada.lock'))).toBe(false)
+    expect(existsSync(join(pasta, 'estado.json'))).toBe(false)
+    expect(readdirSync(pasta).filter((n) => n.endsWith('.tmp'))).toEqual([])
+  })
+
+  it('com estado: null não cria o arquivo', async () => {
+    expect(await alterarEntrada(pasta, acrescenta('   '))).toBe('o texto da entrada está vazio')
+    expect(existsSync(arquivo())).toBe(false)
+  })
+
+  it('entrada ilegível lança sem sobrescrever e solta o cadeado', async () => {
+    writeFileSync(arquivo(), '{')
+    await expect(alterarEntrada(pasta, acrescenta('a'))).rejects.toThrow('entrada.json ilegível')
+    expect(readFileSync(arquivo(), 'utf8')).toBe('{')
+    expect(existsSync(join(pasta, 'entrada.lock'))).toBe(false)
+  })
+
+  it('espera o entrada.lock de um vivo e lança com a mensagem da entrada', async () => {
+    writeFileSync(join(pasta, 'entrada.lock'), identidade(process.pid) as string)
+    await expect(alterarEntrada(pasta, acrescenta('a'), 200)).rejects.toThrow(
+      `a entrada está presa pelo processo ${process.pid} (${pasta}/entrada.lock)`,
+    )
+  })
+
+  it('alterarEstado continua com a mensagem de hoje', async () => {
+    writeFileSync(join(pasta, 'estado.lock'), identidade(process.pid) as string)
+    await expect(alterarEstado(pasta, (e) => ({ estado: e, resultado: 1 }), 200)).rejects.toThrow(
+      `o estado está preso pelo processo ${process.pid} (${pasta}/estado.lock)`,
+    )
   })
 })

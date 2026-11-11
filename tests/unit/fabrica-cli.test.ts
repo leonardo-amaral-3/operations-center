@@ -18,7 +18,13 @@ import type { GraphQLFn } from '../../src/core/board/types'
 import { marcarLancando } from '../../src/core/fabrica/despachante'
 import { montarPrompt } from '../../src/core/fabrica/mandato'
 import type { ItemDaFila } from '../../src/core/fabrica/tipos'
-import { alterarEstado, lerEstado, lerPausa, pausar } from '../../src/main/fabrica/arquivos'
+import {
+  alterarEstado,
+  lerEntrada,
+  lerEstado,
+  lerPausa,
+  pausar,
+} from '../../src/main/fabrica/arquivos'
 import { executar, type DepsDoCli } from '../../src/main/fabrica/cli'
 import { lerItemNoBoard } from '../../src/main/fabrica/github'
 import { envLimpo } from '../../src/main/fabrica/lancador'
@@ -237,6 +243,10 @@ describe('CLI', () => {
       ['iniciar', '1', '--tudo'],
       ['iniciar', '1', '2'],
       ['fechar', 'q-0001'],
+      ['entrada'],
+      ['entrada', 'a', 'b'],
+      ['triar', 'e-0001'],
+      ['triar', 'e-0001', 'a', 'b'],
       ['pausar', 'x'],
       ['retomar', 'x'],
     ]) {
@@ -331,6 +341,85 @@ describe('CLI', () => {
       'fabrica: o item q-0009 já foi fechado',
       'fabrica: não há item q-7777 na fila',
     ])
+  })
+
+  describe('entrada e triar', () => {
+    it('entrada grava e-0001 e não toca no estado.json', async () => {
+      const m = montar()
+      expect(await rodar(m, 'entrada', '  o Slack caiu  ')).toBe(0)
+      expect(m.saida).toEqual(['e-0001 na entrada'])
+      expect(lerEntrada(pasta)?.itens).toEqual([
+        {
+          id: 'e-0001',
+          texto: 'o Slack caiu',
+          fonte: 'voce',
+          criadoEm: AGORA,
+          triadoEm: null,
+          resolucao: null,
+        },
+      ])
+      expect(existsSync(join(pasta, 'estado.json'))).toBe(false)
+    })
+
+    it('texto vazio dá 1 sem criar o arquivo; --x é texto', async () => {
+      const m = montar()
+      expect(await rodar(m, 'entrada', '  ')).toBe(1)
+      expect(m.avisos).toEqual(['fabrica: o texto da entrada está vazio'])
+      expect(existsSync(join(pasta, 'entrada.json'))).toBe(false)
+      expect(await rodar(m, 'entrada', '--x')).toBe(0)
+      expect(lerEntrada(pasta)?.itens[0]?.texto).toBe('--x')
+    })
+
+    it('triar marca, e de novo ou um id inexistente dá 1', async () => {
+      const m = montar()
+      await rodar(m, 'entrada', 'a')
+      m.saida.length = 0
+      expect(await rodar(m, 'triar', 'e-0001', 'virou o #9')).toBe(0)
+      expect(m.saida).toEqual(['e-0001 triado'])
+      expect(await rodar(m, 'triar', 'e-0001', 'de novo')).toBe(1)
+      expect(await rodar(m, 'triar', 'e-0099', 'x')).toBe(1)
+      expect(m.avisos).toEqual([
+        'fabrica: o item e-0001 já foi triado',
+        'fabrica: não há item e-0099 na entrada',
+      ])
+      expect(lerEntrada(pasta)?.itens[0]).toMatchObject({ resolucao: 'virou o #9' })
+    })
+
+    it('estado lista os abertos com a primeira linha cortada em 80, e só entrada não é "nada registrado"', async () => {
+      const m = montar()
+      await rodar(m, 'entrada', 'curto')
+      await rodar(m, 'entrada', 'b'.repeat(100) + '\nsegunda linha')
+      await rodar(m, 'entrada', 'triado')
+      await rodar(m, 'triar', 'e-0003', 'x')
+      m.saida.length = 0
+      expect(await rodar(m, 'estado')).toBe(0)
+      expect(m.saida).toEqual([
+        `e-0001 na entrada desde ${AGORA}: curto`,
+        `e-0002 na entrada desde ${AGORA}: ${'b'.repeat(79)}…`,
+      ])
+    })
+
+    it('estado com entrada.json torto avisa e sai 0', async () => {
+      writeFileSync(join(pasta, 'entrada.json'), '{')
+      const m = montar()
+      expect(await rodar(m, 'estado')).toBe(0)
+      expect(m.saida).toEqual([])
+      expect(m.avisos[0]).toMatch(/^fabrica: entrada\.json ilegível/)
+    })
+
+    it('entrada.json torto não é sobrescrito', async () => {
+      writeFileSync(join(pasta, 'entrada.json'), '{')
+      const m = montar()
+      expect(await rodar(m, 'entrada', 'a')).toBe(1)
+      expect(readFileSync(join(pasta, 'entrada.json'), 'utf8')).toBe('{')
+    })
+
+    it('no /tmp dá 2 e a pasta não nasce', async () => {
+      const dentro = join(tmpdir(), randomUUID())
+      const m = montar({}, {}, { OC_FABRICA_DIR: dentro })
+      expect(await rodar(m, 'entrada', 'a')).toBe(2)
+      expect(existsSync(dentro)).toBe(false)
+    })
   })
 
   it('estado ilegível dá 2 e não é sobrescrito', async () => {
