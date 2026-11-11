@@ -311,6 +311,34 @@ describe('triagem do item', () => {
     expect(conclui(saida('PARADA: x')).evento).toBe('e-0001 parou na triagem: PARADA: x')
   })
 
+  it('concluirTriagem: card citado de outro repo não vira card do operations-center (#148, G4 item 1)', () => {
+    const parou = (s: string) => conclui(saida(s)).estado.itens[0]
+    for (const fim of [
+      'PROXIMO: /gm-card claude-brain#43',
+      'PROXIMO: /gm-card leonardo-amaral-3/claude-brain#43',
+      'PARADA: duplicata de #43 (claude-brain)',
+      'PARADA: duplicata de #43 (leonardo-amaral-3/claude-brain), comentei o relato',
+    ]) {
+      const i = parou(fim)
+      expect(i?.triadoEm, fim).toBeNull()
+      expect(i?.resolucao, fim).toBeNull()
+      expect(i?.triagem?.parou, fim).toMatch(/^o fim cita card de outro repo \(.*claude-brain\): /)
+    }
+    expect(parou('PROXIMO: /gm-card operations-center#150')?.resolucao).toBe(
+      'virou o #150, em 📥 Triagem pela /gm-triage',
+    )
+    expect(parou('PROXIMO: /gm-card leonardo-amaral-3/operations-center#150')?.resolucao).toBe(
+      'virou o #150, em 📥 Triagem pela /gm-triage',
+    )
+    expect(parou('PARADA: duplicata de #12 (operations-center), comentei')?.resolucao).toBe(
+      'duplicata do #12: a /gm-triage registrou o relato nele',
+    )
+  })
+
+  it('NOTA_DA_TRIAGEM nomeia o repo do card (#148, G4 item 1)', () => {
+    expect(NOTA_DA_TRIAGEM).toContain('leonardo-amaral-3/operations-center')
+  })
+
   it('concluirTriagem: item já triado mantém a resolução', () => {
     const r = conclui(saida('PARADA: isso é suporte'), {
       triadoEm: '2026-11-11T09:00:00.000Z',

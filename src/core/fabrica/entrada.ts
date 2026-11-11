@@ -42,7 +42,10 @@ export const ITENS_DA_ENTRADA_NA_TELA = 20
 
 /** A nota da sessão de triagem (#145): vira a linha "- Nesta sessão: …" do prompt. Uma linha só. */
 export const NOTA_DA_TRIAGEM =
-  'O relato é o conteúdo inteiro do arquivo citado no comando, mandado pela tela Entrada do app. Publique um card só em 📥 Triagem (épico com ## Pontos se o relato tiver vários pontos) e não siga para a /gm-card. Feche com PROXIMO: /gm-card #<n> do card criado, ou com PARADA: duplicata de #<n> quando o relato já for o card aberto #<n>.'
+  'O relato é o conteúdo inteiro do arquivo citado no comando, mandado pela tela Entrada do app. O card é do repo leonardo-amaral-3/operations-center (board Project 2), e de nenhum outro: publique um card só em 📥 Triagem nesse repo (épico com ## Pontos se o relato tiver vários pontos) e não siga para a /gm-card. Feche com PROXIMO: /gm-card #<n> do card criado, ou com PARADA: duplicata de #<n> quando o relato já for o card aberto #<n> desse repo; se ele já for card de outro repo, feche com PARADA dizendo qual.'
+
+/** O repo dos cards que a triagem da Entrada pode criar ou citar (#148, G4 item 1). */
+export const REPO_DA_TRIAGEM = 'leonardo-amaral-3/operations-center'
 export const ARQUIVO_DO_RELATO = 'relato.txt'
 
 /** O conteúdo do `relato.txt`: a origem que a /gm-triage exige, uma linha em branco e o texto. */
@@ -285,6 +288,26 @@ export function voltarTriagemAPendente(e: EntradaDaFabrica, id: string): Entrada
   return alterarItem(e, id, (i) => ({ ...i, triagem: null }))
 }
 
+/**
+ * O primeiro repo que não é o `REPO_DA_TRIAGEM` citado junto a um card no fim da sessão, ou `null`.
+ * Pega as duas formas que a `/gm-*` usa: `<repo>#n` (`claude-brain#43`,
+ * `leonardo-amaral-3/claude-brain#43`) e `#n (<repo>)`. O `#n` sozinho é do operations-center,
+ * porque é o único repo da triagem; o parêntese só conta quando parece um repo (tem `-` ou `/`),
+ * para `#12 (comentado)` não virar repo.
+ */
+export function repoDeOutroCard(texto: string): string | null {
+  const [dono, nome] = REPO_DA_TRIAGEM.split('/')
+  const ehDaTriagem = (r: string) => r === nome || r === `${dono}/${nome}`
+  const candidatos = [
+    ...Array.from(texto.matchAll(/((?:[\w.-]+\/)?[\w.-]+)#\d+/g), (m) => m[1] ?? ''),
+    ...Array.from(
+      texto.matchAll(/#\d+\s*\(\s*((?:[\w.-]+\/)?[\w.-]*-[\w.-]*|[\w.-]+\/[\w.-]+)\s*\)/g),
+      (m) => m[1] ?? '',
+    ),
+  ]
+  return candidatos.find((r) => r !== '' && !ehDaTriagem(r)) ?? null
+}
+
 /** Fecha a triagem pelo fim da sessão: triado com a resolução, ou `parou` com o motivo. */
 export function concluirTriagem(
   e: EntradaDaFabrica,
@@ -303,7 +326,16 @@ export function concluirTriagem(
 
   let resolucao: string | null = null
   let parou: string | null = null
-  if (desfecho.tipo === 'proximo') {
+  const fim =
+    desfecho.tipo === 'proximo'
+      ? `PROXIMO: ${desfecho.comando}`
+      : desfecho.tipo === 'parada'
+        ? `PARADA: ${desfecho.motivo}`
+        : null
+  const outro = fim === null ? null : repoDeOutroCard(fim)
+  if (outro !== null) {
+    parou = `o fim cita card de outro repo (${outro}): ${fim ?? ''}`
+  } else if (desfecho.tipo === 'proximo') {
     const n = cardDoComando(desfecho.comando)
     if (n !== null) resolucao = `virou o #${n}, em 📥 Triagem pela /gm-triage`
     else parou = `PROXIMO sem card: ${desfecho.comando}`
