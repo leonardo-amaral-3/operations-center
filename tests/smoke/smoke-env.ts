@@ -85,3 +85,21 @@ export const FLAGS_HEADLESS = [
 export function smokeLaunchArgs(env: NodeJS.ProcessEnv = process.env): string[] {
   return env.OC_SMOKE_HEADLESS === '1' ? [...FLAGS_HEADLESS] : []
 }
+
+/**
+ * A pasta real da fábrica, para o smoke da verificação pós-deploy da sala (#122, teste 4).
+ *
+ * `OC_SMOKE_FABRICA_REAL=<pasta>`; sem valor, `null` e o teste se pula. Nenhuma sessão de
+ * implementação a define: a pasta de verdade é da verificação, que é de quem orquestra. Mora aqui
+ * porque este é o único módulo dos smokes que pode ler `process.env` (M16).
+ */
+export function smokeFabricaReal(env: NodeJS.ProcessEnv = process.env): string | null {
+  const valor = env.OC_SMOKE_FABRICA_REAL
+  return valor === undefined || valor === '' ? null : valor
+}
+
+/** O item da pasta real a abrir (teste 4b): `OC_SMOKE_FABRICA_ITEM=<q-...>`, ou `null`. */
+export function smokeFabricaItem(env: NodeJS.ProcessEnv = process.env): string | null {
+  const valor = env.OC_SMOKE_FABRICA_ITEM
+  return valor === undefined || valor === '' ? null : valor
+}

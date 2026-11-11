@@ -126,6 +126,11 @@ pasta no `/tmp` é recusada. O mandato é lido de `fabrica/MANDATO.md` da `dev` 
 sessões sobem destacadas: matar o despachante (o pid em `rodar.pid`, e não o do `yarn`) não mata
 nenhuma, e ele as adota quando é religado.
 
+No app, o botão **Fábrica** do cabeçalho troca o kanban pela sala da fábrica: a fila de decisões, os
+despachos em voo e se o despachante está rodando, relidos do `estado.json` a cada 5 s. Clicar num item
+mostra o texto final da sessão que o gerou e o comando para fechá-lo. O app só lê essa pasta: fechar um
+item continua sendo `yarn fabrica fechar`. Sem `OC_FABRICA_DIR`, o app lê `~/pessoal/claude/despachos-fabrica`.
+
 ## Executável
 
 `yarn package` compila os três bundles e empacota tudo em **`dist/win-unpacked/`**, com o app em
@@ -158,7 +163,7 @@ A descoberta do `claude` tem duas cadeias: no Windows, `where` e `.exe`; no Linu
 
 ## Configuração
 
-Sem banco e sem arquivo de config. Onze variáveis de ambiente, lidas no main:
+Sem banco e sem arquivo de config. Variáveis de ambiente lidas no main:
 
 | Variável             | Default                                                                       | Para quê                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | -------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -174,6 +179,7 @@ Sem banco e sem arquivo de config. Onze variáveis de ambiente, lidas no main:
 | `OC_PR_FIXTURE`      | ausente: nenhum cartão tem aba PR com conteúdo                                | caminho de um JSON `{ "pulls": { "<pr>": resposta da API }, "files": { "<pr>": lista de arquivos } }` com o PR inteiro — conversa, CI e arquivos com patch. A ligação cartão → PR **não** mora nele: vem da `timelineItems` do `OC_CARD_FIXTURE`. É o par dele no **smoke da aba PR**; PR sem entrada no mapa vira erro dentro da aba, e não aba vazia |
 | `OC_CLAUDE_PROJECTS` | ausente: `CLAUDE_CONFIG_DIR` se houver, senão `~/.claude/projects`            | raiz dos transcripts do Claude Code, de onde sai o mapa `repo → pasta local` em que a sessão de um cartão roda. Existe **para os smokes do cartão-chat e das abas**, que apontam para uma raiz temporária e fazem a descoberta rodar inteira sobre repos descartáveis                                                                                                                                                                                                                                                                                                                                                                               |
 | `OC_STATE_DIR`       | ausente: o `userData` do Electron — no Windows, `%APPDATA%\operations-center` | pasta em que o app grava o próprio estado, hoje em cinco arquivos: `conversations.json`, o vínculo `cartão → sessão do Claude Code` que faz a conversa voltar depois de fechar e reabrir; `dangerous.json`, a lista dos cartões marcados para rodar sem pedir permissão; `preferences.json`, a aba que estava ativa e a combinação de cores escolhida quando o app fechou; `free-sessions.json`, as sessões livres (sem cartão), com pasta, título e a conversa a retomar; e `layout.json`, a mesa — terminais abertos, painel lateral e tamanhos. Ser diretório, e não arquivo, é o que permitiu os outros nascerem sem uma segunda variável. Com ela, o Chromium do app também grava o dele em `<OC_STATE_DIR>/chromium`, e o smoke não toca o userData real. Existe **para os smokes da retomada, do cartão-chat, das abas, do tema, do terminal e da sessão livre**, que apontam para uma pasta temporária em vez de sujar o estado real de quem os roda |
+| `OC_FABRICA_DIR` | ausente: `~/pessoal/claude/despachos-fabrica` | a pasta da fábrica que a sala lê (#122): `estado.json`, `rodar.pid` e `sessoes/`. O app só lê; quem escreve é o `yarn fabrica`, que usa a mesma variável. Nos smokes da sala, uma cópia da fixture |
 
 `OC_SCREEN`, `OC_BOARD_FIXTURE`, `OC_BOARDS_FIXTURE`, `OC_CARD_FIXTURE`, `OC_PR_FIXTURE`, `OC_CLAUDE_PROJECTS` e
 `OC_STATE_DIR` são portas de teste, como `OC_ISOLATED`: fora do smoke não há razão para tocá-las.

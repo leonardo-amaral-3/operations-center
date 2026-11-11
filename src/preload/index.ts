@@ -9,6 +9,7 @@ import type {
   OpenClaudeRequest,
   OpenClaudeResult,
 } from '../shared/claude'
+import type { PerguntaDaFila, ReadPerguntaRequest, SalaDaFabrica } from '../shared/fabrica'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type {
   ActivateBoardRequest,
@@ -204,6 +205,9 @@ const api: OcApi = {
   readLayout: () => ipcRenderer.invoke(IPC_INVOKE.readLayout) as Promise<LayoutSnapshot>,
   setLayout: (snapshot: LayoutSnapshot) =>
     ipcRenderer.invoke(IPC_INVOKE.setLayout, snapshot) as Promise<void>,
+  readFabrica: () => ipcRenderer.invoke(IPC_INVOKE.readFabrica) as Promise<SalaDaFabrica>,
+  readFabricaPergunta: (pedido: ReadPerguntaRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaPergunta, pedido) as Promise<PerguntaDaFila | null>,
   openCardWindow: (request: OpenCardWindowRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.openCardWindow, request) as Promise<void>,
   bringBackCardWindow: (request: CardWindowRequest) =>

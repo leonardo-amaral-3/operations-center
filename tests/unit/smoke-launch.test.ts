@@ -3,7 +3,13 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { FLAGS_HEADLESS, smokeEnv, smokeLaunchArgs } from '../smoke/smoke-env'
+import {
+  FLAGS_HEADLESS,
+  smokeEnv,
+  smokeFabricaItem,
+  smokeFabricaReal,
+  smokeLaunchArgs,
+} from '../smoke/smoke-env'
 
 /**
  * O CA-2 e o CA-3 do card #57 em forma de teste, no espírito de `ipc-no-path.test.ts`.
@@ -180,6 +186,18 @@ describe('smokeLaunchArgs', () => {
       expect(smokeLaunchArgs(env)).toEqual([])
     },
   )
+})
+
+describe('as portas da verificação pós-deploy da sala', () => {
+  it('smokeFabricaReal devolve a pasta, ou null sem a variável', () => {
+    expect(smokeFabricaReal({})).toBeNull()
+    expect(smokeFabricaReal({ OC_SMOKE_FABRICA_REAL: '/p' })).toBe('/p')
+  })
+
+  it('smokeFabricaItem devolve o item, ou null sem a variável', () => {
+    expect(smokeFabricaItem({})).toBeNull()
+    expect(smokeFabricaItem({ OC_SMOKE_FABRICA_ITEM: 'q-0001' })).toBe('q-0001')
+  })
 })
 
 describe('o smoke-app.ts não lê process.env', () => {

@@ -8,6 +8,7 @@
  */
 
 import type { BoardsSnapshot, CardContent, PullRequestView } from './board'
+import type { PerguntaDaFila, ReadPerguntaRequest, SalaDaFabrica } from './fabrica'
 import type {
   ClaudeReleasedEvent,
   ClaudeStateEvent,
@@ -125,6 +126,13 @@ export const IPC_INVOKE = {
   bringBackCardWindow: 'cardWindow:bringBack',
   focusCardWindow: 'cardWindow:focus',
   readCardWindows: 'cardWindow:read',
+  /**
+   * A sala da fábrica (#122). Família `fabrica:` própria, de **leitura**: lê o `estado.json` e o
+   * `saida.json` das sessões em `OC_FABRICA_DIR`, nunca escreve ali e **nenhum destes canais toca o
+   * board**. A pasta não atravessa a ponte: o main a resolve uma vez, e a pergunta chega por id do item.
+   */
+  readFabrica: 'fabrica:read',
+  readFabricaPergunta: 'fabrica:read-pergunta',
 } as const
 
 /** Main → renderer. Avisos de mão única, disparados pelo `core` quando a sessão se mexe. */
@@ -725,6 +733,10 @@ export interface OcApi {
   /** A disposição da mesa. O renderer é o dono do estado; `setLayout` só pede ao main que persista. */
   readLayout(): Promise<LayoutSnapshot>
   setLayout(snapshot: LayoutSnapshot): Promise<void>
+
+  /** A sala da fábrica (#122): só leitura, relida por pedido. */
+  readFabrica(): Promise<SalaDaFabrica>
+  readFabricaPergunta(pedido: ReadPerguntaRequest): Promise<PerguntaDaFila | null>
 }
 
 declare global {

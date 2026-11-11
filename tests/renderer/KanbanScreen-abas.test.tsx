@@ -101,13 +101,20 @@ beforeEach(() => {
     readCardWindows: () => Promise.resolve([]),
     focusCardWindow,
     openCardWindow,
+    readFabrica: () => Promise.resolve({ kind: 'sem-estado', lidoEm: '2026-11-11T12:00:00.000Z' }),
+    readFabricaPergunta: () => Promise.resolve(null),
   }
 
   Object.defineProperty(window, 'oc', { value: ponte, configurable: true })
 })
 
 function vivo(itemId: string): ClaudeStateEvent {
-  return { scope: { kind: 'card', itemId }, id: `pty_${itemId}`, state: { kind: 'working' }, dangerous: false }
+  return {
+    scope: { kind: 'card', itemId },
+    id: `pty_${itemId}`,
+    state: { kind: 'working' },
+    dangerous: false,
+  }
 }
 
 describe('#100 CA-1 — faixa de conversas no kanban', () => {
@@ -221,5 +228,40 @@ describe('#100 CA-2/CA-3 — card destacado na janela principal', () => {
     fireEvent.dragEnd(screen.getByTestId('card-tab'))
 
     expect(openCardWindow).toHaveBeenCalledExactlyOnceWith({ itemId: 'PVTI_A', atCursor: true })
+  })
+})
+
+describe('#122 CA-3a.1 — a sala da fábrica é uma vista do kanban', () => {
+  it('o botão abre e fecha a sala; o foco de uma aba de conversa traz o kanban de volta', async () => {
+    render(<KanbanScreen />)
+    await waitFor(() => {
+      expect(screen.queryAllByTestId('board-card')).toHaveLength(1)
+    })
+
+    act(() => {
+      publicarClaude(vivo('PVTI_A'))
+    })
+
+    const toggle = screen.getByTestId('fabrica-toggle')
+
+    expect(screen.queryByTestId('fabrica-sala')).toBeNull()
+
+    fireEvent.click(toggle)
+    expect(await screen.findByTestId('fabrica-sala')).toBeTruthy()
+    expect(screen.queryAllByTestId('board-card')).toHaveLength(0)
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    // A faixa de conversas segue visível nas duas vistas.
+    expect(screen.getByTestId('card-tabs')).toBeTruthy()
+
+    fireEvent.click(toggle)
+    expect(screen.queryByTestId('fabrica-sala')).toBeNull()
+    expect(screen.getAllByTestId('board-card')).toHaveLength(1)
+
+    fireEvent.click(toggle)
+    await screen.findByTestId('fabrica-sala')
+    fireEvent.click(screen.getByTestId('card-tab'))
+
+    expect(screen.queryByTestId('fabrica-sala')).toBeNull()
+    expect(await screen.findByTestId('card-maximize')).toBeTruthy()
   })
 })
