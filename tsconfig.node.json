@@ -49,6 +49,11 @@
     // importar o mapa de `tests/unit/design-system.test.ts`. Sem esta linha, `tsc --build` reprova
     // o import com `TS6307` enquanto o `yarn test` passa verde — o vermelho chega pelo lado errado.
     "src/renderer/components/fieldLook.ts",
+    // As rotas da fábrica (#130): puras, e entram aqui porque o harness de comparação e a canária do
+    // protótipo (`tests/visual/prototipo.ts`, `tests/unit/prototipo.test.ts`) leem o
+    // `ARQUIVO_DO_PROTOTIPO` no programa do Node. Sem a linha, `tsc --build` reprova o import com
+    // `TS6307` enquanto o `yarn test` passa verde.
+    "src/renderer/fabrica/rotas.ts",
 
     "tests/**/*.ts"
   ],
