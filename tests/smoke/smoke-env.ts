@@ -103,3 +103,13 @@ export function smokeFabricaItem(env: NodeJS.ProcessEnv = process.env): string |
   const valor = env.OC_SMOKE_FABRICA_ITEM
   return valor === undefined || valor === '' ? null : valor
 }
+
+/**
+ * A pasta de saída do harness de comparação (#130, §F1.6): `OC_COMPARACAO_DIR`, ou
+ * `test-results/comparacao/` do repo. O smoke a apaga e recria, então o valor aponta para uma pasta
+ * que só ele usa. Mora aqui porque este é o único módulo dos smokes que pode ler `process.env`.
+ */
+export function smokeComparacaoDir(env: NodeJS.ProcessEnv = process.env): string {
+  const valor = env.OC_COMPARACAO_DIR
+  return valor === undefined || valor === '' ? join(REPO_ROOT, 'test-results', 'comparacao') : valor
+}

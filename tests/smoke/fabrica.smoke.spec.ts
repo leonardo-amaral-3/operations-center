@@ -1,7 +1,8 @@
-import { execFileSync, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -17,8 +18,9 @@ import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
 import { BOARDS_FIXTURE_PATH, BOARD_FIXTURE_PATH } from './boards-fixture'
+import { repoDoRelatorio } from './repo-do-relatorio'
 import { launchSmokeApp } from './smoke-app'
-import { REPO_ROOT, smokeEnv, smokeFabricaItem, smokeFabricaReal } from './smoke-env'
+import { REPO_ROOT, smokeFabricaItem, smokeFabricaReal } from './smoke-env'
 
 /**
  * O smoke da sala da fábrica (#122, §A10): a tela lê a pasta da fábrica, mostra a fila e **nunca
@@ -130,7 +132,7 @@ test('a sala mostra a fila e não escreve', async () => {
     await expect(emVoo.nth(1)).toHaveAttribute('data-state', 'pendente')
 
     if (process.platform === 'linux') {
-      await expect(window.getByTestId('fabrica-despachante')).toContainText('despachante parado')
+      await expect(window.getByTestId('fabrica-estado')).toContainText('Fábrica parada')
     }
 
     await abertos.nth(0).click()
@@ -139,6 +141,8 @@ test('a sala mostra a fila e não escreve', async () => {
       'yarn fabrica fechar q-0003 "<resolução>"',
     )
 
+    // A Pergunta é uma tela: a volta à Sala é pela migalha 0 da trilha.
+    await window.getByTestId('fabrica-trilha-0').click()
     await abertos.nth(1).click()
     await expect(window.getByTestId('fabrica-pergunta-sem-texto')).toBeVisible()
 
@@ -187,7 +191,7 @@ test('a releitura traz o que mudou', async () => {
       if (pid === undefined) throw new Error('o sleep não subiu')
       writeFileSync(join(pasta, 'rodar.pid'), identidadeDe(pid))
 
-      await expect(window.getByTestId('fabrica-despachante')).toContainText('despachante rodando', {
+      await expect(window.getByTestId('fabrica-estado')).toContainText('Fábrica ligada', {
         timeout: RELEITURA,
       })
     }
@@ -215,6 +219,38 @@ test('ausente, ilegível e a volta ao kanban', async () => {
     await window.locator('[data-board-key]').first().click()
     await expect(window.getByTestId('fabrica-sala')).toHaveCount(0)
     await expect(window.getByTestId('column').first()).toBeVisible()
+  } finally {
+    await app.close()
+  }
+})
+
+test('pausar e retomar pela tela', async () => {
+  // A escrita recusa `/tmp` (P10): a pasta da fábrica deste teste mora em `test-results/`, nunca na
+  // pasta real do despachante.
+  const base = join(REPO_ROOT, 'test-results', 'fabrica-pausa')
+  rmSync(base, { recursive: true, force: true })
+  mkdirSync(base, { recursive: true })
+  pastasTemporarias.push(base)
+  const pasta = join(base, 'fabrica')
+  cpSync(FIXTURE_SALA, pasta, { recursive: true })
+  const { app, window } = await subir(pasta)
+
+  try {
+    await abrirSala(window)
+    const estado = window.getByTestId('fabrica-estado')
+    const botao = window.getByTestId('fabrica-pausar')
+    await expect(estado).toContainText('Fábrica parada')
+    await expect(botao).toContainText('Pausar fábrica')
+
+    await botao.click()
+    await expect(estado).toContainText('Fábrica pausada', { timeout: 20_000 })
+    await expect(botao).toContainText('Retomar fábrica')
+    expect(existsSync(join(pasta, 'pausa.json')), 'pausa.json não foi criado').toBe(true)
+
+    await botao.click()
+    await expect(estado).toContainText('Fábrica parada', { timeout: 20_000 })
+    await expect(botao).toContainText('Pausar fábrica')
+    expect(existsSync(join(pasta, 'pausa.json')), 'pausa.json não foi apagado').toBe(false)
   } finally {
     await app.close()
   }
@@ -295,32 +331,8 @@ test('um item da pasta de verdade', async () => {
 
 const FIXTURES_RELATORIO = join(REPO_ROOT, 'tests', 'fixtures', 'relatorio')
 
-/** Um repo git descartável com um commit de 10/11 que cita o #118, o que o `git log` do relatório lê. */
-function repoDoRelatorio(): string {
-  const repo = pastaTemporaria('oc-relatorio-repo-')
-  const env = {
-    ...smokeEnv(),
-    GIT_AUTHOR_DATE: '2026-11-10T15:00:00Z',
-    GIT_COMMITTER_DATE: '2026-11-10T15:00:00Z',
-  }
-  const git = (...args: string[]): void => {
-    execFileSync('git', args, { cwd: repo, env, stdio: 'ignore' })
-  }
-  git('init', '-b', 'dev')
-  writeFileSync(join(repo, 'arquivo.txt'), 'smoke\n')
-  git('add', 'arquivo.txt')
-  git(
-    '-c',
-    'user.name=smoke',
-    '-c',
-    'user.email=smoke@example.invalid',
-    'commit',
-    '-m',
-    'Smoke do relatório',
-    '-m',
-    'Card: #118',
-  )
-  return repo
+function repoDoRelatorioTemporario(): string {
+  return repoDoRelatorio(pastaTemporaria('oc-relatorio-repo-'))
 }
 
 async function subirRelatorio(cofre: string, repo: string) {
@@ -341,13 +353,13 @@ async function subirRelatorio(cofre: string, repo: string) {
 
 async function gerarDoDia(window: Page): Promise<void> {
   await abrirSala(window)
-  await window.getByTestId('fabrica-aba-relatorio').click()
+  await window.getByTestId('fabrica-nav-relatorio').click()
   await window.getByTestId('relatorio-dia').fill('2026-11-10')
   await window.getByTestId('relatorio-gerar').click()
 }
 
 test('o relatório na sala', async () => {
-  const repo = repoDoRelatorio()
+  const repo = repoDoRelatorioTemporario()
   const { app, window } = await subirRelatorio(join(FIXTURES_RELATORIO, 'cofre-2026-11-10'), repo)
 
   try {
