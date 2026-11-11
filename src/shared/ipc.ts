@@ -8,7 +8,13 @@
  */
 
 import type { BoardsSnapshot, CardContent, PullRequestView } from './board'
-import type { PerguntaDaFila, ReadPerguntaRequest, SalaDaFabrica } from './fabrica'
+import type {
+  PerguntaDaFila,
+  ReadPerguntaRequest,
+  ReadRelatorioRequest,
+  RelatorioDaSala,
+  SalaDaFabrica,
+} from './fabrica'
 import type {
   ClaudeReleasedEvent,
   ClaudeStateEvent,
@@ -133,6 +139,11 @@ export const IPC_INVOKE = {
    */
   readFabrica: 'fabrica:read',
   readFabricaPergunta: 'fabrica:read-pergunta',
+  /**
+   * O relatório do dia (#126), o mesmo do `yarn relatorio`. **Lê** o cofre, o git e o board, e não
+   * escreve em nenhum dos três.
+   */
+  readRelatorio: 'relatorio:read',
 } as const
 
 /** Main → renderer. Avisos de mão única, disparados pelo `core` quando a sessão se mexe. */
@@ -737,6 +748,7 @@ export interface OcApi {
   /** A sala da fábrica (#122): só leitura, relida por pedido. */
   readFabrica(): Promise<SalaDaFabrica>
   readFabricaPergunta(pedido: ReadPerguntaRequest): Promise<PerguntaDaFila | null>
+  readRelatorio(pedido: ReadRelatorioRequest): Promise<RelatorioDaSala>
 }
 
 declare global {

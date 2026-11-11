@@ -199,6 +199,7 @@ describe('a superfície de board é somente-leitura', () => {
       readCardWindows: 'cardWindow:read',
       readFabrica: 'fabrica:read',
       readFabricaPergunta: 'fabrica:read-pergunta',
+      readRelatorio: 'relatorio:read',
     })
   })
 
@@ -276,11 +277,18 @@ describe('a superfície de board é somente-leitura', () => {
     // um `boards:activate` obrigaria esta lista a ganhar uma exceção nominal, e uma canária com
     // exceção nominal é uma canária a caminho de ser desligada.
     const canaisDoGitHub = [...Object.values(IPC_INVOKE), ...Object.values(IPC_EVENT)].filter(
-      (canal) => canal.startsWith('boards:') || canal.startsWith('card:'),
+      (canal) =>
+        canal.startsWith('boards:') || canal.startsWith('card:') || canal.startsWith('relatorio:'),
     )
 
     // A ordem é a de declaração dos mapas: os `invoke` primeiro, o evento depois.
-    expect(canaisDoGitHub).toEqual(['boards:read', 'card:read', 'card:read-pr', 'boards:changed'])
+    expect(canaisDoGitHub).toEqual([
+      'boards:read',
+      'card:read',
+      'card:read-pr',
+      'relatorio:read',
+      'boards:changed',
+    ])
   })
 
   it('toda requisição HTTP do app é a do GraphQL ou um GET', () => {

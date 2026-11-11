@@ -141,6 +141,8 @@ describe('nenhum caminho de disco atravessa a ponte', () => {
         'DespachoNaSala',
         'PerguntaDaFila',
         'ReadPerguntaRequest',
+        'ReadRelatorioRequest',
+        'RelatorioDaSala',
       ]),
     )
     expect(cargas.every((carga) => carga.campos.length > 0)).toBe(true)
