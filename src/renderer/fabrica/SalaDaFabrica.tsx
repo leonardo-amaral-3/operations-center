@@ -9,7 +9,9 @@ import type {
 } from '../../shared/fabrica'
 import { Markdown } from '../components/Markdown'
 import { Badge } from '../ui/badge'
+import { Button } from '../ui/button'
 import { Card } from '../ui/card'
+import { RelatorioDaSalaView } from './Relatorio'
 import { useSala } from './useSala'
 
 const ESTADO_NA_TELA: Record<DespachoNaSala['estado'], string> = {
@@ -82,6 +84,7 @@ function classeDaLinha(selecionado: boolean): string {
  */
 export function SalaDaFabrica(): JSX.Element {
   const sala = useSala()
+  const [aba, setAba] = useState<'fila' | 'relatorio'>('fila')
   const [selecionado, setSelecionado] = useState<string | null>(null)
   const [pergunta, setPergunta] = useState<PerguntaDaFila | null | undefined>(undefined)
 
@@ -128,6 +131,30 @@ export function SalaDaFabrica(): JSX.Element {
     <div data-testid="fabrica-sala" className="flex min-h-0 flex-1 flex-col gap-3 p-3">
       <div className="flex items-center gap-3">
         <h2 className="font-heading text-lg">Fábrica</h2>
+        <Button
+          type="button"
+          variant="neutral"
+          size="xs"
+          data-testid="fabrica-aba-fila"
+          aria-pressed={aba === 'fila'}
+          onClick={() => {
+            setAba('fila')
+          }}
+        >
+          Fila
+        </Button>
+        <Button
+          type="button"
+          variant="neutral"
+          size="xs"
+          data-testid="fabrica-aba-relatorio"
+          aria-pressed={aba === 'relatorio'}
+          onClick={() => {
+            setAba('relatorio')
+          }}
+        >
+          Relatório
+        </Button>
         {sala?.kind === 'ok' && sala.despachante !== 'desconhecido' && (
           <Badge
             data-testid="fabrica-despachante"
@@ -143,14 +170,18 @@ export function SalaDaFabrica(): JSX.Element {
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 gap-3">
-        <div className="flex w-96 shrink-0 flex-col gap-3 overflow-y-auto">
-          <Lista sala={sala} selecionado={selecionado} onSelecionar={selecionar} />
+      {aba === 'relatorio' ? (
+        <RelatorioDaSalaView />
+      ) : (
+        <div className="flex min-h-0 flex-1 gap-3">
+          <div className="flex w-96 shrink-0 flex-col gap-3 overflow-y-auto">
+            <Lista sala={sala} selecionado={selecionado} onSelecionar={selecionar} />
+          </div>
+          <div className="min-w-0 flex-1 overflow-y-auto">
+            <Pergunta selecionado={selecionado} item={item} pergunta={pergunta} />
+          </div>
         </div>
-        <div className="min-w-0 flex-1 overflow-y-auto">
-          <Pergunta selecionado={selecionado} item={item} pergunta={pergunta} />
-        </div>
-      </div>
+      )}
     </div>
   )
 }
