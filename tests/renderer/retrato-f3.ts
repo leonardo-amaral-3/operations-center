@@ -32,6 +32,8 @@ const q0003: ItemNaSala = {
   criadoEm: '2026-11-11T07:20:00.000Z',
   fechadoEm: '2026-11-11T07:30:00.000Z',
   resolucao: 'o board da fábrica (Project 2)',
+  estacao: 'card',
+  sessaoQuebrada: false,
 }
 
 const q0009: ItemNaSala = {
@@ -46,6 +48,8 @@ const q0009: ItemNaSala = {
   criadoEm: '2026-11-11T08:30:00.000Z',
   fechadoEm: null,
   resolucao: null,
+  estacao: 'spec',
+  sessaoQuebrada: false,
 }
 
 const q0013: ItemNaSala = {
@@ -60,6 +64,8 @@ const q0013: ItemNaSala = {
   criadoEm: '2026-11-11T09:00:00.000Z',
   fechadoEm: null,
   resolucao: null,
+  estacao: 'revisao',
+  sessaoQuebrada: false,
 }
 
 const q0016: ItemNaSala = {
@@ -74,6 +80,8 @@ const q0016: ItemNaSala = {
   criadoEm: '2026-11-11T09:05:00.000Z',
   fechadoEm: null,
   resolucao: null,
+  estacao: 'implementacao',
+  sessaoQuebrada: true,
 }
 
 const q0017: ItemNaSala = {
@@ -88,6 +96,8 @@ const q0017: ItemNaSala = {
   criadoEm: '2026-11-11T09:10:00.000Z',
   fechadoEm: null,
   resolucao: null,
+  estacao: 'revisao',
+  sessaoQuebrada: false,
 }
 
 /** O retrato `ok` que a fixture `f3` dá: quatro itens abertos, um fechado, nada em voo. */
@@ -97,9 +107,15 @@ export const RETRATO_F3: SalaDaFabrica = {
   projeto: 'Operations Center · Project 2',
   despachante: 'parado',
   pausa: null,
+  recursos: {
+    sessoes: { kind: 'ok', vivas: 0, teto: 3 },
+    suite: { kind: 'livre' },
+    disco: { kind: 'ok', livres: 50 * 1024 ** 3, minimo: 2 * 1024 ** 3 },
+  },
   emVoo: [],
   abertos: [q0009, q0013, q0016, q0017],
   fechados: [q0003],
+  decisoes: [],
   frentesAbertas: 0,
 }
 

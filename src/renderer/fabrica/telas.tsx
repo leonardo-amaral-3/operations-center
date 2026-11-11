@@ -1,9 +1,10 @@
 import type { JSX } from 'react'
 
 import type { ComandoDaFabrica, SalaDaFabrica } from '../../shared/fabrica'
-import { BotaoPausar, CabecalhoInterno, TelaPorVir } from './Moldura'
+import { CabecalhoInterno, TelaPorVir } from './Moldura'
 import { RelatorioDaSalaView } from './Relatorio'
 import { trilhaDa, type NomeDaTela, type TelaDaFabrica } from './rotas'
+import { Agentes } from './telas/Agentes'
 import { Decisao } from './telas/Decisao'
 import { Pergunta } from './telas/Pergunta'
 import { Sala } from './telas/Sala'
@@ -18,10 +19,10 @@ export interface PropsDaTela {
 }
 
 /** Uma tela interna ainda sem corpo: o cabeçalho com a trilha e o marcador da fase dona dela. */
-function porVir(fase: string, direita?: (p: PropsDaTela) => JSX.Element) {
+function porVir(fase: string) {
   return (p: PropsDaTela): JSX.Element => (
     <>
-      <CabecalhoInterno trilha={trilhaDa(p.tela, new Date())} onIr={p.ir} direita={direita?.(p)} />
+      <CabecalhoInterno trilha={trilhaDa(p.tela, new Date())} onIr={p.ir} />
       <TelaPorVir fase={fase} />
     </>
   )
@@ -40,15 +41,7 @@ export const TELAS: Record<NomeDaTela, (p: PropsDaTela) => JSX.Element> = {
       <RelatorioDaSalaView />
     </>
   ),
-  agentes: porVir('F2', (p) => (
-    <BotaoPausar
-      sala={p.sala}
-      emVoo={p.emVoo}
-      onComando={(c) => {
-        void p.comando(c)
-      }}
-    />
-  )),
+  agentes: Agentes,
   decisao: Decisao,
   card: porVir('F4'),
   entrada: porVir('F4'),

@@ -1,0 +1,33 @@
+{
+  "versao": 1,
+  "instancia": "00000000-0000-4000-8000-0000000000f2",
+  "contador": 22,
+  "frentes": [
+    { "id": "fr-0001", "card": 1, "criadaEm": "2026-11-11T09:00:00.000Z", "encerradaEm": null },
+    { "id": "fr-0005", "card": 4, "criadaEm": "2026-11-11T09:30:00.000Z", "encerradaEm": null },
+    { "id": "fr-0007", "card": 2, "criadaEm": "2026-11-11T09:40:00.000Z", "encerradaEm": null },
+    { "id": "fr-0009", "card": 951, "criadaEm": "2026-11-11T09:50:00.000Z", "encerradaEm": null },
+    { "id": "fr-0011", "card": 952, "criadaEm": "2026-11-11T08:00:00.000Z", "encerradaEm": "2026-11-11T08:20:00.000Z" },
+    { "id": "fr-0014", "card": 953, "criadaEm": "2026-11-11T08:10:00.000Z", "encerradaEm": "2026-11-11T08:40:00.000Z" },
+    { "id": "fr-0017", "card": 954, "criadaEm": "2026-11-11T07:00:00.000Z", "encerradaEm": "2026-11-11T07:30:00.000Z" },
+    { "id": "fr-0020", "card": 955, "criadaEm": "2026-11-11T08:30:00.000Z", "encerradaEm": "2026-11-11T09:10:00.000Z" }
+  ],
+  "despachos": [
+    { "id": "d-0002", "frente": "fr-0001", "card": 1, "comando": "/gm-spec #1", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T09:00:00.000Z", "lancadoEm": "2026-11-11T09:00:00.000Z", "concluidoEm": "2026-11-11T09:10:00.000Z", "sessaoClaude": null, "desfecho": { "tipo": "proximo", "comando": "/gm-plan-tasks /home/u/pessoal/planning/1-fundar" } },
+    { "id": "d-0003", "frente": "fr-0001", "card": 1, "comando": "/gm-plan-tasks /home/u/pessoal/planning/1-fundar", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T09:10:00.000Z", "lancadoEm": "2026-11-11T09:10:00.000Z", "concluidoEm": "2026-11-11T09:20:00.000Z", "sessaoClaude": null, "desfecho": { "tipo": "proximo", "comando": "/gm-implement /home/u/pessoal/planning/1-fundar" } },
+    { "id": "d-0004", "frente": "fr-0001", "card": 1, "comando": "/gm-implement /home/u/pessoal/planning/1-fundar", "nota": null, "estado": "rodando", "pid": 999991, "criadoEm": "2026-11-11T09:20:00.000Z", "lancadoEm": "2026-11-11T09:20:00.000Z", "concluidoEm": null, "sessaoClaude": null, "desfecho": null },
+    { "id": "d-0006", "frente": "fr-0005", "card": 4, "comando": "/gm-spec #4", "nota": null, "estado": "rodando", "pid": 999992, "criadoEm": "2026-11-11T09:30:00.000Z", "lancadoEm": "2026-11-11T09:30:00.000Z", "concluidoEm": null, "sessaoClaude": null, "desfecho": null },
+    { "id": "d-0008", "frente": "fr-0007", "card": 2, "comando": "/gm-card #2", "nota": null, "estado": "pendente", "pid": null, "criadoEm": "2026-11-11T09:40:00.000Z", "lancadoEm": null, "concluidoEm": null, "sessaoClaude": null, "desfecho": null },
+    { "id": "d-0010", "frente": "fr-0009", "card": 951, "comando": "/gm-ship /home/u/pessoal/planning/951-x", "nota": null, "estado": "lancando", "pid": null, "criadoEm": "2026-11-11T09:50:00.000Z", "lancadoEm": "2026-11-11T09:50:00.000Z", "concluidoEm": null, "sessaoClaude": null, "desfecho": null },
+    { "id": "d-0012", "frente": "fr-0011", "card": 952, "comando": "/gm-triage 952", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T08:00:00.000Z", "lancadoEm": "2026-11-11T08:00:00.000Z", "concluidoEm": "2026-11-11T08:20:00.000Z", "sessaoClaude": null, "desfecho": { "tipo": "parada", "motivo": "o card não diz qual board é o alvo" } },
+    { "id": "d-0015", "frente": "fr-0014", "card": 953, "comando": "/gm-implement /home/u/pessoal/planning/953-y", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T08:10:00.000Z", "lancadoEm": "2026-11-11T08:10:00.000Z", "concluidoEm": "2026-11-11T08:40:00.000Z", "sessaoClaude": null, "desfecho": { "tipo": "falha", "motivo": "a sessão terminou sem saída" } },
+    { "id": "d-0018", "frente": "fr-0017", "card": 954, "comando": "/gm-spec #954", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T07:00:00.000Z", "lancadoEm": "2026-11-11T07:00:00.000Z", "concluidoEm": "2026-11-11T07:30:00.000Z", "sessaoClaude": null, "desfecho": { "tipo": "parada", "motivo": "espera o segundo revisor" } },
+    { "id": "d-0021", "frente": "fr-0020", "card": 955, "comando": "/gm-ship /home/u/pessoal/planning/955-z", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T08:30:00.000Z", "lancadoEm": "2026-11-11T08:30:00.000Z", "concluidoEm": "2026-11-11T09:10:00.000Z", "sessaoClaude": null, "desfecho": { "tipo": "parada", "motivo": "PR #960 aberta na dev (Card: #955); o merge é da orquestradora" } }
+  ],
+  "fila": [
+    { "id": "q-0013", "card": 952, "motivo": "o card não diz qual board é o alvo", "despacho": "d-0012", "sessaoClaude": null, "criadoEm": "2026-11-11T08:20:00.000Z", "fechadoEm": null, "resolucao": null },
+    { "id": "q-0016", "card": 953, "motivo": "a sessão terminou sem saída", "despacho": "d-0015", "sessaoClaude": null, "criadoEm": "2026-11-11T08:40:00.000Z", "fechadoEm": null, "resolucao": null },
+    { "id": "q-0019", "card": 954, "motivo": "espera o segundo revisor", "despacho": "d-0018", "sessaoClaude": null, "criadoEm": "2026-11-11T07:30:00.000Z", "fechadoEm": "2026-11-11T07:45:00.000Z", "resolucao": "seguir sem segundo revisor" },
+    { "id": "q-0022", "card": 955, "motivo": "PR #960 aberta na dev (Card: #955); o merge é da orquestradora", "despacho": "d-0021", "sessaoClaude": null, "criadoEm": "2026-11-11T09:10:00.000Z", "fechadoEm": null, "resolucao": null }
+  ]
+}

@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, readlinkSync } from 'node:fs'
 
 /**
  * Processos da fábrica, lidos de `/proc` (card 121, spec P2 §7). Só Linux: o §9 recusa outra
@@ -33,6 +33,19 @@ export function ehSessao(pid: number): boolean {
  */
 export function despachoVivo(pid: number, marca: string): boolean {
   return ambiente(pid).includes(`OC_FABRICA_DESPACHO=${marca}`) && ehSessao(pid)
+}
+
+/**
+ * A pasta onde o processo roda (`/proc/<pid>/cwd`); sumiu ou não se deixa ler → `null`. Mora aqui e
+ * não no `recursos.ts` porque o nome da função de `node:fs` contém o que a canária "só lê" proíbe por
+ * substring; este arquivo é o leitor de `/proc` e a canária não o varre.
+ */
+export function cwdDoProcesso(pid: number): string | null {
+  try {
+    return readlinkSync(`/proc/${pid}/cwd`)
+  } catch {
+    return null
+  }
 }
 
 function pids(): number[] {

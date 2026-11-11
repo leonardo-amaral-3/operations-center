@@ -10,6 +10,8 @@ import {
   marcaDaProva,
   marcaDoDespacho,
   montarPrompt,
+  MANDATO_DA_DEV_QUERY,
+  textoDoMandato,
 } from '../../src/core/fabrica/mandato'
 
 const RAIZ = join(__dirname, '..', '..')
@@ -145,4 +147,29 @@ describe.skipIf(process.platform !== 'linux')('montarPrompt contra o bash do d.s
       })
     }
   }
+})
+
+describe('textoDoMandato', () => {
+  const resposta = (text: unknown) => ({ data: { repository: { object: { text } } } })
+
+  it('devolve o texto', () => {
+    expect(textoDoMandato(resposta('MANDATO\nresto'))).toBe('MANDATO\nresto')
+  })
+  it('erro da API lança com a mensagem', () => {
+    expect(() => textoDoMandato({ data: null, errors: [{ message: 'Bad credentials' }] })).toThrow(
+      'Bad credentials',
+    )
+  })
+  it.each([
+    ['objeto nulo', { data: { repository: { object: null } } }],
+    ['repositório nulo', { data: { repository: null } }],
+    ['sem data', { data: null }],
+    ['texto vazio', resposta('  \n')],
+    ['texto que não é string', resposta(7)],
+  ])('%s lança', (_, r) => {
+    expect(() => textoDoMandato(r)).toThrow('mandato ilegível na dev: vazio')
+  })
+  it('a query pede o fabrica/MANDATO.md da dev', () => {
+    expect(MANDATO_DA_DEV_QUERY).toContain('dev:fabrica/MANDATO.md')
+  })
 })

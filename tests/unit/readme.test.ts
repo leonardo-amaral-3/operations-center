@@ -121,6 +121,8 @@ describe('README', () => {
       'OC_RELATORIO_COFRE',
       'OC_RELATORIO_REPO',
       'OC_RELATORIO_FIXTURE',
+      'OC_FABRICA_MANDATO_FIXTURE',
+      'OC_SMOKE_CADEADO',
     ]) {
       expect(readme).toContain(variavel)
     }

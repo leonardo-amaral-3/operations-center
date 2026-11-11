@@ -5,15 +5,19 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { parseEstado } from '../../src/core/fabrica/estado'
 import {
+  PASSOS_NA_SALA,
   estacaoDoComando,
+  montarDecisoes,
   montarPergunta,
   montarSala,
+  ondeRodaDo,
   prDoMotivo,
   tipoDoItem,
   urlDaPr,
   urlDoCard,
 } from '../../src/core/fabrica/sala'
 import type { Desfecho, Despacho, EstadoDaFabrica, ItemDaFila } from '../../src/core/fabrica/tipos'
+import type { RecursosDaFabrica } from '../../src/shared/fabrica'
 import { identidade } from '../../src/main/fabrica/arquivos'
 import { estadoDoDespachante, lerPergunta, lerSala, pastaDaSala } from '../../src/main/fabrica/sala'
 
@@ -23,12 +27,24 @@ const estadoDaF3 = (): EstadoDaFabrica =>
   parseEstado(readFileSync(join(FIXTURE_F3, 'estado.json'), 'utf8'))
 const estadoDaFixture = (): EstadoDaFabrica =>
   parseEstado(readFileSync(join(FIXTURE, 'estado.json'), 'utf8'))
+const FIXTURE_F2 = join(__dirname, '..', 'fixtures', 'fabrica', 'f2')
+const estadoF2 = (): EstadoDaFabrica =>
+  parseEstado(readFileSync(join(FIXTURE_F2, 'estado.json'), 'utf8'))
+const RECURSOS: RecursosDaFabrica = {
+  sessoes: { kind: 'ok', vivas: 1, teto: 3 },
+  suite: { kind: 'livre' },
+  disco: { kind: 'ok', livres: 50 * 1024 ** 3, minimo: 2 * 1024 ** 3 },
+}
 const CTX = {
-  despachante: 'parado',
+  despachante: 'parado' as const,
   lidoEm: '2026-11-11T12:00:00.000Z',
   projeto: 'Operations Center · Project 2',
   pausa: null,
-} as const
+  recursos: RECURSOS,
+  worktrees: [] as readonly string[],
+  vivos: null as ReadonlySet<string> | null,
+}
+const FONTES = { recursos: () => RECURSOS, worktrees: () => [] as string[] }
 
 describe('tipo e estação (F1.5)', () => {
   it('estacaoDoComando: as sete skills e um comando qualquer', () => {
@@ -167,6 +183,164 @@ describe('prDoMotivo e urlDaPr', () => {
 
   it('urlDaPr aponta para a PR no repositório da fábrica', () => {
     expect(urlDaPr(970)).toBe('https://github.com/leonardo-amaral-3/operations-center/pull/970')
+  })
+})
+
+describe('a estação e a sessão quebrada dos itens (F2.2)', () => {
+  const sala = montarSala(estadoF2(), CTX)
+  const item = (id: string) => sala.abertos.find((i) => i.id === id)
+
+  it('estacao vem do comando do despacho de origem', () => {
+    expect(item('q-0013')?.estacao).toBe('entrada')
+    expect(item('q-0016')?.estacao).toBe('implementacao')
+    expect(item('q-0022')?.estacao).toBe('revisao')
+  })
+
+  it('sem despacho de origem: estacao null e não quebrada', () => {
+    const s = montarSala({ ...estadoF2(), despachos: [] }, CTX)
+    expect(s.abertos.every((i) => i.estacao === null && !i.sessaoQuebrada)).toBe(true)
+  })
+
+  it('sessaoQuebrada só com desfecho falha', () => {
+    expect(sala.abertos.map((i) => [i.id, i.sessaoQuebrada])).toEqual([
+      ['q-0013', false],
+      ['q-0016', true],
+      ['q-0022', false],
+    ])
+  })
+})
+
+describe('ondeRodaDo (F2.2)', () => {
+  const wt = ['operations-center-119-c', 'operations-center-119-a', 'operations-center-119-b']
+  it('spec e tasks rodam em planning/', () => {
+    expect(ondeRodaDo('spec', 4, wt)).toBe('planning/')
+    expect(ondeRodaDo('tasks', 4, wt)).toBe('planning/')
+  })
+  it.each(['implementacao', 'revisao'] as const)('%s: 0, 1 e 3 worktrees', (e) => {
+    expect(ondeRodaDo(e, 119, [])).toBe('worktree ainda não criada')
+    expect(ondeRodaDo(e, 119, ['operations-center-119-a'])).toBe('operations-center-119-a')
+    expect(ondeRodaDo(e, 119, wt)).toBe('operations-center-119-a +2')
+  })
+  it('não casa o prefixo de outro card (1190 não é 119)', () => {
+    expect(ondeRodaDo('implementacao', 119, ['operations-center-1190-x'])).toBe(
+      'worktree ainda não criada',
+    )
+  })
+  it.each(['entrada', 'card', 'integracao', null] as const)('%s: sem worktree', (e) => {
+    expect(ondeRodaDo(e, 119, wt)).toBe('sem worktree')
+  })
+})
+
+describe('viva e ondeRoda no retrato (F2.2)', () => {
+  const vivas = (vivos: ReadonlySet<string> | null) =>
+    Object.fromEntries(montarSala(estadoF2(), { ...CTX, vivos }).emVoo.map((d) => [d.id, d.viva]))
+
+  it('pendente → null; vivos null → null', () => {
+    expect(vivas(null)).toEqual({ 'd-0004': null, 'd-0006': null, 'd-0008': null, 'd-0010': null })
+  })
+  it('no conjunto → true; fora → false; pendente segue null', () => {
+    expect(vivas(new Set(['d-0004', 'd-0010']))).toEqual({
+      'd-0004': true,
+      'd-0006': false,
+      'd-0008': null,
+      'd-0010': true,
+    })
+  })
+  it('ondeRoda de cada despacho da fixture f2', () => {
+    const s = montarSala(estadoF2(), CTX)
+    expect(Object.fromEntries(s.emVoo.map((d) => [d.id, d.ondeRoda]))).toEqual({
+      'd-0004': 'worktree ainda não criada',
+      'd-0006': 'planning/',
+      'd-0008': 'sem worktree',
+      'd-0010': 'worktree ainda não criada',
+    })
+  })
+})
+
+describe('montarDecisoes (F2.2)', () => {
+  const ordem = (e: EstadoDaFabrica): string[] => montarDecisoes(e).map((d) => d.id)
+
+  it('a fixture f2 dá os seis itens, nesta ordem', () => {
+    expect(ordem(estadoF2())).toEqual(['d-0003', 'q-0022', 'd-0002', 'q-0016', 'q-0013', 'q-0019'])
+    const d = montarDecisoes(estadoF2())
+    expect(d[0]).toEqual({
+      tipo: 'passou',
+      id: 'd-0003',
+      card: 1,
+      skill: 'gm-plan-tasks',
+      seguinte: 'gm-implement',
+      em: '2026-11-11T09:20:00.000Z',
+    })
+    expect(d[5]).toMatchObject({ tipo: 'fila', item: { resolucao: 'seguir sem segundo revisor' } })
+  })
+
+  it('PROXIMO recusado (com item da fila) não vira passou', () => {
+    const e = estadoF2()
+    const fila = [
+      ...e.fila,
+      {
+        id: 'q-0030',
+        card: 1,
+        motivo: 'recusado',
+        despacho: 'd-0002',
+        sessaoClaude: null,
+        criadoEm: '2026-11-11T09:11:00.000Z',
+        fechadoEm: null,
+        resolucao: null,
+      },
+    ]
+    const d = montarDecisoes({ ...e, fila })
+    expect(d.some((x) => x.tipo === 'passou' && x.id === 'd-0002')).toBe(false)
+    expect(d.some((x) => x.tipo === 'fila' && x.id === 'q-0030')).toBe(true)
+  })
+
+  it('empate de em → id decrescente', () => {
+    const e = estadoF2()
+    const igual = '2026-11-11T10:00:00.000Z'
+    const despachos = e.despachos.map((d) =>
+      d.id === 'd-0002' || d.id === 'd-0003' ? { ...d, concluidoEm: igual } : d,
+    )
+    const d = montarDecisoes({ ...e, despachos, fila: [] })
+    expect(d.map((x) => x.id)).toEqual(['d-0003', 'd-0002'])
+  })
+
+  it('12 passos → só os 8 mais recentes', () => {
+    const e = estadoF2()
+    const despachos = Array.from({ length: 12 }, (_, i) => ({
+      ...e.despachos[0]!,
+      id: `d-${String(100 + i)}`,
+      concluidoEm: `2026-11-12T${String(i).padStart(2, '0')}:00:00.000Z`,
+    }))
+    const d = montarDecisoes({ ...e, despachos, fila: [] })
+    expect(PASSOS_NA_SALA).toBe(8)
+    expect(d).toHaveLength(8)
+    expect(d[0]?.id).toBe('d-111')
+    expect(d[7]?.id).toBe('d-104')
+  })
+
+  it('12 fechados → só os 10 de fechadoEm mais recente; todo aberto sempre entra', () => {
+    const e = estadoF2()
+    const extras: ItemDaFila[] = Array.from({ length: 12 }, (_, i) => ({
+      id: `q-${String(100 + i)}`,
+      card: 953,
+      motivo: 'm',
+      despacho: 'd-0015',
+      sessaoClaude: null,
+      criadoEm: `2026-11-10T09:${String(i).padStart(2, '0')}:00.000Z`,
+      fechadoEm: `2026-11-11T12:${String(i).padStart(2, '0')}:00.000Z`,
+      resolucao: 'ok',
+    }))
+    const d = montarDecisoes({ ...e, despachos: [], fila: [...e.fila, ...extras] })
+    const fechados = d.filter((x) => x.tipo === 'fila' && x.item.fechadoEm !== null)
+    expect(fechados).toHaveLength(10)
+    expect(fechados.map((x) => x.id)).not.toContain('q-100')
+    expect(d.filter((x) => x.tipo === 'fila' && x.item.fechadoEm === null)).toHaveLength(3)
+  })
+
+  it('montarSala leva recursos e decisoes', () => {
+    const s = montarSala(estadoF2(), CTX)
+    expect(s.recursos).toEqual(RECURSOS)
+    expect(s.decisoes.map((d) => d.id)).toEqual(ordem(estadoF2()))
   })
 })
 
@@ -357,12 +531,13 @@ describe('a leitura da sala', () => {
   const agora = (): string => '2026-11-11T12:00:00.000Z'
 
   it('sem estado.json → sem-estado', () => {
-    expect(lerSala(nova(), 'linux', agora)).toEqual({
+    expect(lerSala(nova(), 'linux', agora, FONTES)).toEqual({
       kind: 'sem-estado',
       lidoEm: agora(),
       projeto: 'Operations Center · Project 2',
       despachante: 'parado',
       pausa: null,
+      recursos: RECURSOS,
     })
   })
 
@@ -379,7 +554,7 @@ describe('a leitura da sala', () => {
       ['ilegivel', 'torto'],
       ['ok', 'fixture'],
     ] as const)('ramo %s: sem pausa.json → pausa null, e o projeto vem junto', (kind, estado) => {
-      const s = lerSala(comPausa(null, estado), 'linux', agora)
+      const s = lerSala(comPausa(null, estado), 'linux', agora, FONTES)
       expect(s.kind).toBe(kind)
       expect(s.pausa).toBeNull()
       expect(s.projeto).toBe('Operations Center · Project 2')
@@ -390,7 +565,12 @@ describe('a leitura da sala', () => {
       ['ilegivel', 'torto'],
       ['ok', 'fixture'],
     ] as const)('ramo %s: com pausa.json → a data dela', (kind, estado) => {
-      const s = lerSala(comPausa('{"desde":"2026-11-11T11:00:00Z"}\n', estado), 'linux', agora)
+      const s = lerSala(
+        comPausa('{"desde":"2026-11-11T11:00:00Z"}\n', estado),
+        'linux',
+        agora,
+        FONTES,
+      )
       expect(s.kind).toBe(kind)
       expect(s.pausa).toEqual({ desde: '2026-11-11T11:00:00Z' })
     })
@@ -399,16 +579,59 @@ describe('a leitura da sala', () => {
       ['ilegivel', 'torto'],
       ['ok', 'fixture'],
     ] as const)('ramo %s: pausa.json torto → desde null (na dúvida, pausada)', (kind, estado) => {
-      const s = lerSala(comPausa('{torto', estado), 'linux', agora)
+      const s = lerSala(comPausa('{torto', estado), 'linux', agora, FONTES)
       expect(s.kind).toBe(kind)
       expect(s.pausa).toEqual({ desde: null })
     })
   })
 
+  it('recursos que lança → os três sem-leitura, nos três ramos', () => {
+    const fontes = {
+      recursos: (): RecursosDaFabrica => {
+        throw new Error('sem /proc')
+      },
+      worktrees: () => [] as string[],
+    }
+    const esperado = {
+      sessoes: { kind: 'sem-leitura', motivo: 'sem /proc', teto: 3 },
+      suite: { kind: 'sem-leitura', motivo: 'sem /proc' },
+      disco: { kind: 'sem-leitura', motivo: 'sem /proc' },
+    }
+    const torto = nova()
+    writeFileSync(join(torto, 'estado.json'), '{')
+    const boa = nova()
+    cpSync(FIXTURE, boa, { recursive: true })
+    for (const pasta of [nova(), torto, boa]) {
+      expect(lerSala(pasta, 'linux', agora, fontes).recursos).toEqual(esperado)
+    }
+  })
+
+  it('worktrees que lança → o retrato sai, com "worktree ainda não criada"', () => {
+    const p = nova()
+    cpSync(FIXTURE_F2, p, { recursive: true })
+    const s = lerSala(p, 'linux', agora, {
+      recursos: () => RECURSOS,
+      worktrees: () => {
+        throw new Error('x')
+      },
+    })
+    expect(s.kind).toBe('ok')
+  })
+
+  it('despachos cuja sessão não existe em /proc → viva false; fora do Linux → null', () => {
+    const p = nova()
+    cpSync(FIXTURE_F2, p, { recursive: true })
+    const linux = lerSala(p, 'linux', agora, FONTES)
+    const outro = lerSala(p, 'win32', agora, FONTES)
+    if (linux.kind !== 'ok' || outro.kind !== 'ok') throw new Error('esperava ok')
+    expect(linux.emVoo.map((d) => d.viva)).toEqual([false, false, null, false])
+    expect(outro.emVoo.map((d) => d.viva)).toEqual([null, null, null, null])
+  })
+
   it('estado torto → ilegivel com a mensagem do parseEstado', () => {
     const p = nova()
     writeFileSync(join(p, 'estado.json'), '{')
-    const s = lerSala(p, 'linux', agora)
+    const s = lerSala(p, 'linux', agora, FONTES)
     expect(s.kind).toBe('ilegivel')
     if (s.kind === 'ilegivel') expect(s.erro.startsWith('estado.json ilegível')).toBe(true)
   })
@@ -417,13 +640,13 @@ describe('a leitura da sala', () => {
     const p = nova()
     const e = estadoDaFixture()
     writeFileSync(join(p, 'estado.json'), JSON.stringify({ ...e, fila: [null] }))
-    expect(lerSala(p, 'linux', agora).kind).toBe('ilegivel')
+    expect(lerSala(p, 'linux', agora, FONTES).kind).toBe('ilegivel')
   })
 
   it('a fixture copiada → ok, e a pergunta lê a saída da sessão', () => {
     const p = nova()
     cpSync(FIXTURE, p, { recursive: true })
-    expect(lerSala(p, 'linux', agora).kind).toBe('ok')
+    expect(lerSala(p, 'linux', agora, FONTES).kind).toBe('ok')
     expect(lerPergunta(p, 'q-0003')?.resultado).toContain('Feito o desenho.')
     // saída vazia (0 byte) → sem resultado, mas a pergunta existe
     expect(lerPergunta(p, 'q-0006')?.resultado).toBeNull()
@@ -515,7 +738,7 @@ describe('a sala só lê', () => {
     'openSync',
   ]
   // O `comando.ts` entra na mesma lista (#129): ele só chega à pasta pelo `executar` do CLI.
-  it.each(['sala.ts', 'comando.ts'])(
+  it.each(['sala.ts', 'comando.ts', 'recursos.ts'])(
     'src/main/fabrica/%s não nomeia nenhuma porta de escrita',
     (arquivo) => {
       const texto = readFileSync(
