@@ -150,6 +150,10 @@ describe('a superfície de board é somente-leitura', () => {
     // a janela e encerrar uma sessão são coisas diferentes, e dois `close` na mesma superfície é
     // como alguém liga o botão errado.
     //
+    // **E a dos dois canais da sala da fábrica (#122)**: `fabrica:read` e `fabrica:read-pergunta`
+    // leem a pasta da fábrica, não escrevem nela e não tocam o board. Prefixo novo, sem exceção
+    // nominal no filtro de `boards:`/`card:`.
+    //
     // **E a dos onze canais do #74** (terminal embutido, sessão livre, disposição da mesa).
     // **Nenhum toca o board, nem para ler**: `terminal:*` fala com um shell local; `free:*` e
     // `layout:*` falam com arquivos do próprio app em `OC_STATE_DIR`. Os prefixos são famílias novas,
@@ -193,6 +197,8 @@ describe('a superfície de board é somente-leitura', () => {
       bringBackCardWindow: 'cardWindow:bringBack',
       focusCardWindow: 'cardWindow:focus',
       readCardWindows: 'cardWindow:read',
+      readFabrica: 'fabrica:read',
+      readFabricaPergunta: 'fabrica:read-pergunta',
     })
   })
 
