@@ -28,6 +28,7 @@ describe('trilhaDa', () => {
       [{ tela: 'entrada' }, ['Sala de controle', 'Entrada']],
       [{ tela: 'relatorio' }, ['Sala de controle', 'Relatório de 11/11']],
       [{ tela: 'portfolio' }, ['Sala de controle', 'Portfólio']],
+      [{ tela: 'portfolio', dia: '2026-11-10' }, ['Sala de controle', 'Portfólio']],
       [{ tela: 'mandato' }, ['Sala de controle', 'Mandato']],
       [{ tela: 'briefing' }, ['Sala de controle', 'Briefing do dia']],
       [{ tela: 'release' }, ['Sala de controle', 'Release']],

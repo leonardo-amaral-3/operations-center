@@ -2,13 +2,13 @@ import type { JSX } from 'react'
 
 import type { ComandoDaFabrica, SalaDaFabrica } from '../../shared/fabrica'
 import { CabecalhoInterno, TelaPorVir } from './Moldura'
-import { RelatorioDaSalaView } from './Relatorio'
 import { trilhaDa, type NomeDaTela, type TelaDaFabrica } from './rotas'
 import { Agentes } from './telas/Agentes'
 import { CardEmVoo } from './telas/Card'
 import { Decisao } from './telas/Decisao'
 import { Entrada } from './telas/Entrada'
 import { Pergunta } from './telas/Pergunta'
+import { Relatorio } from './telas/Relatorio'
 import { Sala } from './telas/Sala'
 
 /** O que toda tela recebe da raiz (`Fabrica.tsx`). */
@@ -37,12 +37,7 @@ function porVir(fase: string) {
 export const TELAS: Record<NomeDaTela, (p: PropsDaTela) => JSX.Element> = {
   sala: Sala,
   pergunta: Pergunta,
-  relatorio: (p) => (
-    <>
-      <CabecalhoInterno trilha={trilhaDa(p.tela, new Date())} onIr={p.ir} />
-      <RelatorioDaSalaView />
-    </>
-  ),
+  relatorio: Relatorio,
   agentes: Agentes,
   decisao: Decisao,
   card: CardEmVoo,
