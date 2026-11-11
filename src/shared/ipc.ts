@@ -9,10 +9,12 @@
 
 import type { BoardsSnapshot, CardContent, PullRequestView } from './board'
 import type {
+  ComandoDaFabrica,
   PerguntaDaFila,
   ReadPerguntaRequest,
   ReadRelatorioRequest,
   RelatorioDaSala,
+  ResultadoDoComando,
   SalaDaFabrica,
 } from './fabrica'
 import type {
@@ -139,6 +141,11 @@ export const IPC_INVOKE = {
    */
   readFabrica: 'fabrica:read',
   readFabricaPergunta: 'fabrica:read-pergunta',
+  /**
+   * O único canal que **escreve** na pasta da fábrica (#129), sempre por um subcomando do
+   * `yarn fabrica` numa lista fechada (`SUBCOMANDOS_DO_APP`); não toca o board.
+   */
+  comandoFabrica: 'fabrica:comando',
   /**
    * O relatório do dia (#126), o mesmo do `yarn relatorio`. **Lê** o cofre, o git e o board, e não
    * escreve em nenhum dos três.
@@ -749,6 +756,7 @@ export interface OcApi {
   readFabrica(): Promise<SalaDaFabrica>
   readFabricaPergunta(pedido: ReadPerguntaRequest): Promise<PerguntaDaFila | null>
   readRelatorio(pedido: ReadRelatorioRequest): Promise<RelatorioDaSala>
+  comandoFabrica(pedido: ComandoDaFabrica): Promise<ResultadoDoComando>
 }
 
 declare global {

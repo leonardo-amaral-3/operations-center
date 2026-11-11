@@ -43,18 +43,40 @@ export interface DespachoNaSala {
   lancadoEm: string | null
 }
 
+/** A pausa da fábrica (#129): `pausa.json` existe. `desde: null` quando o arquivo está torto. */
+export interface PausaDaFabrica {
+  desde: string | null
+}
+
+/** O que os três ramos do retrato dividem: o projeto, o despachante e a pausa (F1.5). */
+interface CabecalhoDaSala {
+  lidoEm: string
+  projeto: string // 'Operations Center · Project 2'
+  despachante: EstadoDoDespachante
+  pausa: PausaDaFabrica | null // null: não está pausada
+}
+
 export type SalaDaFabrica =
-  | { kind: 'sem-estado'; lidoEm: string }
-  | { kind: 'ilegivel'; lidoEm: string; erro: string }
-  | {
+  | ({ kind: 'sem-estado' } & CabecalhoDaSala)
+  | ({ kind: 'ilegivel'; erro: string } & CabecalhoDaSala)
+  | ({
       kind: 'ok'
-      lidoEm: string
-      despachante: EstadoDoDespachante
       emVoo: DespachoNaSala[]
       abertos: ItemNaSala[]
       fechados: ItemNaSala[]
       frentesAbertas: number
-    }
+    } & CabecalhoDaSala)
+
+/** Os comandos do `yarn fabrica` que o app pode rodar (#129). Cada fase acrescenta os seus. */
+export type ComandoDaFabrica = { tipo: 'pausar' } | { tipo: 'retomar' }
+
+export interface ResultadoDoComando {
+  ok: boolean // codigo === 0
+  codigo: number // o código de saída do `executar`
+  argv: string[] // o que rodou, para a tela e para o teste
+  saida: string // o que o `executar` escreveu, linhas juntas por '\n'
+  erro: string // o que ele avisou, idem
+}
 
 export interface PerguntaDaFila {
   item: ItemNaSala

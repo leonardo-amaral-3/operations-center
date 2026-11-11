@@ -11,7 +11,13 @@ import type { SalaDaFabrica } from '../../src/shared/fabrica'
  * `window.oc.readFabrica` falso: o main nem entra.
  */
 
-const lido = (lidoEm: string): SalaDaFabrica => ({ kind: 'sem-estado', lidoEm })
+const lido = (lidoEm: string): SalaDaFabrica => ({
+  kind: 'sem-estado',
+  lidoEm,
+  projeto: 'Operations Center · Project 2',
+  despachante: 'parado',
+  pausa: null,
+})
 
 const readFabrica = vi.fn<() => Promise<SalaDaFabrica>>()
 

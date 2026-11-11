@@ -3,6 +3,7 @@ import type {
   EstacaoDaFabrica,
   EstadoDoDespachante,
   ItemNaSala,
+  PausaDaFabrica,
   PerguntaDaFila,
   SalaDaFabrica,
 } from '../../shared/fabrica'
@@ -66,7 +67,12 @@ function paraItem(e: EstadoDaFabrica, item: ItemDaFila): ItemNaSala {
 
 export function montarSala(
   e: EstadoDaFabrica,
-  ctx: { despachante: EstadoDoDespachante; lidoEm: string },
+  ctx: {
+    despachante: EstadoDoDespachante
+    lidoEm: string
+    projeto: string
+    pausa: PausaDaFabrica | null
+  },
 ): Extract<SalaDaFabrica, { kind: 'ok' }> {
   const abertos = e.fila
     .filter((i) => i.fechadoEm === null)
@@ -93,7 +99,9 @@ export function montarSala(
   return {
     kind: 'ok',
     lidoEm: ctx.lidoEm,
+    projeto: ctx.projeto,
     despachante: ctx.despachante,
+    pausa: ctx.pausa,
     emVoo,
     abertos,
     fechados,

@@ -154,6 +154,11 @@ describe('a superfície de board é somente-leitura', () => {
     // leem a pasta da fábrica, não escrevem nela e não tocam o board. Prefixo novo, sem exceção
     // nominal no filtro de `boards:`/`card:`.
     //
+    // **E a do canal de escrita da fábrica (#129)**: `fabrica:comando` é o **único** canal que
+    // escreve na pasta da fábrica, e só por um subcomando do `yarn fabrica` numa lista fechada
+    // (`SUBCOMANDOS_DO_APP`: `pausar`, `retomar`). Não toca o board, nem para ler; fica na família
+    // `fabrica:`, sem exceção nominal no filtro de `boards:`/`card:`.
+    //
     // **E a dos onze canais do #74** (terminal embutido, sessão livre, disposição da mesa).
     // **Nenhum toca o board, nem para ler**: `terminal:*` fala com um shell local; `free:*` e
     // `layout:*` falam com arquivos do próprio app em `OC_STATE_DIR`. Os prefixos são famílias novas,
@@ -199,6 +204,7 @@ describe('a superfície de board é somente-leitura', () => {
       readCardWindows: 'cardWindow:read',
       readFabrica: 'fabrica:read',
       readFabricaPergunta: 'fabrica:read-pergunta',
+      comandoFabrica: 'fabrica:comando',
       readRelatorio: 'relatorio:read',
     })
   })

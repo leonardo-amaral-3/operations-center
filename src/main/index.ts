@@ -37,6 +37,9 @@ import {
   saveConversations,
 } from './conversations'
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
+import { REPO_DA_FABRICA } from '../core/fabrica/mandato'
+import { criarExecutorDeComando, registerComandoIpc } from './fabrica/comando'
+import { lerMandato } from './fabrica/github'
 import { pastaDaSala, registerFabricaIpc } from './fabrica/sala'
 import { registerRelatorioIpc } from './relatorio/sala'
 import type { DangerGate } from './danger'
@@ -386,6 +389,23 @@ dangerIpc?.refresh()
 // A sala da fábrica (#122): só quando o processo sobe na tela do kanban, como o `registerDangerIpc`
 // acima; as janelas de card do mesmo processo não chamam estes canais. Só lê a pasta da fábrica.
 if (screen === 'kanban') registerFabricaIpc(pastaDaSala(process.env, homedir()))
+
+// O canal de escrita da fábrica (#129): roda `pausar`/`retomar` do `yarn fabrica` em processo, pela
+// mesma pasta que a sala lê (`OC_FABRICA_DIR` vale para os dois). Não toca o board.
+if (screen === 'kanban')
+  registerComandoIpc(
+    criarExecutorDeComando({
+      raizDoRepo: join(homedir(), 'pessoal', REPO_DA_FABRICA.name),
+      env: process.env,
+      platform: process.platform,
+      home: homedir(),
+      agora: () => new Date().toISOString(),
+      lerMandato,
+      graphql: createGraphQL(),
+      intervaloMs: 5000,
+      sinal: new AbortController().signal,
+    }),
+  )
 
 // O relatório do dia (#126), na mesma tela e pela mesma razão. Um `createGraphQL()` por leitor (O19).
 if (screen === 'kanban')
