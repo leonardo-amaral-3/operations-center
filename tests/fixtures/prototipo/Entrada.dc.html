@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Entrada: a demanda antes da triagem</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ECE3F8}
+a{color:#000}a:hover{color:#4B2FA8}
+.nb{background:#fff;border:2px solid #000;border-radius:5px;box-shadow:4px 4px 0 #000;box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;gap:6px;border:2px solid #000;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700;line-height:18px;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;border:1.5px solid #000;border-radius:4px;padding:0 6px;font-size:11px;font-weight:700;line-height:18px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 14px;border:2px solid #000;border-radius:5px;box-shadow:3px 3px 0 #000;font:700 13px 'DM Sans',sans-serif;text-decoration:none;color:#000;cursor:pointer}
+.src{min-height:40px;padding:0 14px;border:2px solid #000;border-radius:5px;font:700 13px 'DM Sans',sans-serif;cursor:pointer;color:#000}
+.raw{border:2px dashed #000;border-radius:5px;padding:10px 12px;font-size:13px;line-height:18px;background:#F4F0FA}
+.step{display:flex;gap:10px;font-size:13px;line-height:18px}
+.num{flex:0 0 auto;width:24px;height:24px;border:2px solid #000;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:#fff}
+</style>
+</helmet>
+<div style="min-height: 1000px; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 20px; font-family: 'DM Sans', sans-serif; font-weight: 500; color: #000; background: #ECE3F8">
+
+<header class="nb" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px">
+  <nav aria-label="Caminho" style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700">
+    <a href="Main.dc.html">Sala de controle</a><span aria-hidden="true">/</span><span>Entrada</span>
+  </nav>
+  <span class="chip" style="background: #fff">Nível A · rascunho em Triagem · S1 avisa na hora</span>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <main style="flex: 999 1 680px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+      <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 24px">O que chegou</h1>
+      <div role="group" aria-label="Fontes" style="display: flex; flex-wrap: wrap; gap: 8px">
+        <sc-for list="{{fontes}}" as="f" hint-placeholder-count="5">
+          <button type="button" class="src" aria-pressed="{{f.on}}" onClick="{{f.pick}}" style="{{f.style}}">{{f.nome}}</button>
+        </sc-for>
+      </div>
+    </div>
+
+    <article class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center"><span class="chip" style="background: #fff">Vigia</span><span style="font-size: 12px; color: #3D3D3D">alerta de produção</span></div>
+      <div class="raw">Alerta «regras-nao-avaliadas»: regras do gestor aparecem como não avaliadas.</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
+        <span class="chip" style="background: #6CC4EE">já existe</span>
+        <span style="flex: 1 1 300px; font-size: 14px; line-height: 20px">O agente achou o <b>#1868</b>, «Publicar a BDNAIH e a TB_MUN do SIHD2 e tirar as regras do gestor do alerta do Vigia», com a PR #1871 aberta. Não abre card novo.</span>
+        <button class="btn" type="button" style="background: #fff">Anexar ao #1868</button>
+      </div>
+    </article>
+
+    <article class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center"><span class="chip" style="background: #fff">Suporte</span><span style="font-size: 12px; color: #3D3D3D">exemplo do caminho S1, já resolvido</span></div>
+      <div class="raw">A crítica 000011 não acusa paciente sem CPF quando o Registro Civil é S.</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
+        <span class="chip" style="background: #F07468">S1 · Hotfix</span>
+        <span style="flex: 1 1 300px; font-size: 14px; line-height: 20px">S1 não espera a fila: você recebe o aviso na hora e o rascunho sai pela rota Hotfix. Foi o caminho do <b>#1866</b>.</span>
+        <button class="btn" type="button" style="background: #fff">Ver #1866</button>
+      </div>
+    </article>
+
+    <article class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center"><span class="chip" style="background: #fff">Slack</span><span style="font-size: 12px; color: #3D3D3D">relato de um dev</span></div>
+      <div class="raw">[texto do relato, com três pontos sobre o mesmo fluxo]</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
+        <span class="chip" style="background: #86DB84">rascunho pronto</span>
+        <span style="flex: 1 1 300px; font-size: 14px; line-height: 20px">Um escopo só: o agente propõe <b>um épico</b> com os três pontos, e não três cards soltos. Tipo e severidade sugeridos para você conferir no G1.</span>
+        <button class="btn" type="button" style="background: #86DB84">Ver rascunho</button>
+      </div>
+    </article>
+
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 10px">
+      <label for="novo" style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px">Contar algo que te reportaram</label>
+      <textarea id="novo" rows="3" placeholder="Visão de produto, feedback do gestor, pedido de secretaria…" style="box-sizing: border-box; width: 100%; border: 2px solid #000; border-radius: 5px; padding: 10px 12px; font: 500 14px 'DM Sans', sans-serif; resize: vertical"></textarea>
+      <div><button class="btn" type="button" style="background: #A388EE">Mandar para a entrada</button></div>
+    </section>
+  </main>
+
+  <aside style="flex: 1 1 300px; max-width: 400px; display: flex; flex-direction: column; gap: 16px">
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Como o agente de entrada trabalha</h2>
+      <div class="step"><span class="num">1</span><span>Lê Slack, suporte, Vigia e o que você conta.</span></div>
+      <div class="step"><span class="num">2</span><span>Procura no board e no cérebro se já existe.</span></div>
+      <div class="step"><span class="num">3</span><span>Pergunta «um escopo ou vários?» antes de criar.</span></div>
+      <div class="step"><span class="num">4</span><span>Sugere tipo, severidade e rota.</span></div>
+      <div class="step"><span class="num">5</span><span>Deixa o rascunho em Triagem. S1 te avisa na hora.</span></div>
+    </section>
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 8px; background: #A388EE">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">O que ele não faz</h2>
+      <p style="margin: 0; font-size: 13px; line-height: 18px">Não promove card: isso é o G1. Não responde no Slack em seu nome fora da allowlist.</p>
+    </section>
+  </aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { f: 'Tudo' };
+  }
+  renderVals() {
+    const nomes = ['Tudo', 'Slack', 'Suporte', 'Vigia', 'Você'];
+    return {
+      fontes: nomes.map((n) => {
+        const on = this.state.f === n;
+        return { nome: n, on: on ? 'true' : 'false', style: on ? 'background: #A388EE' : 'background: #fff', pick: () => this.setState({ f: n }) };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
