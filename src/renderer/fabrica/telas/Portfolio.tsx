@@ -187,6 +187,7 @@ function Detalhe({
         No cofre: <code>{d.arquivo}</code>
       </p>
       <BotoesDaRevisao
+        key={d.arquivo}
         decisao={d}
         revisao={r}
         podeLer={podeLer}
@@ -320,7 +321,10 @@ function Corpo({
             textos vêm do cofre; os estados, das revisões gravadas pelo yarn fabrica.
           </p>
         </section>
+        {/* A `key` zera a caixa de contestação ao trocar de linha: sem ela, o motivo escrito para uma
+            decisão seria gravado na outra (G4 da PR #140). */}
         <Detalhe
+          key={escolhida?.arquivo ?? ''}
           d={escolhida}
           dia={dia}
           p={p}

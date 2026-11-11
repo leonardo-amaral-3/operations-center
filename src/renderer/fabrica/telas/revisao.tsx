@@ -79,7 +79,7 @@ export function BotoesDaRevisao(p: {
               type="button"
               size="sm"
               data-testid="fabrica-contestar-gravar"
-              disabled={motivo.trim() === '' || p.emVoo}
+              disabled={!habilitado || motivo.trim() === ''}
               onClick={() => {
                 void (async () => {
                   await p.comando({

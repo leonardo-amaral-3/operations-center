@@ -4,11 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PropsDaTela } from '../../src/renderer/fabrica/telas'
 import { Portfolio } from '../../src/renderer/fabrica/telas/Portfolio'
+import { BotoesDaRevisao } from '../../src/renderer/fabrica/telas/revisao'
 import { esquecerRelatorios } from '../../src/renderer/fabrica/useDia'
 import type {
   ComandoDaFabrica,
   PainelDoDia,
   RelatorioDaSala,
+  RevisaoNaSala,
   RevisoesNaSala,
 } from '../../src/shared/fabrica'
 import { A1, A2, A3, A4, A5, A8, A9, PAINEL_F5, REVISAO_A4 } from './painel-f5'
@@ -331,6 +333,72 @@ describe('Portfólio: confirmar e contestar (CA-5.2)', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('fabrica-contestar-motivo')).toBeNull()
     })
+  })
+
+  it('trocar de linha com a caixa aberta zera a caixa: o motivo não vai para outra decisão', async () => {
+    const comando = vi.fn<(c: ComandoDaFabrica) => Promise<void>>().mockResolvedValue(undefined)
+    await abrir({ comando })
+    expect(detalhe().textContent).toContain(`No cofre: ${A2}`)
+
+    fireEvent.click(within(detalhe()).getByTestId('fabrica-contestar'))
+    fireEvent.change(screen.getByTestId('fabrica-contestar-motivo'), {
+      target: { value: 'motivo escrito para a A2' },
+    })
+
+    fireEvent.click(document.querySelector(`[data-arquivo="${A3}"]`) as HTMLElement)
+    expect(detalhe().textContent).toContain(`No cofre: ${A3}`)
+    expect(screen.queryByTestId('fabrica-contestar-motivo')).toBeNull()
+    expect(screen.queryByTestId('fabrica-contestar-gravar')).toBeNull()
+
+    // Abrir a caixa na A3 começa vazia, e o que se grava é da A3.
+    fireEvent.click(within(detalhe()).getByTestId('fabrica-contestar'))
+    expect(screen.getByTestId<HTMLTextAreaElement>('fabrica-contestar-motivo').value).toBe('')
+    fireEvent.change(screen.getByTestId('fabrica-contestar-motivo'), {
+      target: { value: 'motivo da A3' },
+    })
+    fireEvent.click(screen.getByTestId('fabrica-contestar-gravar'))
+    expect(comando).toHaveBeenCalledTimes(1)
+    expect(comando).toHaveBeenCalledWith({ tipo: 'contestar', arquivo: A3, motivo: 'motivo da A3' })
+  })
+
+  it('Gravar contestação segue o habilitado: decisão que deixou de estar aberta não grava', () => {
+    const d = PAINEL_F5.decisoes.find((x) => x.arquivo === A2)
+    if (d === undefined) throw new Error('A2 sumiu do painel')
+    const comando = vi.fn<(c: ComandoDaFabrica) => Promise<void>>().mockResolvedValue(undefined)
+    const botoes = (revisao: RevisaoNaSala | undefined, podeLer = true) => (
+      <BotoesDaRevisao
+        decisao={d}
+        revisao={revisao}
+        podeLer={podeLer}
+        comando={comando}
+        emVoo={false}
+        aoGravar={() => Promise.resolve()}
+        terceiro={<span />}
+        sempre
+      />
+    )
+    const { rerender } = render(botoes(undefined))
+    fireEvent.click(screen.getByTestId('fabrica-contestar'))
+    fireEvent.change(screen.getByTestId('fabrica-contestar-motivo'), {
+      target: { value: 'um motivo' },
+    })
+    const gravar = () => screen.getByTestId<HTMLButtonElement>('fabrica-contestar-gravar')
+    expect(gravar().disabled).toBe(false)
+
+    rerender(botoes(undefined, false))
+    expect(gravar().disabled).toBe(true)
+
+    rerender(
+      botoes({
+        arquivo: A2,
+        veredito: 'confirmada',
+        em: '2026-11-11T10:00:00.000Z',
+        motivo: null,
+        atendida: null,
+      }),
+    )
+    fireEvent.click(gravar())
+    expect(comando).not.toHaveBeenCalled()
   })
 
   it('emVoo desabilita Confirmar e Contestar', async () => {
