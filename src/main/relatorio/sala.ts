@@ -1,7 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 import { ipcMain } from 'electron'
@@ -9,7 +8,7 @@ import { ipcMain } from 'electron'
 import type { GraphQLFn } from '../../core/board/types'
 import type { RelatorioDaSala } from '../../shared/fabrica'
 import { IPC_INVOKE } from '../../shared/ipc'
-import { dataValida, gerarRelatorio, REPO, type DepsDoRelatorio } from './gerar'
+import { dataValida, gerarRelatorio, pastasDoRelatorio, type DepsDoRelatorio } from './gerar'
 
 /**
  * O canal do relatório da sala (#126, spec-p3 §B2). Só lê (cofre, git e board) e nunca rejeita: o
@@ -74,9 +73,7 @@ export function responderRelatorio(
 
   if (existente !== undefined) return existente
 
-  const pastaDoCofre =
-    deps.env.OC_RELATORIO_COFRE || join(deps.home, 'notoria', 'claude', 'decisoes')
-  const pastaDoRepo = deps.env.OC_RELATORIO_REPO || join(deps.home, 'pessoal', REPO.name)
+  const { cofre: pastaDoCofre, repo: pastaDoRepo } = pastasDoRelatorio(deps.env, deps.home)
   const promessa = gerar(deps, dia, pastaDoCofre, pastaDoRepo).finally(() => {
     deps.emVoo.delete(dia)
   })

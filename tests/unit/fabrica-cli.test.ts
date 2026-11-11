@@ -13,7 +13,7 @@ import {
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GraphQLFn } from '../../src/core/board/types'
 import { marcarLancando } from '../../src/core/fabrica/despachante'
 import { montarPrompt } from '../../src/core/fabrica/mandato'
@@ -29,7 +29,26 @@ import { executar, type DepsDoCli } from '../../src/main/fabrica/cli'
 import { lerItemNoBoard } from '../../src/main/fabrica/github'
 import { envLimpo } from '../../src/main/fabrica/lancador'
 
+// O gancho da corrida: com `releitura` posta, a segunda leitura do `revisoes.jsonl` em diante devolve
+// o texto dela, como se outro escritor tivesse chegado antes (spec F5 §F5.5, passo 5).
+const gancho = vi.hoisted(() => ({ releitura: null as string | null, leituras: 0 }))
+vi.mock('../../src/main/fabrica/revisoes', async (original) => {
+  const real = await original<typeof import('../../src/main/fabrica/revisoes')>()
+  return {
+    ...real,
+    lerTextoDasRevisoes: (pasta: string): string | null => {
+      gancho.leituras += 1
+      return gancho.releitura !== null && gancho.leituras >= 2
+        ? gancho.releitura
+        : real.lerTextoDasRevisoes(pasta)
+    },
+  }
+})
+
 const RAIZ = join(__dirname, '..', '..')
+const COFRE = join(RAIZ, 'tests', 'fixtures', 'fabrica', 'f5-cofre')
+const DECISAO = '2026-11-10-o-teto-de-sessoes-passa-a-3.md'
+const OUTRA = '2026-11-10-card-46-triado.md'
 const MANDATO = `MANDATO DE TESTE ${randomUUID()}\n- regra do teste\n`
 const MARCA_DA_PROVA = MANDATO.split('\n')[0] as string
 const AGORA = '2026-11-11T10:00:00.000Z'
@@ -40,6 +59,8 @@ let saidaDoFalso = ''
 const processos: ChildProcess[] = []
 
 beforeEach(() => {
+  gancho.releitura = null
+  gancho.leituras = 0
   // Dentro do repo, e não no `/tmp`, que a fábrica recusa (spec P2 §6).
   pasta = mkdtempSync(join(RAIZ, 'node_modules', '.oc-fabrica-teste-'))
   saidaDoFalso = join(pasta, 'falso-saida')
@@ -419,6 +440,193 @@ describe('CLI', () => {
       const m = montar({}, {}, { OC_FABRICA_DIR: dentro })
       expect(await rodar(m, 'entrada', 'a')).toBe(2)
       expect(existsSync(dentro)).toBe(false)
+    })
+  })
+
+  describe('revisões: confirmar, contestar e atender', () => {
+    const montarRevisoes = (): Montagem => montar({}, {}, { OC_RELATORIO_COFRE: COFRE })
+    const jsonl = (): string => readFileSync(join(pasta, 'revisoes.jsonl'), 'utf8')
+
+    it('confirmar grava, escreve <arquivo> confirmada e sai 0; de novo recusa e não mexe no arquivo', async () => {
+      expect(pasta).toContain('.oc-fabrica-teste-')
+      const m = montarRevisoes()
+      expect(await rodar(m, 'confirmar', DECISAO)).toBe(0)
+      expect(m.saida).toEqual([`${DECISAO} confirmada`])
+      const antes = jsonl()
+      expect(JSON.parse(antes)).toEqual({ tipo: 'confirmada', arquivo: DECISAO, em: AGORA })
+      expect(await rodar(m, 'confirmar', DECISAO)).toBe(1)
+      expect(m.avisos).toEqual([`fabrica: ${DECISAO} já foi confirmada em ${AGORA}`])
+      expect(jsonl()).toBe(antes)
+      expect(existsSync(join(pasta, 'estado.json'))).toBe(false)
+    })
+
+    it('contestar sem motivo dá 1; com motivo grava', async () => {
+      const m = montarRevisoes()
+      expect(await rodar(m, 'contestar', DECISAO, '  ')).toBe(1)
+      expect(m.avisos).toEqual(['fabrica: falta o motivo da contestação'])
+      expect(existsSync(join(pasta, 'revisoes.jsonl'))).toBe(false)
+      expect(await rodar(m, 'contestar', DECISAO, ' o teto é 5 ')).toBe(0)
+      expect(m.saida).toEqual([`${DECISAO} contestada`])
+      expect(JSON.parse(jsonl())).toEqual({
+        tipo: 'contestada',
+        arquivo: DECISAO,
+        em: AGORA,
+        motivo: 'o teto é 5',
+      })
+    })
+
+    it('arquivo fora do cofre dá 1 sem gravar; nome inválido dá 1 antes de olhar o cofre', async () => {
+      const m = montarRevisoes()
+      expect(await rodar(m, 'confirmar', '2026-11-10-nao-existe.md')).toBe(1)
+      expect(m.avisos[0]).toBe(`fabrica: não há 2026-11-10-nao-existe.md no cofre (${COFRE})`)
+      expect(await rodar(m, 'contestar', '2026-11-10-nao-existe.md', 'x')).toBe(1)
+      for (const ruim of ['../x.md', 'x.md']) {
+        m.avisos.length = 0
+        expect(await rodar(m, 'confirmar', ruim)).toBe(1)
+        expect(m.avisos).toEqual([`fabrica: nome de arquivo do cofre inválido: ${ruim}`])
+      }
+      expect(existsSync(join(pasta, 'revisoes.jsonl'))).toBe(false)
+    })
+
+    it('atender sem contestação dá 1; atender fecha, e não confere o cofre', async () => {
+      const m = montarRevisoes()
+      expect(await rodar(m, 'atender', DECISAO, 'feito')).toBe(1)
+      expect(m.avisos).toEqual([`fabrica: ${DECISAO} não tem contestação`])
+      await rodar(m, 'contestar', DECISAO, 'errado')
+      m.saida.length = 0
+      m.avisos.length = 0
+      // O cofre da montagem não tem o arquivo: o atender não olha.
+      const sem = montar({}, {}, { OC_RELATORIO_COFRE: join(pasta, 'cofre-vazio') })
+      expect(await rodar(sem, 'atender', DECISAO, ' corrigido ')).toBe(0)
+      expect(sem.saida).toEqual([`${DECISAO} atendida`])
+      expect(JSON.parse(jsonl().trim().split('\n')[1] as string)).toEqual({
+        tipo: 'atendida',
+        arquivo: DECISAO,
+        em: AGORA,
+        resolucao: 'corrigido',
+      })
+      expect(await rodar(sem, 'atender', DECISAO, 'de novo')).toBe(1)
+      expect(sem.avisos).toEqual([`fabrica: ${DECISAO} já foi atendida em ${AGORA}`])
+    })
+
+    it('argumentos a mais e a menos dão 1, com a linha de uso', async () => {
+      const m = montarRevisoes()
+      const casos: [string[], string][] = [
+        [['confirmar'], 'fabrica: falta o arquivo: confirmar <arquivo>'],
+        [['confirmar', 'a', 'b'], 'fabrica: argumento a mais: b'],
+        [['contestar', 'a'], 'fabrica: faltam argumentos: contestar <arquivo> "<motivo>"'],
+        [['contestar', 'a', 'b', 'c'], 'fabrica: argumento a mais: c'],
+        [['atender', 'a'], 'fabrica: faltam argumentos: atender <arquivo> "<resolução>"'],
+        [['atender', 'a', 'b', 'c'], 'fabrica: argumento a mais: c'],
+      ]
+      for (const [argv, aviso] of casos) {
+        m.avisos.length = 0
+        expect(await rodar(m, ...argv)).toBe(1)
+        expect(m.avisos[0]).toBe(aviso)
+        expect(m.avisos[1]).toMatch(
+          /^uso: yarn fabrica .*confirmar <arquivo> \| contestar <arquivo> "<motivo>" \| atender <arquivo> "<resolução>"\]$/,
+        )
+      }
+    })
+
+    it('a corrida: outra revisão do mesmo arquivo chega antes e a primeira vence', async () => {
+      const m = montarRevisoes()
+      gancho.releitura =
+        JSON.stringify({
+          tipo: 'contestada',
+          arquivo: DECISAO,
+          em: '2026-11-11T09:59:59.000Z',
+          motivo: 'x',
+        }) +
+        '\n' +
+        JSON.stringify({ tipo: 'confirmada', arquivo: DECISAO, em: AGORA }) +
+        '\n'
+      expect(await rodar(m, 'confirmar', DECISAO)).toBe(1)
+      expect(m.saida).toEqual([])
+      expect(m.avisos).toEqual([
+        `fabrica: outra revisão de ${DECISAO} chegou antes: contestada em 2026-11-11T09:59:59.000Z`,
+      ])
+    })
+
+    it('a corrida no atender, e a linha que não volta na releitura', async () => {
+      const m = montarRevisoes()
+      await rodar(m, 'contestar', DECISAO, 'errado')
+      gancho.leituras = 0
+      gancho.releitura =
+        jsonl() +
+        JSON.stringify({
+          tipo: 'atendida',
+          arquivo: DECISAO,
+          em: '2026-11-11T09:59:59.000Z',
+          resolucao: 'x',
+        }) +
+        '\n'
+      m.avisos.length = 0
+      expect(await rodar(m, 'atender', DECISAO, 'y')).toBe(1)
+      expect(m.avisos).toEqual([
+        `fabrica: outra revisão de ${DECISAO} chegou antes: já foi atendida em 2026-11-11T09:59:59.000Z`,
+      ])
+      gancho.leituras = 0
+      gancho.releitura = ''
+      m.avisos.length = 0
+      expect(await rodar(m, 'confirmar', OUTRA)).toBe(1)
+      expect(m.avisos).toEqual([
+        `fabrica: a revisão de ${OUTRA} não voltou na releitura do revisoes.jsonl`,
+      ])
+    })
+
+    it('estado lista só a contestação aberta, com o motivo cortado em 80, e atender a tira', async () => {
+      const m = montarRevisoes()
+      await rodar(m, 'confirmar', OUTRA)
+      await rodar(m, 'contestar', DECISAO, 'b'.repeat(100) + '\nsegunda linha')
+      m.saida.length = 0
+      expect(await rodar(m, 'estado')).toBe(0)
+      expect(m.saida).toEqual([`contestada ${DECISAO} em ${AGORA}: ${'b'.repeat(79)}…`])
+      await rodar(m, 'atender', DECISAO, 'feito')
+      m.saida.length = 0
+      expect(await rodar(m, 'estado')).toBe(0)
+      expect(m.saida).toEqual(['nada registrado'])
+      expect(existsSync(join(pasta, 'estado.json'))).toBe(false)
+    })
+
+    it('estado avisa as linhas ilegíveis depois do aviso da entrada, e não diz nada registrado', async () => {
+      writeFileSync(join(pasta, 'entrada.json'), '{')
+      writeFileSync(join(pasta, 'revisoes.jsonl'), '{torta\n')
+      const m = montarRevisoes()
+      expect(await rodar(m, 'estado')).toBe(0)
+      expect(m.saida).toEqual([])
+      expect(m.avisos[0]).toMatch(/^fabrica: entrada\.json ilegível/)
+      expect(m.avisos[1]).toBe('fabrica: revisoes.jsonl tem 1 linha ilegível')
+      writeFileSync(join(pasta, 'revisoes.jsonl'), '{a\n{b\n')
+      m.avisos.length = 0
+      rmSync(join(pasta, 'entrada.json'))
+      await rodar(m, 'estado')
+      expect(m.saida).toEqual([])
+      expect(m.avisos).toEqual(['fabrica: revisoes.jsonl tem 2 linhas ilegíveis'])
+    })
+
+    it('estado com revisoes.jsonl que é pasta avisa o erro e não diz nada registrado', async () => {
+      mkdirSync(join(pasta, 'revisoes.jsonl'))
+      const m = montarRevisoes()
+      expect(await rodar(m, 'estado')).toBe(0)
+      expect(m.saida).toEqual([])
+      expect(m.avisos).toHaveLength(1)
+      expect(m.avisos[0]).toMatch(/^fabrica: revisoes\.jsonl: /)
+    })
+
+    it('estado sem revisoes.jsonl sai como antes', async () => {
+      const m = montarRevisoes()
+      expect(await rodar(m, 'estado')).toBe(0)
+      expect(m.saida).toEqual(['nada registrado'])
+      expect(m.avisos).toEqual([])
+    })
+
+    it('outro subcomando não mexe no revisoes.jsonl', async () => {
+      const m = montarRevisoes()
+      await rodar(m, 'contestar', DECISAO, 'x')
+      const antes = jsonl()
+      expect(await rodar(m, 'pausar')).toBe(0)
+      expect(jsonl()).toBe(antes)
     })
   })
 

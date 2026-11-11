@@ -206,3 +206,16 @@ export interface AssumirDespachoRequest {
 export type AssumirDespachoResult =
   | { ok: true; anterior: string | null } // a conversa que o cartão tinha, quando era outra
   | { ok: false; motivo: string }
+
+/** O veredito de uma decisão do cofre (F5), lido do `revisoes.jsonl`. */
+export interface RevisaoNaSala {
+  arquivo: string
+  veredito: 'confirmada' | 'contestada'
+  em: string // ISO
+  motivo: string | null // só na contestada
+  atendida: { em: string; resolucao: string } | null // só na contestada
+}
+
+export type RevisoesNaSala =
+  | { kind: 'ok'; revisoes: RevisaoNaSala[]; ilegiveis: number } // ilegiveis = linhas que não deram para ler
+  | { kind: 'ilegivel'; erro: string }

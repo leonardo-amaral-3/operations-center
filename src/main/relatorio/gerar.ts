@@ -48,6 +48,20 @@ export function dataValida(dia: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === dia
 }
 
+/**
+ * As pastas do relatório: `OC_RELATORIO_COFRE`/`OC_RELATORIO_REPO` ou os defaults. O CLI do
+ * `yarn fabrica` e a sala usam a mesma conta; este arquivo não importa `electron`.
+ */
+export function pastasDoRelatorio(
+  env: NodeJS.ProcessEnv,
+  home: string,
+): { cofre: string; repo: string } {
+  return {
+    cofre: env.OC_RELATORIO_COFRE || join(home, 'notoria', 'claude', 'decisoes'),
+    repo: env.OC_RELATORIO_REPO || join(home, 'pessoal', REPO.name),
+  }
+}
+
 /** Gera o markdown do dia. A exceção de qualquer leitura sobe para quem chamou. */
 export async function gerarRelatorio(
   deps: DepsDoRelatorio,

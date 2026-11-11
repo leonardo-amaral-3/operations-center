@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { GraphQLFn } from '../../core/board/types'
@@ -8,6 +8,12 @@ import {
   triarItemDaEntrada,
 } from '../../core/fabrica/entrada'
 import { fecharItem, iniciarFrente } from '../../core/fabrica/despachante'
+import {
+  contestacoesAbertas,
+  lerRevisoes,
+  NOME_DO_COFRE,
+  novaRevisao,
+} from '../../core/fabrica/revisoes'
 import { comandoDaEstacao } from '../../core/fabrica/estacao'
 import {
   avaliarComando,
@@ -29,6 +35,8 @@ import {
   retomar,
 } from './arquivos'
 import { lerItemNoBoard, lerMandato } from './github'
+import { pastasDoRelatorio } from '../relatorio/gerar'
+import { acrescentarRevisao, lerTextoDasRevisoes } from './revisoes'
 import { rodar } from './rodar'
 
 /**
@@ -52,7 +60,7 @@ export interface DepsDoCli {
 }
 
 const USO =
-  'uso: yarn fabrica [iniciar <n> [--comando "<cmd>"] [--nota "<texto>"] [--ensaio] | rodar | estado | fechar <item> "<resolução>" | pausar | retomar | entrada "<texto>" | triar <item> "<resolução>"]'
+  'uso: yarn fabrica [iniciar <n> [--comando "<cmd>"] [--nota "<texto>"] [--ensaio] | rodar | estado | fechar <item> "<resolução>" | pausar | retomar | entrada "<texto>" | triar <item> "<resolução>" | confirmar <arquivo> | contestar <arquivo> "<motivo>" | atender <arquivo> "<resolução>"]'
 
 type Comando =
   | { tipo: 'iniciar'; card: number; comando: string | null; nota: string | null; ensaio: boolean }
@@ -63,6 +71,9 @@ type Comando =
   | { tipo: 'fechar'; item: string; resolucao: string }
   | { tipo: 'entrada'; texto: string }
   | { tipo: 'triar'; item: string; resolucao: string }
+  | { tipo: 'confirmar'; arquivo: string }
+  | { tipo: 'contestar'; arquivo: string; motivo: string }
+  | { tipo: 'atender'; arquivo: string; resolucao: string }
 
 /** Lê os argumentos; devolve o que estava errado, em texto, quando não servem. */
 function lerArgumentos(argv: readonly string[]): Comando | { erro: string } {
@@ -85,6 +96,21 @@ function lerArgumentos(argv: readonly string[]): Comando | { erro: string } {
     if (resto.length < 2) return { erro: 'faltam argumentos: triar <item> "<resolução>"' }
     if (resto.length > 2) return { erro: `argumento a mais: ${resto[2]}` }
     return { tipo: 'triar', item: resto[0] as string, resolucao: resto[1] as string }
+  }
+  if (sub === 'confirmar') {
+    if (resto.length < 1) return { erro: 'falta o arquivo: confirmar <arquivo>' }
+    if (resto.length > 1) return { erro: `argumento a mais: ${resto[1]}` }
+    return { tipo: 'confirmar', arquivo: resto[0] as string }
+  }
+  if (sub === 'contestar') {
+    if (resto.length < 2) return { erro: 'faltam argumentos: contestar <arquivo> "<motivo>"' }
+    if (resto.length > 2) return { erro: `argumento a mais: ${resto[2]}` }
+    return { tipo: 'contestar', arquivo: resto[0] as string, motivo: resto[1] as string }
+  }
+  if (sub === 'atender') {
+    if (resto.length < 2) return { erro: 'faltam argumentos: atender <arquivo> "<resolução>"' }
+    if (resto.length > 2) return { erro: `argumento a mais: ${resto[2]}` }
+    return { tipo: 'atender', arquivo: resto[0] as string, resolucao: resto[1] as string }
   }
   if (sub !== 'iniciar') return { erro: `subcomando desconhecido: ${sub}` }
 
@@ -151,6 +177,9 @@ export async function executar(deps: DepsDoCli): Promise<number> {
 
   try {
     if (lido.tipo === 'estado') return estado(deps, pasta)
+    if (lido.tipo === 'confirmar' || lido.tipo === 'contestar' || lido.tipo === 'atender') {
+      return revisar(deps, pasta, lido)
+    }
     if (lido.tipo === 'iniciar' && !lido.ensaio) mkdirSync(pasta, { recursive: true })
     if (
       lido.tipo === 'rodar' ||
@@ -224,6 +253,63 @@ export async function executar(deps: DepsDoCli): Promise<number> {
     deps.avisar(`fabrica: ${mensagem}`)
     return codigoDoErro(mensagem)
   }
+}
+
+/** Confirmar, contestar ou atender uma decisão do cofre: acrescenta ao `revisoes.jsonl` (spec F5 §F5.5). */
+function revisar(
+  deps: DepsDoCli,
+  pasta: string,
+  lido: Extract<Comando, { tipo: 'confirmar' | 'contestar' | 'atender' }>,
+): number {
+  const { arquivo } = lido
+  if (!NOME_DO_COFRE.test(arquivo)) {
+    deps.avisar(`fabrica: nome de arquivo do cofre inválido: ${arquivo}`)
+    return 1
+  }
+  const { cofre } = pastasDoRelatorio(deps.env, deps.home)
+  // O `atender` não confere: a decisão pode ter saído do cofre depois da contestação.
+  if (lido.tipo !== 'atender' && !existsSync(join(cofre, arquivo))) {
+    deps.avisar(`fabrica: não há ${arquivo} no cofre (${cofre})`)
+    return 1
+  }
+  const atual = lerRevisoes(lerTextoDasRevisoes(pasta) ?? '').revisoes
+  const agora = deps.agora()
+  const r = novaRevisao(
+    atual,
+    lido.tipo === 'confirmar'
+      ? { tipo: 'confirmar', arquivo, agora }
+      : lido.tipo === 'contestar'
+        ? { tipo: 'contestar', arquivo, motivo: lido.motivo, agora }
+        : { tipo: 'atender', arquivo, resolucao: lido.resolucao, agora },
+  )
+  if ('erro' in r) {
+    deps.avisar(`fabrica: ${r.erro}`)
+    return 1
+  }
+  acrescentarRevisao(pasta, r.linha)
+  // Sem cadeado, outro escritor pode ter chegado antes; a primeira linha vence, então relê.
+  const depois = lerRevisoes(lerTextoDasRevisoes(pasta) ?? '').revisoes.find(
+    (x) => x.arquivo === arquivo,
+  )
+  if (depois === undefined) {
+    deps.avisar(`fabrica: a revisão de ${arquivo} não voltou na releitura do revisoes.jsonl`)
+    return 1
+  }
+  if (lido.tipo === 'atender') {
+    if (depois.atendida?.em !== r.linha.em) {
+      deps.avisar(
+        `fabrica: outra revisão de ${arquivo} chegou antes: já foi atendida em ${depois.atendida?.em ?? '?'}`,
+      )
+      return 1
+    }
+  } else if (depois.veredito !== r.linha.tipo || depois.em !== r.linha.em) {
+    deps.avisar(
+      `fabrica: outra revisão de ${arquivo} chegou antes: ${depois.veredito} em ${depois.em}`,
+    )
+    return 1
+  }
+  deps.escrever(`${arquivo} ${r.linha.tipo}`)
+  return 0
 }
 
 async function iniciar(
@@ -301,14 +387,40 @@ function estado(deps: DepsDoCli, pasta: string): number {
       )
     }
   }
+  let lidas: ReturnType<typeof lerRevisoes> = { revisoes: [], ilegiveis: 0 }
+  let erroDasRevisoes: string | null = null
+  try {
+    lidas = lerRevisoes(lerTextoDasRevisoes(pasta) ?? '')
+  } catch (erro) {
+    erroDasRevisoes = mensagemDe(erro)
+  }
   const abertos = abertosDaEntrada(entrada)
   for (const i of abertos) {
     const primeira = i.texto.split('\n')[0] as string
     const resumo = primeira.length > 80 ? primeira.slice(0, 79) + '…' : primeira
     deps.escrever(`${i.id} na entrada desde ${i.criadoEm}: ${resumo}`)
   }
+  const contestadas = contestacoesAbertas(lidas.revisoes)
+  for (const c of contestadas) {
+    const primeira = (c.motivo ?? '').split('\n')[0] as string
+    const resumo = primeira.length > 80 ? primeira.slice(0, 79) + '…' : primeira
+    deps.escrever(`contestada ${c.arquivo} em ${c.em}: ${resumo}`)
+  }
   if (ilegivel !== null) deps.avisar(`fabrica: ${ilegivel}`)
-  if (e === null && pausa === null && abertos.length === 0 && ilegivel === null) {
+  if (erroDasRevisoes !== null) deps.avisar(`fabrica: revisoes.jsonl: ${erroDasRevisoes}`)
+  if (lidas.ilegiveis === 1) deps.avisar('fabrica: revisoes.jsonl tem 1 linha ilegível')
+  else if (lidas.ilegiveis > 1) {
+    deps.avisar(`fabrica: revisoes.jsonl tem ${lidas.ilegiveis} linhas ilegíveis`)
+  }
+  if (
+    e === null &&
+    pausa === null &&
+    abertos.length === 0 &&
+    ilegivel === null &&
+    contestadas.length === 0 &&
+    erroDasRevisoes === null &&
+    lidas.ilegiveis === 0
+  ) {
     deps.escrever('nada registrado')
   }
   return 0
