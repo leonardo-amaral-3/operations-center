@@ -324,6 +324,21 @@ describe('Portfólio: confirmar e contestar (CA-5.2)', () => {
     fireEvent.change(screen.getByTestId('fabrica-contestar-motivo'), {
       target: { value: 'lote de 64 não foi medido' },
     })
+    // A caixa fecha quando a contestação aparece nas revisões relidas.
+    readFabricaRevisoes.mockResolvedValue({
+      kind: 'ok',
+      revisoes: [
+        REVISAO_A4,
+        {
+          arquivo: A2,
+          veredito: 'contestada',
+          em: '2026-11-11T10:00:00.000Z',
+          motivo: 'lote de 64 não foi medido',
+          atendida: null,
+        },
+      ],
+      ilegiveis: 0,
+    })
     fireEvent.click(screen.getByTestId('fabrica-contestar-gravar'))
     expect(comando).toHaveBeenCalledWith({
       tipo: 'contestar',
@@ -333,6 +348,27 @@ describe('Portfólio: confirmar e contestar (CA-5.2)', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('fabrica-contestar-motivo')).toBeNull()
     })
+  })
+
+  it('o comando de contestar falha: a caixa fica aberta com o motivo', async () => {
+    // A raiz não lança quando o comando falha: mostra o erro e relê. As revisões não mudam.
+    const comando = vi.fn<(c: ComandoDaFabrica) => Promise<void>>().mockResolvedValue(undefined)
+    await abrir({ comando })
+    const antes = readFabricaRevisoes.mock.calls.length
+
+    fireEvent.click(within(detalhe()).getByTestId('fabrica-contestar'))
+    fireEvent.change(screen.getByTestId('fabrica-contestar-motivo'), {
+      target: { value: 'motivo que não pode se perder' },
+    })
+    fireEvent.click(screen.getByTestId('fabrica-contestar-gravar'))
+    await waitFor(() => {
+      expect(readFabricaRevisoes.mock.calls.length).toBe(antes + 1)
+    })
+    expect(comando).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId<HTMLTextAreaElement>('fabrica-contestar-motivo').value).toBe(
+      'motivo que não pode se perder',
+    )
+    expect(screen.getByTestId<HTMLButtonElement>('fabrica-contestar-gravar').disabled).toBe(false)
   })
 
   it('trocar de linha com a caixa aberta zera a caixa: o motivo não vai para outra decisão', async () => {
@@ -397,7 +433,8 @@ describe('Portfólio: confirmar e contestar (CA-5.2)', () => {
         atendida: null,
       }),
     )
-    fireEvent.click(gravar())
+    // Revisada por fora: a caixa some, e nada se grava por cima da primeira revisão.
+    expect(screen.queryByTestId('fabrica-contestar-gravar')).toBeNull()
     expect(comando).not.toHaveBeenCalled()
   })
 

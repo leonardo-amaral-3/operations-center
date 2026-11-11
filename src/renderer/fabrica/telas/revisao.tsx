@@ -23,6 +23,9 @@ export function BotoesDaRevisao(p: {
   const [motivo, setMotivo] = useState('')
   const abertaAgora = aberta(p.decisao, p.revisao)
   const habilitado = p.podeLer && abertaAgora && !p.emVoo
+  // A caixa some quando a contestação chega às revisões relidas, e não ao fim do comando: o comando
+  // não lança quando falha (a raiz mostra o erro), e fechar ali perdia o motivo (G4 da PR #140).
+  const caixaAberta = contestando && abertaAgora
 
   if (!p.sempre && !abertaAgora) return null
 
@@ -63,7 +66,7 @@ export function BotoesDaRevisao(p: {
         </Button>
         {p.terceiro}
       </div>
-      {contestando && (
+      {caixaAberta && (
         <div className="flex flex-col gap-2">
           <Textarea
             data-testid="fabrica-contestar-motivo"
@@ -88,7 +91,6 @@ export function BotoesDaRevisao(p: {
                     motivo,
                   })
                   await p.aoGravar()
-                  fechar()
                 })()
               }}
             >
