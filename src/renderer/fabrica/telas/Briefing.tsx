@@ -214,6 +214,15 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
   const [resultados, setResultados] = useState<Record<number, Resultado>>({})
   const [planos, setPlanos] = useState<Map<number, Plano>>(() => new Map())
   const geracao = useRef(0)
+  // O laço do Soltar olha isto antes de cada frente: com a tela fechada, ninguém vê o resultado, e
+  // soltar o resto seria abrir frente sem o humano ver (G4 da PR #141, menor 2).
+  const montada = useRef(false)
+  useEffect(() => {
+    montada.current = true
+    return () => {
+      montada.current = false
+    }
+  }, [])
 
   const frentes = useMemo(
     () => (board.kind === 'ok' ? frentesDoBriefing(board.board, sala) : []),
@@ -277,6 +286,7 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
     try {
       let parou = false
       for (const f of alvo) {
+        if (!montada.current) parou = true
         if (parou) {
           registrar(f.card, 'nao-solta')
           continue
@@ -289,6 +299,11 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
         }
         if (antes.some((d) => d.card === f.card)) {
           registrar(f.card, 'ja-em-voo')
+          continue
+        }
+        if (!montada.current) {
+          registrar(f.card, 'nao-solta')
+          parou = true
           continue
         }
         await comando({ tipo: 'iniciar', card: f.card, nota: notaDe(f.card) })

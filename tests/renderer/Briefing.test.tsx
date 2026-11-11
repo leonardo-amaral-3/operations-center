@@ -333,6 +333,31 @@ describe('Briefing · Soltar o dia (CA-6.2)', () => {
     ).toEqual(['sem-leitura', 'nao-solta'])
   })
 
+  it('a tela fechada no meio do Soltar para o laço: nenhuma frente é solta depois (G4 da PR #141, menor 2)', async () => {
+    let ativo: DespachoNaSala[] = []
+    readFabrica.mockImplementation(() => Promise.resolve(sala(ativo)))
+    let liberar: () => void = () => {}
+    const comando = vi.fn(
+      (c: ComandoDaFabrica) =>
+        new Promise<void>((resolve) => {
+          if (c.tipo === 'iniciar') ativo = [...ativo, despacho(`d-${c.card}`, c.card)]
+          liberar = resolve
+        }),
+    )
+    const p = props({ comando })
+    const { unmount } = render(<Briefing {...p} />)
+    await screen.findAllByTestId('fabrica-briefing-frente')
+    marcar(940)
+    marcar(941)
+    marcar(950)
+    fireEvent.click(soltar())
+    await waitFor(() => expect(comando).toHaveBeenCalledTimes(1))
+    unmount()
+    liberar()
+    await new Promise((r) => setTimeout(r, 30))
+    expect(comando).toHaveBeenCalledTimes(1)
+  })
+
   it('sem estado.json a leitura é lista vazia, e o comando roda', async () => {
     readFabrica.mockResolvedValue({ ...RETRATO_F2, kind: 'sem-estado' })
     const comando = vi.fn(() => Promise.resolve())
