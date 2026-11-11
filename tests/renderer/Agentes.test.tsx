@@ -8,6 +8,8 @@ import type {
   PerguntaDaFila,
   ResultadoDoComando,
   SalaDaFabrica,
+  SessaoDaMaquina,
+  SessoesDaMaquina,
 } from '../../src/shared/fabrica'
 import { BOARDS_F2, RETRATO_F2 } from './retrato-f2'
 
@@ -315,5 +317,144 @@ describe('Agentes · fora do ramo ok', () => {
     await abrir()
 
     expect(screen.getByTestId('fabrica-pausar').textContent).toBe('Pausar fábrica')
+  })
+})
+
+describe('Agentes · sessões da máquina (#142, CA-2 e CA-3)', () => {
+  const OC = 'leonardo-amaral-3/operations-center'
+
+  const sessao = (extra: Partial<SessaoDaMaquina>): SessaoDaMaquina => ({
+    pid: 1,
+    origem: 'interativa',
+    daFabrica: false,
+    skill: null,
+    pasta: null,
+    repo: null,
+    card: null,
+    cardUrl: null,
+    ...extra,
+  })
+
+  const TRES: SessaoDaMaquina[] = [
+    sessao({
+      pid: 10,
+      origem: 'despachada',
+      daFabrica: true,
+      skill: 'gm-spec',
+      pasta: '~/pessoal/operations-center-2-x',
+      repo: OC,
+      card: 2,
+      cardUrl: `https://github.com/${OC}/issues/2`,
+    }),
+    sessao({
+      pid: 20,
+      pasta: '~/notoria/plataformas-910-x',
+      repo: 'icsf-solutions/plataformas',
+      card: 910,
+      cardUrl: 'https://github.com/icsf-solutions/plataformas/issues/910',
+    }),
+    sessao({ pid: 30, origem: 'sdk', pasta: '~/pessoal' }),
+  ]
+
+  async function abrirComMaquina(leitura: () => Promise<SessoesDaMaquina> | undefined) {
+    Object.defineProperty(window, 'oc', {
+      value: {
+        ...window.oc,
+        readFabricaSessoes: leitura,
+      },
+      configurable: true,
+    })
+    await abrir()
+  }
+
+  it('uma linha por sessão; a do operations-center tem botão que leva ao card', async () => {
+    await abrirComMaquina(() => Promise.resolve({ kind: 'ok', lidoEm: 'x', sessoes: TRES }))
+
+    const linhas = await screen.findAllByTestId('fabrica-maquina-sessao')
+
+    expect(linhas).toHaveLength(3)
+
+    const [oc, icsf, solta] = linhas as [HTMLElement, HTMLElement, HTMLElement]
+
+    expect(celulas(oc)[1]).toBe(OC)
+    expect(celulas(oc)[2]).toContain('despachada (-p)')
+    expect(celulas(oc)[2]).toContain('yarn fabrica')
+    expect(celulas(oc)[3]).toBe('gm-spec')
+    expect(celulas(oc)[4]).toBe('~/pessoal/operations-center-2-x')
+    expect(oc.dataset.pid).toBe('10')
+    expect(oc.dataset.origem).toBe('despachada')
+
+    fireEvent.click(within(oc).getByRole('button'))
+    expect(telaAtual()).toBe('card')
+    expect(screen.getByTestId('fabrica-trilha').textContent).toContain('#2')
+
+    expect(celulas(icsf)[0]).toContain('#910')
+    expect(within(icsf).queryByRole('button')).toBeNull()
+    expect(celulas(icsf)[1]).toBe('icsf-solutions/plataformas')
+    expect(celulas(icsf)[2]).toBe('interativa')
+
+    expect(celulas(solta)[0]).toBe('sem leitura')
+    expect(celulas(solta)[1]).toBe('sem leitura')
+    expect(celulas(solta)[2]).toBe('SDK')
+    expect(celulas(solta)[3]).toBe('—')
+  })
+
+  it('o título do card vem do board, pela URL em minúsculas', async () => {
+    await abrirComMaquina(() => Promise.resolve({ kind: 'ok', lidoEm: 'x', sessoes: TRES }))
+
+    const linhas = await screen.findAllByTestId('fabrica-maquina-sessao')
+
+    await waitFor(() => {
+      expect(celulas(linhas[0] as HTMLElement)[0]).toContain('Peer dependencies')
+    })
+  })
+
+  it('card de outro repo não é botão, nem com card conhecido', async () => {
+    await abrirComMaquina(() =>
+      Promise.resolve({ kind: 'ok', lidoEm: 'x', sessoes: [TRES[1] as SessaoDaMaquina] }),
+    )
+
+    const [linha] = await screen.findAllByTestId('fabrica-maquina-sessao')
+
+    expect(within(linha as HTMLElement).queryByRole('button')).toBeNull()
+  })
+
+  it('sem-leitura mostra o motivo', async () => {
+    await abrirComMaquina(() => Promise.resolve({ kind: 'sem-leitura', motivo: 'só no Linux' }))
+
+    const p = await screen.findByTestId('fabrica-maquina-sem-leitura')
+
+    expect(p.textContent).toBe('sem leitura: só no Linux')
+    expect(p.getAttribute('title')).toBe('só no Linux')
+  })
+
+  it('lista vazia mostra o vazio', async () => {
+    await abrirComMaquina(() => Promise.resolve({ kind: 'ok', lidoEm: 'x', sessoes: [] }))
+
+    expect((await screen.findByTestId('fabrica-maquina-vazio')).textContent).toBe(
+      'Nenhuma sessão claude viva na máquina.',
+    )
+  })
+
+  it('antes da primeira resposta, "Lendo as sessões da máquina…"', async () => {
+    await abrirComMaquina(() => new Promise(() => {}))
+
+    expect(screen.getByTestId('fabrica-maquina-lendo')).toBeTruthy()
+  })
+
+  it('sem o método no window.oc, sem-leitura', async () => {
+    await abrir()
+
+    expect((await screen.findByTestId('fabrica-maquina-sem-leitura')).textContent).toContain(
+      'sem leitura',
+    )
+  })
+
+  it('sem retrato da fábrica a seção não aparece', () => {
+    readFabrica.mockReturnValue(new Promise(() => {}))
+    render(<Fabrica />)
+    fireEvent.click(screen.getByTestId('fabrica-nav-agentes'))
+
+    expect(screen.queryByTestId('fabrica-maquina')).toBeNull()
   })
 })

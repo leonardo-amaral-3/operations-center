@@ -1,6 +1,11 @@
 import type { JSX, ReactNode } from 'react'
 
-import type { DespachoNaSala, ItemNaSala, RecursosDaFabrica } from '../../../shared/fabrica'
+import type {
+  DespachoNaSala,
+  ItemNaSala,
+  RecursosDaFabrica,
+  SessoesDaMaquina as Maquina,
+} from '../../../shared/fabrica'
 import { Badge } from '../../ui/badge'
 import { Button } from '../../ui/button'
 import { Card } from '../../ui/card'
@@ -13,10 +18,12 @@ import {
   rotuloDoCard,
   skillDoComando,
 } from '../linha'
+import { REPO_DOS_CARDS_DA_FABRICA } from '../boardDaFabrica'
 import { BotaoPausar, CabecalhoInterno } from '../Moldura'
 import { rotaDoItem, trilhaDa } from '../rotas'
 import type { PropsDaTela } from '../telas'
 import { useCardsDoBoard } from '../useCardsDoBoard'
+import { useSessoesDaMaquina } from '../useSessoesDaMaquina'
 
 type Ir = PropsDaTela['ir']
 type Titulos = (url: string) => string | null
@@ -44,6 +51,10 @@ export function Agentes({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
   const cards = useCardsDoBoard()
   const titulo: Titulos = (url) => cards.get(url)?.title ?? null
   const recursos = sala?.recursos ?? null
+  const maquina = useSessoesDaMaquina()
+  // A `cardUrl` da sessão vem em minúsculas; a do board, não.
+  const porUrl = new Map([...cards].map(([url, c]) => [url.toLowerCase(), c]))
+  const tituloDaSessao: Titulos = (url) => porUrl.get(url)?.title ?? null
 
   return (
     <>
@@ -64,7 +75,13 @@ export function Agentes({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
           </div>
         }
       />
-      <Corpo sala={sala} ir={ir} titulo={titulo} />
+      <Corpo
+        sala={sala}
+        ir={ir}
+        titulo={titulo}
+        maquina={maquina}
+        tituloDaSessao={tituloDaSessao}
+      />
     </>
   )
 }
@@ -85,10 +102,14 @@ function Corpo({
   sala,
   ir,
   titulo,
+  maquina,
+  tituloDaSessao,
 }: {
   sala: PropsDaTela['sala']
   ir: Ir
   titulo: Titulos
+  maquina: Maquina | null
+  tituloDaSessao: Titulos
 }): JSX.Element {
   if (sala === null) {
     return (
@@ -112,6 +133,7 @@ function Corpo({
         </div>
       )}
       <Sessoes emVoo={emVoo} abertos={abertos} recursos={recursos} ir={ir} titulo={titulo} />
+      <SessoesDaMaquina maquina={maquina} ir={ir} titulo={tituloDaSessao} />
       <div className="flex flex-wrap items-start gap-5">
         <Cadeados recursos={recursos} />
         <Proximos sala={ok} titulo={titulo} />
@@ -282,6 +304,116 @@ function Sessoes({
         <p data-testid="fabrica-agentes-fora" className="text-xs text-foreground/75">
           {`${fora} ${plural(fora, 'sessão', 'sessões')} da prova fora do yarn fabrica: ${plural(fora, 'conta', 'contam')} no teto e não ${plural(fora, 'aparece', 'aparecem')} nesta tabela.`}
         </p>
+      )}
+    </section>
+  )
+}
+
+const ORIGEM: Record<'despachada' | 'sdk' | 'interativa', string> = {
+  despachada: 'despachada (-p)',
+  sdk: 'SDK',
+  interativa: 'interativa',
+}
+
+/** Toda sessão `claude` viva na máquina (#142, §3.7). Só leitura; só card do operations-center é botão. */
+function SessoesDaMaquina({
+  maquina,
+  ir,
+  titulo,
+}: {
+  maquina: Maquina | null
+  ir: Ir
+  titulo: Titulos
+}): JSX.Element {
+  return (
+    <section
+      aria-label="Sessões da máquina"
+      data-testid="fabrica-maquina"
+      className="flex flex-col gap-3"
+    >
+      <h2 className="font-heading text-lg">Sessões da máquina</h2>
+      <p className="text-xs text-foreground/75">
+        Toda sessão claude viva nesta máquina, de qualquer board, despachada ou não. Só leitura.
+      </p>
+      {maquina === null ? (
+        <p data-testid="fabrica-maquina-lendo" className="text-sm">
+          Lendo as sessões da máquina…
+        </p>
+      ) : maquina.kind === 'sem-leitura' ? (
+        <p data-testid="fabrica-maquina-sem-leitura" title={maquina.motivo} className="text-sm">
+          {`sem leitura: ${maquina.motivo}`}
+        </p>
+      ) : (
+        <Card className="overflow-x-auto bg-secondary-background p-0">
+          <table className="w-full min-w-[900px] border-collapse">
+            <thead>
+              <tr>
+                {['Card', 'Repo', 'Origem', 'Agente', 'Onde roda'].map((coluna) => (
+                  <th key={coluna} scope="col" className={TH}>
+                    {coluna}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {maquina.sessoes.map((s) => {
+                const rotulo =
+                  s.card === null || s.cardUrl === null
+                    ? null
+                    : rotuloDoCard(s.card, titulo(s.cardUrl))
+                const card = s.card
+
+                return (
+                  <tr
+                    key={s.pid}
+                    data-testid="fabrica-maquina-sessao"
+                    data-pid={String(s.pid)}
+                    data-origem={s.origem}
+                    className="[&:last-child>td]:border-b-0"
+                  >
+                    <td className={TD}>
+                      {rotulo === null || card === null ? (
+                        'sem leitura'
+                      ) : s.repo === REPO_DOS_CARDS_DA_FABRICA ? (
+                        <button
+                          type="button"
+                          className="font-bold underline"
+                          onClick={() => {
+                            ir({ tela: 'card', card })
+                          }}
+                        >
+                          {rotulo}
+                        </button>
+                      ) : (
+                        rotulo
+                      )}
+                    </td>
+                    <td className={TD}>{s.repo ?? 'sem leitura'}</td>
+                    <td className={TD}>
+                      {ORIGEM[s.origem]}
+                      {s.daFabrica && (
+                        <Badge variant="neutral" className="ml-2">
+                          yarn fabrica
+                        </Badge>
+                      )}
+                    </td>
+                    <td className={TD}>{s.skill ?? '—'}</td>
+                    <td className={TD}>
+                      <span className="font-mono text-xs">{s.pasta ?? 'sem leitura'}</span>
+                    </td>
+                  </tr>
+                )
+              })}
+              {maquina.sessoes.length === 0 && (
+                <tr>
+                  <td colSpan={5} data-testid="fabrica-maquina-vazio" className={TD}>
+                    Nenhuma sessão claude viva na máquina.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
       )}
     </section>
   )

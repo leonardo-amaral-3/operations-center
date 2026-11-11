@@ -29,7 +29,7 @@ export const SKILLS_PERMITIDAS = [
 
 type Avaliacao = { ok: true } | { ok: false; motivo: string }
 
-function escaparRegex(texto: string): string {
+export function escaparRegex(texto: string): string {
   return texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 

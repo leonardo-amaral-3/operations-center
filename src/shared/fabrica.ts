@@ -73,6 +73,25 @@ export interface RecursosDaFabrica {
   disco: LeituraDoDisco
 }
 
+/** De onde veio a sessão (#142): `-p`/`--print`, o SDK (`--input-format stream-json`), ou à mão. */
+export type OrigemDaSessao = 'despachada' | 'sdk' | 'interativa'
+
+/** Uma sessão `claude` viva na máquina (#142). Nunca carrega argv nem caminho absoluto. */
+export interface SessaoDaMaquina {
+  pid: number
+  origem: OrigemDaSessao
+  daFabrica: boolean // o ambiente tem `OC_FABRICA_DESPACHO=`: despacho do `yarn fabrica`
+  skill: string | null // só `despachada`: 'gm-spec' de '/gm-spec #142…'; null nos outros casos
+  pasta: string | null // `pastaVisivel`: '~/pessoal/x' ou o último segmento; null sem leitura do cwd
+  repo: string | null // 'owner/name' em minúsculas (o `parseRemote` do RepoIndex); null sem leitura
+  card: number | null // `cardDoCaminho`; null sem repo ou sem segmento `<nome>-<n>-`
+  cardUrl: string | null // `https://github.com/<repo>/issues/<card>`; null quando `card` é null
+}
+
+export type SessoesDaMaquina =
+  | { kind: 'ok'; lidoEm: string; sessoes: SessaoDaMaquina[] } // em ordem crescente de pid
+  | { kind: 'sem-leitura'; motivo: string }
+
 /** A pausa da fábrica (#129): `pausa.json` existe. `desde: null` quando o arquivo está torto. */
 export interface PausaDaFabrica {
   desde: string | null

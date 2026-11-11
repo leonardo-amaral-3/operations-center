@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Fabrica } from '../../src/renderer/fabrica/Fabrica'
+import type { BoardCard, BoardsSnapshot } from '../../src/shared/board'
 import type {
   ComandoDaFabrica,
   PerguntaDaFila,
@@ -444,5 +445,199 @@ describe('Sala · o cartão de card abre a tela Card em qualquer ponto (#145, CA
     await abrir()
     fireEvent.click(nth(screen.getAllByTestId('fabrica-aberto'), 1))
     expect(telaAtual()).toBe('pergunta')
+  })
+})
+
+/** A Linha segue a aba selecionada (#142, CA-1 e CA-3). */
+describe('Sala · a Linha segue a aba', () => {
+  const PLAT = 'https://github.com/ICSF-Solutions/plataformas/issues'
+
+  function card(
+    repo: string,
+    number: number,
+    columnId: string,
+    title = `card ${number}`,
+  ): BoardCard {
+    return {
+      itemId: `PVTI_t_${repo}_${number}`,
+      number,
+      title,
+      url: `https://github.com/${repo}/issues/${number}`,
+      repository: repo,
+      closed: false,
+      assignees: [],
+      columnId,
+      fields: [],
+      parent: null,
+      phases: [],
+    }
+  }
+
+  const COLUNAS = [
+    { id: 'c-spec', name: '🎯 Especificação', conversable: true, triage: false },
+    { id: 'c-back', name: '📋 Backlog', conversable: false, triage: false },
+  ]
+
+  function snapshot(
+    activeKey: string | null,
+    extra: BoardsSnapshot['boards'] = [],
+  ): BoardsSnapshot {
+    return {
+      boards: [
+        ...BOARDS_F2.boards!,
+        {
+          key: 'ICSF-Solutions/19',
+          title: 'Plataformas v2',
+          readAt: 1,
+          error: null,
+          board: {
+            title: 'Plataformas v2',
+            columns: COLUNAS,
+            cards: [
+              card('ICSF-Solutions/plataformas', 910, 'c-spec', 'Plataforma nova'),
+              card('ICSF-Solutions/plataformas', 911, 'c-back', 'Ideia solta'),
+            ],
+          },
+        },
+        ...(extra ?? []),
+      ],
+      activeKey,
+      discoveryError: null,
+    }
+  }
+
+  let empurrar: (s: BoardsSnapshot) => void = () => {}
+
+  function comBoards(retrato: BoardsSnapshot | null) {
+    Object.defineProperty(window, 'oc', {
+      value: {
+        ...window.oc,
+        readBoards: () => Promise.resolve(retrato as BoardsSnapshot),
+        onBoards: (cb: (s: BoardsSnapshot) => void) => {
+          empurrar = cb
+          return () => {}
+        },
+      },
+      configurable: true,
+    })
+  }
+
+  const texto = () => screen.getByTestId('fabrica-linha-board').textContent
+
+  it('(b) com a aba do Plataformas, o #910 está na spec, o #952 sai da entrada e o rótulo diz a aba', async () => {
+    comBoards(snapshot('ICSF-Solutions/19'))
+    await abrir()
+    await waitFor(() => {
+      expect(texto()).toBe('board Plataformas v2')
+    })
+
+    const spec = within(coluna('spec'))
+    const cardDoBoard = spec.getByTestId('fabrica-board-card')
+    expect(cardDoBoard.dataset.card).toBe(`${PLAT}/910`)
+    expect(cardDoBoard.textContent).toContain('#910')
+    expect(spec.queryByTestId('fabrica-board-card-abrir')).toBeNull()
+    expect(coluna('entrada').textContent).not.toContain('#952')
+    expect(screen.queryAllByTestId('fabrica-em-voo')).toHaveLength(0)
+  })
+
+  it('(c) o snapshot empurrado com a aba do Project 2 devolve o #952 sem remontar', async () => {
+    comBoards(snapshot('ICSF-Solutions/19'))
+    await abrir()
+    await waitFor(() => {
+      expect(coluna('spec').textContent).toContain('#910')
+    })
+    const recursos = screen.getByTestId('fabrica-recursos')
+
+    act(() => {
+      empurrar(snapshot('leonardo-amaral-3/2'))
+    })
+
+    await waitFor(() => {
+      expect(coluna('entrada').textContent).toContain('#952')
+    })
+    expect(coluna('spec').textContent).not.toContain('#910')
+    expect(texto()).toBe('board Operations Center')
+    expect(screen.getByTestId('fabrica-recursos')).toBe(recursos)
+  })
+
+  it('(d) o card do Backlog vai para "Fora das estações da linha", agrupado pelo nome da coluna', async () => {
+    comBoards(snapshot('ICSF-Solutions/19'))
+    await abrir()
+
+    const grupo = await screen.findByTestId('fabrica-a-parte-coluna')
+    expect(grupo.dataset.colunaDoBoard).toBe('📋 Backlog')
+    expect(grupo.textContent).toContain('#911')
+  })
+
+  it('(e) sem-estado com o board ok mostra a mensagem e o card do board', async () => {
+    comBoards(snapshot('ICSF-Solutions/19'))
+    await abrir({ kind: 'sem-estado', ...cabecalho() })
+
+    expect(screen.getByTestId('fabrica-vazia')).toBeTruthy()
+    await waitFor(() => {
+      expect(within(coluna('spec')).getByTestId('fabrica-board-card').textContent).toContain('#910')
+    })
+  })
+
+  it("(e') ilegivel com o board ok mostra o erro e o card do board", async () => {
+    comBoards(snapshot('ICSF-Solutions/19'))
+    await abrir({ kind: 'ilegivel', erro: 'JSON torto', ...cabecalho() })
+
+    expect(screen.getByTestId('fabrica-erro')).toBeTruthy()
+    await waitFor(() => {
+      expect(within(coluna('spec')).getByTestId('fabrica-board-card').textContent).toContain('#910')
+    })
+  })
+
+  it('(f) card do operations-center sem despacho abre a tela Card', async () => {
+    const retrato = snapshot('leonardo-amaral-3/2')
+    const aba = retrato.boards![0]!
+    const novo = card('leonardo-amaral-3/operations-center', 77, 'da732a01', 'Sem despacho')
+    comBoards({
+      ...retrato,
+      boards: [{ ...aba, board: { ...aba.board!, cards: [...aba.board!.cards, novo] } }],
+    })
+    await abrir()
+
+    const botao = await within(coluna('implementacao')).findByTestId('fabrica-board-card-abrir')
+    expect(botao.textContent).toContain('#77')
+    fireEvent.click(botao)
+
+    expect(telaAtual()).toBe('card')
+  })
+
+  it('(g) o rótulo do board em cada ramo', async () => {
+    comBoards(null)
+    await abrir()
+    expect(texto()).toBe('lendo os boards…')
+    cleanup()
+
+    comBoards(snapshot(null))
+    await abrir()
+    await waitFor(() => {
+      expect(texto()).toBe('nenhum board selecionado')
+    })
+    cleanup()
+
+    const semBoard = snapshot('ICSF-Solutions/19')
+    const abas = semBoard.boards!.map((a) =>
+      a.key === 'ICSF-Solutions/19' ? { ...a, board: null } : a,
+    )
+    comBoards({ ...semBoard, boards: abas })
+    await abrir()
+    await waitFor(() => {
+      expect(texto()).toBe('board Plataformas v2 · lendo…')
+    })
+    cleanup()
+
+    comBoards({
+      ...semBoard,
+      boards: abas.map((a) => (a.key === 'ICSF-Solutions/19' ? { ...a, error: 'rede caiu' } : a)),
+    })
+    await abrir()
+    await waitFor(() => {
+      expect(texto()).toBe('board Plataformas v2 · sem leitura')
+    })
+    expect(screen.getByTestId('fabrica-linha-board').getAttribute('title')).toBe('rede caiu')
   })
 })

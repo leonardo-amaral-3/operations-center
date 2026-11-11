@@ -18,6 +18,7 @@ import type { GraphQLFn } from '../../src/core/board/types'
 import { marcarLancando } from '../../src/core/fabrica/despachante'
 import { avaliarNota } from '../../src/core/fabrica/mandato'
 import { NOTA_DA_TRIAGEM, textoDoRelato } from '../../src/core/fabrica/entrada'
+import { promptDoG4 } from '../../src/core/fabrica/g4'
 import { montarPrompt } from '../../src/core/fabrica/mandato'
 import type { ItemDaFila } from '../../src/core/fabrica/tipos'
 import {
@@ -81,7 +82,7 @@ const id = process.env.OC_FABRICA_DESPACHO.split('/')[1]
 fs.mkdirSync(process.env.OC_FALSO_SAIDA, { recursive: true })
 fs.writeFileSync(
   path.join(process.env.OC_FALSO_SAIDA, id + '.json'),
-  JSON.stringify({ env: process.env, cwd: process.cwd(), prompt, comando }),
+  JSON.stringify({ env: process.env, cwd: process.cwd(), prompt, comando, args }),
 )
 process.stderr.write('falso no stderr\\n')
 setTimeout(() => {
@@ -170,11 +171,14 @@ function sessaoFalsa(env: NodeJS.ProcessEnv, ...args: string[]): ChildProcess {
 
 const lancados = (): string[] => (existsSync(saidaDoFalso) ? readdirSync(saidaDoFalso).sort() : [])
 
-const gravadoPeloFalso = (id: string): { env: NodeJS.ProcessEnv; cwd: string; prompt: string } =>
+const gravadoPeloFalso = (
+  id: string,
+): { env: NodeJS.ProcessEnv; cwd: string; prompt: string; args: string[] } =>
   JSON.parse(readFileSync(join(saidaDoFalso, `${id}.json`), 'utf8')) as {
     env: NodeJS.ProcessEnv
     cwd: string
     prompt: string
+    args: string[]
   }
 
 describe('lerItemNoBoard', () => {
@@ -735,6 +739,36 @@ describe.skipIf(process.platform !== 'linux')('o laço do despachante', { timeou
       type: 'result',
       session_id: 'sessao-d-0002',
     })
+  })
+
+  it('G4: o PR aberto do ship vira a sessão de revisão, só leitura, na mesma frente', async () => {
+    const motivoDoShip = 'PR #9 aberta na dev (Card: #7); o merge é da orquestradora'
+    const parecer =
+      'G4 da PR #9: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/9#issuecomment-5'
+    const m = montar({
+      '/gm-ship /x #7': `PARADA: ${motivoDoShip}`,
+      'Revisão G4 da PR #9 do card #7, despachada pela fábrica.': `PARADA: ${parecer}`,
+    })
+    await abrirFrente(m, 7, '/gm-ship /x #7')
+    expect(await rodar(m)).toBe(0)
+    const e = lerEstado(pasta)
+    expect(e?.despachos.map((d) => [d.id, d.comando, d.estado])).toEqual([
+      ['d-0002', '/gm-ship /x #7', 'concluido'],
+      ['d-0003', '/g4 #7 PR #9', 'concluido'],
+    ])
+    expect(e?.fila).toHaveLength(1)
+    expect(e?.fila[0]).toMatchObject({ card: 7, motivo: parecer, despacho: 'd-0003' })
+
+    const ship = gravadoPeloFalso('d-0002')
+    expect(ship.args).not.toContain('--tools')
+    const g4 = gravadoPeloFalso('d-0003')
+    expect(g4.args[g4.args.indexOf('--tools') + 1]).toBe('Bash,Read')
+    expect(g4.prompt).toBe(
+      montarPrompt(promptDoG4(7, 9), MANDATO, `o /gm-ship terminou com: PARADA: ${motivoDoShip}`),
+    )
+    expect(m.saida.some((l) => l.includes('d-0002 terminou: segue para o G4 (/g4 #7 PR #9)'))).toBe(
+      true,
+    )
   })
 
   it('cadeia: PROXIMO vira a próxima sessão e a PARADA vira item da fila', async () => {

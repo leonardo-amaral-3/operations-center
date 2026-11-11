@@ -165,6 +165,10 @@ function porQueChegou(pergunta: PerguntaDaFila): string {
   const { item, fim } = pergunta
   const comando = item.comando ?? item.despacho
 
+  if (fim === 'parada' && item.comando?.startsWith('/g4 ')) {
+    return `O G4 da ${comando} terminou sem aprovar a PR para o merge (${item.motivo}), e o despachante encerrou a frente do #${item.card}.`
+  }
+
   if (fim === 'parada') {
     return `A sessão do ${comando} terminou com PARADA em vez de decidir sozinha, e o despachante encerrou a frente do #${item.card}.`
   }

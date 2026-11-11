@@ -108,7 +108,7 @@ export class RepoIndex {
  * ficar sem a pasta faz o cartão pedi-la (CA-5), enquanto adivinhá-la abriria sessão no lugar
  * errado.
  */
-function parseRemote(url: string): string | null {
+export function parseRemote(url: string): string | null {
   const trimmed = url
     .trim()
     .replace(/\/+$/, '')

@@ -68,9 +68,9 @@ describe('Decisão · igual ao protótipo (CA-3.2)', () => {
     expect(within(cartao).getByText('#962')).toBeTruthy()
     const pr = within(cartao).getByText<HTMLAnchorElement>('PR #970')
     expect(pr.href).toBe('https://github.com/leonardo-amaral-3/operations-center/pull/970')
-    expect(within(cartao).getByText('gm-ship')).toBeTruthy()
+    expect(within(cartao).getByText('g4')).toBeTruthy()
     expect(within(cartao).getByRole('heading', { level: 1 }).textContent).toBe(
-      'PR #970 aberta na dev (Card: #962); o merge é da orquestradora',
+      'G4 da PR #970: sem bloqueante · parecer https://github.com/leonardo-amaral-3/operations-center/pull/970#issuecomment-1',
     )
     expect(within(cartao).getByText('Portão local:').tagName).toBe('STRONG')
   })
@@ -107,13 +107,15 @@ describe('Decisão · igual ao protótipo (CA-3.2)', () => {
     montar('q-0013')
     await aguardar()
     const passos = screen.getAllByTestId('fabrica-passo')
-    expect(passos).toHaveLength(3)
+    expect(passos).toHaveLength(4)
     expect(passos[0]?.textContent).toContain('gm-plan-tasks')
     expect(passos[0]?.textContent).toContain('seguiu para /gm-implement ')
     expect(passos[1]?.textContent).toContain('gm-implement')
     expect(passos[1]?.textContent).toContain('seguiu para /gm-ship ')
     expect(passos[2]?.textContent).toContain('gm-ship')
     expect(passos[2]?.textContent).toContain('PARADA: PR #970 aberta na dev')
+    expect(passos[3]?.textContent).toContain('g4')
+    expect(passos[3]?.textContent).toContain('PARADA: G4 da PR #970: sem bloqueante')
     expect(screen.getByTestId('fabrica-passo-fila').textContent).toContain('Na sua fila desde ')
   })
 

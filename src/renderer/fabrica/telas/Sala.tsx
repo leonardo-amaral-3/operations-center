@@ -1,6 +1,6 @@
 import type { JSX, ReactNode } from 'react'
 
-import type { BoardCard } from '../../../shared/board'
+import type { BoardCard, BoardsSnapshot } from '../../../shared/board'
 import type {
   DecisaoNaSala,
   DespachoNaSala,
@@ -26,10 +26,13 @@ import {
   rotuloDoCard,
   skillDoComando,
 } from '../linha'
+import { REPO_DOS_CARDS_DA_FABRICA } from '../boardDaFabrica'
+import { abaDaLinha, cardsDaLinha, mostraAFabrica, type CardNaLinha } from '../linhaDoBoard'
 import { CabecalhoDaSala } from '../Moldura'
 import { rotaDoItem, type TelaDaFabrica } from '../rotas'
 import type { PropsDaTela } from '../telas'
 import { useCardsDoBoard } from '../useCardsDoBoard'
+import { useRetratoDosBoards } from '../useRetratoDosBoards'
 
 type SalaOk = Extract<SalaDaFabrica, { kind: 'ok' }>
 type Ir = PropsDaTela['ir']
@@ -127,6 +130,7 @@ export function Sala({ sala, ir, comando, emVoo }: PropsDaTela): JSX.Element {
 
 function Corpo({ sala, ir }: { sala: SalaDaFabrica | null; ir: Ir }): JSX.Element {
   const cards = useCardsDoBoard()
+  const boards = useRetratoDosBoards()
 
   if (sala === null) {
     return (
@@ -142,6 +146,7 @@ function Corpo({ sala, ir }: { sala: SalaDaFabrica | null; ir: Ir }): JSX.Elemen
         <div data-testid="fabrica-vazia" className={VAZIO}>
           Nenhum despacho registrado ainda. A fábrica começa num yarn fabrica iniciar.
         </div>
+        <Linha sala={null} ir={ir} cards={cards} boards={boards} />
         <Recursos recursos={sala.recursos} />
       </>
     )
@@ -154,6 +159,7 @@ function Corpo({ sala, ir }: { sala: SalaDaFabrica | null; ir: Ir }): JSX.Elemen
           <p>Não foi possível ler o estado da fábrica.</p>
           <p className="text-xs break-words text-foreground/75">{sala.erro}</p>
         </div>
+        <Linha sala={null} ir={ir} cards={cards} boards={boards} />
         <Recursos recursos={sala.recursos} />
       </>
     )
@@ -164,7 +170,7 @@ function Corpo({ sala, ir }: { sala: SalaDaFabrica | null; ir: Ir }): JSX.Elemen
       <Resumo sala={sala} ir={ir} />
       <div className="flex flex-wrap items-start gap-5">
         <Esperando sala={sala} ir={ir} cards={cards} />
-        <Linha sala={sala} ir={ir} cards={cards} />
+        <Linha sala={sala} ir={ir} cards={cards} boards={boards} />
         <aside
           aria-label="Recursos e atividade"
           className="flex flex-[1_1_280px] max-w-[340px] flex-col gap-4"
@@ -373,9 +379,27 @@ function CartaoAberto({
   )
 }
 
-function Linha({ sala, ir, cards }: { sala: SalaOk; ir: Ir; cards: Cards }): JSX.Element {
-  const { suite } = sala.recursos
-  const foraDaLinha = sala.emVoo.filter((d) => d.estacao === null)
+function Linha({
+  sala,
+  ir,
+  cards,
+  boards,
+}: {
+  sala: SalaOk | null
+  ir: Ir
+  cards: Cards
+  boards: BoardsSnapshot | null
+}): JSX.Element {
+  const suite = sala?.recursos.suite
+  const fabrica = sala !== null && mostraAFabrica(boards)
+  const emVoo = fabrica ? sala.emVoo : []
+  const abertos = fabrica ? sala.abertos : []
+  const foraDaLinha = emVoo.filter((d) => d.estacao === null)
+  const aba = abaDaLinha(boards)
+  const jaNaLinha = new Set(
+    [...emVoo.map((d) => d.cardUrl), ...abertos.map((i) => i.cardUrl)].map((u) => u.toLowerCase()),
+  )
+  const doBoard = aba.kind === 'ok' ? cardsDaLinha(aba.board, jaNaLinha) : null
 
   return (
     <section
@@ -383,7 +407,17 @@ function Linha({ sala, ir, cards }: { sala: SalaOk; ir: Ir; cards: Cards }): JSX
       className="flex min-w-0 flex-[999_1_600px] flex-col gap-3"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-heading text-lg">Linha de produção</h2>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="font-heading text-lg">Linha de produção</h2>
+          <span
+            data-testid="fabrica-linha-board"
+            data-board={aba.kind === 'sem-aba' ? '' : aba.key}
+            title={aba.kind === 'erro' ? aba.erro : undefined}
+            className="text-xs text-foreground/75"
+          >
+            {rotuloDaAba(aba)}
+          </span>
+        </div>
         <span className="text-xs text-foreground/75">
           A a fábrica decide · B você aprova · C só você
         </span>
@@ -391,8 +425,9 @@ function Linha({ sala, ir, cards }: { sala: SalaOk; ir: Ir; cards: Cards }): JSX
       <div className="overflow-x-auto pr-1.5 pb-2.5">
         <div className="grid grid-cols-[repeat(9,210px)] items-start gap-3">
           {COLUNAS_DA_LINHA.map(({ coluna, rotulo, nivel, vazio }) => {
-            const despachos = sala.emVoo.filter((d) => colunaDaEstacao(d.estacao) === coluna)
-            const itens = sala.abertos.filter((i) => colunaDaEstacao(i.estacao) === coluna)
+            const despachos = emVoo.filter((d) => colunaDaEstacao(d.estacao) === coluna)
+            const itens = abertos.filter((i) => colunaDaEstacao(i.estacao) === coluna)
+            const doBoardNaColuna = doBoard?.porColuna.get(coluna) ?? []
 
             return (
               <div
@@ -412,14 +447,17 @@ function Linha({ sala, ir, cards }: { sala: SalaOk; ir: Ir; cards: Cards }): JSX
                     key={d.id}
                     d={d}
                     card={cards.get(d.cardUrl)}
-                    segura={suite.kind === 'ocupada' && suite.card === d.card}
+                    segura={suite?.kind === 'ocupada' && suite.card === d.card}
                     ir={ir}
                   />
                 ))}
                 {itens.map((item) => (
                   <CartaoParado key={item.id} item={item} card={cards.get(item.cardUrl)} ir={ir} />
                 ))}
-                {despachos.length === 0 && itens.length === 0 && (
+                {doBoardNaColuna.map((c) => (
+                  <CartaoDoBoard key={c.card.itemId} c={c} ir={ir} />
+                ))}
+                {despachos.length === 0 && itens.length === 0 && doBoardNaColuna.length === 0 && (
                   <div className={VAZIO}>{vazio}</div>
                 )}
               </div>
@@ -427,6 +465,34 @@ function Linha({ sala, ir, cards }: { sala: SalaOk; ir: Ir; cards: Cards }): JSX
           })}
         </div>
       </div>
+      {doBoard !== null && doBoard.aParte.length > 0 && (
+        <section
+          data-testid="fabrica-linha-a-parte"
+          aria-label="Fora das estações da linha"
+          className="flex flex-col gap-2"
+        >
+          <h3 className="text-sm font-bold">Fora das estações da linha</h3>
+          {doBoard.aParte.map((g) => (
+            <div
+              key={g.coluna}
+              data-testid="fabrica-a-parte-coluna"
+              data-coluna-do-board={g.coluna}
+              className="flex flex-col gap-1.5"
+            >
+              <span className="text-xs font-bold">
+                {g.coluna === '' ? 'coluna não declarada no board' : g.coluna}
+              </span>
+              <div className="flex flex-wrap gap-3">
+                {g.cards.map((c) => (
+                  <div key={c.card.itemId} className="w-[210px]">
+                    <CartaoDoBoard c={c} ir={ir} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
       {foraDaLinha.length > 0 && (
         <p
           data-testid="fabrica-linha-fora"
@@ -450,6 +516,57 @@ function Linha({ sala, ir, cards }: { sala: SalaOk; ir: Ir; cards: Cards }): JSX
         </p>
       )}
     </section>
+  )
+}
+
+function rotuloDaAba(aba: ReturnType<typeof abaDaLinha>): string {
+  switch (aba.kind) {
+    case 'ok':
+      return `board ${aba.titulo}`
+    case 'lendo':
+      return `board ${aba.titulo} · lendo…`
+    case 'erro':
+      return `board ${aba.titulo} · sem leitura`
+    case 'sem-aba':
+      return aba.motivo === 'lendo' ? 'lendo os boards…' : 'nenhum board selecionado'
+  }
+}
+
+/** Card aberto do board da aba: só o do operations-center navega (os comandos da fábrica são presos a ele, CA-3). */
+function CartaoDoBoard({ c, ir }: { c: CardNaLinha; ir: Ir }): JSX.Element {
+  const rotulo = rotuloDoCard(c.card.number, c.card.title)
+  const daFabrica = c.card.repository.toLowerCase() === REPO_DOS_CARDS_DA_FABRICA
+
+  return (
+    <Card asChild className="gap-1.5 bg-secondary-background p-2.5">
+      <article
+        data-testid="fabrica-board-card"
+        data-card={c.card.url}
+        data-coluna-do-board={c.coluna}
+      >
+        <Etiquetas card={c.card} />
+        {daFabrica ? (
+          <button
+            type="button"
+            data-testid="fabrica-board-card-abrir"
+            className="text-left text-[13px] leading-[17px] font-bold underline"
+            onClick={() => {
+              ir({ tela: 'card', card: c.card.number })
+            }}
+          >
+            {rotulo}
+          </button>
+        ) : (
+          <div className="text-[13px] leading-[17px] font-bold" title={c.card.repository}>
+            {rotulo}
+          </div>
+        )}
+        <div className="flex items-center gap-1.5 text-xs">
+          <Ponto cor="bg-secondary-background" />
+          {c.coluna === '' ? 'coluna não declarada' : c.coluna}
+        </div>
+      </article>
+    </Card>
   )
 }
 

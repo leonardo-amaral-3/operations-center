@@ -45,6 +45,7 @@ import { lerMandato, lerMandatoPelaGraphQL } from './fabrica/github'
 import { registerMandatoIpc } from './fabrica/mandatoNaSala'
 import { criarMarcaEmCache, lerRecursos, portasReais, worktreesDo } from './fabrica/recursos'
 import { pastaDaSala, registerFabricaIpc } from './fabrica/sala'
+import { lerSessoesDaMaquina, portasReaisDasSessoes, registerSessoesIpc } from './fabrica/sessoes'
 import { registerRelatorioIpc } from './relatorio/sala'
 import type { DangerGate } from './danger'
 import { createFixtureGraphQL, createFixtureRest } from './github/fixture'
@@ -406,6 +407,10 @@ if (screen === 'kanban') {
     // O avô da pasta da fábrica é o inverso do default (`<workspace>/claude/despachos-fabrica`).
     worktrees: () => worktreesDo(dirname(dirname(pasta))),
   })
+  // As sessões `claude` da máquina (#142): lê `/proc` e o `origin` das pastas; o cache do `origin`
+  // vive nas portas, criadas uma vez aqui.
+  const portasDasSessoes = portasReaisDasSessoes(homedir())
+  registerSessoesIpc(() => lerSessoesDaMaquina(portasDasSessoes))
 }
 
 // O canal de escrita da fábrica (#129): roda os subcomandos de `SUBCOMANDOS_DO_APP` do `yarn fabrica` em

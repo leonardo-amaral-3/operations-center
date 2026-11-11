@@ -136,7 +136,7 @@ origem, com as etiquetas do card quando ele está no board), os **Recursos** e *
 relidos do `estado.json` a cada 5 s. Clicar num item da fila abre a tela Pergunta ou a tela Decisão (ver o
 parágrafo seguinte), e clicar num despacho em voo abre a tela do card. A tela **Agentes**
 lista as sessões da fábrica (card, estação, agente, onde roda e estado), os cadeados, os próximos despachos
-e o que fazer se o PC cair. Os recursos vêm de leituras só de leitura: as **sessões simultâneas** são os
+e o que fazer se o PC cair, e em **Sessões da máquina** toda sessão `claude` viva da máquina, com card e repo lidos da pasta onde ela roda (só no Linux). A Linha de produção mostra os cards abertos do board da aba selecionada, cada um na estação da sua coluna (📋 Backlog e coluna extra em "Fora das estações da linha"), e os despachos do `yarn fabrica` só com a aba do Project 2; as duas coisas são leitura. Os recursos vêm de leituras só de leitura: as **sessões simultâneas** são os
 processos da máquina que carregam a marca do mandato da `dev` (lido do GitHub e guardado por 60 s) contra o
 teto de 3; a **suíte de smoke** é o cadeado do `yarn smoke` (`/proc/locks` no Linux, o card vem da pasta
 em que o dono roda); o **disco** é o espaço livre da partição da pasta da fábrica contra o mínimo de 2 GB.
