@@ -7,6 +7,7 @@ import { Agentes } from './telas/Agentes'
 import { CardEmVoo } from './telas/Card'
 import { Decisao } from './telas/Decisao'
 import { Entrada } from './telas/Entrada'
+import { Mandato } from './telas/Mandato'
 import { Pergunta } from './telas/Pergunta'
 import { Portfolio } from './telas/Portfolio'
 import { Relatorio } from './telas/Relatorio'
@@ -44,7 +45,7 @@ export const TELAS: Record<NomeDaTela, (p: PropsDaTela) => JSX.Element> = {
   card: CardEmVoo,
   entrada: Entrada,
   portfolio: Portfolio,
-  mandato: porVir('F5'),
+  mandato: Mandato,
   briefing: porVir('F6'),
   release: porVir('F6'),
 }
