@@ -398,7 +398,18 @@ function estado(deps: DepsDoCli, pasta: string): number {
   for (const i of abertos) {
     const primeira = i.texto.split('\n')[0] as string
     const resumo = primeira.length > 80 ? primeira.slice(0, 79) + '…' : primeira
-    deps.escrever(`${i.id} na entrada desde ${i.criadoEm}: ${resumo}`)
+    const t = i.triagem
+    let sufixo = ''
+    if (t !== null && t !== undefined) {
+      if (t.estado === 'concluida') {
+        const motivo = (t.parou ?? '').split('\n')[0] as string
+        const curto = motivo.length > 80 ? motivo.slice(0, 79) + '…' : motivo
+        sufixo = ` (a triagem parou: ${curto})`
+      } else {
+        sufixo = ` (em triagem, pid ${t.pid ?? '-'})`
+      }
+    }
+    deps.escrever(`${i.id} na entrada desde ${i.criadoEm}: ${resumo}${sufixo}`)
   }
   const contestadas = contestacoesAbertas(lidas.revisoes)
   for (const c of contestadas) {

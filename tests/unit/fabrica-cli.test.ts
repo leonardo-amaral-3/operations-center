@@ -423,6 +423,58 @@ describe('CLI', () => {
       ])
     })
 
+    /** Põe a triagem num item já gravado pelo `entrada`, como o despachante deixaria. */
+    const comTriagem = (id: string, triagem: Record<string, unknown>): void => {
+      const caminho = join(pasta, 'entrada.json')
+      const bruto = JSON.parse(readFileSync(caminho, 'utf8')) as {
+        itens: { id: string; triagem?: unknown }[]
+      }
+      for (const i of bruto.itens) if (i.id === id) i.triagem = triagem
+      writeFileSync(caminho, JSON.stringify(bruto))
+    }
+    const triagem = (
+      estado: string,
+      extra: Record<string, unknown> = {},
+    ): Record<string, unknown> => ({
+      estado,
+      marca: 'x/e-0001',
+      pid: 4321,
+      lancadoEm: AGORA,
+      concluidoEm: null,
+      sessaoClaude: null,
+      parou: null,
+      ...extra,
+    })
+
+    it('triar recusa o item em triagem pela fábrica, e aceita o que a triagem parou', async () => {
+      const m = montar()
+      await rodar(m, 'entrada', 'a')
+      comTriagem('e-0001', triagem('rodando'))
+      expect(await rodar(m, 'triar', 'e-0001', 'x')).toBe(1)
+      expect(m.avisos).toEqual(['fabrica: o item e-0001 está em triagem pela fábrica'])
+      expect(lerEntrada(pasta)?.itens[0]?.triadoEm).toBeNull()
+      comTriagem('e-0001', triagem('concluida', { parou: 'PARADA: x' }))
+      expect(await rodar(m, 'triar', 'e-0001', 'virou o #9')).toBe(0)
+      expect(lerEntrada(pasta)?.itens[0]?.resolucao).toBe('virou o #9')
+    })
+
+    it('estado mostra a triagem: em triagem com o pid, e a que parou com o motivo cortado em 80', async () => {
+      const m = montar()
+      await rodar(m, 'entrada', 'a')
+      await rodar(m, 'entrada', 'b')
+      await rodar(m, 'entrada', 'c')
+      comTriagem('e-0001', triagem('rodando'))
+      comTriagem('e-0002', triagem('lancando', { pid: null }))
+      comTriagem('e-0003', triagem('concluida', { parou: 'PARADA: ' + 'm'.repeat(100) }))
+      m.saida.length = 0
+      expect(await rodar(m, 'estado')).toBe(0)
+      expect(m.saida).toEqual([
+        `e-0001 na entrada desde ${AGORA}: a (em triagem, pid 4321)`,
+        `e-0002 na entrada desde ${AGORA}: b (em triagem, pid -)`,
+        `e-0003 na entrada desde ${AGORA}: c (a triagem parou: ${('PARADA: ' + 'm'.repeat(100)).slice(0, 79)}…)`,
+      ])
+    })
+
     it('estado com entrada.json torto avisa e sai 0', async () => {
       writeFileSync(join(pasta, 'entrada.json'), '{')
       const m = montar()

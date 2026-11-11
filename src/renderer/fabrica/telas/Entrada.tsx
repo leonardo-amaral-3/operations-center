@@ -36,9 +36,9 @@ const NAO_LIDAS: Partial<Record<Fonte, string>> = {
 const PASSOS = [
   'Você conta aqui o que te reportaram.',
   'O app grava pelo yarn fabrica entrada, na pasta da fábrica.',
-  'O yarn fabrica estado mostra à orquestradora o que ainda não foi triado.',
-  'Ela faz a triagem com o /gm-triage, que sugere tipo, severidade e rota.',
-  'E marca o item com yarn fabrica triar, dizendo no que ele virou.',
+  'O despachante (yarn fabrica rodar) lança uma sessão /gm-triage para cada item novo.',
+  'Ela procura no board se o relato já é um card e sugere tipo, severidade e rota.',
+  'O item termina como card novo em 📥 Triagem, ou ligado ao card que ele duplica.',
 ]
 
 // Padrão local da tela (§F4.9): o Card tem o seu, e a F3 tem os dela em `item.tsx`.
@@ -53,7 +53,26 @@ function Vazio({ testid, children }: { testid: string; children: ReactNode }): J
   )
 }
 
-function ItemDaEntrada({ item, ir }: { item: ItemNaEntrada; ir: PropsDaTela['ir'] }): JSX.Element {
+function avisoDoEsperando(sala: PropsDaTela['sala']): string {
+  if (sala?.pausa != null) return 'A fábrica está pausada: a triagem começa quando você retomar.'
+  if (sala?.despachante === 'rodando') {
+    return 'O despachante lança a /gm-triage para este item no próximo passo em que houver vaga.'
+  }
+  if (sala?.despachante === 'desconhecido') {
+    return 'Não deu para saber se o despachante está rodando: a triagem começa quando ele rodar.'
+  }
+  return 'O despachante não está rodando: a triagem começa quando a orquestradora ligar o yarn fabrica rodar.'
+}
+
+function ItemDaEntrada({
+  item,
+  ir,
+  aviso,
+}: {
+  item: ItemNaEntrada
+  ir: PropsDaTela['ir']
+  aviso: string
+}): JSX.Element {
   const triado = item.triadoEm !== null
   const resolucao = item.resolucao ?? ''
   const citado = triado ? cardCitado(resolucao) : null
@@ -61,7 +80,7 @@ function ItemDaEntrada({ item, ir }: { item: ItemNaEntrada; ir: PropsDaTela['ir'
     <Card
       data-testid="fabrica-entrada-item"
       data-id={item.id}
-      data-estado={triado ? 'triado' : 'aberto'}
+      data-estado={triado ? 'triado' : (item.triagem ?? 'esperando')}
       data-abre-card={citado ?? undefined}
       onClick={
         citado === null
@@ -84,7 +103,12 @@ function ItemDaEntrada({ item, ir }: { item: ItemNaEntrada; ir: PropsDaTela['ir'
       <div className="flex flex-wrap items-center gap-3">
         {triado ? (
           <>
-            <Badge className="bg-attention text-attention-foreground">triada</Badge>
+            <Badge
+              data-testid="fabrica-entrada-situacao"
+              className="bg-attention text-attention-foreground"
+            >
+              triada
+            </Badge>
             <span className="flex-[1_1_300px] text-sm leading-5">
               {`Triada em ${horaCurta(item.triadoEm ?? '')}: ${resolucao}`}
             </span>
@@ -98,13 +122,39 @@ function ItemDaEntrada({ item, ir }: { item: ItemNaEntrada; ir: PropsDaTela['ir'
               </Button>
             )}
           </>
+        ) : item.triagem === 'triando' ? (
+          <>
+            <Badge
+              data-testid="fabrica-entrada-situacao"
+              className="bg-attention text-attention-foreground"
+            >
+              em triagem
+            </Badge>
+            <span className="flex-[1_1_300px] text-sm leading-5">
+              A /gm-triage está lendo o relato e procurando no board se ele já é um card.
+            </span>
+          </>
+        ) : item.triagem === 'parou' ? (
+          <>
+            <Badge
+              data-testid="fabrica-entrada-situacao"
+              className="bg-danger text-danger-foreground"
+            >
+              a triagem parou
+            </Badge>
+            <span className="flex-[1_1_300px] text-sm leading-5">
+              {`A triagem parou sem card: ${item.parou ?? ''}. A orquestradora fecha o item com yarn fabrica triar.`}
+            </span>
+          </>
         ) : (
           <>
-            <Badge className="bg-warning text-warning-foreground">esperando triagem</Badge>
-            <span className="flex-[1_1_300px] text-sm leading-5">
-              Está na pasta da fábrica. A orquestradora vê no yarn fabrica estado e faz a triagem; o
-              app não cria card.
-            </span>
+            <Badge
+              data-testid="fabrica-entrada-situacao"
+              className="bg-warning text-warning-foreground"
+            >
+              esperando triagem
+            </Badge>
+            <span className="flex-[1_1_300px] text-sm leading-5">{aviso}</span>
           </>
         )}
       </div>
@@ -193,7 +243,7 @@ export function Entrada({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
     lista = (
       <>
         {entrada.itens.map((item) => (
-          <ItemDaEntrada key={item.id} item={item} ir={ir} />
+          <ItemDaEntrada key={item.id} item={item} ir={ir} aviso={avisoDoEsperando(sala)} />
         ))}
         {mais > 0 && (
           <p className="text-xs text-foreground/75">{`e mais ${mais} antigos no entrada.json`}</p>
@@ -210,7 +260,7 @@ export function Entrada({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
         atual={tela.tela}
         direita={
           <Badge variant="neutral" data-testid="fabrica-entrada-aviso">
-            Grava pelo yarn fabrica entrada · o app não cria card
+            Grava pelo yarn fabrica entrada · quem cria o card é a /gm-triage
           </Badge>
         }
       />
@@ -284,8 +334,8 @@ export function Entrada({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
           <Card className="gap-2 bg-main p-4 text-main-foreground">
             <h2 className="font-heading text-base">O que ela não faz</h2>
             <p className="text-[13px] leading-[18px]">
-              Não cria card nem escreve no board: o app só lê o board. Não lê Slack, suporte nem
-              Vigia nesta prova.
+              Não promove o card: isso é o G1, da /gm-card. O app não escreve no board: quem cria o
+              card é a sessão da triagem. Não lê Slack, suporte nem Vigia nesta prova.
             </p>
           </Card>
         </aside>
