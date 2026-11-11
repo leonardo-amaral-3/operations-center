@@ -27,3 +27,20 @@ export function comandoDaEstacao(
     erro: `o #${card} está em ${item.status}: o próximo passo depende da pasta de planning ou é da orquestradora; passe --comando`,
   }
 }
+
+/** O Status de um card no Project 2: o documento que o `iniciar` manda (e a fixture responde). */
+export const ITEM_NO_BOARD_QUERY = `query ItemNoBoard($owner: String!, $name: String!, $n: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $n) {
+      state
+      projectItems(first: 20) {
+        nodes {
+          project { number }
+          fieldValueByName(name: "Status") {
+            ... on ProjectV2ItemFieldSingleSelectValue { name }
+          }
+        }
+      }
+    }
+  }
+}`

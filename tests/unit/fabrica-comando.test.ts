@@ -1,10 +1,12 @@
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ITEM_NO_BOARD_QUERY } from '../../src/core/fabrica/estacao'
 import type { ComandoDaFabrica } from '../../src/shared/fabrica'
 import type { DepsDoCli } from '../../src/main/fabrica/cli'
 import {
+  LIMITE_DA_NOTA_DO_APP,
   SUBCOMANDOS_DO_APP,
   argvDoComando,
   criarExecutorDeComando,
@@ -67,6 +69,8 @@ describe('argvDoComando', () => {
       { tipo: 'retomar' },
       { tipo: 'fechar', item: 'q-0009', resolucao: 'gravar no cofre' },
       { tipo: 'entrada', texto: 'o suporte pediu CSV' },
+      { tipo: 'confirmar', arquivo: '2026-11-10-a-sala-le-o-mandato-pela-graphql.md' },
+      { tipo: 'iniciar', card: 940, nota: 'x' },
     ]
     for (const pedido of uniao) {
       const argv = argvDoComando(pedido)
@@ -98,10 +102,10 @@ describe('argvDoComando', () => {
     expect(argvDoComando(pedido)).toBeNull()
   })
 
-  it('a lista fechada tem fechar e não tem rodar, estado nem iniciar', () => {
+  it('a lista fechada tem fechar e iniciar e não tem rodar nem estado', () => {
     const lista: readonly string[] = SUBCOMANDOS_DO_APP
     expect(lista).toContain('fechar')
-    expect(lista).not.toContain('iniciar')
+    expect(lista).toContain('iniciar')
     expect(lista).not.toContain('rodar')
     expect(lista).not.toContain('estado')
   })
@@ -263,10 +267,11 @@ describe('o comando entrada (F4, CA-4.3 e CA-E3)', () => {
     expect(argvDoComando(pedido)).toBeNull()
   })
 
-  it('só entrada entra na lista fechada: triar, rodar, estado e iniciar ficam fora', () => {
+  it('entrada e iniciar entram na lista fechada: triar, rodar e estado ficam fora', () => {
     const lista: readonly string[] = SUBCOMANDOS_DO_APP
     expect(lista).toContain('entrada')
-    for (const fora of ['triar', 'rodar', 'estado', 'iniciar']) expect(lista).not.toContain(fora)
+    expect(lista).toContain('iniciar')
+    for (const fora of ['triar', 'rodar', 'estado']) expect(lista).not.toContain(fora)
   })
 
   it('o executor, numa cópia de f4, grava o e-0004', async () => {
@@ -329,7 +334,7 @@ describe('os comandos confirmar e contestar (F5, CA-5.2 e CA-E3)', () => {
     const lista: readonly string[] = SUBCOMANDOS_DO_APP
     expect(lista).toContain('confirmar')
     expect(lista).toContain('contestar')
-    for (const fora of ['atender', 'triar', 'rodar', 'estado', 'iniciar']) {
+    for (const fora of ['atender', 'triar', 'rodar', 'estado']) {
       expect(lista).not.toContain(fora)
     }
   })
@@ -362,5 +367,120 @@ describe('os comandos confirmar e contestar (F5, CA-5.2 e CA-E3)', () => {
       motivo: 'a raiz tem de parar no épico',
     })
     expect(existsSync(join(pasta, 'estado.json'))).toBe(false)
+  })
+})
+
+describe('o comando iniciar (F6, CA-6.2)', () => {
+  it('vira ["iniciar", <card>, "--nota", <nota aparada>]', () => {
+    expect(argvDoComando({ tipo: 'iniciar', card: 940, nota: ' x ' })).toEqual([
+      'iniciar',
+      '940',
+      '--nota',
+      'x',
+    ])
+    expect(argvDoComando({ tipo: 'iniciar', card: 940, nota: 'a'.repeat(1000) })).not.toBeNull()
+    expect(LIMITE_DA_NOTA_DO_APP).toBe(1000)
+  })
+
+  it.each([
+    { tipo: 'iniciar', card: 0, nota: 'x' },
+    { tipo: 'iniciar', card: -1, nota: 'x' },
+    { tipo: 'iniciar', card: 1.5, nota: 'x' },
+    { tipo: 'iniciar', card: '940', nota: 'x' },
+    { tipo: 'iniciar', card: NaN, nota: 'x' },
+    { tipo: 'iniciar', card: 940 },
+    { tipo: 'iniciar', card: 940, nota: 7 },
+    { tipo: 'iniciar', card: 940, nota: '' },
+    { tipo: 'iniciar', card: 940, nota: '   ' },
+    { tipo: 'iniciar', card: 940, nota: 'a\nb' },
+    { tipo: 'iniciar', card: 940, nota: 'a\rb' },
+    { tipo: 'iniciar', card: 940, nota: 'a\u0000b' },
+    { tipo: 'iniciar', card: 940, nota: 'a\u0085b' },
+    { tipo: 'iniciar', card: 940, nota: 'a\u2028b' },
+    { tipo: 'iniciar', card: 940, nota: 'a\u2029b' },
+    { tipo: 'iniciar', card: 940, nota: '--comando x' },
+    { tipo: 'iniciar', card: 940, nota: 'a'.repeat(1001) },
+  ])('%j → null', (pedido) => {
+    expect(argvDoComando(pedido)).toBeNull()
+  })
+
+  it('a segunda guarda: entrada "--ensaio" chega ao executar; iniciar com --comando ou --ensaio não', async () => {
+    const chamadas: string[][] = []
+    const rodar = (deps: DepsDoCli): Promise<number> => {
+      chamadas.push([...deps.argv])
+      return Promise.resolve(0)
+    }
+    const com = (argv: string[]) => criarExecutorDeComando(base({}), rodar, () => argv)
+
+    await com(['entrada', '--ensaio'])({})
+    expect(chamadas).toEqual([['entrada', '--ensaio']])
+
+    for (const argv of [
+      ['iniciar', '940', '--comando', '/gm-ship #940'],
+      ['iniciar', '940', '--ensaio'],
+      ['iniciar', '940', '--nota', 'x', '--ensaio'],
+      ['iniciar', '940'],
+      ['iniciar', '0940', '--nota', 'x'],
+      ['iniciar', 'x', '--nota', 'x'],
+      ['iniciar', '940', '--comando', 'x'],
+    ]) {
+      const r = await com(argv)({})
+      expect(r).toMatchObject({ ok: false, erro: 'comando desconhecido' })
+    }
+    expect(chamadas).toHaveLength(1)
+
+    const r = await com(['iniciar', '940', '--nota', 'x'])({})
+    expect(r.ok).toBe(true)
+    expect(chamadas).toHaveLength(2)
+  })
+
+  it('o executor grava frente + despacho pendente com a nota; nota com "main" é recusada sem gravar', async () => {
+    // Antes de agir: a pasta de teste nunca é a real.
+    expect(pasta).toContain('/node_modules/.oc-fabrica-teste-')
+    const graphql = vi.fn((documento: string) => {
+      expect(documento).toBe(ITEM_NO_BOARD_QUERY)
+      return Promise.resolve({
+        data: {
+          repository: {
+            issue: {
+              state: 'OPEN',
+              projectItems: {
+                nodes: [{ project: { number: 2 }, fieldValueByName: { name: '📋 Backlog' } }],
+              },
+            },
+          },
+        },
+      })
+    })
+    const executor = criarExecutorDeComando({
+      ...base({ OC_FABRICA_DIR: pasta }),
+      graphql,
+      lerMandato: () => Promise.resolve('MANDATO DE TESTE\n'),
+    })
+
+    const recusou = await executor({ tipo: 'iniciar', card: 940, nota: 'sobe na main hoje' })
+    expect(recusou.ok).toBe(false)
+    expect(recusou.erro).toContain('a nota cita main, release, tag ou hotfix')
+    expect(existsSync(join(pasta, 'estado.json'))).toBe(false)
+
+    const r = await executor({ tipo: 'iniciar', card: 940, nota: ' Pronto às 8h ' })
+    expect(r).toMatchObject({
+      ok: true,
+      codigo: 0,
+      argv: ['iniciar', '940', '--nota', 'Pronto às 8h'],
+    })
+    const estado = JSON.parse(readFileSync(join(pasta, 'estado.json'), 'utf8')) as {
+      frentes: Array<{ card: number }>
+      despachos: Array<{ card: number; comando: string; estado: string; nota: string | null }>
+    }
+    expect(estado.frentes).toHaveLength(1)
+    expect(estado.frentes[0]).toMatchObject({ card: 940 })
+    expect(estado.despachos).toHaveLength(1)
+    expect(estado.despachos[0]).toMatchObject({
+      card: 940,
+      comando: '/gm-spec #940',
+      estado: 'pendente',
+      nota: 'Pronto às 8h',
+    })
   })
 })

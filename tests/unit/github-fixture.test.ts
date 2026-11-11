@@ -4,8 +4,9 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { ITEM_NO_BOARD_QUERY } from '../../src/core/fabrica/estacao'
 import { MANDATO_DA_DEV_QUERY } from '../../src/core/fabrica/mandato'
-import { lerMandatoPelaGraphQL } from '../../src/main/fabrica/github'
+import { lerItemNoBoard, lerMandatoPelaGraphQL } from '../../src/main/fabrica/github'
 import { RELATORIO_MOVIDOS_QUERY, lerCards } from '../../src/core/relatorio'
 import { documentoDosCards } from '../../src/core/relatorio/board'
 import { createFixtureGraphQL } from '../../src/main/github/fixture'
@@ -105,5 +106,55 @@ describe('createFixtureGraphQL, o mandato da dev', () => {
     await expect(graphql(MANDATO_DA_DEV_QUERY, {})).rejects.toThrow(
       'sem fixture do mandato (OC_FABRICA_MANDATO_FIXTURE)',
     )
+  })
+})
+
+describe('createFixtureGraphQL, o Status de um card (F6)', () => {
+  const BOARD = join(__dirname, '..', 'fixtures', 'board.json')
+  const graphql = createFixtureGraphQL({ board: BOARD })
+  const pedir = (n: number) =>
+    graphql(ITEM_NO_BOARD_QUERY, { owner: 'leonardo-amaral-3', name: 'operations-center', n })
+
+  it('o lerItemNoBoard manda exatamente ITEM_NO_BOARD_QUERY', async () => {
+    const documentos: string[] = []
+    await lerItemNoBoard((documento) => {
+      documentos.push(documento)
+      return Promise.resolve({
+        data: { repository: { issue: { state: 'OPEN', projectItems: { nodes: [] } } } },
+      })
+    }, 7)
+    expect(documentos).toEqual([ITEM_NO_BOARD_QUERY])
+    expect(ITEM_NO_BOARD_QUERY).not.toContain('mutation')
+  })
+
+  it('o card 2 está aberto em 📥 Triagem e o 908 em 📋 Backlog', async () => {
+    expect((await pedir(2)).data).toEqual({
+      repository: {
+        issue: {
+          state: 'OPEN',
+          projectItems: {
+            nodes: [{ project: { number: 2 }, fieldValueByName: { name: '📥 Triagem' } }],
+          },
+        },
+      },
+    })
+    expect(JSON.stringify((await pedir(908)).data)).toContain('📋 Backlog')
+  })
+
+  it('card fechado sai CLOSED, sem Status sai null, de outro repo e ausente saem sem issue', async () => {
+    expect(JSON.stringify((await pedir(901)).data)).toContain('"state":"CLOSED"')
+    expect(JSON.stringify((await pedir(902)).data)).toContain('"fieldValueByName":null')
+    expect((await pedir(999)).data).toEqual({ repository: { issue: null } })
+    const outro = await graphql(ITEM_NO_BOARD_QUERY, {
+      owner: 'leonardo-amaral-3',
+      name: 'repo-forasteiro',
+      n: 2,
+    })
+    expect(outro.data).toEqual({ repository: { issue: null } })
+  })
+
+  it('o lerItemNoBoard sobre a fixture dá o Status do card', async () => {
+    expect(await lerItemNoBoard(graphql, 2)).toEqual({ noProjeto: true, status: '📥 Triagem' })
+    await expect(lerItemNoBoard(graphql, 999)).rejects.toThrow('não há issue #999')
   })
 })

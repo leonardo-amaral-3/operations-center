@@ -158,8 +158,10 @@ describe('a superfície de board é somente-leitura', () => {
     //
     // **E a do canal de escrita da fábrica (#129)**: `fabrica:comando` é o **único** canal que
     // escreve na pasta da fábrica, e só por um subcomando do `yarn fabrica` numa lista fechada
-    // (`SUBCOMANDOS_DO_APP`: `pausar`, `retomar`, `fechar`, `entrada`, `confirmar`, `contestar`). Não toca o board, nem para
-    // ler; fica na família `fabrica:`, sem exceção nominal no filtro de `boards:`/`card:`.
+    // (`SUBCOMANDOS_DO_APP`: `pausar`, `retomar`, `fechar`, `entrada`, `confirmar`, `contestar`,
+    // `iniciar`). Não escreve no board nem no GitHub; só o `iniciar` **lê** o Status do card pela
+    // GraphQL (`ITEM_NO_BOARD_QUERY`, sem `mutation`), e por isso o canal entra no filtro abaixo, pelo
+    // nome. Fica na família `fabrica:`, sem exceção nominal no filtro de `boards:`/`card:`.
     //
     // **E os dois de leitura da F4 (#133)**: `fabrica:read-card` e `fabrica:read-entrada` só leem a
     // pasta da fábrica (o despacho de um card, o `entrada.json`), nunca escrevem e não tocam o
@@ -310,6 +312,7 @@ describe('a superfície de board é somente-leitura', () => {
         canal.startsWith('card:') ||
         canal.startsWith('relatorio:') ||
         canal === 'fabrica:read' ||
+        canal === 'fabrica:comando' ||
         canal === 'fabrica:read-mandato',
     )
 
@@ -319,6 +322,7 @@ describe('a superfície de board é somente-leitura', () => {
       'card:read',
       'card:read-pr',
       'fabrica:read',
+      'fabrica:comando',
       'fabrica:read-mandato',
       'relatorio:read',
       'boards:changed',
