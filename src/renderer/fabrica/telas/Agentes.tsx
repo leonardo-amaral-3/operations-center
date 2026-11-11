@@ -298,7 +298,7 @@ function Caixa({
   return (
     <div className="flex flex-col gap-1 rounded-base border-2 border-border px-3 py-2.5">
       <div className="flex justify-between gap-2 text-sm font-bold">
-        {titulo}
+        <span>{titulo}</span>
         {badge}
       </div>
       <p className="text-xs">{children}</p>

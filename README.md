@@ -129,10 +129,18 @@ nenhuma, e ele as adota quando é religado.
 No app, o botão **Fábrica** do cabeçalho troca o kanban pela sala da fábrica, com o cabeçalho do
 protótipo: a marca, os oito botões de tela (Sala de controle, Briefing, Relatório, Portfólio, Entrada,
 Agentes, Release e Mandato e placar), o projeto, o crachá de estado (**Fábrica ligada**, **parada** ou
-**pausada**) e o botão **Pausar fábrica** / **Retomar fábrica**. A Sala mostra a fila de decisões, os
-despachos em voo e os fechados, relidos do `estado.json` a cada 5 s; clicar num item da fila abre a
-tela Pergunta (o texto final da sessão que o gerou e o comando para fechá-lo), e clicar num despacho em
-voo abre a tela do card. O Relatório gera o relatório de um dia com o mesmo código do `yarn relatorio`,
+**pausada**) e o botão **Pausar fábrica** / **Retomar fábrica**. A Sala mostra o resumo (itens esperando você, agentes
+trabalhando, cadeados e sessões quebradas), a fila **Esperando você**, a **Linha de produção** com as nove
+estações do protótipo (cada despacho em voo e cada item aberto na coluna da estação do despacho de
+origem, com as etiquetas do card quando ele está no board), os **Recursos** e **O que a fábrica decidiu**,
+relidos do `estado.json` a cada 5 s. Clicar num item da fila abre a tela Pergunta (o texto final da sessão
+que o gerou e o comando para fechá-lo), e clicar num despacho em voo abre a tela do card. A tela **Agentes**
+lista as sessões da fábrica (card, estação, agente, onde roda e estado), os cadeados, os próximos despachos
+e o que fazer se o PC cair. Os recursos vêm de leituras só de leitura: as **sessões simultâneas** são os
+processos da máquina que carregam a marca do mandato da `dev` (lido do GitHub e guardado por 60 s) contra o
+teto de 3; a **suíte de smoke** é o cadeado do `yarn smoke` (`/proc/locks` no Linux, o card vem da pasta
+em que o dono roda); o **disco** é o espaço livre da partição da pasta da fábrica contra o mínimo de 2 GB.
+Fora do Linux, sessões e suíte aparecem como "sem leitura". O Relatório gera o relatório de um dia com o mesmo código do `yarn relatorio`,
 lendo o cofre de `OC_RELATORIO_COFRE` (default `~/notoria/claude/decisoes`) e o git de
 `OC_RELATORIO_REPO` (default `~/pessoal/operations-center`). As outras telas chegam nas fases F2 a F6
 do épico #129. Pausar e retomar são a única escrita do app na pasta da fábrica: o app roda `yarn fabrica
@@ -228,6 +236,8 @@ Sem banco e sem arquivo de config. Variáveis de ambiente lidas no main:
 | `OC_RELATORIO_COFRE` | ausente: `~/notoria/claude/decisoes` | o cofre de decisões que a aba Relatório da sala lê (#126). O app só lê |
 | `OC_RELATORIO_REPO` | ausente: `~/pessoal/operations-center` | o repo cujo `git log` entra no relatório da aba Relatório |
 | `OC_RELATORIO_FIXTURE` | ausente: os documentos do relatório respondem erro na fixture | caminho de um JSON com as respostas de GraphQL do relatório. Só é consultada com `OC_BOARD_FIXTURE`, e é o par dela no smoke da aba Relatório |
+| `OC_FABRICA_MANDATO_FIXTURE` | ausente: o mandato vem da `dev` do GitHub, e a fixture do board responde `sem fixture do mandato` | caminho de um arquivo de texto cuja primeira linha é a marca do mandato que a Sala e Agentes usam para contar as sessões da fábrica. Só é consultada com `OC_BOARD_FIXTURE`, e é o par dela no smoke da F2 |
+| `OC_SMOKE_CADEADO` | ausente: o cadeado padrão do `yarn smoke` (`/run/user/<uid>/operations-center-smoke.lock`, ou `/tmp/operations-center-smoke-<uid>.lock`) | caminho do arquivo de cadeado da suíte de smoke que a Sala lê (no Linux) para mostrar quem a segura. O app só lê; quem a segura é o `flock` do `yarn smoke`. Existe **para o smoke da F2**, que segura um cadeado próprio; fora dele, não há razão para tocá-la |
 
 `OC_SCREEN`, `OC_BOARD_FIXTURE`, `OC_BOARDS_FIXTURE`, `OC_CARD_FIXTURE`, `OC_PR_FIXTURE`, `OC_CLAUDE_PROJECTS` e
 `OC_STATE_DIR` são portas de teste, como `OC_ISOLATED`: fora do smoke não há razão para tocá-las.

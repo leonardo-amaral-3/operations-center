@@ -73,7 +73,7 @@ function retrato(pasta: string): string[] {
   return saida
 }
 
-async function subir(fabrica: string) {
+async function subir(fabrica: string, extra: Record<string, string> = {}) {
   const stateDir = pastaTemporaria('oc-sala-estado-')
   const app = await launchSmokeApp({
     stateDir,
@@ -81,6 +81,7 @@ async function subir(fabrica: string) {
       OC_BOARD_FIXTURE: BOARD_FIXTURE_PATH,
       OC_BOARDS_FIXTURE: BOARDS_FIXTURE_PATH,
       OC_FABRICA_DIR: fabrica,
+      ...extra,
     },
   })
   const window = await app.firstWindow()
@@ -254,6 +255,116 @@ test('pausar e retomar pela tela', async () => {
   } finally {
     await app.close()
   }
+})
+
+const FIXTURE_F2 = join(REPO_ROOT, 'tests', 'fixtures', 'fabrica', 'f2')
+
+test('sala e agentes com a fixture da F2', async () => {
+  test.skip(process.platform !== 'linux', 'sessões e cadeado leem /proc')
+
+  // A fábrica copiada e o cadeado moram em `test-results/`: a escrita da P2 recusa `/tmp`, e o
+  // `OC_SMOKE_CADEADO` vai **só** para o app que este teste sobe, nunca para o `yarn smoke`.
+  const base = join(REPO_ROOT, 'test-results', 'fabrica-f2')
+  rmSync(base, { recursive: true, force: true })
+  mkdirSync(base, { recursive: true })
+  pastasTemporarias.push(base)
+  const pasta = join(base, 'fabrica')
+  cpSync(FIXTURE_F2, pasta, { recursive: true })
+  const antes = retrato(pasta)
+
+  // `cardDaCwd` lê o card do nome da pasta em que o `flock` roda: `operations-center-777-smoke`.
+  const cwdDoFlock = join(base, 'operations-center-777-smoke')
+  mkdirSync(cwdDoFlock, { recursive: true })
+  const cadeado = join(base, 'suite.lock')
+  writeFileSync(cadeado, '')
+  const flock = spawn('flock', [cadeado, 'sleep', '60'], {
+    cwd: cwdDoFlock,
+    stdio: 'ignore',
+    detached: true,
+  })
+
+  const { app, window } = await subir(pasta, {
+    OC_FABRICA_MANDATO_FIXTURE: join(FIXTURE_F2, 'mandato.txt'),
+    OC_SMOKE_CADEADO: cadeado,
+  })
+
+  try {
+    await abrirSala(window)
+
+    // O resumo. Os pids da fixture não são sessões do Claude: "trabalhando" é 0 (M26).
+    await expect(window.getByTestId('fabrica-resumo-esperando')).toContainText('3', {
+      timeout: RELEITURA,
+    })
+    await expect(window.getByTestId('fabrica-resumo-trabalhando')).toContainText('0')
+    await expect(window.getByTestId('fabrica-resumo-cadeados')).toContainText('1', {
+      timeout: RELEITURA,
+    })
+    await expect(window.getByTestId('fabrica-resumo-quebradas')).toContainText('1')
+
+    // A Linha: o que cada coluna carrega.
+    const coluna = (nome: string) =>
+      window.locator(`[data-testid="fabrica-coluna"][data-coluna="${nome}"]`)
+    await expect(coluna('entrada')).toContainText('#952')
+    await expect(coluna('entrada')).toContainText('PARADA')
+    await expect(coluna('card')).toContainText('#2')
+    await expect(coluna('card')).toContainText('Débito técnico')
+    await expect(coluna('spec')).toContainText('#4')
+    await expect(coluna('spec')).toContainText('Melhoria')
+    await expect(coluna('spec')).toContainText('Completa')
+    await expect(coluna('implementacao')).toContainText('#1')
+    await expect(coluna('implementacao')).toContainText('Melhoria')
+    await expect(coluna('implementacao')).toContainText('#953')
+    await expect(coluna('implementacao')).toContainText('FALHA')
+    await expect(coluna('revisao')).toContainText('#951')
+    await expect(coluna('revisao')).toContainText('#955')
+    await expect(coluna('revisao')).toContainText('PARADA')
+    for (const vazia of ['integracao', 'validacao', 'release', 'operacao']) {
+      await expect(coluna(vazia)).not.toContainText('#')
+    }
+
+    // Os recursos: sessões contra uma marca que nenhum processo carrega, a suíte de um `flock` real.
+    await expect(window.getByTestId('fabrica-recurso-sessoes')).toContainText('0 de 3', {
+      timeout: RELEITURA,
+    })
+    await expect(window.getByTestId('fabrica-recurso-suite')).toContainText('#777 · fila vazia', {
+      timeout: RELEITURA,
+    })
+    await expect(window.getByTestId('fabrica-recurso-disco')).toContainText('2 GB')
+
+    // O que a fábrica decidiu: os seis itens, nesta ordem.
+    const decidiu = window.locator(
+      '[data-testid="fabrica-decidiu"], [data-testid="fabrica-parou"], [data-testid="fabrica-fechado"]',
+    )
+    await expect(decidiu).toHaveCount(6)
+    await expect(decidiu.nth(0)).toContainText('#1')
+    await expect(decidiu.nth(0)).toContainText('/gm-implement')
+    await expect(decidiu.nth(1)).toContainText('#955')
+    await expect(decidiu.nth(2)).toContainText('#1')
+    await expect(decidiu.nth(2)).toContainText('/gm-plan-tasks')
+    await expect(decidiu.nth(3)).toContainText('#953')
+    await expect(decidiu.nth(4)).toContainText('#952')
+    await expect(decidiu.nth(5)).toContainText('#954')
+    await expect(decidiu.nth(5)).toContainText('resolvido: seguir sem segundo revisor')
+    await expect(window.getByTestId('fabrica-fechado')).toHaveCount(1)
+
+    // Agentes.
+    await window.getByTestId('fabrica-nav-agentes').click()
+    await expect(window.getByTestId('fabrica-sessoes')).toContainText('0 de 3 sessões', {
+      timeout: RELEITURA,
+    })
+    await expect(window.getByTestId('fabrica-agente')).toHaveCount(4)
+    await expect(window.getByTestId('fabrica-agente-parado')).toHaveCount(3)
+    await expect(window.getByText('Com o #777. Fila vazia.', { exact: false })).toBeVisible()
+    const rodando = window.locator('[data-testid="fabrica-agente"][data-state="rodando"]')
+    await expect(rodando).toHaveCount(2)
+    for (const linha of await rodando.all()) await expect(linha).toContainText('sem sessão viva')
+  } finally {
+    // O `flock` forka o `sleep`: matar só o pai deixaria o filho segurando o cadeado.
+    if (flock.pid !== undefined) process.kill(-flock.pid)
+    await app.close()
+  }
+
+  expect(retrato(pasta), 'a sala mudou a pasta da fábrica').toEqual(antes)
 })
 
 const FABRICA_REAL = smokeFabricaReal()
