@@ -282,6 +282,26 @@ describe('criarMarcaEmCache', () => {
     expect(t.chamadas()).toBe(2)
   })
 
+  it('uma leitura que nunca resolve não trava as seguintes (e a resposta tardia cai fora)', async () => {
+    let soltar: (t: string) => void = () => undefined
+    const t = montar([
+      () => new Promise<string>((r) => (soltar = r)),
+      () => Promise.resolve('NOVO\n'),
+    ])
+    expect(t.marca().kind).toBe('lendo')
+    t.avanca(119_000)
+    t.marca()
+    expect(t.chamadas()).toBe(1)
+    t.avanca(1_000)
+    t.marca()
+    expect(t.chamadas()).toBe(2)
+    await assenta()
+    soltar('VELHO\n')
+    await assenta()
+    expect(t.marca()).toMatchObject({ kind: 'ok' })
+    expect(JSON.stringify(t.marca())).not.toContain('VELHO')
+  })
+
   it('mandato vazio vira erro', async () => {
     const t = montar([() => Promise.resolve('\n  \n')])
     t.marca()

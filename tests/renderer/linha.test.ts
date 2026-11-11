@@ -200,6 +200,12 @@ describe('previsaoDosPendentes', () => {
     )
   })
 
+  it('despachante sem leitura não afirma que está parado', () => {
+    expect(previsaoDosPendentes(sala({ despachante: 'desconhecido' }))[0]).toBe(
+      'sobe quando o despachante rodar (sem leitura dele)',
+    )
+  })
+
   it('sessões sem leitura', () => {
     const s = sala()
     s.recursos.sessoes = { kind: 'sem-leitura', motivo: 'x', teto: 3 }

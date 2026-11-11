@@ -119,18 +119,26 @@ export function criarMarcaEmCache(
   let estado: EstadoDaMarca = { kind: 'lendo' }
   let chegouEm: number | null = null
   let emVoo = false
+  let comecouEm = 0
+  // Cada leitura tem um número: a que passou do prazo é abandonada e a resposta dela, se vier, cai fora.
+  let geracao = 0
 
-  const registrar = (novo: EstadoDaMarca | null): void => {
+  const registrar = (minha: number, novo: EstadoDaMarca | null): void => {
+    if (minha !== geracao) return
     if (novo !== null) estado = novo
     chegouEm = agora()
     emVoo = false
   }
-  const falhou = (erro: unknown): void =>
-    registrar(estado.kind === 'ok' ? null : { kind: 'erro', erro: mensagem(erro) })
+  const falhou = (minha: number, erro: unknown): void =>
+    registrar(minha, estado.kind === 'ok' ? null : { kind: 'erro', erro: mensagem(erro) })
 
   return () => {
+    // Uma leitura que nunca resolve (rede caída no meio do fetch) não trava as seguintes para sempre.
+    if (emVoo && agora() - comecouEm >= 2 * validadeMs) emVoo = false
     if (!emVoo && (chegouEm === null || agora() - chegouEm >= validadeMs)) {
       emVoo = true
+      comecouEm = agora()
+      const minha = ++geracao
       let leitura: Promise<string>
       try {
         leitura = lerMandato()
@@ -140,12 +148,12 @@ export function criarMarcaEmCache(
       leitura.then(
         (texto) => {
           try {
-            registrar({ kind: 'ok', marca: marcaDaProva(texto) })
+            registrar(minha, { kind: 'ok', marca: marcaDaProva(texto) })
           } catch (erro) {
-            falhou(erro)
+            falhou(minha, erro)
           }
         },
-        (erro) => falhou(erro),
+        (erro) => falhou(minha, erro),
       )
     }
     return estado

@@ -393,8 +393,9 @@ dangerIpc?.refresh()
 if (screen === 'kanban') {
   const pasta = pastaDaSala(process.env, homedir())
   // O mandato da `dev` vem pela GraphQL, em cache de 60 s: a sala relê a cada 5 s.
+  const graphql = createGraphQL()
   const marca = criarMarcaEmCache(
-    () => lerMandatoPelaGraphQL(createGraphQL()),
+    () => lerMandatoPelaGraphQL(graphql),
     () => Date.now(),
   )
   registerFabricaIpc(pasta, {

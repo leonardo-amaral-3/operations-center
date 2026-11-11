@@ -649,7 +649,9 @@ function Decidiu({ decisoes, ir }: { decisoes: DecisaoNaSala[]; ir: Ir }): JSX.E
                   pequeno
                 />
                 <b>#{decisao.card}</b> parou e mandou para a sua fila: {decisao.item.motivo}.
-                {decisao.item.fechadoEm !== null && ` resolvido: ${decisao.item.resolucao ?? ''}`}
+                {decisao.item.fechadoEm !== null &&
+                  decisao.item.resolucao !== null &&
+                  ` resolvido: ${decisao.item.resolucao}`}
               </button>
             ),
           )}

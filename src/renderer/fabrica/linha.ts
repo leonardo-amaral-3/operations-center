@@ -128,6 +128,7 @@ export function previsaoDosPendentes(sala: Extract<SalaDaFabrica, { kind: 'ok' }
     .filter((d) => d.estado === 'pendente')
     .map((_, i) => {
       if (sala.pausa !== null) return 'espera a fábrica ser retomada'
+      if (sala.despachante === 'desconhecido') return 'sobe quando o despachante rodar (sem leitura dele)'
       if (sala.despachante !== 'rodando') return 'espera o yarn fabrica rodar'
       if (sessoes.kind !== 'ok') return 'sobe quando houver vaga (sessões sem leitura)'
       if (i < Math.max(0, sessoes.teto - sessoes.vivas))
