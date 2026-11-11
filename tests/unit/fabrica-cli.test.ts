@@ -16,6 +16,8 @@ import { delimiter, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GraphQLFn } from '../../src/core/board/types'
 import { marcarLancando } from '../../src/core/fabrica/despachante'
+import { avaliarNota } from '../../src/core/fabrica/mandato'
+import { NOTA_DA_TRIAGEM, textoDoRelato } from '../../src/core/fabrica/entrada'
 import { montarPrompt } from '../../src/core/fabrica/mandato'
 import type { ItemDaFila } from '../../src/core/fabrica/tipos'
 import {
@@ -991,5 +993,173 @@ describe.skipIf(process.platform !== 'linux')('o laço do despachante', { timeou
       [1, 'concluido'],
       [2, 'concluido'],
     ])
+  })
+
+  describe('a triagem da entrada', () => {
+    const comandoDe = (id: string, p = pasta): string =>
+      `/gm-triage ${join(p, 'sessoes', id, 'relato.txt')}`
+    const itens = (p = pasta): NonNullable<ReturnType<typeof lerEntrada>>['itens'] =>
+      lerEntrada(p)?.itens ?? []
+    const pastasExtras: string[] = []
+    afterEach(() => {
+      for (const p of pastasExtras.splice(0)) rmSync(p, { recursive: true, force: true })
+    })
+
+    it('rodar lança a /gm-triage e o PROXIMO fecha o item com o card', async () => {
+      const m = montar({ [comandoDe('e-0001')]: 'PROXIMO: /gm-card #150' })
+      await rodar(m, 'entrada', 'o Slack caiu')
+      expect(await rodar(m)).toBe(0)
+      const item = itens()[0]
+      expect(item?.resolucao).toBe('virou o #150, em 📥 Triagem pela /gm-triage')
+      expect(item?.triagem?.estado).toBe('concluida')
+      expect(item?.triagem?.parou).toBeNull()
+      expect(readFileSync(join(pasta, 'sessoes', 'e-0001', 'relato.txt'), 'utf8')).toBe(
+        textoDoRelato(item as NonNullable<typeof item>),
+      )
+      expect(
+        readFileSync(join(pasta, 'sessoes', 'e-0001', 'relato.txt'), 'utf8').startsWith('Origem: '),
+      ).toBe(true)
+      const prompt = gravadoPeloFalso('e-0001').prompt.split('\n')
+      expect(prompt[0]).toBe(comandoDe('e-0001'))
+      expect(prompt.filter((l) => l !== '').at(-1)).toBe(`- Nesta sessão: ${NOTA_DA_TRIAGEM}`)
+      const e = lerEstado(pasta)
+      expect(e?.despachos ?? []).toEqual([])
+      expect(e?.fila ?? []).toEqual([])
+      expect(m.saida.some((l) => l.includes('lançada a triagem e-0001'))).toBe(true)
+      expect(m.saida.some((l) => l.includes('e-0001 triado: virou o #150'))).toBe(true)
+      expect(m.saida.at(-1)).toContain('nada pendente nem em voo; fim')
+    })
+
+    it('duplicata: a PARADA fecha o item como duplicata', async () => {
+      const m = montar({ [comandoDe('e-0001')]: 'PARADA: duplicata de #12, comentei o relato' })
+      await rodar(m, 'entrada', 'de novo o Slack')
+      expect(await rodar(m)).toBe(0)
+      expect(itens()[0]?.resolucao).toBe('duplicata do #12: a /gm-triage registrou o relato nele')
+    })
+
+    it('PARADA comum: o item para com o motivo e a triagem não é relançada', async () => {
+      const m = montar({ [comandoDe('e-0001')]: 'PARADA: isso é suporte' })
+      await rodar(m, 'entrada', 'como assim?')
+      expect(await rodar(m)).toBe(0)
+      expect(itens()[0]).toMatchObject({ triadoEm: null, resolucao: null })
+      expect(itens()[0]?.triagem?.parou).toBe('PARADA: isso é suporte')
+      expect(m.saida.at(-1)).toContain('nada pendente nem em voo; fim')
+      rmSync(join(saidaDoFalso, 'e-0001.json'))
+      expect(await rodar(m)).toBe(0)
+      expect(existsSync(join(saidaDoFalso, 'e-0001.json'))).toBe(false)
+    })
+
+    it('teto dividido: os despachos primeiro, a triagem na vaga que sobra', async () => {
+      const controlador = new AbortController()
+      const m = montar({}, { sinal: controlador.signal }, { OC_FALSO_DORME: '1500' })
+      await abrirFrente(m, 1, '/gm-card #1')
+      await abrirFrente(m, 2, '/gm-card #2')
+      await rodar(m, 'entrada', 'primeiro')
+      await rodar(m, 'entrada', 'segundo')
+      setTimeout(() => {
+        controlador.abort()
+      }, 400)
+      expect(await rodar(m)).toBe(130)
+      // Os falsos ficam vivos (sessão destacada): mortos pelo grupo no `afterEach`.
+      expect(lancados().filter((l) => l.startsWith('d-'))).toHaveLength(2)
+      expect(lancados()).toContain('e-0001.json')
+      expect(lancados()).not.toContain('e-0002.json')
+      expect(
+        m.saida.some((l) => l.includes('esperando vaga: 3 sessões da prova vivas (teto 3)')),
+      ).toBe(true)
+    })
+
+    it('pausa: nada é lançado, e retomar libera a triagem', async () => {
+      const controlador = new AbortController()
+      const m = montar(
+        { [comandoDe('e-0001')]: 'PROXIMO: /gm-card #7' },
+        { sinal: controlador.signal },
+      )
+      await rodar(m, 'entrada', 'algo')
+      pausar(pasta, AGORA)
+      setTimeout(() => {
+        controlador.abort()
+      }, 400)
+      expect(await rodar(m)).toBe(130)
+      expect(lancados()).toEqual([])
+      expect(itens()[0]?.triagem).toBeNull()
+      rmSync(join(pasta, 'pausa.json'))
+      const m2 = montar({ [comandoDe('e-0001')]: 'PROXIMO: /gm-card #7' })
+      expect(await rodar(m2)).toBe(0)
+      expect(itens()[0]?.resolucao).toContain('#7')
+    })
+
+    it('lançamento que falha: o item para com o motivo e o rodar sai 0', async () => {
+      const m = montar({}, {}, { OC_CLAUDE_BIN: join(pasta, 'nao-existe') })
+      await rodar(m, 'entrada', 'algo')
+      expect(await rodar(m)).toBe(0)
+      expect(itens()[0]?.triadoEm).toBeNull()
+      expect(itens()[0]?.triagem?.parou).toContain('não foi possível lançar o claude')
+    })
+
+    it('saida.json de outra sessão: não lança e não sobrescreve', async () => {
+      const m = montar({})
+      await rodar(m, 'entrada', 'algo')
+      mkdirSync(join(pasta, 'sessoes', 'e-0001'), { recursive: true })
+      writeFileSync(join(pasta, 'sessoes', 'e-0001', 'saida.json'), 'ANTIGO')
+      expect(await rodar(m)).toBe(0)
+      expect(lancados()).toEqual([])
+      expect(itens()[0]?.triagem?.parou).toContain('já existe sessoes/e-0001/saida.json')
+      expect(readFileSync(join(pasta, 'sessoes', 'e-0001', 'saida.json'), 'utf8')).toBe('ANTIGO')
+    })
+
+    it('pasta fora da raiz e dentro dela: o guarda de caminho não alcança a triagem', async () => {
+      const fora = mkdtempSync(join(dirname(RAIZ), '.oc-fabrica-triagem-'))
+      pastasExtras.push(fora)
+      const dentro = pasta
+      for (const alvo of [fora, dentro]) {
+        const m = montar(
+          { [comandoDe('e-0001', alvo)]: 'PROXIMO: /gm-card #150' },
+          {},
+          { OC_FABRICA_DIR: alvo },
+        )
+        await rodar(m, 'entrada', 'algo')
+        expect(await rodar(m)).toBe(0)
+        expect(itens(alvo)[0]?.resolucao).toContain('#150')
+      }
+    })
+
+    it('ilegível: o despacho roda, o aviso sai uma vez e o arquivo não é sobrescrito', async () => {
+      const m = montar({ '/gm-card #1': 'PARADA: fim' }, {})
+      await abrirFrente(m, 1, '/gm-card #1')
+      writeFileSync(join(pasta, 'entrada.json'), '{torto')
+      expect(await rodar(m)).toBe(0)
+      expect(lancados()).toEqual(['d-0002.json'])
+      expect(m.avisos.filter((a) => a.includes('a triagem da entrada fica parada'))).toHaveLength(1)
+      expect(readFileSync(join(pasta, 'entrada.json'), 'utf8')).toBe('{torto')
+    })
+
+    it('queda: item lancando sem processo nem saida.json volta e é lançado uma vez', async () => {
+      const m = montar({ [comandoDe('e-0001')]: 'PROXIMO: /gm-card #9' })
+      await rodar(m, 'entrada', 'algo')
+      await alterarEstado(pasta, (e) => ({ estado: e, resultado: null }))
+      const bruto = JSON.parse(readFileSync(join(pasta, 'entrada.json'), 'utf8')) as {
+        itens: { triagem: unknown }[]
+      }
+      ;(bruto.itens[0] as { triagem: unknown }).triagem = {
+        estado: 'lancando',
+        marca: `${lerEstado(pasta)?.instancia}/e-0001`,
+        pid: null,
+        lancadoEm: AGORA,
+        concluidoEm: null,
+        sessaoClaude: null,
+        parou: null,
+      }
+      writeFileSync(join(pasta, 'entrada.json'), JSON.stringify(bruto))
+      expect(await rodar(m)).toBe(0)
+      expect(lancados()).toEqual(['e-0001.json'])
+      expect(itens()[0]?.resolucao).toContain('#9')
+    })
+
+    it('a nota fixa passa pelo avaliarNota e é de uma linha só', () => {
+      expect(NOTA_DA_TRIAGEM).not.toContain('\n')
+      const r = avaliarNota(NOTA_DA_TRIAGEM, [])
+      expect(r.ok).toBe(true)
+    })
   })
 })
