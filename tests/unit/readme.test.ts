@@ -75,7 +75,16 @@ describe('README', () => {
     expect(readme).toMatch(/^## Comandos$/m)
 
     // `package` entrou no #56 e é o único da lista que produz artefato em vez de rodar algo.
-    for (const script of ['dev', 'build', 'test', 'smoke', 'lint', 'typecheck', 'package']) {
+    for (const script of [
+      'dev',
+      'build',
+      'test',
+      'smoke',
+      'lint',
+      'typecheck',
+      'package',
+      'fabrica',
+    ]) {
       expect(readme).toContain(`yarn ${script}`)
     }
   })
@@ -108,6 +117,7 @@ describe('README', () => {
       'OC_CLAUDE_PROJECTS',
       'OC_STATE_DIR',
       'OC_CLAUDE_BIN',
+      'OC_FABRICA_DIR',
     ]) {
       expect(readme).toContain(variavel)
     }

@@ -29,6 +29,8 @@ const DIRETORIOS_DE_DOCUMENTO = [
   '../../src/core/board',
   '../../src/main/github',
   '../../src/core/relatorio',
+  '../../src/core/fabrica',
+  '../../src/main/fabrica',
 ]
 
 /**
