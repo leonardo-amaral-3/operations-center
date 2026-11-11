@@ -274,3 +274,80 @@ describe('Fabrica · Pausar e Retomar (CA-1.2)', () => {
     expect(screen.queryByTestId('fabrica-projeto')).toBeNull()
   })
 })
+
+describe('Fabrica · fila acionável (F3)', () => {
+  const comItens = (
+    extra: Partial<Extract<SalaDaFabrica, { kind: 'ok' }>>,
+  ): Extract<SalaDaFabrica, { kind: 'ok' }> => ({
+    ...(retrato() as Extract<SalaDaFabrica, { kind: 'ok' }>),
+    ...extra,
+  })
+
+  it('um item de tipo decisao na Sala leva à Decisão, com a trilha de três partes', async () => {
+    const decisao: ItemNaSala = {
+      ...aberto,
+      id: 'q-0002',
+      tipo: 'decisao',
+      card: 902,
+      motivo: 'PR #970 aberta na dev (Card: #902); o merge é da orquestradora',
+      comando: '/gm-ship 902',
+      estacao: 'revisao',
+    }
+    readFabrica.mockResolvedValue(comItens({ abertos: [decisao] }))
+    readFabricaPergunta.mockResolvedValue({
+      ...pergunta,
+      item: decisao,
+      fim: 'parada',
+      pr: 970,
+      prUrl: 'https://github.com/leonardo-amaral-3/operations-center/pull/970',
+    })
+
+    render(<Fabrica />)
+    fireEvent.click(await screen.findByTestId('fabrica-aberto'))
+
+    expect(telaAtual()).toBe('decisao')
+    expect(screen.getByTestId('fabrica-trilha').textContent).toBe(
+      'Sala de controle/Esperando você/Revisão · G4',
+    )
+    expect(await screen.findByTestId('fabrica-decisao')).toBeTruthy()
+  })
+
+  it('um fechar recusado mostra a linha de erro e a tela relê o item, já fechado', async () => {
+    const recusa = 'fabrica: o item q-0001 já foi fechado'
+    comandoFabrica.mockResolvedValue({
+      ok: false,
+      codigo: 1,
+      argv: ['fechar', 'q-0001', 'x'],
+      saida: '',
+      erro: recusa,
+    })
+
+    render(<Fabrica />)
+    fireEvent.click(await screen.findByTestId('fabrica-aberto'))
+    fireEvent.change(await screen.findByTestId('fabrica-resposta'), { target: { value: 'x' } })
+    expect(readFabricaPergunta).toHaveBeenCalledTimes(1)
+
+    // Quem fechou foi outro (a CLI, na mão): o retrato seguinte já traz o item em `fechados`.
+    const fechado: ItemNaSala = {
+      ...aberto,
+      fechadoEm: '2026-11-11T12:05:00.000Z',
+      resolucao: 'resolvido por fora',
+    }
+    readFabrica.mockResolvedValue(comItens({ abertos: [], fechados: [fechado] }))
+    readFabricaPergunta.mockResolvedValue({ ...pergunta, item: fechado })
+    fireEvent.click(screen.getByTestId('fabrica-responder-fechar'))
+
+    expect((await screen.findByTestId('fabrica-comando-erro')).textContent).toBe(recusa)
+    expect(comandoFabrica).toHaveBeenCalledWith({
+      tipo: 'fechar',
+      item: 'q-0001',
+      resolucao: 'x',
+    })
+    await waitFor(() => {
+      expect(readFabricaPergunta).toHaveBeenCalledTimes(2)
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('fabrica-chip-posicao').textContent).toBe('fechado')
+    })
+  })
+})
