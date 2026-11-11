@@ -217,6 +217,10 @@ function descrever(estado: EstadoDaFabrica, id: string): string {
   const item = estado.fila.find((q) => q.despacho === id)
   if (item !== undefined) return `${id} terminou: fila ${item.id} — ${item.motivo}`
   const d = estado.despachos.find((x) => x.id === id)
+  if (d?.desfecho?.tipo === 'parada') {
+    const g4 = estado.despachos.findLast((x) => x.frente === d.frente && x.estado === 'pendente')
+    return `${id} terminou: segue para o G4 (${g4?.comando ?? ''})`
+  }
   const comando = d?.desfecho?.tipo === 'proximo' ? d.desfecho.comando : ''
   return `${id} terminou: PROXIMO ${comando}`
 }

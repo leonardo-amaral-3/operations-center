@@ -198,6 +198,81 @@ describe('transições', () => {
   })
 })
 
+describe('G4 depois do /gm-ship', () => {
+  const SHIP = '/gm-ship /x #7'
+  const PARADA_DO_SHIP = 'PR #9 aberta na dev (Card: #7); o merge é da orquestradora'
+  const concluir = (comando: string, resultado: string, base?: EstadoDaFabrica) => {
+    const r = comecar(7, comando, T0, base)
+    return {
+      r,
+      e: concluirDespacho(r.estado, r.despacho, { saida: saida(resultado), agora: T1, proibidos }),
+    }
+  }
+
+  it('PARADA do /gm-ship com PR aberta vira despacho /g4 pendente na mesma frente, sem item', () => {
+    const { r, e } = concluir(SHIP, `feito\nPARADA: ${PARADA_DO_SHIP}`)
+    expect(e.fila).toEqual([])
+    expect(e.frentes[0]?.encerradaEm).toBeNull()
+    expect(e.despachos).toHaveLength(2)
+    expect(e.despachos[1]).toMatchObject({
+      estado: 'pendente',
+      comando: '/g4 #7 PR #9',
+      frente: r.frente,
+      card: 7,
+      nota: `o /gm-ship terminou com: PARADA: ${PARADA_DO_SHIP}`,
+    })
+  })
+  it('PARADA do /gm-ship sem PR vira item, como antes', () => {
+    const { e } = concluir(SHIP, 'PARADA: faltou o gate')
+    expect(e.despachos).toHaveLength(1)
+    expect(e.fila).toHaveLength(1)
+    expect(e.fila[0]?.motivo).toBe('faltou o gate')
+    expect(e.frentes[0]?.encerradaEm).toBe(T1)
+  })
+  it('PARADA do /gm-ship que cita PR fora da forma vira item, sem G4', () => {
+    const { e } = concluir(SHIP, 'PARADA: verificação vermelha na PR #9')
+    expect(e.despachos).toHaveLength(1)
+    expect(e.fila).toHaveLength(1)
+  })
+  it('PARADA de outra skill com PR aberta vira item, sem G4', () => {
+    const { e } = concluir('/gm-implement /x', `PARADA: ${PARADA_DO_SHIP}`)
+    expect(e.despachos).toHaveLength(1)
+    expect(e.fila[0]?.motivo).toBe(PARADA_DO_SHIP)
+  })
+  it('o limite da frente impede o G4 e vira item da origem ship', () => {
+    const r = comecar(7, SHIP)
+    const cheio: EstadoDaFabrica = {
+      ...r.estado,
+      despachos: [
+        ...r.estado.despachos,
+        ...Array.from({ length: 19 }, (_, i): Despacho => {
+          const base = r.estado.despachos[0] as Despacho
+          return { ...base, id: `d-9${String(i).padStart(3, '0')}`, estado: 'concluido' }
+        }),
+      ],
+    }
+    const e = concluirDespacho(cheio, r.despacho, {
+      saida: saida(`PARADA: ${PARADA_DO_SHIP}`),
+      agora: T1,
+      proibidos,
+    })
+    expect(e.despachos).toHaveLength(20)
+    expect(e.fila).toHaveLength(1)
+    expect(e.fila[0]).toMatchObject({
+      despacho: r.despacho,
+      motivo: 'a frente passou de 20 despachos: /g4 #7 PR #9',
+    })
+  })
+  it('G4 que termina em PROXIMO vira item e nenhum despacho nasce', () => {
+    const { e } = concluir('/g4 #7 PR #9', 'PROXIMO: /gm-spec #7')
+    expect(e.despachos).toHaveLength(1)
+    expect(e.fila[0]?.motivo).toBe(
+      'o G4 terminou com PROXIMO, e a revisão só fecha com PARADA: /gm-spec #7',
+    )
+    expect(e.frentes[0]?.encerradaEm).toBe(T1)
+  })
+})
+
 describe('fila', () => {
   it('PARADA vira item e encerra a frente', () => {
     const r = comecar(5, '/gm-card #5')

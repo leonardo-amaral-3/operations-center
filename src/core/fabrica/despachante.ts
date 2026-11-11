@@ -1,5 +1,6 @@
 import { lerDesfecho } from './desfecho'
 import { novoId } from './estado'
+import { comandoDoG4, lerComandoDoG4, prAbertaDoShip } from './g4'
 import {
   LIMITE_DE_DESPACHOS_POR_FRENTE,
   TETO_DE_SESSOES,
@@ -103,9 +104,41 @@ export function voltarAPendente(e: EstadoDaFabrica, id: string): EstadoDaFabrica
   return trocarDespacho(e, id, 'lancando', { estado: 'pendente', lancadoEm: null })
 }
 
+/** Cria, na mesma frente de `atual`, o despacho `pendente` que roda `comando`. */
+function novoPendente(
+  estado: EstadoDaFabrica,
+  atual: Despacho,
+  comando: string,
+  nota: string | null,
+  agora: string,
+): EstadoDaFabrica {
+  const novo = novoId(estado, 'd')
+  return {
+    ...novo.estado,
+    despachos: [
+      ...novo.estado.despachos,
+      {
+        id: novo.id,
+        frente: atual.frente,
+        card: atual.card,
+        comando,
+        nota,
+        estado: 'pendente',
+        pid: null,
+        criadoEm: agora,
+        lancadoEm: null,
+        concluidoEm: null,
+        sessaoClaude: null,
+        desfecho: null,
+      },
+    ],
+  }
+}
+
 /**
  * Fecha um despacho com a saída da sessão. Um `PROXIMO:` dentro do mandato vira o próximo despacho
- * da mesma frente; qualquer outro fim (PARADA, falha, `PROXIMO:` recusado ou além do limite) vira
+ * da mesma frente, e a PARADA de um `/gm-ship` com `PR #<n> aberta` segue para o G4 (`/g4 #<card> PR #<n>`,
+ * também na mesma frente); qualquer outro fim (PARADA, falha, `PROXIMO:` recusado ou além do limite) vira
  * item da fila e encerra a frente. Concluir duas vezes é erro de programação, e lança.
  */
 export function concluirDespacho(
@@ -125,42 +158,44 @@ export function concluirDespacho(
     ),
   }
 
+  const naFrente = e.despachos.filter((d) => d.frente === atual.frente).length
   let motivo: string | null = null
   if (desfecho.tipo === 'proximo') {
     const avaliacao = avaliarComando(desfecho.comando, p.proibidos)
     const citadoNoProximo = cardDoComando(desfecho.comando)
-    const naFrente = e.despachos.filter((d) => d.frente === atual.frente).length
-    if (!avaliacao.ok) {
+    if (lerComandoDoG4(atual.comando) !== null) {
+      motivo = `o G4 terminou com PROXIMO, e a revisão só fecha com PARADA: ${desfecho.comando}`
+    } else if (!avaliacao.ok) {
       motivo = `PROXIMO fora do mandato: ${avaliacao.motivo}: ${desfecho.comando}`
     } else if (citadoNoProximo !== null && citadoNoProximo !== atual.card) {
       motivo = `PROXIMO cita o card #${citadoNoProximo}, e a frente é do #${atual.card}: ${desfecho.comando}`
     } else if (naFrente >= LIMITE_DE_DESPACHOS_POR_FRENTE) {
       motivo = `a frente passou de ${LIMITE_DE_DESPACHOS_POR_FRENTE} despachos: ${desfecho.comando}`
     } else {
-      const novo = novoId(estado, 'd')
-      estado = {
-        ...novo.estado,
-        despachos: [
-          ...novo.estado.despachos,
-          {
-            id: novo.id,
-            frente: atual.frente,
-            card: atual.card,
-            comando: desfecho.comando,
-            nota: null,
-            estado: 'pendente',
-            pid: null,
-            criadoEm: p.agora,
-            lancadoEm: null,
-            concluidoEm: null,
-            sessaoClaude: null,
-            desfecho: null,
-          },
-        ],
-      }
+      estado = novoPendente(estado, atual, desfecho.comando, null, p.agora)
     }
   } else {
-    motivo = desfecho.motivo
+    const pr = desfecho.tipo === 'parada' ? prAbertaDoShip(desfecho.motivo) : null
+    if (
+      desfecho.tipo === 'parada' &&
+      atual.comando.trimStart().split(/\s+/)[0] === '/gm-ship' &&
+      pr !== null
+    ) {
+      const g4 = comandoDoG4(atual.card, pr)
+      if (naFrente >= LIMITE_DE_DESPACHOS_POR_FRENTE) {
+        motivo = `a frente passou de ${LIMITE_DE_DESPACHOS_POR_FRENTE} despachos: ${g4}`
+      } else {
+        estado = novoPendente(
+          estado,
+          atual,
+          g4,
+          `o /gm-ship terminou com: PARADA: ${desfecho.motivo}`,
+          p.agora,
+        )
+      }
+    } else {
+      motivo = desfecho.motivo
+    }
   }
 
   if (motivo === null) return estado
