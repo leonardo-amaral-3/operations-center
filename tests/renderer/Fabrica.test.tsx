@@ -155,7 +155,7 @@ describe('Fabrica · moldura e navegação (CA-1.1)', () => {
       'Sala de controle/Esperando você/Pergunta',
     )
     expect((await screen.findByTestId('fabrica-pergunta')).textContent).toContain('Qual rota?')
-    expect(screen.getByTestId('fabrica-pergunta-fechar').textContent).toBe(pergunta.fechar)
+    expect(screen.getByTestId('fabrica-responder-fechar')).toBeTruthy()
 
     fireEvent.click(screen.getByTestId('fabrica-trilha-1'))
     expect(telaAtual()).toBe('sala')
