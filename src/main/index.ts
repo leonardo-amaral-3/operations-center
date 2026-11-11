@@ -390,7 +390,7 @@ dangerIpc?.refresh()
 // acima; as janelas de card do mesmo processo não chamam estes canais. Só lê a pasta da fábrica.
 if (screen === 'kanban') registerFabricaIpc(pastaDaSala(process.env, homedir()))
 
-// O canal de escrita da fábrica (#129): roda `pausar`/`retomar` do `yarn fabrica` em processo, pela
+// O canal de escrita da fábrica (#129): roda os subcomandos de `SUBCOMANDOS_DO_APP` do `yarn fabrica` em processo, pela
 // mesma pasta que a sala lê (`OC_FABRICA_DIR` vale para os dois). Não toca o board.
 if (screen === 'kanban')
   registerComandoIpc(

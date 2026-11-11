@@ -68,7 +68,8 @@ export type SalaDaFabrica =
     } & CabecalhoDaSala)
 
 /** Os comandos do `yarn fabrica` que o app pode rodar (#129). Cada fase acrescenta os seus. */
-export type ComandoDaFabrica = { tipo: 'pausar' } | { tipo: 'retomar' }
+export type ComandoDaFabrica =
+  { tipo: 'pausar' } | { tipo: 'retomar' } | { tipo: 'fechar'; item: string; resolucao: string }
 
 export interface ResultadoDoComando {
   ok: boolean // codigo === 0

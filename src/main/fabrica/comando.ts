@@ -10,7 +10,7 @@ import { executar, type DepsDoCli } from './cli'
  */
 
 /** O que o app pode rodar. Cada fase acrescenta o seu; **nenhuma** acrescenta `rodar` nem `estado`. */
-export const SUBCOMANDOS_DO_APP = ['pausar', 'retomar'] as const
+export const SUBCOMANDOS_DO_APP = ['pausar', 'retomar', 'fechar'] as const
 
 /** O pedido do renderer virado em argv; qualquer coisa fora da união → `null`. */
 export function argvDoComando(pedido: unknown): string[] | null {
@@ -18,6 +18,13 @@ export function argvDoComando(pedido: unknown): string[] | null {
   const tipo = (pedido as { tipo?: unknown }).tipo
   if (tipo === 'pausar') return ['pausar']
   if (tipo === 'retomar') return ['retomar']
+  if (tipo === 'fechar') {
+    // O CLI aceita resolução vazia (Q2); a guarda é do app.
+    const { item, resolucao } = pedido as { item?: unknown; resolucao?: unknown }
+    if (typeof item !== 'string' || !/^q-\d+$/.test(item)) return null
+    if (typeof resolucao !== 'string' || resolucao.trim() === '') return null
+    return ['fechar', item, resolucao.trim()]
+  }
   return null
 }
 

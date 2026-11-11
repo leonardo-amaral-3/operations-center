@@ -156,7 +156,7 @@ describe('a superfície de board é somente-leitura', () => {
     //
     // **E a do canal de escrita da fábrica (#129)**: `fabrica:comando` é o **único** canal que
     // escreve na pasta da fábrica, e só por um subcomando do `yarn fabrica` numa lista fechada
-    // (`SUBCOMANDOS_DO_APP`: `pausar`, `retomar`). Não toca o board, nem para ler; fica na família
+    // (`SUBCOMANDOS_DO_APP`: `pausar`, `retomar`, `fechar`). Não toca o board, nem para ler; fica na família
     // `fabrica:`, sem exceção nominal no filtro de `boards:`/`card:`.
     //
     // **E a dos onze canais do #74** (terminal embutido, sessão livre, disposição da mesa).
