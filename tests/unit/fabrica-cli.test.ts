@@ -195,6 +195,7 @@ const gravadoPeloFalso = (
 
 describe('lerItemNoBoard', () => {
   const BOARD = boardPadrao(configuracaoDaFabrica(homedir()))
+  const card = (n: number) => ({ repo: BOARD.repoUnico, n })
   const resposta =
     (issue: unknown, errors?: { message: string }[]): GraphQLFn =>
     () =>
@@ -209,25 +210,33 @@ describe('lerItemNoBoard', () => {
         data: { repository: { issue: { state: 'OPEN', projectItems: { nodes: [] } } } },
       })
     }
-    await lerItemNoBoard(graphql, BOARD, 7)
+    await lerItemNoBoard(graphql, card(7), BOARD.projeto)
     expect(enviadas).toEqual([{ owner: 'leonardo-amaral-3', name: 'operations-center', n: 7 }])
   })
 
   it('errors lança a primeira mensagem', async () => {
     await expect(
-      lerItemNoBoard(resposta(null, [{ message: 'quebrou' }, { message: 'b' }]), BOARD, 1),
+      lerItemNoBoard(
+        resposta(null, [{ message: 'quebrou' }, { message: 'b' }]),
+        card(1),
+        BOARD.projeto,
+      ),
     ).rejects.toThrow('quebrou')
   })
 
   it('issue nula lança', async () => {
-    await expect(lerItemNoBoard(resposta(null), BOARD, 9)).rejects.toThrow(
+    await expect(lerItemNoBoard(resposta(null), card(9), BOARD.projeto)).rejects.toThrow(
       'não há issue #9 em leonardo-amaral-3/operations-center',
     )
   })
 
   it('card fechado lança', async () => {
     await expect(
-      lerItemNoBoard(resposta({ state: 'CLOSED', projectItems: { nodes: [] } }), BOARD, 9),
+      lerItemNoBoard(
+        resposta({ state: 'CLOSED', projectItems: { nodes: [] } }),
+        card(9),
+        BOARD.projeto,
+      ),
     ).rejects.toThrow('o #9 está fechado')
   })
 
@@ -237,8 +246,8 @@ describe('lerItemNoBoard', () => {
     expect(
       await lerItemNoBoard(
         nos([{ project: { number: 3 }, fieldValueByName: { name: 'X' } }]),
-        BOARD,
-        1,
+        card(1),
+        BOARD.projeto,
       ),
     ).toEqual({ noProjeto: false })
     expect(
@@ -247,12 +256,16 @@ describe('lerItemNoBoard', () => {
           { project: { number: 3 }, fieldValueByName: { name: 'X' } },
           { project: { number: 2 }, fieldValueByName: { name: '📋 Backlog' } },
         ]),
-        BOARD,
-        1,
+        card(1),
+        BOARD.projeto,
       ),
     ).toEqual({ noProjeto: true, status: '📋 Backlog' })
     expect(
-      await lerItemNoBoard(nos([{ project: { number: 2 }, fieldValueByName: null }]), BOARD, 1),
+      await lerItemNoBoard(
+        nos([{ project: { number: 2 }, fieldValueByName: null }]),
+        card(1),
+        BOARD.projeto,
+      ),
     ).toEqual({ noProjeto: true, status: null })
   })
 })
@@ -349,6 +362,57 @@ describe('CLI', () => {
     expect(lerEstado(pasta)?.despachos[0]?.nota).toBe('sem pressa')
     expect(await rodar(m, 'iniciar', '5', '--comando', '/gm-spec #5')).toBe(1)
     expect(m.avisos[0]).toBe('fabrica: o #5 já tem despacho em voo (d-0002)')
+  })
+
+  it('iniciar aceita <n>, <repo>#<n> e <owner>/<repo>#<n> no board padrão, e imprime #<n>', async () => {
+    const graphql: GraphQLFn = () =>
+      Promise.resolve({
+        data: {
+          repository: {
+            issue: {
+              state: 'OPEN',
+              projectItems: {
+                nodes: [{ project: { number: 2 }, fieldValueByName: { name: '📋 Backlog' } }],
+              },
+            },
+          },
+        },
+      })
+    for (const alvo of [
+      '152',
+      'operations-center#152',
+      'leonardo-amaral-3/operations-center#152',
+    ]) {
+      const m = montar({}, { graphql })
+      expect(await rodar(m, 'iniciar', alvo, '--ensaio')).toBe(0)
+      expect(m.saida).toEqual(['#152: /gm-spec #152'])
+    }
+    const m = montar({}, { graphql })
+    expect(await rodar(m, 'iniciar', 'operations-center#152', '--comando', '/gm-spec #152')).toBe(0)
+    expect(lerEstado(pasta)?.frentes[0]).toMatchObject({
+      card: 152,
+      repo: 'leonardo-amaral-3/operations-center',
+    })
+  })
+
+  it('estado de antes do #152 (sem repo) no board padrão sai com as linhas de hoje', async () => {
+    const m = montar()
+    await abrirFrente(m, 4, '/gm-spec #4')
+    const e = lerEstado(pasta)
+    if (e === null) throw new Error('sem estado')
+    writeFileSync(
+      join(pasta, 'estado.json'),
+      JSON.stringify({
+        ...e,
+        frentes: e.frentes.map(semRepo),
+        despachos: e.despachos.map(semRepo),
+        fila: e.fila.map(semRepo),
+      }),
+    )
+    m.saida.length = 0
+    expect(await rodar(m, 'estado')).toBe(0)
+    expect(m.saida[0]).toMatch(/^fr-0001 #4 aberta em /)
+    expect(m.saida[1]).toMatch(/^d-0002 #4 \S+ \/gm-spec #4$/)
   })
 
   it('estado: sem estado.json, nada registrado; com item aberto, lista o q; fechar fecha', async () => {
