@@ -4,11 +4,12 @@ import type { ComandoDaFabrica, SalaDaFabrica } from '../../shared/fabrica'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Card } from '../ui/card'
+import { cn } from '../ui/cn'
 import { NAVEGACAO_DA_SALA, type Migalha, type NomeDaTela, type TelaDaFabrica } from './rotas'
 
 /**
  * A moldura da fábrica (#130, F1.2): o cabeçalho da Sala, o das telas internas, o crachá de estado,
- * o botão Pausar, o menu das telas (#145) e o marcador de tela por vir. Só primitivas de `src/renderer/ui/` e tokens; a
+ * o botão Pausar, o menu das telas (#145), a lista com teto (#149) e o marcador de tela por vir. Só primitivas de `src/renderer/ui/` e tokens; a
  * tabela de cores do protótipo para os tokens está no §F1.2 da spec do épico #129.
  */
 
@@ -246,6 +247,41 @@ export function TelaPorVir({ fase }: { fase: string }): JSX.Element {
       className="rounded-base border-2 border-dashed border-border bg-secondary-background/45 p-3 text-xs text-foreground/75"
     >
       Esta tela chega na {fase} do épico #129.
+    </div>
+  )
+}
+
+/** As classes de cada teto: literais, para o Tailwind as achar. */
+const TETOS = { 640: 'max-h-[640px]', 1040: 'max-h-[1040px]' } as const
+
+/**
+ * Um bloco que lista cards (#149): até o teto ele é o que sempre foi; passou dele, rola por dentro,
+ * e a tela da fábrica não cresce com o número de cards. O `pr-1 pb-1` com a margem negativa igual dá
+ * lugar à sombra de 4 px dos cartões, que o `overflow` cortaria, sem mexer em largura nem altura.
+ */
+export function ListaComTeto({
+  lista,
+  teto = 640,
+  className,
+  children,
+}: {
+  lista: string
+  teto?: keyof typeof TETOS
+  className?: string
+  children: ReactNode
+}): JSX.Element {
+  return (
+    <div
+      data-testid="fabrica-lista-com-teto"
+      data-lista={lista}
+      data-teto={teto}
+      className={cn(
+        '-mr-1 -mb-1 overflow-x-hidden overflow-y-auto pr-1 pb-1',
+        TETOS[teto],
+        className,
+      )}
+    >
+      {children}
     </div>
   )
 }
