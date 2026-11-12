@@ -1,6 +1,10 @@
 import { aceitaORepo } from '../../src/core/fabrica/cardDaFabrica'
 import { describe, expect, it } from 'vitest'
-import { boardPadrao, parseConfiguracao } from '../../src/core/fabrica/configuracao'
+import {
+  boardPadrao,
+  parseConfiguracao,
+  type BoardDaFabrica,
+} from '../../src/core/fabrica/configuracao'
 import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
 import { REPO_TESTE, boardFicticio } from './fabrica-board-de-teste'
 
@@ -284,7 +288,7 @@ describe('triagem do item', () => {
     })
     expect(() => marcarTriagemRodando(e, 'e-0001', 78)).toThrow()
     expect(() =>
-      concluirTriagem(entrada(item(1)), 'e-0001', { saida: '', agora: AGORA, repo: REPO_TESTE }),
+      concluirTriagem(entrada(item(1)), 'e-0001', { saida: '', agora: AGORA, board: PADRAO }),
     ).toThrow()
     expect(temTriagemPorFazer(e)).toBe(true)
     expect(temTriagemPorFazer(null)).toBe(false)
@@ -293,12 +297,17 @@ describe('triagem do item', () => {
     )
   })
 
-  const conclui = (s: string, mais: Partial<ItemDaEntrada> = {}) =>
+  const concluiNo = (
+    board: Pick<BoardDaFabrica, 'repos' | 'repoUnico'>,
+    s: string,
+    mais: Partial<ItemDaEntrada> = {},
+  ) =>
     concluirTriagem(entrada(item(1, { triagem: tri(), ...mais })), 'e-0001', {
       saida: s,
       agora: AGORA,
-      repo: REPO_TESTE,
+      board,
     })
+  const conclui = (s: string, mais: Partial<ItemDaEntrada> = {}) => concluiNo(PADRAO, s, mais)
 
   it('concluirTriagem: PROXIMO com card fecha o item', () => {
     const r = conclui(saida('feito\nPROXIMO: /gm-card #150'))
@@ -356,6 +365,86 @@ describe('triagem do item', () => {
     expect(parou('PARADA: duplicata de #12 (operations-center), comentei')?.resolucao).toBe(
       'duplicata do #12: a /gm-triage registrou o relato nele',
     )
+  })
+
+  const DOIS: Pick<BoardDaFabrica, 'chave' | 'nome' | 'projeto' | 'repos' | 'repoUnico'> = {
+    chave: 'fulano/8',
+    nome: 'Board de Dois Repos',
+    projeto: 8,
+    repos: {
+      tipo: 'lista',
+      repos: [
+        { owner: 'fulano', name: 'repo-a' },
+        { owner: 'fulano', name: 'repo-b' },
+      ],
+    },
+    repoUnico: null,
+  }
+  const QUALQUER: typeof DOIS = {
+    ...DOIS,
+    chave: 'fulano/9',
+    projeto: 9,
+    repos: { tipo: 'owner', owner: 'fulano' },
+  }
+
+  it('notaDaTriagem de vários repos escolhe o repo e pede <owner>/<repo>#<n>', () => {
+    const nota = notaDaTriagem(DOIS)
+    expect(nota).toContain(
+      'O board fulano/8 (Project 8) atende vários repos (fulano/repo-a, fulano/repo-b): escolha pelo assunto do relato o repo do card',
+    )
+    expect(nota).toContain('Feche com PROXIMO: /gm-card <owner>/<repo>#<n> do card criado')
+    expect(nota).toContain('PARADA: duplicata de <owner>/<repo>#<n>')
+    expect(nota).not.toContain('\n')
+    expect(notaDaTriagem(QUALQUER)).toContain('atende vários repos (qualquer repo de fulano)')
+  })
+
+  it('concluirTriagem de vários repos: PROXIMO com <owner>/<repo>#<n> fecha o item', () => {
+    for (const b of [DOIS, QUALQUER]) {
+      for (const cmd of ['/gm-card fulano/repo-b#5', '/gm-card repo-b#5']) {
+        const r = concluiNo(b, saida(`PROXIMO: ${cmd}`)).estado.itens[0]
+        expect(r?.resolucao, cmd).toBe('virou o fulano/repo-b#5, em 📥 Triagem pela /gm-triage')
+      }
+    }
+    expect(
+      concluiNo(QUALQUER, saida('PROXIMO: /gm-card fulano/novo#5')).estado.itens[0]?.resolucao,
+    ).toBe('virou o fulano/novo#5, em 📥 Triagem pela /gm-triage')
+  })
+
+  it('concluirTriagem de vários repos: PARADA de duplicata com repo', () => {
+    const r = concluiNo(DOIS, saida('PARADA: duplicata de fulano/repo-a#9, comentei')).estado
+    expect(r.itens[0]?.resolucao).toBe(
+      'duplicata do fulano/repo-a#9: a /gm-triage registrou o relato nele',
+    )
+    const o = concluiNo(DOIS, saida('PARADA: duplicata do repo-b#9')).estado.itens[0]
+    expect(o?.resolucao).toBe('duplicata do fulano/repo-b#9: a /gm-triage registrou o relato nele')
+  })
+
+  it('concluirTriagem de vários repos: para em vez de seguir com repo de fora ou sem repo', () => {
+    const parou = (b: typeof DOIS, fim: string) => concluiNo(b, saida(fim)).estado.itens[0]
+    for (const fim of [
+      'PROXIMO: /gm-card outro#5',
+      'PROXIMO: /gm-card fulano/repo-c#5',
+      'PARADA: duplicata de beltrano/x#5',
+    ]) {
+      const i = parou(DOIS, fim)
+      expect(i?.triadoEm, fim).toBeNull()
+      expect(i?.resolucao, fim).toBeNull()
+      expect(i?.triagem?.parou, fim).toMatch(/^o fim cita card de outro repo \(/)
+    }
+    expect(parou(QUALQUER, 'PROXIMO: /gm-card beltrano/x#5')?.triagem?.parou).toBe(
+      'o fim cita card de outro repo (beltrano/x): PROXIMO: /gm-card beltrano/x#5',
+    )
+    expect(parou(QUALQUER, 'PROXIMO: /gm-card foo_bar/x#5')?.triagem?.parou).toMatch(
+      /^o fim cita card de outro repo \(foo_bar\/x\)/,
+    )
+    expect(parou(DOIS, 'PROXIMO: /gm-card #5')?.triagem?.parou).toBe(
+      'PROXIMO sem o repo do card, e o board atende vários repos: /gm-card #5',
+    )
+    expect(parou(DOIS, 'PROXIMO: /gm-card #5 (repo-a)')?.triagem?.parou).toBe(
+      'PROXIMO sem o repo do card, e o board atende vários repos: /gm-card #5 (repo-a)',
+    )
+    expect(parou(DOIS, 'PARADA: duplicata de #5')?.triagem?.parou).toBe('PARADA: duplicata de #5')
+    expect(parou(DOIS, 'PARADA: isso é suporte')?.triagem?.parou).toBe('PARADA: isso é suporte')
   })
 
   it('notaDaTriagem do board padrão é o texto de hoje, byte a byte (CA-1)', () => {

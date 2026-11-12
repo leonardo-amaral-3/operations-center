@@ -215,7 +215,7 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
       const eventos: string[] = []
       let mudou = false
       const concluir = (id: string, saida: string): void => {
-        const r = concluirTriagem(estado, id, { saida, agora: deps.agora(), repo: ctx.board.repo })
+        const r = concluirTriagem(estado, id, { saida, agora: deps.agora(), board: ctx.board })
         estado = r.estado
         eventos.push(r.evento)
         mudou = true
@@ -370,7 +370,7 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
     const concluirComErro = async (subtype: string): Promise<void> => {
       const saida = JSON.stringify({ type: 'result', is_error: true, subtype })
       const evento = await naEntrada(ctx, memoria, (e) => {
-        const r = concluirTriagem(e, item.id, { saida, agora: deps.agora(), repo: ctx.board.repo })
+        const r = concluirTriagem(e, item.id, { saida, agora: deps.agora(), board: ctx.board })
         return { estado: r.estado, resultado: r.evento }
       })
       if (evento !== undefined) linha(evento)
