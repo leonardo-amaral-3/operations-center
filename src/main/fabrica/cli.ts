@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { GraphQLFn } from '../../core/board/types'
 import {
   abertosDaEntrada,
@@ -19,8 +19,9 @@ import {
   avaliarComando,
   avaliarNota,
   caminhosProibidos,
-  REPO_DA_FABRICA,
 } from '../../core/fabrica/mandato'
+import { resolverBoard, type ConfiguracaoDaFabrica } from '../../core/fabrica/configuracao'
+import { configuracaoDaFabrica } from './configuracao'
 import { createGhTokenSource } from '../github/token'
 import { createGitHubGraphQL } from '../github/graphql'
 import {
@@ -47,6 +48,7 @@ import { rodar } from './rodar'
 export interface DepsDoCli {
   argv: readonly string[]
   raizDoRepo: string
+  configuracao: ConfiguracaoDaFabrica
   env: NodeJS.ProcessEnv
   platform: NodeJS.Platform
   home: string
@@ -164,10 +166,17 @@ export async function executar(deps: DepsDoCli): Promise<number> {
     return 2
   }
 
-  const workspace = dirname(deps.raizDoRepo)
-  const checkoutPrincipal = join(workspace, REPO_DA_FABRICA.name)
+  // O `--board` chega na task 6; até lá vale o `padrao`.
+  const resolvido = resolverBoard(deps.configuracao, null)
+  if (!resolvido.ok) {
+    deps.avisar(`fabrica: ${resolvido.motivo}`)
+    return 2
+  }
+  const board = resolvido.board
+  const workspace = board.workspace
+  const checkoutPrincipal = board.checkoutPrincipal
   const proibidos = caminhosProibidos(deps.home, workspace, checkoutPrincipal)
-  const pasta = pastaDaFabrica(deps.env, deps.raizDoRepo)
+  const pasta = pastaDaFabrica(deps.env, board)
   try {
     recusarTemporaria(pasta)
   } catch (erro) {
@@ -444,9 +453,17 @@ export async function main(sinal: AbortSignal): Promise<number> {
     process.stderr.write('fabrica: rode pelo yarn fabrica (falta OC_FABRICA_RAIZ)\n')
     return 2
   }
+  let configuracao: ConfiguracaoDaFabrica
+  try {
+    configuracao = configuracaoDaFabrica(homedir())
+  } catch (erro) {
+    process.stderr.write(`fabrica: ${mensagemDe(erro)}\n`)
+    return 2
+  }
   return await executar({
     argv: process.argv.slice(2),
     raizDoRepo: resolve(raiz),
+    configuracao,
     env: process.env,
     platform: process.platform,
     home: homedir(),

@@ -37,7 +37,8 @@ import {
   saveConversations,
 } from './conversations'
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
-import { REPO_DA_FABRICA } from '../core/fabrica/mandato'
+import { boardPadrao } from '../core/fabrica/configuracao'
+import { configuracaoDaFabrica } from './fabrica/configuracao'
 import { criarAssumir, registerAssumirIpc } from './fabrica/assumir'
 import { lerEstado } from './fabrica/arquivos'
 import { criarExecutorDeComando, registerComandoIpc } from './fabrica/comando'
@@ -392,10 +393,16 @@ const dangerIpc = screen === 'kanban' ? registerDangerIpc(danger) : null
 // primeiro retrato, e o `onChange` corrige a tela quando ele responder.
 dangerIpc?.refresh()
 
+// A configuração da fábrica (#144) e o board que o app usa: sempre o `padrao`. Ficam no escopo do
+// módulo porque os blocos `screen === 'kanban'` abaixo são separados. Um `boards.json` inválido
+// derruba o processo aqui; o `fabrica-configuracao.test.ts` prende o arquivo versionado no CI.
+const configuracaoDaFabricaNoApp = configuracaoDaFabrica(homedir())
+const boardDoApp = boardPadrao(configuracaoDaFabricaNoApp)
+
 // A sala da fábrica (#122): só quando o processo sobe na tela do kanban, como o `registerDangerIpc`
 // acima; as janelas de card do mesmo processo não chamam estes canais. Só lê a pasta da fábrica.
 if (screen === 'kanban') {
-  const pasta = pastaDaSala(process.env, homedir())
+  const pasta = pastaDaSala(process.env, boardDoApp)
   // O mandato da `dev` vem pela GraphQL, em cache de 60 s: a sala relê a cada 5 s.
   const graphql = createGraphQL()
   const marca = criarMarcaEmCache(
@@ -418,7 +425,8 @@ if (screen === 'kanban') {
 if (screen === 'kanban')
   registerComandoIpc(
     criarExecutorDeComando({
-      raizDoRepo: join(homedir(), 'pessoal', REPO_DA_FABRICA.name),
+      raizDoRepo: boardDoApp.checkoutPrincipal,
+      configuracao: configuracaoDaFabricaNoApp,
       env: process.env,
       platform: process.platform,
       home: homedir(),
@@ -806,7 +814,7 @@ const claudeIpc = registerClaudeTerminalIpc({
 // `conversations.json` do app, como abrir o chat de um card já faz, e abre a janela do card. Não
 // toca a pasta da fábrica nem o board.
 if (screen === 'kanban') {
-  const pastaDoAssumir = pastaDaSala(process.env, homedir())
+  const pastaDoAssumir = pastaDaSala(process.env, boardDoApp)
   registerAssumirIpc(
     criarAssumir({
       lerEstado: () => lerEstado(pastaDoAssumir),

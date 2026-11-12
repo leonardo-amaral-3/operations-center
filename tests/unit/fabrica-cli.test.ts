@@ -29,6 +29,7 @@ import {
   pausar,
 } from '../../src/main/fabrica/arquivos'
 import { executar, type DepsDoCli } from '../../src/main/fabrica/cli'
+import { configuracaoDeTeste } from './fabrica-board-de-teste'
 import { lerItemNoBoard } from '../../src/main/fabrica/github'
 import { envLimpo } from '../../src/main/fabrica/lancador'
 
@@ -123,6 +124,7 @@ function montar(
   const deps: DepsDoCli = {
     argv: [],
     raizDoRepo: RAIZ,
+    configuracao: configuracaoDeTeste({ home: homedir(), workspace: dirname(RAIZ) }),
     env: {
       ...process.env,
       OC_FABRICA_DIR: pasta,

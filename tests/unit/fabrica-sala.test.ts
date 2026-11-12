@@ -19,7 +19,9 @@ import {
 } from '../../src/core/fabrica/sala'
 import type { Desfecho, Despacho, EstadoDaFabrica, ItemDaFila } from '../../src/core/fabrica/tipos'
 import type { RecursosDaFabrica } from '../../src/shared/fabrica'
+import { boardPadrao } from '../../src/core/fabrica/configuracao'
 import { identidade } from '../../src/main/fabrica/arquivos'
+import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
 import {
   estadoDoDespachante,
   lerCardDaFabrica,
@@ -785,11 +787,12 @@ describe('a leitura da sala', () => {
 })
 
 describe('pastaDaSala', () => {
-  it('o default é a pasta-irmã do checkout do workspace', () => {
-    expect(pastaDaSala({}, '/h')).toBe('/h/pessoal/claude/despachos-fabrica')
+  const board = boardPadrao(configuracaoDaFabrica('/h'))
+  it('o default é a pasta de estado do board padrão', () => {
+    expect(pastaDaSala({}, board)).toBe('/h/pessoal/claude/despachos-fabrica')
   })
   it('OC_FABRICA_DIR manda', () => {
-    expect(pastaDaSala({ OC_FABRICA_DIR: '/x/y' }, '/h')).toBe('/x/y')
+    expect(pastaDaSala({ OC_FABRICA_DIR: '/x/y' }, board)).toBe('/x/y')
   })
 })
 

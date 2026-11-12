@@ -2,13 +2,13 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ipcMain } from 'electron'
 import { despachoAtualDoCard, montarCard } from '../../core/fabrica/card'
+import type { BoardDaFabrica } from '../../core/fabrica/configuracao'
 import { entradaNaSala } from '../../core/fabrica/entrada'
 import { lerRevisoes } from '../../core/fabrica/revisoes'
 import { montarPergunta, montarSala, urlDoCard } from '../../core/fabrica/sala'
 import {
   NOME_DO_PROJETO_DA_FABRICA,
   PROJETO_DA_FABRICA,
-  REPO_DA_FABRICA,
   TETO_DE_SESSOES,
   marcaDoDespacho,
 } from '../../core/fabrica/mandato'
@@ -37,8 +37,11 @@ import { lerTextoDasRevisoes } from './revisoes'
  */
 
 /** O app instalado não tem raiz de repo: parte de `<home>/pessoal/<repo>`, o checkout do workspace. */
-export function pastaDaSala(env: NodeJS.ProcessEnv, home: string): string {
-  return pastaDaFabrica(env, join(home, 'pessoal', REPO_DA_FABRICA.name))
+export function pastaDaSala(
+  env: NodeJS.ProcessEnv,
+  board: Pick<BoardDaFabrica, 'pastaDoEstado'>,
+): string {
+  return pastaDaFabrica(env, board)
 }
 
 /**
