@@ -305,9 +305,26 @@ describe('Release · o card abre a tela Card em qualquer ponto (#145, CA-2)', ()
     await screen.findAllByTestId('fabrica-release-card')
     const linha = screen.getAllByTestId('fabrica-release-card')[0]!
     fireEvent.click(within(linha).getByText('Título 210', { exact: false }))
-    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 210 })
+    expect(p.ir).toHaveBeenCalledWith({
+      tela: 'card',
+      card: 210,
+      repo: 'leonardo-amaral-3/operations-center',
+    })
     vi.mocked(p.ir).mockClear()
     fireEvent.click(within(linha).getByRole('link'))
+    expect(p.ir).not.toHaveBeenCalled()
+  })
+
+  it('card de um repo fora do board da fábrica não navega', async () => {
+    readBoards.mockResolvedValue(
+      boards([
+        card(210, 'c-rel', { repository: 'outro/x', url: 'https://github.com/outro/x/issues/210' }),
+      ]),
+    )
+    const p = props()
+    render(<Release {...p} />)
+    const linha = await screen.findByTestId('fabrica-release-card')
+    fireEvent.click(within(linha).getByText('Título 210', { exact: false }))
     expect(p.ir).not.toHaveBeenCalled()
   })
 })

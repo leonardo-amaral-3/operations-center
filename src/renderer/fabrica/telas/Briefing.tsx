@@ -17,6 +17,7 @@ import {
   notaDoBriefing,
   type FrenteDoBriefing,
 } from '../briefing'
+import { chaveDoCard } from '../boardDaFabrica'
 import { linhaDoFim, rotuloDoEstado } from '../emVoo'
 import { rotuloDoCard } from '../linha'
 import { CabecalhoInterno, ListaComTeto } from '../Moldura'
@@ -87,11 +88,12 @@ function Frente({
   onVer: () => void
   onAbrir: () => void
 }): JSX.Element {
-  const { card, titulo, coluna, comando, emVoo, abertos } = frente
+  const { card, repo, titulo, coluna, comando, emVoo, abertos } = frente
   return (
     <Card
       data-testid="fabrica-briefing-frente"
       data-card={card}
+      data-repo={repo}
       data-estado={emVoo ? 'em-voo' : 'candidata'}
       data-abre-card={card}
       onClick={abrirAoClicar(onAbrir)}
@@ -238,12 +240,12 @@ export function Briefing({
   board: alvo,
 }: PropsDaTela): JSX.Element {
   const board = useBoardDaFabrica(alvo)
-  const [marcadas, setMarcadas] = useState<Set<number>>(() => new Set())
-  const [pronto, setPronto] = useState<Record<number, string>>({})
+  const [marcadas, setMarcadas] = useState<Set<string>>(() => new Set())
+  const [pronto, setPronto] = useState<Record<string, string>>({})
   const [contexto, setContexto] = useState('')
   const [soltando, setSoltando] = useState(false)
-  const [resultados, setResultados] = useState<Record<number, Resultado>>({})
-  const [planos, setPlanos] = useState<Map<number, Plano>>(() => new Map())
+  const [resultados, setResultados] = useState<Record<string, Resultado>>({})
+  const [planos, setPlanos] = useState<Map<string, Plano>>(() => new Map())
   const geracao = useRef(0)
   // O laço do Soltar olha isto antes de cada frente: com a tela fechada, ninguém vê o resultado, e
   // soltar o resto seria abrir frente sem o humano ver (G4 da PR #141, menor 2).
@@ -256,30 +258,37 @@ export function Briefing({
   }, [])
 
   const frentes = useMemo(
-    () => (board.kind === 'ok' ? frentesDoBriefing(board.board, sala) : []),
-    [board, sala],
+    () => (board.kind === 'ok' ? frentesDoBriefing(board.board, sala, alvo) : []),
+    [board, sala, alvo],
   )
   const hoje = diaLocal(new Date())
 
   const emVooDaSala: DespachoNaSala[] = sala?.kind === 'ok' ? sala.emVoo : []
-  const cardsEmVoo = [...new Set(emVooDaSala.map((d) => d.card))]
+  const cardsEmVoo: { repo: string; card: number }[] = []
+  const vistos = new Set<string>()
+  for (const d of emVooDaSala) {
+    const chave = chaveDoCard(d.repo, d.card)
+    if (vistos.has(chave)) continue
+    vistos.add(chave)
+    cardsEmVoo.push({ repo: d.repo, card: d.card })
+  }
   const mostrados = cardsEmVoo.slice(0, MAXIMO_DE_PLANOS)
-  const chaveDosMostrados = mostrados.join(',')
+  const chaveDosMostrados = JSON.stringify(mostrados.map((m) => [m.repo, m.card]))
   const lidoEm = sala?.lidoEm
 
   useEffect(() => {
     const minha = ++geracao.current
-    const cards = chaveDosMostrados === '' ? [] : chaveDosMostrados.split(',').map(Number)
-    for (const card of cards) {
+    const cards = JSON.parse(chaveDosMostrados) as [string, number][]
+    for (const [repo, card] of cards) {
       void (async (): Promise<void> => {
         let plano: Plano
         try {
-          plano = await window.oc.readFabricaCard({ board: alvo.chave, repo: null, card })
+          plano = await window.oc.readFabricaCard({ board: alvo.chave, repo, card })
         } catch (e) {
           plano = { kind: 'falha', erro: mensagem(e) }
         }
         if (minha !== geracao.current) return
-        setPlanos((antes) => new Map(antes).set(card, plano))
+        setPlanos((antes) => new Map(antes).set(chaveDoCard(repo, card), plano))
       })()
     }
   }, [alvo.chave, chaveDosMostrados, lidoEm])
@@ -300,18 +309,18 @@ export function Briefing({
     }
   }
 
-  const marcadasNaOrdem = frentes.filter((f) => !f.emVoo && marcadas.has(f.card))
-  const notaDe = (card: number): string =>
-    notaDoBriefing({ dia: hoje, prontoQuando: pronto[card] ?? '', contexto })
-  const passaDoLimite = marcadasNaOrdem.filter((f) => notaDe(f.card).length > LIMITE_DA_NOTA)
+  const marcadasNaOrdem = frentes.filter((f) => !f.emVoo && marcadas.has(f.chave))
+  const notaDe = (f: FrenteDoBriefing): string =>
+    notaDoBriefing({ dia: hoje, prontoQuando: pronto[f.chave] ?? '', contexto })
+  const passaDoLimite = marcadasNaOrdem.filter((f) => notaDe(f).length > LIMITE_DA_NOTA)
 
   const soltar = async (): Promise<void> => {
     const alvo = marcadasNaOrdem
     setSoltando(true)
     setResultados({})
-    const feitos: Record<number, Resultado> = {}
-    const registrar = (card: number, r: Resultado): void => {
-      feitos[card] = r
+    const feitos: Record<string, Resultado> = {}
+    const registrar = (chave: string, r: Resultado): void => {
+      feitos[chave] = r
       setResultados({ ...feitos })
     }
     try {
@@ -319,41 +328,41 @@ export function Briefing({
       for (const f of alvo) {
         if (!montada.current) parou = true
         if (parou) {
-          registrar(f.card, 'nao-solta')
+          registrar(f.chave, 'nao-solta')
           continue
         }
         const antes = await lerSala()
         if (antes === null) {
-          registrar(f.card, 'sem-leitura')
+          registrar(f.chave, 'sem-leitura')
           parou = true
           continue
         }
-        if (antes.some((d) => d.card === f.card)) {
-          registrar(f.card, 'ja-em-voo')
+        if (antes.some((d) => chaveDoCard(d.repo, d.card) === f.chave)) {
+          registrar(f.chave, 'ja-em-voo')
           continue
         }
         if (!montada.current) {
-          registrar(f.card, 'nao-solta')
+          registrar(f.chave, 'nao-solta')
           parou = true
           continue
         }
-        await comando({ tipo: 'iniciar', repo: f.repo, card: f.card, nota: notaDe(f.card) })
+        await comando({ tipo: 'iniciar', repo: f.repo, card: f.card, nota: notaDe(f) })
         const depois = await lerSala()
         if (depois === null) {
-          registrar(f.card, 'sem-leitura')
+          registrar(f.chave, 'sem-leitura')
           parou = true
           continue
         }
         const ids = new Set(antes.map((d) => d.id))
-        if (depois.some((d) => d.card === f.card && !ids.has(d.id))) {
-          registrar(f.card, 'aberta')
+        if (depois.some((d) => chaveDoCard(d.repo, d.card) === f.chave && !ids.has(d.id))) {
+          registrar(f.chave, 'aberta')
           setMarcadas((m) => {
             const proximo = new Set(m)
-            proximo.delete(f.card)
+            proximo.delete(f.chave)
             return proximo
           })
         } else {
-          registrar(f.card, 'nao-abriu')
+          registrar(f.chave, 'nao-abriu')
           parou = true
         }
       }
@@ -398,31 +407,33 @@ export function Briefing({
       <ListaComTeto lista="briefing-frentes" teto={1040} className="flex flex-col gap-4">
         {frentes.map((f) => (
           <Frente
-            key={f.card}
+            key={f.chave}
             frente={f}
             teto={textoDoTeto}
-            marcada={marcadas.has(f.card)}
-            pronto={pronto[f.card] ?? ''}
-            resultado={resultados[f.card]}
+            marcada={marcadas.has(f.chave)}
+            pronto={pronto[f.chave] ?? ''}
+            resultado={resultados[f.chave]}
             onMarcar={(marcar) =>
               setMarcadas((m) => {
                 const proximo = new Set(m)
-                if (marcar) proximo.add(f.card)
-                else proximo.delete(f.card)
+                if (marcar) proximo.add(f.chave)
+                else proximo.delete(f.chave)
                 return proximo
               })
             }
-            onPronto={(texto) => setPronto((p) => ({ ...p, [f.card]: texto }))}
-            onVer={() => ir({ tela: 'card', card: f.card })}
-            onAbrir={() => ir({ tela: 'card', card: f.card })}
+            onPronto={(texto) => setPronto((p) => ({ ...p, [f.chave]: texto }))}
+            onVer={() => ir({ tela: 'card', card: f.card, repo: f.repo })}
+            onAbrir={() => ir({ tela: 'card', card: f.card, repo: f.repo })}
           />
         ))}
       </ListaComTeto>
     )
   }
 
-  const titulos = new Map<number, string>(
-    board.kind === 'ok' ? board.board.cards.map((c) => [c.number, c.title]) : [],
+  const titulos = new Map<string, string>(
+    board.kind === 'ok'
+      ? board.board.cards.map((c) => [chaveDoCard(c.repository, c.number), c.title])
+      : [],
   )
 
   let plano: JSX.Element
@@ -430,12 +441,12 @@ export function Briefing({
     const mais = cardsEmVoo.length - mostrados.length
     plano = (
       <>
-        {mostrados.map((card) => (
+        {mostrados.map((m) => (
           <PlanoDoCard
-            key={card}
-            card={card}
-            titulo={titulos.get(card) ?? null}
-            plano={planos.get(card)}
+            key={chaveDoCard(m.repo, m.card)}
+            card={m.card}
+            titulo={titulos.get(chaveDoCard(m.repo, m.card)) ?? null}
+            plano={planos.get(chaveDoCard(m.repo, m.card))}
           />
         ))}
         {mais > 0 && (

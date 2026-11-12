@@ -247,7 +247,11 @@ describe('Portfólio: o detalhe', () => {
   it('"Abrir o card" leva ao card e fica desabilitado sem card', async () => {
     const { p } = await abrir()
     fireEvent.click(within(detalhe()).getByTestId('fabrica-abrir-transcrito'))
-    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 120 })
+    expect(p.ir).toHaveBeenCalledWith({
+      tela: 'card',
+      card: 120,
+      repo: 'leonardo-amaral-3/operations-center',
+    })
 
     fireEvent.click(document.querySelector(`[data-arquivo="${A9}"]`) as HTMLElement)
     const botao = within(detalhe()).getByTestId<HTMLButtonElement>('fabrica-abrir-transcrito')

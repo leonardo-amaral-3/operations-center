@@ -187,7 +187,11 @@ describe('Briefing · as frentes (CA-6.1)', () => {
     expect(within(f).queryByTestId('fabrica-briefing-entra')).toBeNull()
     expect(within(f).getByText('já em voo')).toBeTruthy()
     fireEvent.click(within(f).getByTestId('fabrica-briefing-ver'))
-    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 941 })
+    expect(p.ir).toHaveBeenCalledWith({
+      tela: 'card',
+      card: 941,
+      repo: 'leonardo-amaral-3/operations-center',
+    })
   })
 
   it('card com item aberto na fila: avisa na frente, e ela segue marcável (G4 da PR #141, menor 3)', async () => {
@@ -410,7 +414,7 @@ describe('Briefing · plano devolvido', () => {
     const passos = await screen.findAllByTestId('fabrica-briefing-passo')
     expect(readFabricaCard).toHaveBeenCalledWith({
       board: 'leonardo-amaral-3/2',
-      repo: null,
+      repo: 'leonardo-amaral-3/operations-center',
       card: 4,
     })
     expect(passos.length).toBe(4)
@@ -458,7 +462,11 @@ describe('Briefing · a frente abre o Card em qualquer ponto (#145, CA-2)', () =
     const p = await abrir()
     const f = frente(941)
     fireEvent.click(f)
-    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 941 })
+    expect(p.ir).toHaveBeenCalledWith({
+      tela: 'card',
+      card: 941,
+      repo: 'leonardo-amaral-3/operations-center',
+    })
   })
 
   it('checkbox, rótulo e campo Pronto quando não abrem o Card', async () => {
@@ -470,5 +478,66 @@ describe('Briefing · a frente abre o Card em qualquer ponto (#145, CA-2)', () =
     fireEvent.click(within(f).getByText('Entra no dia', { exact: false }))
     fireEvent.click(within(f).getByTestId('fabrica-briefing-pronto'))
     expect(p.ir).not.toHaveBeenCalled()
+  })
+})
+
+describe('Briefing · o mesmo número em dois repos do board (#157, CA-1)', () => {
+  const doRepo = (repo: string, n: number, coluna: string): BoardCard => ({
+    ...card(n, coluna),
+    repository: repo,
+    url: `https://github.com/${repo}/issues/${n}`,
+  })
+  const BOARD_DOIS: BoardsSnapshot = {
+    boards: [
+      {
+        key: BOARD_DE_DOIS_REPOS.chave,
+        title: 'Dois',
+        readAt: 1,
+        error: null,
+        board: {
+          title: 'Dois',
+          columns: COLUNAS,
+          cards: [doRepo('fulano/repo-a', 5, 'c-bac'), doRepo('fulano/repo-b', 5, 'c-bac')],
+        },
+      },
+    ],
+    activeKey: BOARD_DE_DOIS_REPOS.chave,
+    discoveryError: null,
+  }
+  const emVooDeB: DespachoNaSala = {
+    ...despacho('d-b5', 5),
+    repo: 'fulano/repo-b',
+    cardUrl: 'https://github.com/fulano/repo-b/issues/5',
+  }
+
+  it('duas frentes #5, uma por repo; só a do repo em voo fica em voo e só a marcada é solta', async () => {
+    readBoards.mockResolvedValue(BOARD_DOIS)
+    readFabrica.mockResolvedValue(sala([emVooDeB]))
+    const comando = vi.fn(() => Promise.resolve())
+    const p = props({ board: BOARD_DE_DOIS_REPOS, sala: sala([emVooDeB]), comando })
+    render(<Briefing {...p} />)
+    await screen.findAllByTestId('fabrica-briefing-frente')
+    const frentes = screen.getAllByTestId('fabrica-briefing-frente')
+    expect(frentes.map((f) => [f.getAttribute('data-repo'), f.getAttribute('data-card')])).toEqual([
+      ['fulano/repo-a', '5'],
+      ['fulano/repo-b', '5'],
+    ])
+    // o card em voo é o do repo-b: a frente do repo-a não está em voo e se marca sozinha
+    expect(within(frentes[1]!).queryByTestId('fabrica-briefing-entra')).toBeNull()
+    fireEvent.click(within(frentes[0]!).getByTestId('fabrica-briefing-entra'))
+    fireEvent.click(soltar())
+    await waitFor(() => expect(comando).toHaveBeenCalledTimes(1))
+    expect(comando).toHaveBeenCalledWith(
+      expect.objectContaining({ tipo: 'iniciar', repo: 'fulano/repo-a', card: 5 }),
+    )
+    // o plano do card em voo foi pedido com o repo dele
+    expect(readFabricaCard).toHaveBeenCalledWith({
+      board: 'fulano/8',
+      repo: 'fulano/repo-b',
+      card: 5,
+    })
+    // Ver leva ao card com o repo da frente
+    fireEvent.click(within(frentes[1]!).getByTestId('fabrica-briefing-ver'))
+    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 5, repo: 'fulano/repo-b' })
   })
 })

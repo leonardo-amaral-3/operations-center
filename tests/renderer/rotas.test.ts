@@ -25,7 +25,7 @@ describe('trilhaDa', () => {
       [{ tela: 'agentes' }, ['Sala de controle', 'Agentes']],
       [{ tela: 'pergunta', item: 'q-1' }, ['Sala de controle', 'Esperando você', 'Pergunta']],
       [{ tela: 'decisao', item: 'q-1' }, ['Sala de controle', 'Esperando você', 'Revisão · G4']],
-      [{ tela: 'card', card: 129 }, ['Sala de controle', 'Linha', '#129']],
+      [{ tela: 'card', card: 129, repo: null }, ['Sala de controle', 'Linha', '#129']],
       [{ tela: 'entrada' }, ['Sala de controle', 'Entrada']],
       [{ tela: 'relatorio' }, ['Sala de controle', 'Relatório de 11/11']],
       [{ tela: 'portfolio' }, ['Sala de controle', 'Portfólio']],
@@ -45,7 +45,7 @@ describe('trilhaDa', () => {
   it('as duas primeiras migalhas voltam à Sala e a última é a tela atual', () => {
     const pergunta = trilhaDa({ tela: 'pergunta', item: 'q-1' }, HOJE)
     expect(pergunta.map((m) => m.para)).toEqual([SALA, SALA, null])
-    const card = trilhaDa({ tela: 'card', card: 7 }, HOJE)
+    const card = trilhaDa({ tela: 'card', card: 7, repo: null }, HOJE)
     expect(card.map((m) => m.para)).toEqual([SALA, SALA, null])
     expect(trilhaDa({ tela: 'agentes' }, HOJE).map((m) => m.para)).toEqual([SALA, null])
   })

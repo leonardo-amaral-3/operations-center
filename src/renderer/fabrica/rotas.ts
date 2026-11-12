@@ -28,7 +28,7 @@ export type TelaDaFabrica =
   | { tela: 'release' }
   | { tela: 'pergunta'; item: string } // id `q-<n>`
   | { tela: 'decisao'; item: string } // id `q-<n>`
-  | { tela: 'card'; card: number }
+  | { tela: 'card'; card: number; repo: string | null } // repo 'owner/name'; null = o repo único do board
 
 /** Um passo da trilha; `para: null` é a tela atual. */
 export interface Migalha {

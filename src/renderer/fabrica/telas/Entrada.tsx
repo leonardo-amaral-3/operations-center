@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX, ReactNode } from 'react'
 
-import type { EntradaNaSala, ItemNaEntrada } from '../../../shared/fabrica'
+import type { BoardNaFabricaOk, EntradaNaSala, ItemNaEntrada } from '../../../shared/fabrica'
 import { Badge } from '../../ui/badge'
 import { Button } from '../../ui/button'
 import { Card } from '../../ui/card'
 import { cn } from '../../ui/cn'
 import { abrirAoClicar } from '../cartao'
 import { Textarea } from '../../ui/textarea'
-import { cardCitado } from '../emVoo'
+import { repoDaFabrica } from '../boardDaFabrica'
+import { cardCitadoComRepo } from '../emVoo'
 import { horaCurta } from '../linha'
 import { CabecalhoInterno } from '../Moldura'
 import { trilhaDa } from '../rotas'
@@ -68,28 +69,34 @@ function ItemDaEntrada({
   item,
   ir,
   aviso,
+  board,
 }: {
   item: ItemNaEntrada
   ir: PropsDaTela['ir']
   aviso: string
+  board: BoardNaFabricaOk
 }): JSX.Element {
   const triado = item.triadoEm !== null
   const resolucao = item.resolucao ?? ''
-  const citado = triado ? cardCitado(resolucao) : null
+  const citado = triado ? cardCitadoComRepo(resolucao) : null
+  // Citado com repo texto fora do board: o item não abre o card. Sem repo, é o repo único do board.
+  const repoDoCitado =
+    citado === null ? null : citado.repo === null ? board.unico : repoDaFabrica(board, citado.repo)
+  const abre = citado !== null && !(citado.repo !== null && repoDoCitado === null)
   return (
     <Card
       data-testid="fabrica-entrada-item"
       data-id={item.id}
       data-estado={triado ? 'triado' : (item.triagem ?? 'esperando')}
-      data-abre-card={citado ?? undefined}
+      data-abre-card={abre ? citado.card : undefined}
       onClick={
-        citado === null
+        !abre
           ? undefined
           : abrirAoClicar(() => {
-              ir({ tela: 'card', card: citado })
+              ir({ tela: 'card', card: citado.card, repo: repoDoCitado })
             })
       }
-      className={cn('gap-2.5 bg-secondary-background p-4', citado !== null && 'cursor-pointer')}
+      className={cn('gap-2.5 bg-secondary-background p-4', abre && 'cursor-pointer')}
     >
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge variant="neutral">Você</Badge>
@@ -112,13 +119,13 @@ function ItemDaEntrada({
             <span className="flex-[1_1_300px] text-sm leading-5">
               {`Triada em ${horaCurta(item.triadoEm ?? '')}: ${resolucao}`}
             </span>
-            {citado !== null && (
+            {abre && (
               <Button
                 variant="neutral"
                 data-testid="fabrica-entrada-ver"
-                onClick={() => ir({ tela: 'card', card: citado })}
+                onClick={() => ir({ tela: 'card', card: citado.card, repo: repoDoCitado })}
               >
-                {`Ver #${citado}`}
+                {`Ver #${citado.card}`}
               </Button>
             )}
           </>
@@ -243,7 +250,13 @@ export function Entrada({ tela, sala, ir, comando, emVoo, board }: PropsDaTela):
     lista = (
       <>
         {entrada.itens.map((item) => (
-          <ItemDaEntrada key={item.id} item={item} ir={ir} aviso={avisoDoEsperando(sala)} />
+          <ItemDaEntrada
+            key={item.id}
+            item={item}
+            ir={ir}
+            aviso={avisoDoEsperando(sala)}
+            board={board}
+          />
         ))}
         {mais > 0 && (
           <p className="text-xs text-foreground/75">{`e mais ${mais} antigos no entrada.json`}</p>

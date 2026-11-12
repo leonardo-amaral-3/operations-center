@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ESTACOES_DO_CARD,
   cardCitado,
+  cardCitadoComRepo,
   estadosDasEstacoes,
   estadosDasTasks,
   linhaDoFim,
@@ -120,6 +121,19 @@ describe('cardCitado', () => {
     expect(cardCitado('só a PR #930')).toBeNull()
     expect(cardCitado('#0')).toBeNull()
     expect(cardCitado('sem card')).toBeNull()
+  })
+})
+
+describe('cardCitadoComRepo', () => {
+  it('owner/name#n traz o repo; #n solto vem com repo null', () => {
+    expect(cardCitadoComRepo('virou o fulano/repo-b#910')).toEqual({
+      repo: 'fulano/repo-b',
+      card: 910,
+    })
+    expect(cardCitadoComRepo('virou o #906')).toEqual({ repo: null, card: 906 })
+    expect(cardCitadoComRepo('PR #930 do #906')).toEqual({ repo: null, card: 906 })
+    expect(cardCitadoComRepo('só a PR #930')).toBeNull()
+    expect(cardCitadoComRepo('sem card')).toBeNull()
   })
 })
 

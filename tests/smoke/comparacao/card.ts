@@ -12,7 +12,7 @@ export const card: TelaDoHarness = {
   // Exceção declarada: a subida do harness não tem `OC_CARD_FIXTURE`, então a caixa "Tasks do card"
   // do `Card-app.png` mostra o Vazio "Sem leitura do card"; as tasks são afirmadas no smoke da F4.
   rotulos: [
-    ...rotulosDaTrilha({ tela: 'card', card: 4 }),
+    ...rotulosDaTrilha({ tela: 'card', card: 4, repo: null }),
     'Tasks do card',
     'Decisões deste card',
     'Assumir a sessão',

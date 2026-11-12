@@ -5,6 +5,7 @@ import type { ReadCardResult } from '../../../shared/ipc'
 import { Badge } from '../../ui/badge'
 import { Button } from '../../ui/button'
 import { Card } from '../../ui/card'
+import { cn } from '../../ui/cn'
 import { abrirAoClicar } from '../cartao'
 import { CabecalhoInterno, LinkDoCard, ListaComTeto } from '../Moldura'
 import { trilhaDa } from '../rotas'
@@ -19,6 +20,7 @@ import {
   textoDasNotas,
   tipoDoCard,
 } from '../trem'
+import { repoDaFabrica } from '../boardDaFabrica'
 import { useBoardDaFabrica } from '../useBoardDaFabrica'
 
 type Copia = 'nada' | 'copiadas' | { erro: string }
@@ -107,16 +109,24 @@ export function Release({ tela, ir, board: alvo }: PropsDaTela): JSX.Element {
       <ListaComTeto lista="release-trem" className="flex flex-col gap-4">
         {trem.map((c) => {
           const tipo = tipoDoCard(c)
+          const repo = repoDaFabrica(alvo, c.repository)
           return (
             <Card
               key={c.itemId}
               data-testid="fabrica-release-card"
               data-card={c.number}
               data-abre-card={c.number}
-              onClick={abrirAoClicar(() => {
-                ir({ tela: 'card', card: c.number })
-              })}
-              className="cursor-pointer flex-row flex-wrap items-center gap-3 bg-secondary-background px-4 py-3.5"
+              onClick={
+                repo === null
+                  ? undefined
+                  : abrirAoClicar(() => {
+                      ir({ tela: 'card', card: c.number, repo })
+                    })
+              }
+              className={cn(
+                repo !== null && 'cursor-pointer',
+                'flex-row flex-wrap items-center gap-3 bg-secondary-background px-4 py-3.5',
+              )}
             >
               {tipo !== null && <Badge className={tipo.classe}>{tipo.rotulo}</Badge>}
               <span className="flex-[1_1_280px] font-bold">

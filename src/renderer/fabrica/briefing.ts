@@ -1,6 +1,6 @@
 import type { Board } from '../../shared/board'
-import type { SalaDaFabrica } from '../../shared/fabrica'
-import { REPO_DOS_CARDS_DA_FABRICA, colunaDoCard, estacaoDaColuna } from './boardDaFabrica'
+import type { BoardNaFabricaOk, SalaDaFabrica } from '../../shared/fabrica'
+import { chaveDoCard, colunaDoCard, estacaoDaColuna, repoDaFabrica } from './boardDaFabrica'
 
 /** O teto de despachos por frente do despachante (`LIMITE_DE_DESPACHOS_POR_FRENTE`). */
 export const LIMITE_DE_DESPACHOS_POR_FRENTE = 20
@@ -8,7 +8,8 @@ export const LIMITE_DE_DESPACHOS_POR_FRENTE = 20
 export const LIMITE_DA_NOTA = 1000
 
 export interface FrenteDoBriefing {
-  repo: string // c.repository, 'owner/name'
+  repo: string // repoDaFabrica(fabrica, c.repository): 'owner/name' na grafia do board
+  chave: string // chaveDoCard(repo, card)
   card: number
   titulo: string
   url: string
@@ -28,29 +29,38 @@ export interface FrenteDoBriefing {
  * os que o `iniciar` sabe começar sem `--comando`. Primeiro o Backlog, depois a Triagem, cada grupo
  * na ordem do board.
  */
-export function frentesDoBriefing(board: Board, sala: SalaDaFabrica | null): FrenteDoBriefing[] {
-  const emVoo = (card: number): boolean =>
-    sala?.kind === 'ok' && sala.emVoo.some((d) => d.card === card)
-  const abertos = (card: number): string[] =>
-    sala?.kind === 'ok' ? sala.abertos.filter((i) => i.card === card).map((i) => i.id) : []
+export function frentesDoBriefing(
+  board: Board,
+  sala: SalaDaFabrica | null,
+  fabrica: Pick<BoardNaFabricaOk, 'repos' | 'owner'>,
+): FrenteDoBriefing[] {
+  const emVoo = (chave: string): boolean =>
+    sala?.kind === 'ok' && sala.emVoo.some((d) => chaveDoCard(d.repo, d.card) === chave)
+  const abertos = (chave: string): string[] =>
+    sala?.kind === 'ok'
+      ? sala.abertos.filter((i) => chaveDoCard(i.repo, i.card) === chave).map((i) => i.id)
+      : []
   const doGrupo = (estacao: 'backlog' | 'triagem'): FrenteDoBriefing[] =>
-    board.cards
-      .filter(
-        (c) =>
-          !c.closed &&
-          c.repository === REPO_DOS_CARDS_DA_FABRICA &&
-          estacaoDaColuna(colunaDoCard(board, c)) === estacao,
-      )
-      .map((c) => ({
-        repo: c.repository,
-        card: c.number,
-        titulo: c.title,
-        url: c.url,
-        coluna: colunaDoCard(board, c),
-        comando: comandoDaFrente(estacao, c.number),
-        emVoo: emVoo(c.number),
-        abertos: abertos(c.number),
-      }))
+    board.cards.flatMap((c) => {
+      const repo = repoDaFabrica(fabrica, c.repository)
+      if (c.closed || repo === null || estacaoDaColuna(colunaDoCard(board, c)) !== estacao) {
+        return []
+      }
+      const chave = chaveDoCard(c.repository, c.number)
+      return [
+        {
+          repo,
+          chave,
+          card: c.number,
+          titulo: c.title,
+          url: c.url,
+          coluna: colunaDoCard(board, c),
+          comando: comandoDaFrente(estacao, c.number),
+          emVoo: emVoo(chave),
+          abertos: abertos(chave),
+        },
+      ]
+    })
   return [...doGrupo('backlog'), ...doGrupo('triagem')]
 }
 

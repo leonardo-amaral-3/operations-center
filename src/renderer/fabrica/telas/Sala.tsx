@@ -27,7 +27,7 @@ import {
   rotuloDoCard,
   skillDoComando,
 } from '../linha'
-import { REPO_DOS_CARDS_DA_FABRICA } from '../boardDaFabrica'
+import { repoDaFabrica } from '../boardDaFabrica'
 import { abaDaLinha, cardsDaLinha, mostraAFabrica, type CardNaLinha } from '../linhaDoBoard'
 import { CabecalhoDaSala, ListaComTeto } from '../Moldura'
 import { rotaDoItem, type TelaDaFabrica } from '../rotas'
@@ -373,7 +373,7 @@ function CartaoAberto({
                 size="sm"
                 variant="neutral"
                 data-testid="fabrica-ver-contexto"
-                onClick={navegar({ tela: 'card', card: item.card })}
+                onClick={navegar({ tela: 'card', card: item.card, repo: item.repo })}
               >
                 Ver contexto
               </Button>
@@ -492,7 +492,7 @@ function Linha({
                       />
                     ))}
                     {doBoardNaColuna.map((c) => (
-                      <CartaoDoBoard key={c.card.itemId} c={c} ir={ir} />
+                      <CartaoDoBoard key={c.card.itemId} c={c} ir={ir} board={board} />
                     ))}
                   </ListaComTeto>
                 )}
@@ -521,7 +521,7 @@ function Linha({
               <ListaComTeto lista={`a-parte-${g.coluna}`} className="flex flex-wrap gap-3">
                 {g.cards.map((c) => (
                   <div key={c.card.itemId} className="w-[210px]">
-                    <CartaoDoBoard c={c} ir={ir} />
+                    <CartaoDoBoard c={c} ir={ir} board={board} />
                   </div>
                 ))}
               </ListaComTeto>
@@ -543,7 +543,7 @@ function Linha({
               data-state={d.estado}
               className="text-left underline"
               onClick={() => {
-                ir({ tela: 'card', card: d.card })
+                ir({ tela: 'card', card: d.card, repo: d.repo })
               }}
             >
               {`${rotuloDoCard(d.card, cards.get(d.cardUrl)?.title ?? null)} ${d.comando}`}
@@ -568,10 +568,18 @@ function rotuloDaAba(aba: ReturnType<typeof abaDaLinha>): string {
   }
 }
 
-/** Card aberto do board da aba: só o do operations-center navega (os comandos da fábrica são presos a ele, CA-3). */
-function CartaoDoBoard({ c, ir }: { c: CardNaLinha; ir: Ir }): JSX.Element {
+/** Card aberto do board da aba: só o de um repo do board da fábrica navega (os comandos da fábrica são presos a ele, CA-3). */
+function CartaoDoBoard({
+  c,
+  ir,
+  board,
+}: {
+  c: CardNaLinha
+  ir: Ir
+  board: BoardNaFabricaOk | null
+}): JSX.Element {
   const rotulo = rotuloDoCard(c.card.number, c.card.title)
-  const daFabrica = c.card.repository.toLowerCase() === REPO_DOS_CARDS_DA_FABRICA
+  const repo = board === null ? null : repoDaFabrica(board, c.card.repository)
 
   return (
     <Card asChild className="gap-1.5 bg-secondary-background p-2.5">
@@ -581,13 +589,13 @@ function CartaoDoBoard({ c, ir }: { c: CardNaLinha; ir: Ir }): JSX.Element {
         data-coluna-do-board={c.coluna}
       >
         <Etiquetas card={c.card} />
-        {daFabrica ? (
+        {repo !== null ? (
           <button
             type="button"
             data-testid="fabrica-board-card-abrir"
             className="text-left text-[13px] leading-[17px] font-bold underline"
             onClick={() => {
-              ir({ tela: 'card', card: c.card.number })
+              ir({ tela: 'card', card: c.card.number, repo })
             }}
           >
             {rotulo}
@@ -622,7 +630,7 @@ function CartaoDeDespacho({
       <article
         data-abre-card={d.card}
         onClick={abrirAoClicar(() => {
-          ir({ tela: 'card', card: d.card })
+          ir({ tela: 'card', card: d.card, repo: d.repo })
         })}
       >
         <Etiquetas card={card} />
@@ -632,7 +640,7 @@ function CartaoDeDespacho({
           data-state={d.estado}
           className="text-left text-[13px] leading-[17px] font-bold underline"
           onClick={() => {
-            ir({ tela: 'card', card: d.card })
+            ir({ tela: 'card', card: d.card, repo: d.repo })
           }}
         >
           {rotuloDoCard(d.card, card?.title ?? null)}
@@ -664,7 +672,7 @@ function CartaoParado({
         data-testid="fabrica-linha-parada"
         data-abre-card={item.card}
         onClick={abrirAoClicar(() => {
-          ir({ tela: 'card', card: item.card })
+          ir({ tela: 'card', card: item.card, repo: item.repo })
         })}
       >
         <Etiquetas card={card} />

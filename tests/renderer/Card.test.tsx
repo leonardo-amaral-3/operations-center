@@ -60,7 +60,7 @@ const SALA: SalaDaFabrica = RETRATO_F2
 
 function props(card: number, sala: SalaDaFabrica | null = SALA): PropsDaTela {
   return {
-    tela: { tela: 'card', card },
+    tela: { tela: 'card', card, repo: 'leonardo-amaral-3/operations-center' },
     sala,
     ir: vi.fn(),
     comando: () => Promise.resolve(),

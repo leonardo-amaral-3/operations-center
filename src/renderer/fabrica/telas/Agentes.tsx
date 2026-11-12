@@ -1,6 +1,7 @@
 import type { JSX, ReactNode } from 'react'
 
 import type {
+  BoardNaFabricaOk,
   DespachoNaSala,
   ItemNaSala,
   RecursosDaFabrica,
@@ -18,7 +19,7 @@ import {
   rotuloDoCard,
   skillDoComando,
 } from '../linha'
-import { REPO_DOS_CARDS_DA_FABRICA } from '../boardDaFabrica'
+import { repoDaFabrica } from '../boardDaFabrica'
 import { BotaoPausar, CabecalhoInterno } from '../Moldura'
 import { rotaDoItem, trilhaDa } from '../rotas'
 import type { PropsDaTela } from '../telas'
@@ -82,6 +83,7 @@ export function Agentes({ tela, sala, ir, comando, emVoo, board }: PropsDaTela):
         titulo={titulo}
         maquina={maquina}
         tituloDaSessao={tituloDaSessao}
+        board={board}
       />
     </>
   )
@@ -105,12 +107,14 @@ function Corpo({
   titulo,
   maquina,
   tituloDaSessao,
+  board,
 }: {
   sala: PropsDaTela['sala']
   ir: Ir
   titulo: Titulos
   maquina: Maquina | null
   tituloDaSessao: Titulos
+  board: BoardNaFabricaOk
 }): JSX.Element {
   if (sala === null) {
     return (
@@ -134,7 +138,7 @@ function Corpo({
         </div>
       )}
       <Sessoes emVoo={emVoo} abertos={abertos} recursos={recursos} ir={ir} titulo={titulo} />
-      <SessoesDaMaquina maquina={maquina} ir={ir} titulo={tituloDaSessao} />
+      <SessoesDaMaquina maquina={maquina} ir={ir} titulo={tituloDaSessao} board={board} />
       <div className="flex flex-wrap items-start gap-5">
         <Cadeados recursos={recursos} />
         <Proximos sala={ok} titulo={titulo} />
@@ -197,7 +201,7 @@ function Sessoes({
                       className="font-bold underline"
                       data-testid="fabrica-agentes-card"
                       onClick={() => {
-                        ir({ tela: 'card', card: d.card })
+                        ir({ tela: 'card', card: d.card, repo: d.repo })
                       }}
                     >
                       {rotuloDoCard(d.card, titulo(d.cardUrl))}
@@ -227,7 +231,7 @@ function Sessoes({
                           variant="neutral"
                           data-testid="fabrica-transcrito"
                           onClick={() => {
-                            ir({ tela: 'card', card: d.card })
+                            ir({ tela: 'card', card: d.card, repo: d.repo })
                           }}
                         >
                           Transcrito
@@ -237,7 +241,7 @@ function Sessoes({
                           variant="neutral"
                           data-testid="fabrica-assumir"
                           onClick={() => {
-                            ir({ tela: 'card', card: d.card })
+                            ir({ tela: 'card', card: d.card, repo: d.repo })
                           }}
                         >
                           Assumir
@@ -260,7 +264,7 @@ function Sessoes({
                     className="font-bold underline"
                     data-testid="fabrica-agentes-card"
                     onClick={() => {
-                      ir({ tela: 'card', card: item.card })
+                      ir({ tela: 'card', card: item.card, repo: item.repo })
                     }}
                   >
                     {rotuloDoCard(item.card, titulo(item.cardUrl))}
@@ -321,10 +325,12 @@ function SessoesDaMaquina({
   maquina,
   ir,
   titulo,
+  board,
 }: {
   maquina: Maquina | null
   ir: Ir
   titulo: Titulos
+  board: BoardNaFabricaOk
 }): JSX.Element {
   return (
     <section
@@ -363,6 +369,7 @@ function SessoesDaMaquina({
                     ? null
                     : rotuloDoCard(s.card, titulo(s.cardUrl))
                 const card = s.card
+                const repo = s.repo === null ? null : repoDaFabrica(board, s.repo)
 
                 return (
                   <tr
@@ -375,12 +382,12 @@ function SessoesDaMaquina({
                     <td className={TD}>
                       {rotulo === null || card === null ? (
                         'sem leitura'
-                      ) : s.repo === REPO_DOS_CARDS_DA_FABRICA ? (
+                      ) : repo !== null ? (
                         <button
                           type="button"
                           className="font-bold underline"
                           onClick={() => {
-                            ir({ tela: 'card', card })
+                            ir({ tela: 'card', card, repo })
                           }}
                         >
                           {rotulo}

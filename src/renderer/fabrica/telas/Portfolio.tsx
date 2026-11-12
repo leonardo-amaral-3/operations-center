@@ -1,7 +1,12 @@
 import { useState } from 'react'
 import type { JSX } from 'react'
 
-import type { DecisaoDoDia, PainelDoDia, RevisaoNaSala } from '../../../shared/fabrica'
+import type {
+  BoardNaFabricaOk,
+  DecisaoDoDia,
+  PainelDoDia,
+  RevisaoNaSala,
+} from '../../../shared/fabrica'
 import { Badge, badgeVariants } from '../../ui/badge'
 import { Button } from '../../ui/button'
 import { Card } from '../../ui/card'
@@ -132,6 +137,7 @@ function Detalhe({
   comando,
   emVoo,
   aoGravar,
+  repoDoCard,
 }: {
   d: DecisaoDoDia | undefined
   dia: string
@@ -142,6 +148,7 @@ function Detalhe({
   comando: PropsDaTela['comando']
   emVoo: boolean
   aoGravar: () => Promise<void>
+  repoDoCard: string | null
 }): JSX.Element {
   const caixa = 'flex-[1_1_320px] max-w-[420px] gap-2.5 bg-secondary-background p-4'
   if (d === undefined) {
@@ -208,7 +215,7 @@ function Detalhe({
                 : `a tela Card do #${d.card}: os despachos e as sessões do card, com Assumir a sessão`
             }
             onClick={() => {
-              if (d.card !== null) ir({ tela: 'card', card: d.card })
+              if (d.card !== null) ir({ tela: 'card', card: d.card, repo: repoDoCard })
             }}
           >
             Abrir o card
@@ -232,9 +239,9 @@ function Corpo({
   ir: PropsDaTela['ir']
   comando: PropsDaTela['comando']
   emVoo: boolean
-  board: string
+  board: BoardNaFabricaOk
 }): JSX.Element {
-  const { revisoes, reler } = useRevisoes(board)
+  const { revisoes, reler } = useRevisoes(board.chave)
   const [filtro, setFiltro] = useState<Filtro>('Todas')
   const [sel, setSel] = useState<string | null>(null)
   const revisaoDe = (d: DecisaoDoDia): RevisaoNaSala | undefined => revisoes?.get(d.arquivo)
@@ -336,6 +343,7 @@ function Corpo({
           comando={comando}
           emVoo={emVoo}
           aoGravar={reler}
+          repoDoCard={board.unico}
         />
       </div>
     </>
@@ -389,7 +397,7 @@ export function Portfolio({ tela, ir, comando, emVoo, board }: PropsDaTela): JSX
           ir={ir}
           comando={comando}
           emVoo={emVoo}
-          board={board.chave}
+          board={board}
         />
       )}
     </>

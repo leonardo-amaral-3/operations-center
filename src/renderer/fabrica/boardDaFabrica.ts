@@ -42,6 +42,28 @@ export function boardDaFabrica(
   return { kind: 'ok', board: aba.board }
 }
 
+/**
+ * O repo do board da fábrica que `repo` ('owner/name') nomeia, sem caixa, na grafia do board; senão null.
+ * Lista: o item de `b.repos` igual sem caixa. Forma '<owner>/*' (`repos === null`): `repo` com uma barra só,
+ * owner igual a `b.owner` sem caixa → `${b.owner}/${name}`, com o `name` como veio.
+ */
+export function repoDaFabrica(
+  b: Pick<BoardNaFabricaOk, 'repos' | 'owner'>,
+  repo: string,
+): string | null {
+  const minusculo = repo.toLowerCase()
+  if (b.repos !== null) return b.repos.find((r) => r.toLowerCase() === minusculo) ?? null
+  const partes = repo.split('/')
+  const [owner, name] = partes
+  if (partes.length !== 2 || owner === undefined || name === undefined || name === '') return null
+  return owner.toLowerCase() === b.owner.toLowerCase() ? `${b.owner}/${name}` : null
+}
+
+/** A chave de um card no renderer: `${repo em minúsculas}#${n}`. */
+export function chaveDoCard(repo: string, n: number): string {
+  return `${repo.toLowerCase()}#${String(n)}`
+}
+
 /** O nome da coluna do card, ou `''` quando o board não a declara. */
 export function colunaDoCard(board: Board, card: BoardCard): string {
   return board.columns.find((c) => c.id === card.columnId)?.name ?? ''

@@ -6,7 +6,7 @@ import { Entrada } from '../../src/renderer/fabrica/telas/Entrada'
 import type { PropsDaTela } from '../../src/renderer/fabrica/telas'
 import type { EntradaNaSala, ItemNaEntrada, SalaDaFabrica } from '../../src/shared/fabrica'
 import { RETRATO_F2 } from './retrato-f2'
-import { BOARD_DO_PROJECT_2 } from './boardNaFabrica'
+import { BOARD_DE_DOIS_REPOS, BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 /** A tela Entrada da F4 (#133, CA-4.3/4.4). A ponte e o comando são falsos. */
 
@@ -125,7 +125,11 @@ describe('Entrada · a lista', () => {
     expect(within(itens[2]).queryByTestId('fabrica-entrada-ver')).toBeNull()
     fireEvent.click(within(itens[1]).getByTestId('fabrica-entrada-ver'))
     expect(screen.getAllByTestId('fabrica-entrada-ver')).toHaveLength(1)
-    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 906 })
+    expect(p.ir).toHaveBeenCalledWith({
+      tela: 'card',
+      card: 906,
+      repo: 'leonardo-amaral-3/operations-center',
+    })
   })
 
   it('Slack, Suporte e Vigia dizem que a fábrica não lê; Você mostra os itens', async () => {
@@ -265,11 +269,50 @@ describe('Entrada · o item triado abre o Card em qualquer ponto (#145, CA-2)', 
     const itens = screen.getAllByTestId('fabrica-entrada-item')
     const por = (id: string) => itens.find((i) => i.getAttribute('data-id') === id)!
     fireEvent.click(within(por('e-0002')).getByText('Erro ao exportar BPA.'))
-    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 906 })
+    expect(p.ir).toHaveBeenCalledWith({
+      tela: 'card',
+      card: 906,
+      repo: 'leonardo-amaral-3/operations-center',
+    })
     vi.mocked(p.ir).mockClear()
     fireEvent.click(within(por('e-0001')).getByText('Só uma ideia.'))
     fireEvent.click(within(por('e-0003')).getByText(/filtro por competência/))
     expect(p.ir).not.toHaveBeenCalled()
+  })
+})
+
+describe('Entrada · o card citado com repo (#157, CA-1)', () => {
+  const triadoCom = (id: string, resolucao: string): ItemNaEntrada => ({
+    ...TRIADO,
+    id,
+    texto: `texto ${id}`,
+    resolucao,
+  })
+
+  it('citado de um repo do board navega com o repo na grafia do board; fora do board não abre', async () => {
+    readFabricaEntrada.mockResolvedValue({
+      kind: 'ok',
+      itens: [
+        triadoCom('e-0010', 'virou o Fulano/Repo-B#910'),
+        triadoCom('e-0011', 'virou o outro/x#7'),
+        triadoCom('e-0012', 'virou o #906'),
+      ],
+      total: 3,
+    })
+    const { p } = await abrir({ board: BOARD_DE_DOIS_REPOS })
+    const itens = screen.getAllByTestId('fabrica-entrada-item')
+    const por = (id: string) => itens.find((i) => i.getAttribute('data-id') === id)!
+    fireEvent.click(within(por('e-0010')).getByText('texto e-0010'))
+    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 910, repo: 'fulano/repo-b' })
+    expect(within(por('e-0010')).getByTestId('fabrica-entrada-ver').textContent).toBe('Ver #910')
+    vi.mocked(p.ir).mockClear()
+    fireEvent.click(within(por('e-0011')).getByText('texto e-0011'))
+    expect(p.ir).not.toHaveBeenCalled()
+    expect(within(por('e-0011')).queryByTestId('fabrica-entrada-ver')).toBeNull()
+    expect(por('e-0011').getAttribute('data-abre-card')).toBeNull()
+    // #n solto: o board de dois repos não tem repo único, a rota vai com null
+    fireEvent.click(within(por('e-0012')).getByText('texto e-0012'))
+    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 906, repo: null })
   })
 })
 

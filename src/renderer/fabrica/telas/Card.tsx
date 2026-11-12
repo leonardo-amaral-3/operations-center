@@ -88,17 +88,19 @@ function notaDoAssumir(atual: DespachoDoCard, itemId: string | null): string {
 export function CardEmVoo({ tela, sala, ir, board }: PropsDaTela): JSX.Element {
   // A raiz só monta esta tela com `tela: 'card'`; fora disso não há card a ler.
   const card = tela.tela === 'card' ? tela.card : 0
+  const repo = tela.tela === 'card' ? tela.repo : null
   const lidoEm = sala?.lidoEm
 
   const [dados, setDados] = useState<CardNaFabrica | null>(null)
   const geracao = useRef(0)
-  const ultimoCard = useRef<number | null>(null)
+  const ultimoCard = useRef<string | null>(null)
 
   useEffect(() => {
     // `dados` só volta a `null` quando o card muda: na releitura por `lidoEm` o valor anterior
     // fica na tela até a resposta chegar.
-    if (ultimoCard.current !== card) {
-      ultimoCard.current = card
+    const doCard = `${repo ?? ''}#${String(card)}`
+    if (ultimoCard.current !== doCard) {
+      ultimoCard.current = doCard
       setDados(null)
     }
     const minha = ++geracao.current
@@ -108,7 +110,7 @@ export function CardEmVoo({ tela, sala, ir, board }: PropsDaTela): JSX.Element {
     }
     void (async () => {
       try {
-        aplicar(await window.oc.readFabricaCard({ board: board.chave, repo: null, card }))
+        aplicar(await window.oc.readFabricaCard({ board: board.chave, repo, card }))
       } catch (e) {
         aplicar({
           kind: 'ilegivel',
@@ -118,7 +120,7 @@ export function CardEmVoo({ tela, sala, ir, board }: PropsDaTela): JSX.Element {
         })
       }
     })()
-  }, [board.chave, card, lidoEm])
+  }, [board.chave, card, repo, lidoEm])
 
   const cards = useCardsDoBoard()
   const doBoard = dados !== null && dados.cardUrl !== '' ? cards.get(dados.cardUrl) : undefined
@@ -164,7 +166,7 @@ export function CardEmVoo({ tela, sala, ir, board }: PropsDaTela): JSX.Element {
   useEffect(() => {
     setAssumindo(false)
     setAssumido(null)
-  }, [card])
+  }, [card, repo])
 
   const ok = dados?.kind === 'ok' ? dados : null
   const suite = sala?.recursos.suite
