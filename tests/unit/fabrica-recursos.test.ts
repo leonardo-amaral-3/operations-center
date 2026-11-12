@@ -50,7 +50,28 @@ describe('cardDaCwd', () => {
     ['/h/operations-center-12x-y', null],
     ['', null],
   ])('%s → %s', (cwd, card) => {
-    expect(cardDaCwd(cwd, 'operations-center')).toBe(card)
+    expect(cardDaCwd(cwd, ['operations-center'])?.n ?? null).toBe(card)
+  })
+})
+
+describe('cardDaCwd com vários repos (#152, CA-3)', () => {
+  it('devolve o nome que casou', () => {
+    expect(cardDaCwd('/w/repo-b-5-y/test-results', ['repo-a', 'repo-b'])).toEqual({
+      nome: 'repo-b',
+      n: 5,
+    })
+  })
+  it('a pasta mais funda vence', () => {
+    expect(cardDaCwd('/w/repo-a-1-x/repo-b-2-y', ['repo-a', 'repo-b'])).toEqual({
+      nome: 'repo-b',
+      n: 2,
+    })
+  })
+  it('no mesmo ponto do caminho, o nome mais longo vence', () => {
+    expect(cardDaCwd('/w/app-2-5-x', ['app', 'app-2'])).toEqual({ nome: 'app-2', n: 5 })
+  })
+  it('nenhum nome casa → null', () => {
+    expect(cardDaCwd('/w/outro-5-x', ['repo-a'])).toBeNull()
   })
 })
 
@@ -87,7 +108,7 @@ function portas(muda: Partial<PortasDosRecursos> = {}): PortasDosRecursos {
   return {
     plataforma: 'linux',
     env: { OC_SMOKE_CADEADO: '/x/c.lock' },
-    nomeDoRepo: 'operations-center',
+    nomesDosRepos: ['operations-center'],
     uid: 1000,
     pastaDaFabrica: '/w/claude/despachos-fabrica',
     marca: () => ({ kind: 'ok', marca: 'MANDATO' }),
@@ -359,7 +380,7 @@ describe('lerRecursos com o flock de verdade', () => {
           portasReais({
             env: { OC_SMOKE_CADEADO: arquivo },
             pastaDaFabrica: base,
-            nomeDoRepo: 'operations-center',
+            nomesDosRepos: ['operations-center'],
             marca: () => ({ kind: 'ok', marca: 'M' }),
           }),
         )
