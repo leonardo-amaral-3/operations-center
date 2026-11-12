@@ -1,3 +1,4 @@
+import { REPO_TESTE } from './fabrica-board-de-teste'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -102,10 +103,8 @@ describe('NAO_FAZER_HOJE diz o que o código aplica', () => {
 
 describe('notaDoBriefing passa no filtro do mandato', () => {
   it('um Pronto quando e um contexto limpos', () => {
-    const proibidos = caminhosProibidos(
-      '/home/teste',
-      boardPadrao(configuracaoDaFabrica('/home/teste')),
-    )
+    const board = boardPadrao(configuracaoDaFabrica('/home/teste'))
+    const proibidos = caminhosProibidos('/home/teste', board, REPO_TESTE)
     const nota = notaDoBriefing({
       dia: '2026-11-12',
       prontoQuando: 'a spec sai',

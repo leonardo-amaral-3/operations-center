@@ -154,6 +154,13 @@ function montar(
   return { deps, saida, avisos }
 }
 
+/** Um registro como o de antes do #152: sem o campo `repo`. */
+function semRepo<T extends { repo?: string }>(r: T): T {
+  const copia = { ...r }
+  delete copia.repo
+  return copia
+}
+
 const rodar = (m: Montagem, ...argv: string[]): Promise<number> =>
   executar({ ...m.deps, argv: argv.length === 0 ? ['rodar'] : argv })
 
@@ -801,6 +808,29 @@ describe.skipIf(process.platform !== 'linux')('o laço do despachante', { timeou
     expect(m.saida.some((l) => l.includes('d-0002 terminou: PROXIMO /gm-spec #1'))).toBe(true)
     expect(m.saida.some((l) => l.includes('d-0003 terminou: fila q-0004 — fim'))).toBe(true)
     expect(m.saida.at(-1)).toContain('nada pendente nem em voo; fim')
+  })
+
+  it('estado de antes do #152: o pendente sem repo roda no board padrão, com a linha de hoje e sem linha do repo', async () => {
+    const m = montar({ '/gm-card #7': 'PARADA: fim' })
+    await abrirFrente(m, 7, '/gm-card #7')
+    expect(lerEstado(pasta)?.despachos[0]?.repo).toBe('leonardo-amaral-3/operations-center')
+    await alterarEstado(pasta, (e) => ({
+      estado: {
+        ...e,
+        frentes: e.frentes.map(semRepo),
+        despachos: e.despachos.map(semRepo),
+      },
+      resultado: undefined,
+    }))
+    expect(await rodar(m)).toBe(0)
+    expect(m.saida.some((l) => /lançado d-0002 #7 \/gm-card #7 \(pid \d+\)$/.test(l))).toBe(true)
+    const prompt = gravadoPeloFalso('d-0002').prompt
+    expect(prompt).not.toContain('- Repo do card:')
+    expect(prompt).toBe(montarPrompt('/gm-card #7', MANDATO, null))
+    expect(lerEstado(pasta)?.fila[0]).toMatchObject({
+      card: 7,
+      repo: 'leonardo-amaral-3/operations-center',
+    })
   })
 
   it('ceiling: com 3 sessões da prova vivas, espera vaga uma vez e não lança', async () => {

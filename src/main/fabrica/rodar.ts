@@ -21,8 +21,19 @@ import {
   voltarTriagemAPendente,
   type EntradaDaFabrica,
 } from '../../core/fabrica/entrada'
+import {
+  cardDoRegistro,
+  linhaDoRepo,
+  rotuloDoCard,
+  type CardDaFabrica,
+} from '../../core/fabrica/cardDaFabrica'
 import type { BoardComMandato, ProibidosDoBoard } from '../../core/fabrica/configuracao'
-import { marcaDaProva, marcaDoDespacho, TETO_DE_SESSOES } from '../../core/fabrica/mandato'
+import {
+  caminhosProibidos,
+  marcaDaProva,
+  marcaDoDespacho,
+  TETO_DE_SESSOES,
+} from '../../core/fabrica/mandato'
 import type { Despacho, EstadoDaFabrica } from '../../core/fabrica/tipos'
 import {
   alterarEntrada,
@@ -49,9 +60,22 @@ export interface ContextoDoRodar {
   pasta: string
   workspace: string
   raizDoRepo: string
-  proibidos: ProibidosDoBoard
   board: BoardComMandato
   deps: DepsDoCli
+}
+
+/** O card de um despacho, o rótulo dele e o que o mandato proíbe no repo dele. */
+function doCard(
+  ctx: ContextoDoRodar,
+  d: Despacho,
+): { card: CardDaFabrica; rotulo: string; proibidos: ProibidosDoBoard } {
+  const unico = ctx.board.repoUnico
+  const card = cardDoRegistro(d, unico)
+  return {
+    card,
+    rotulo: rotuloDoCard(card, unico),
+    proibidos: caminhosProibidos(ctx.deps.home, ctx.board, card.repo),
+  }
 }
 
 const FALHAS_SEGUIDAS_DO_MANDATO = 3
@@ -147,10 +171,16 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
     let estado = e
     const eventos: string[] = []
     const concluir = (id: string, saida: string): void => {
+      const { card, rotulo, proibidos } = doCard(
+        ctx,
+        estado.despachos.find((x) => x.id === id) as Despacho,
+      )
       estado = concluirDespacho(estado, id, {
         saida,
         agora: deps.agora(),
-        proibidos: ctx.proibidos,
+        proibidos,
+        repo: card.repo,
+        rotulo,
       })
       eventos.push(descrever(estado, id))
     }
@@ -280,9 +310,12 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
     })
     if (preparado === null) continue
 
+    const { card, rotulo, proibidos } = doCard(ctx, preparado.despacho)
+    const unico = ctx.board.repoUnico
     const resultado = await lancar(preparado.despacho, {
       pasta,
-      repo: ctx.board.repo,
+      repo: card.repo,
+      linhaDoRepo: unico === null ? linhaDoRepo(card) : null,
       workspace: ctx.workspace,
       raizDoRepo: ctx.raizDoRepo,
       mandato,
@@ -295,16 +328,16 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
         estado: marcarRodando(e, id, resultado.pid),
         resultado: null,
       }))
-      linha(
-        `lançado ${id} #${preparado.despacho.card} ${preparado.despacho.comando} (pid ${resultado.pid})`,
-      )
+      linha(`lançado ${id} ${rotulo} ${preparado.despacho.comando} (pid ${resultado.pid})`)
     } else {
       const saida = JSON.stringify({ type: 'result', is_error: true, subtype: resultado.erro })
       const evento = await alterarEstado(pasta, (e) => {
         const estado = concluirDespacho(e, id, {
           saida,
           agora: deps.agora(),
-          proibidos: ctx.proibidos,
+          proibidos,
+          repo: card.repo,
+          rotulo,
         })
         return { estado, resultado: descrever(estado, id) }
       })
@@ -362,7 +395,8 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
       { id: item.id, comando, nota: notaDaTriagem(ctx.board) },
       {
         pasta,
-        repo: ctx.board.repo,
+        repo: null,
+        linhaDoRepo: null,
         workspace: ctx.workspace,
         raizDoRepo: ctx.raizDoRepo,
         mandato,

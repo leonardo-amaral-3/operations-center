@@ -260,7 +260,8 @@ describe('triagem do item', () => {
       `/gm-triage /p/sessoes/e-0001/${ARQUIVO_DO_RELATO}`,
     )
     expect(NOTA_DA_TRIAGEM).not.toContain('\n')
-    const proibidos = caminhosProibidos('/home/u', boardPadrao(configuracaoDaFabrica('/home/u')))
+    const board = boardPadrao(configuracaoDaFabrica('/home/u'))
+    const proibidos = caminhosProibidos('/home/u', board, REPO_TESTE)
     expect(avaliarNota(NOTA_DA_TRIAGEM, proibidos).ok).toBe(true)
   })
 

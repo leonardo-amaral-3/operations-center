@@ -21,8 +21,8 @@ import {
   type BoardDaFabrica,
   type ConfiguracaoDaFabrica,
   type OrigemDoMandato,
-  type ProibidosDoBoard,
 } from '../../core/fabrica/configuracao'
+import type { CardDaFabrica } from '../../core/fabrica/cardDaFabrica'
 import { configuracaoDaFabrica } from './configuracao'
 import { createGhTokenSource } from '../github/token'
 import { createGitHubGraphQL } from '../github/graphql'
@@ -196,7 +196,6 @@ export async function executar(deps: DepsDoCli): Promise<number> {
   }
   const board = resolvido.board
   const workspace = board.workspace
-  const proibidos = caminhosProibidos(deps.home, board)
   const pasta = pastaDaFabrica(deps.env, board)
   try {
     recusarTemporaria(pasta)
@@ -262,7 +261,7 @@ export async function executar(deps: DepsDoCli): Promise<number> {
       deps.escrever(`${lido.item} triado`)
       return 0
     }
-    if (lido.tipo === 'iniciar') return await iniciar(deps, pasta, proibidos, board, lido)
+    if (lido.tipo === 'iniciar') return await iniciar(deps, pasta, board, lido)
     if (lido.tipo === 'fechar') {
       const resultado = await alterarEstado(pasta, (e) => {
         const r = fecharItem(e, lido.item, lido.resolucao, deps.agora())
@@ -277,7 +276,7 @@ export async function executar(deps: DepsDoCli): Promise<number> {
       deps.escrever(`${lido.item} fechado`)
       return 0
     }
-    return await rodar({ pasta, workspace, raizDoRepo: deps.raizDoRepo, proibidos, board, deps })
+    return await rodar({ pasta, workspace, raizDoRepo: deps.raizDoRepo, board, deps })
   } catch (erro) {
     const mensagem = mensagemDe(erro)
     deps.avisar(`fabrica: ${mensagem}`)
@@ -345,10 +344,12 @@ function revisar(
 async function iniciar(
   deps: DepsDoCli,
   pasta: string,
-  proibidos: ProibidosDoBoard,
   board: BoardDaFabrica,
   p: Extract<Comando, { tipo: 'iniciar' }>,
 ): Promise<number> {
+  // O alvo `repo#n` e o repo resolvido pelo board são da task 3: aqui o card é o do repo de hoje.
+  const card: CardDaFabrica = { repo: board.repo, n: p.card }
+  const proibidos = caminhosProibidos(deps.home, board, card.repo)
   let comando = p.comando
   if (comando === null) {
     const proposto = comandoDaEstacao(p.card, await lerItemNoBoard(deps.graphql, board, p.card))
@@ -378,7 +379,8 @@ async function iniciar(
   type Aberta = ReturnType<typeof iniciarFrente>
   const resultado = await alterarEstado<Aberta>(pasta, (e) => {
     const r = iniciarFrente(e, {
-      card: p.card,
+      card,
+      unico: board.repoUnico,
       comando: comandoFinal,
       nota: p.nota,
       agora: deps.agora(),
@@ -389,7 +391,7 @@ async function iniciar(
     deps.avisar(`fabrica: ${resultado.erro}`)
     return 1
   }
-  deps.escrever(`frente ${resultado.frente} aberta: ${resultado.despacho} #${p.card} ${comando}`)
+  deps.escrever(`frente ${resultado.frente} aberta: ${resultado.despacho} #${card.n} ${comando}`)
   return 0
 }
 

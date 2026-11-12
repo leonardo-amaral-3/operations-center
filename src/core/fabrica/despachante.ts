@@ -1,4 +1,12 @@
-import type { ProibidosDoBoard } from './configuracao'
+import {
+  aceitaORepo,
+  cardDoRegistro,
+  mesmoCard,
+  repoDeOutroCard,
+  rotuloDoCard,
+  type CardDaFabrica,
+} from './cardDaFabrica'
+import { nomeDoRepo, type ProibidosDoBoard, type RepoDoBoard } from './configuracao'
 import { lerDesfecho } from './desfecho'
 import { novoId } from './estado'
 import { comandoDoG4, lerComandoDoG4, prAbertaDoShip } from './g4'
@@ -31,13 +39,26 @@ function trocarDespacho(
 
 export function iniciarFrente(
   e: EstadoDaFabrica,
-  p: { card: number; comando: string; nota: string | null; agora: string },
+  p: {
+    card: CardDaFabrica
+    unico: RepoDoBoard | null
+    comando: string
+    nota: string | null
+    agora: string
+  },
 ): { estado: EstadoDaFabrica; frente: string; despacho: string } | { erro: string } {
-  const emVoo = e.despachos.find((d) => d.card === p.card && EM_VOO.has(d.estado))
-  if (emVoo) return { erro: `o #${p.card} já tem despacho em voo (${emVoo.id})` }
+  const rotulo = rotuloDoCard(p.card, p.unico)
+  const emVoo = e.despachos.find(
+    (d) => EM_VOO.has(d.estado) && mesmoCard(cardDoRegistro(d, p.unico), p.card),
+  )
+  if (emVoo) return { erro: `o ${rotulo} já tem despacho em voo (${emVoo.id})` }
   const citado = cardDoComando(p.comando)
-  if (citado !== null && citado !== p.card) {
-    return { erro: `o comando cita o #${citado}, e a frente é do #${p.card}` }
+  if (citado !== null && citado !== p.card.n) {
+    return { erro: `o comando cita o #${citado}, e a frente é do ${rotulo}` }
+  }
+  const outro = repoDeOutroCard(p.comando, aceitaORepo(p.card.repo))
+  if (outro !== null) {
+    return { erro: `o comando cita card de outro repo (${outro}), e a frente é do ${rotulo}` }
   }
   const a = novoId(e, 'fr')
   const b = novoId(a.estado, 'd')
@@ -45,14 +66,21 @@ export function iniciarFrente(
     ...b.estado,
     frentes: [
       ...b.estado.frentes,
-      { id: a.id, card: p.card, criadaEm: p.agora, encerradaEm: null },
+      {
+        id: a.id,
+        card: p.card.n,
+        repo: nomeDoRepo(p.card.repo),
+        criadaEm: p.agora,
+        encerradaEm: null,
+      },
     ],
     despachos: [
       ...b.estado.despachos,
       {
         id: b.id,
         frente: a.id,
-        card: p.card,
+        card: p.card.n,
+        repo: nomeDoRepo(p.card.repo),
         comando: p.comando,
         nota: p.nota,
         estado: 'pendente',
@@ -109,6 +137,7 @@ export function voltarAPendente(e: EstadoDaFabrica, id: string): EstadoDaFabrica
 function novoPendente(
   estado: EstadoDaFabrica,
   atual: Despacho,
+  repo: RepoDoBoard,
   comando: string,
   nota: string | null,
   agora: string,
@@ -122,6 +151,7 @@ function novoPendente(
         id: novo.id,
         frente: atual.frente,
         card: atual.card,
+        repo: nomeDoRepo(repo),
         comando,
         nota,
         estado: 'pendente',
@@ -145,7 +175,13 @@ function novoPendente(
 export function concluirDespacho(
   e: EstadoDaFabrica,
   id: string,
-  p: { saida: string; agora: string; proibidos: ProibidosDoBoard },
+  p: {
+    saida: string
+    agora: string
+    proibidos: ProibidosDoBoard
+    repo: RepoDoBoard
+    rotulo: string
+  },
 ): EstadoDaFabrica {
   const atual = e.despachos.find((d) => d.id === id)
   if (atual === undefined) throw new Error(`não há despacho ${id}`)
@@ -164,16 +200,19 @@ export function concluirDespacho(
   if (desfecho.tipo === 'proximo') {
     const avaliacao = avaliarComando(desfecho.comando, p.proibidos)
     const citadoNoProximo = cardDoComando(desfecho.comando)
+    const outroRepo = repoDeOutroCard(desfecho.comando, aceitaORepo(p.repo))
     if (lerComandoDoG4(atual.comando) !== null) {
       motivo = `o G4 terminou com PROXIMO, e a revisão só fecha com PARADA: ${desfecho.comando}`
     } else if (!avaliacao.ok) {
       motivo = `PROXIMO fora do mandato: ${avaliacao.motivo}: ${desfecho.comando}`
     } else if (citadoNoProximo !== null && citadoNoProximo !== atual.card) {
-      motivo = `PROXIMO cita o card #${citadoNoProximo}, e a frente é do #${atual.card}: ${desfecho.comando}`
+      motivo = `PROXIMO cita o card #${citadoNoProximo}, e a frente é do ${p.rotulo}: ${desfecho.comando}`
+    } else if (outroRepo !== null) {
+      motivo = `PROXIMO cita card de outro repo (${outroRepo}), e a frente é do ${p.rotulo}: ${desfecho.comando}`
     } else if (naFrente >= LIMITE_DE_DESPACHOS_POR_FRENTE) {
       motivo = `a frente passou de ${LIMITE_DE_DESPACHOS_POR_FRENTE} despachos: ${desfecho.comando}`
     } else {
-      estado = novoPendente(estado, atual, desfecho.comando, null, p.agora)
+      estado = novoPendente(estado, atual, p.repo, desfecho.comando, null, p.agora)
     }
   } else {
     const pr = desfecho.tipo === 'parada' ? prAbertaDoShip(desfecho.motivo) : null
@@ -189,6 +228,7 @@ export function concluirDespacho(
         estado = novoPendente(
           estado,
           atual,
+          p.repo,
           g4,
           `o /gm-ship terminou com: PARADA: ${desfecho.motivo}`,
           p.agora,
@@ -204,6 +244,7 @@ export function concluirDespacho(
   const item: ItemDaFila = {
     id: q.id,
     card: atual.card,
+    repo: nomeDoRepo(p.repo),
     motivo,
     despacho: id,
     sessaoClaude,

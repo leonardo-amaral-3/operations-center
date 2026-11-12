@@ -16,8 +16,11 @@ import {
   textoDoMandato,
 } from '../../src/core/fabrica/mandato'
 
+import { REPO_TESTE } from './fabrica-board-de-teste'
+
 const RAIZ = join(__dirname, '..', '..')
-const proibidos = caminhosProibidos('/home/u', boardPadrao(configuracaoDaFabrica('/home/u')))
+const BOARD = boardPadrao(configuracaoDaFabrica('/home/u'))
+const proibidos = caminhosProibidos('/home/u', BOARD, REPO_TESTE)
 
 describe('avaliarComando', () => {
   it.each([
@@ -113,11 +116,34 @@ describe('caminhosProibidos', () => {
     expect(proibidos.motivo).toBe('a instalação viva, o checkout principal ou os repos da Notoria')
   })
 
+  it('num board de dois repos o checkout proibido é o do repo do card (CA-3)', () => {
+    const board = {
+      workspace: '/home/u/ws2',
+      repoUnico: null,
+      // Até a task 6 o tipo ainda é `string`; com vários repos o valor nunca é lido.
+      checkoutPrincipal: '/nunca-lido',
+      proibidos: { caminhos: ['/home/u/vivo2'], motivo: 'm' },
+    }
+    const a = caminhosProibidos('/home/u', board, { owner: 'fulano', name: 'repo-a' })
+    expect(a.caminhos).toContain('/home/u/ws2/repo-a')
+    expect(a.caminhos).toContain('~/ws2/repo-a')
+    expect(a.caminhos).not.toContain('/home/u/ws2/repo-b')
+    const b = caminhosProibidos('/home/u', board, { owner: 'fulano', name: 'repo-b' })
+    expect(b.caminhos).toContain('/home/u/ws2/repo-b')
+  })
+
   it('um alvo fora da home entra só pelo caminho absoluto', () => {
-    const r = caminhosProibidos('/home/u', {
-      checkoutPrincipal: '/srv/oc',
-      proibidos: { caminhos: [], motivo: 'm' },
-    })
+    const repo = { owner: 'o', name: 'oc' }
+    const r = caminhosProibidos(
+      '/home/u',
+      {
+        workspace: '/srv',
+        repoUnico: repo,
+        checkoutPrincipal: '/srv/oc',
+        proibidos: { caminhos: [], motivo: 'm' },
+      },
+      repo,
+    )
     expect(r.caminhos).toContain('/srv/oc')
     expect(r.caminhos.filter((p) => p.includes('srv'))).toEqual(['/srv/oc'])
     expect(r.motivo).toBe('m')
@@ -139,6 +165,20 @@ describe('marcas e card', () => {
     expect(cardDoComando('/gm-spec #121')).toBe(121)
     expect(cardDoComando('/gm-plan-tasks /p/118-x')).toBeNull()
     expect(cardDoComando('/gm-implement 12')).toBe(12)
+  })
+})
+
+describe('montarPrompt com a linha do repo (#152)', () => {
+  it('sem linha é o texto de hoje; com linha entra depois do mandato e antes da nota', () => {
+    expect(montarPrompt('/gm-spec #1', 'M\n\n', 'n')).toBe(
+      '/gm-spec #1\n\nArgumento do despacho:\nM\n- Nesta sessão: n',
+    )
+    expect(montarPrompt('/gm-spec #1', 'M\n', 'n', '- Repo do card: a/b.')).toBe(
+      '/gm-spec #1\n\nArgumento do despacho:\nM\n- Repo do card: a/b.\n- Nesta sessão: n',
+    )
+    expect(montarPrompt('/gm-spec #1', 'M', null, '- L')).toBe(
+      '/gm-spec #1\n\nArgumento do despacho:\nM\n- L',
+    )
   })
 })
 
