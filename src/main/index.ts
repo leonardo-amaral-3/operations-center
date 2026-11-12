@@ -37,11 +37,12 @@ import {
   saveConversations,
 } from './conversations'
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
-import { REPO_DA_FABRICA } from '../core/fabrica/mandato'
+import { boardPadrao } from '../core/fabrica/configuracao'
+import { configuracaoDaFabrica } from './fabrica/configuracao'
 import { criarAssumir, registerAssumirIpc } from './fabrica/assumir'
 import { lerEstado } from './fabrica/arquivos'
 import { criarExecutorDeComando, registerComandoIpc } from './fabrica/comando'
-import { lerMandato, lerMandatoPelaGraphQL } from './fabrica/github'
+import { lerMandato, lerMandatoDoBoard } from './fabrica/github'
 import { registerMandatoIpc } from './fabrica/mandatoNaSala'
 import { criarMarcaEmCache, lerRecursos, portasReais, worktreesDo } from './fabrica/recursos'
 import { pastaDaSala, registerFabricaIpc } from './fabrica/sala'
@@ -392,21 +393,39 @@ const dangerIpc = screen === 'kanban' ? registerDangerIpc(danger) : null
 // primeiro retrato, e o `onChange` corrige a tela quando ele responder.
 dangerIpc?.refresh()
 
+// A configuração da fábrica (#144) e o board que o app usa: sempre o `padrao`. Ficam no escopo do
+// módulo porque os blocos `screen === 'kanban'` abaixo são separados. Um `boards.json` inválido
+// derruba o processo aqui; o `fabrica-configuracao.test.ts` prende o arquivo versionado no CI.
+const configuracaoDaFabricaNoApp = configuracaoDaFabrica(homedir())
+const boardDoApp = boardPadrao(configuracaoDaFabricaNoApp)
+
 // A sala da fábrica (#122): só quando o processo sobe na tela do kanban, como o `registerDangerIpc`
 // acima; as janelas de card do mesmo processo não chamam estes canais. Só lê a pasta da fábrica.
 if (screen === 'kanban') {
-  const pasta = pastaDaSala(process.env, homedir())
+  const pasta = pastaDaSala(process.env, boardDoApp)
   // O mandato da `dev` vem pela GraphQL, em cache de 60 s: a sala relê a cada 5 s.
   const graphql = createGraphQL()
   const marca = criarMarcaEmCache(
-    () => lerMandatoPelaGraphQL(graphql),
+    () => lerMandatoDoBoard(graphql, boardDoApp),
     () => Date.now(),
   )
-  registerFabricaIpc(pasta, {
-    recursos: () => lerRecursos(portasReais({ env: process.env, pastaDaFabrica: pasta, marca })),
-    // O avô da pasta da fábrica é o inverso do default (`<workspace>/claude/despachos-fabrica`).
-    worktrees: () => worktreesDo(dirname(dirname(pasta))),
-  })
+  registerFabricaIpc(
+    pasta,
+    {
+      recursos: () =>
+        lerRecursos(
+          portasReais({
+            env: process.env,
+            pastaDaFabrica: pasta,
+            marca,
+            nomeDoRepo: boardDoApp.repo.name,
+          }),
+        ),
+      // O avô da pasta da fábrica é o inverso do default (`<workspace>/claude/despachos-fabrica`).
+      worktrees: () => worktreesDo(dirname(dirname(pasta))),
+    },
+    boardDoApp,
+  )
   // As sessões `claude` da máquina (#142): lê `/proc` e o `origin` das pastas; o cache do `origin`
   // vive nas portas, criadas uma vez aqui.
   const portasDasSessoes = portasReaisDasSessoes(homedir())
@@ -418,7 +437,8 @@ if (screen === 'kanban') {
 if (screen === 'kanban')
   registerComandoIpc(
     criarExecutorDeComando({
-      raizDoRepo: join(homedir(), 'pessoal', REPO_DA_FABRICA.name),
+      raizDoRepo: boardDoApp.checkoutPrincipal,
+      configuracao: configuracaoDaFabricaNoApp,
       env: process.env,
       platform: process.platform,
       home: homedir(),
@@ -444,7 +464,7 @@ if (screen === 'kanban')
 if (screen === 'kanban') {
   const graphqlDoMandato = createGraphQL()
 
-  registerMandatoIpc(() => lerMandatoPelaGraphQL(graphqlDoMandato))
+  registerMandatoIpc(() => lerMandatoDoBoard(graphqlDoMandato, boardDoApp))
 }
 
 function publicarPerigo(): void {
@@ -806,9 +826,10 @@ const claudeIpc = registerClaudeTerminalIpc({
 // `conversations.json` do app, como abrir o chat de um card já faz, e abre a janela do card. Não
 // toca a pasta da fábrica nem o board.
 if (screen === 'kanban') {
-  const pastaDoAssumir = pastaDaSala(process.env, homedir())
+  const pastaDoAssumir = pastaDaSala(process.env, boardDoApp)
   registerAssumirIpc(
     criarAssumir({
+      repo: boardDoApp.repo,
       lerEstado: () => lerEstado(pastaDoAssumir),
       cardDoItem: (itemId) => boardsIpc?.cardById(itemId) ?? null,
       sessaoAberta: (itemId) => claudeIpc.sessaoAberta({ kind: 'card', itemId }),

@@ -5,10 +5,12 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { ITEM_NO_BOARD_QUERY } from '../../src/core/fabrica/estacao'
-import { MANDATO_DA_DEV_QUERY } from '../../src/core/fabrica/mandato'
+import { MANDATO_QUERY } from '../../src/core/fabrica/mandato'
 import { lerItemNoBoard, lerMandatoPelaGraphQL } from '../../src/main/fabrica/github'
 import { RELATORIO_MOVIDOS_QUERY, lerCards } from '../../src/core/relatorio'
 import { documentoDosCards } from '../../src/core/relatorio/board'
+import { boardPadrao } from '../../src/core/fabrica/configuracao'
+import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
 import { createFixtureGraphQL } from '../../src/main/github/fixture'
 
 const SMOKE = join(__dirname, '..', 'fixtures', 'relatorio', 'smoke.json')
@@ -82,6 +84,9 @@ describe('createFixtureGraphQL, os documentos do relatório', () => {
   })
 })
 
+const BOARD_PADRAO = boardPadrao(configuracaoDaFabrica('/home/u'))
+const ORIGEM = BOARD_PADRAO.mandato!
+
 describe('createFixtureGraphQL, o mandato da dev', () => {
   it('com `mandato`, devolve o texto do arquivo no envelope do GitHub', async () => {
     const pasta = mkdtempSync(join(tmpdir(), 'oc-mandato-'))
@@ -90,11 +95,11 @@ describe('createFixtureGraphQL, o mandato da dev', () => {
       writeFileSync(arquivo, 'MANDATO DA PROVA\nresto\n')
       const graphql = createFixtureGraphQL({ board: SEM_BOARD, mandato: arquivo })
 
-      expect(await graphql(MANDATO_DA_DEV_QUERY, {})).toEqual({
+      expect(await graphql(MANDATO_QUERY, {})).toEqual({
         data: { repository: { object: { text: 'MANDATO DA PROVA\nresto\n' } } },
         errors: undefined,
       })
-      expect(await lerMandatoPelaGraphQL(graphql)).toBe('MANDATO DA PROVA\nresto\n')
+      expect(await lerMandatoPelaGraphQL(graphql, ORIGEM)).toBe('MANDATO DA PROVA\nresto\n')
     } finally {
       rmSync(pasta, { recursive: true, force: true })
     }
@@ -103,7 +108,7 @@ describe('createFixtureGraphQL, o mandato da dev', () => {
   it('sem `mandato`, lança o aviso da fixture', async () => {
     const graphql = createFixtureGraphQL({ board: SEM_BOARD })
 
-    await expect(graphql(MANDATO_DA_DEV_QUERY, {})).rejects.toThrow(
+    await expect(graphql(MANDATO_QUERY, {})).rejects.toThrow(
       'sem fixture do mandato (OC_FABRICA_MANDATO_FIXTURE)',
     )
   })
@@ -117,12 +122,16 @@ describe('createFixtureGraphQL, o Status de um card (F6)', () => {
 
   it('o lerItemNoBoard manda exatamente ITEM_NO_BOARD_QUERY', async () => {
     const documentos: string[] = []
-    await lerItemNoBoard((documento) => {
-      documentos.push(documento)
-      return Promise.resolve({
-        data: { repository: { issue: { state: 'OPEN', projectItems: { nodes: [] } } } },
-      })
-    }, 7)
+    await lerItemNoBoard(
+      (documento) => {
+        documentos.push(documento)
+        return Promise.resolve({
+          data: { repository: { issue: { state: 'OPEN', projectItems: { nodes: [] } } } },
+        })
+      },
+      BOARD_PADRAO,
+      7,
+    )
     expect(documentos).toEqual([ITEM_NO_BOARD_QUERY])
     expect(ITEM_NO_BOARD_QUERY).not.toContain('mutation')
   })
@@ -154,7 +163,10 @@ describe('createFixtureGraphQL, o Status de um card (F6)', () => {
   })
 
   it('o lerItemNoBoard sobre a fixture dá o Status do card', async () => {
-    expect(await lerItemNoBoard(graphql, 2)).toEqual({ noProjeto: true, status: '📥 Triagem' })
-    await expect(lerItemNoBoard(graphql, 999)).rejects.toThrow('não há issue #999')
+    expect(await lerItemNoBoard(graphql, BOARD_PADRAO, 2)).toEqual({
+      noProjeto: true,
+      status: '📥 Triagem',
+    })
+    await expect(lerItemNoBoard(graphql, BOARD_PADRAO, 999)).rejects.toThrow('não há issue #999')
   })
 })

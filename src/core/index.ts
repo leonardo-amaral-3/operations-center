@@ -107,9 +107,22 @@ export type {
 } from './fabrica/tipos'
 export { estadoVazio, parseEstado, serializarEstado } from './fabrica/estado'
 export {
+  boardPadrao,
+  motivoSemMandato,
+  nomeDoRepo,
+  parseConfiguracao,
+  resolverBoard,
+} from './fabrica/configuracao'
+export type {
+  BoardComMandato,
+  BoardDaFabrica,
+  ConfiguracaoDaFabrica,
+  OrigemDoMandato,
+  ProibidosDoBoard,
+  RepoDoBoard,
+} from './fabrica/configuracao'
+export {
   LIMITE_DE_DESPACHOS_POR_FRENTE,
-  PROJETO_DA_FABRICA,
-  REPO_DA_FABRICA,
   SKILLS_PERMITIDAS,
   TETO_DE_SESSOES,
 } from './fabrica/mandato'

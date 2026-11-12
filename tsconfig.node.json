@@ -31,6 +31,8 @@
     "src/preload/**/*.ts",
     "src/core/**/*.ts",
     "src/shared/**/*.ts",
+    // A configuração da fábrica (#144): importada como JSON pela casca (src/main/fabrica/configuracao.ts).
+    "fabrica/boards.json",
 
     // As exceções nominais do renderer, e elas são nominais de propósito: `src/renderer/**` inteiro
     // não cabe neste programa (não há `lib: DOM` aqui), mas há parte do renderer que é pura e

@@ -16,6 +16,7 @@ import type { Despacho, EstadoDaFabrica } from '../../src/core/fabrica/tipos'
 import { criarAssumir, registerAssumirIpc } from '../../src/main/fabrica/assumir'
 import type { DepsDoAssumir } from '../../src/main/fabrica/assumir'
 import { IPC_INVOKE } from '../../src/shared/ipc'
+import { REPO_TESTE } from './fabrica-board-de-teste'
 
 /**
  * Assumir a sessão de um despacho (#133, CA-4.2, F4.6). Dependências falsas: nada aqui toca o
@@ -50,8 +51,9 @@ function estadoCom(...despachos: Despacho[]): EstadoDaFabrica {
 
 function montar(over: Partial<DepsDoAssumir> = {}) {
   const deps = {
+    repo: REPO_TESTE,
     lerEstado: vi.fn((): EstadoDaFabrica | null => estadoCom(despacho())),
-    cardDoItem: vi.fn(() => ({ number: 133, url: urlDoCard(133) })),
+    cardDoItem: vi.fn(() => ({ number: 133, url: urlDoCard(133, REPO_TESTE) })),
     sessaoAberta: vi.fn((): string | null => null),
     conversaDoCartao: vi.fn((): Promise<string | null> => Promise.resolve(null)),
     transcriptExiste: vi.fn(() => Promise.resolve(true)),
@@ -129,7 +131,11 @@ describe('criarAssumir — as doze recusas, nada gravado', () => {
 
   it('7. número ou URL do card diferentes', async () => {
     const msg = 'o card do pedido não é o #133 do d-0004'
-    await recusa({ cardDoItem: () => ({ number: 9, url: urlDoCard(133) }) }, PEDIDO, msg)
+    await recusa(
+      { cardDoItem: () => ({ number: 9, url: urlDoCard(133, REPO_TESTE) }) },
+      PEDIDO,
+      msg,
+    )
     await recusa(
       { cardDoItem: () => ({ number: 133, url: 'https://github.com/outro/repo/issues/133' }) },
       PEDIDO,

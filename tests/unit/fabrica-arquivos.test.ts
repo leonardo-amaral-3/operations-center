@@ -47,12 +47,11 @@ describe('recusarTemporaria e pastaDaFabrica', () => {
     expect(() => recusarTemporaria(p)).not.toThrow()
   })
 
-  it('resolve a pasta pelo ambiente ou pela pasta-mãe do repo', () => {
-    expect(pastaDaFabrica({}, '/w/operations-center')).toBe('/w/claude/despachos-fabrica')
-    expect(pastaDaFabrica({ OC_FABRICA_DIR: 'rel' }, '/w/operations-center')).toBe(resolve('rel'))
-    expect(pastaDaFabrica({ OC_FABRICA_DIR: '' }, '/w/operations-center')).toBe(
-      '/w/claude/despachos-fabrica',
-    )
+  it('resolve a pasta pelo ambiente ou pela pasta de estado do board', () => {
+    const board = { pastaDoEstado: '/p' }
+    expect(pastaDaFabrica({}, board)).toBe('/p')
+    expect(pastaDaFabrica({ OC_FABRICA_DIR: 'rel' }, board)).toBe(resolve('rel'))
+    expect(pastaDaFabrica({ OC_FABRICA_DIR: '' }, board)).toBe('/p')
   })
 
   it('nada é escrito numa pasta temporária', async () => {

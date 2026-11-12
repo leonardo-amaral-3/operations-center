@@ -19,7 +19,10 @@ import {
 } from '../../src/core/fabrica/sala'
 import type { Desfecho, Despacho, EstadoDaFabrica, ItemDaFila } from '../../src/core/fabrica/tipos'
 import type { RecursosDaFabrica } from '../../src/shared/fabrica'
+import { boardPadrao } from '../../src/core/fabrica/configuracao'
+import { REPO_TESTE } from './fabrica-board-de-teste'
 import { identidade } from '../../src/main/fabrica/arquivos'
+import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
 import {
   estadoDoDespachante,
   lerCardDaFabrica,
@@ -52,7 +55,9 @@ const CTX = {
   recursos: RECURSOS,
   worktrees: [] as readonly string[],
   vivos: null as ReadonlySet<string> | null,
+  repo: REPO_TESTE,
 }
+const BOARD = boardPadrao(configuracaoDaFabrica('/h'))
 const FONTES = { recursos: () => RECURSOS, worktrees: () => [] as string[] }
 
 describe('tipo e estação (F1.5)', () => {
@@ -168,23 +173,31 @@ describe('tipoDoItem: Decisão só pelo parecer do G4 sem bloqueante (#143, CA-2
       'pergunta',
     ],
   ] as const)('%s → %s', (_nome, o, motivo, esperado) => {
-    expect(tipoDoItem(item(motivo), o)).toBe(esperado)
+    expect(tipoDoItem(item(motivo), o, REPO_TESTE)).toBe(esperado)
   })
 
   it('origem /g4 #5 PR #9 num item do card 7 → pergunta', () => {
     expect(
-      tipoDoItem(item(SEM, 7), origem('/g4 #5 PR #9', { tipo: 'parada', motivo: SEM }, 7)),
+      tipoDoItem(
+        item(SEM, 7),
+        origem('/g4 #5 PR #9', { tipo: 'parada', motivo: SEM }, 7),
+        REPO_TESTE,
+      ),
     ).toBe('pergunta')
   })
 
   it('despacho de card diferente do comando /g4 → pergunta', () => {
     expect(
-      tipoDoItem(item(SEM, 1), origem('/g4 #1 PR #9', { tipo: 'parada', motivo: SEM }, 2)),
+      tipoDoItem(
+        item(SEM, 1),
+        origem('/g4 #1 PR #9', { tipo: 'parada', motivo: SEM }, 2),
+        REPO_TESTE,
+      ),
     ).toBe('pergunta')
   })
 
   it('origem ausente → pergunta', () => {
-    expect(tipoDoItem(item(SEM), undefined)).toBe('pergunta')
+    expect(tipoDoItem(item(SEM), undefined, REPO_TESTE)).toBe('pergunta')
   })
 
   it('ship histórico (q-0010, d-0009) → pergunta, e a PR segue a 128', () => {
@@ -199,8 +212,8 @@ describe('tipoDoItem: Decisão só pelo parecer do G4 sem bloqueante (#143, CA-2
       ].map((d) => ({ ...d, id: 'd-0009' })),
       fila: [{ ...item(motivo), id: 'q-0010', card: 126, despacho: 'd-0009' }],
     }
-    expect(tipoDoItem(e.fila[0]!, e.despachos[0])).toBe('pergunta')
-    const p = montarPergunta(e, 'q-0010', null)
+    expect(tipoDoItem(e.fila[0]!, e.despachos[0], REPO_TESTE)).toBe('pergunta')
+    const p = montarPergunta(e, 'q-0010', null, REPO_TESTE)
     expect(p?.item.tipo).toBe('pergunta')
     expect(p?.pr).toBeNull()
   })
@@ -208,11 +221,13 @@ describe('tipoDoItem: Decisão só pelo parecer do G4 sem bloqueante (#143, CA-2
 
 describe('ondeRodaOComando e o passo do ship para o G4 (#143)', () => {
   it('o /g4 roda sem worktree; os demais seguem a estação', () => {
-    expect(ondeRodaOComando('/g4 #7 PR #9', 7, ['operations-center-7-x'])).toBe('sem worktree')
-    expect(ondeRodaOComando('/gm-ship /x #7', 7, ['operations-center-7-x'])).toBe(
+    expect(ondeRodaOComando('/g4 #7 PR #9', 7, ['operations-center-7-x'], REPO_TESTE)).toBe(
+      'sem worktree',
+    )
+    expect(ondeRodaOComando('/gm-ship /x #7', 7, ['operations-center-7-x'], REPO_TESTE)).toBe(
       'operations-center-7-x',
     )
-    expect(ondeRodaOComando('/gm-spec #7', 7, [])).toBe('planning/')
+    expect(ondeRodaOComando('/gm-spec #7', 7, [], REPO_TESTE)).toBe('planning/')
   })
 
   it('montarDecisoes mostra o ship concluído em PARADA, sem item, como passou → g4', () => {
@@ -221,16 +236,19 @@ describe('ondeRodaOComando e o passo do ship para o G4 (#143)', () => {
       despachos: estadoDaF3().despachos.filter((d) => d.id === 'd-0010'),
       fila: [],
     }
-    const passo = montarDecisoes(e).find((x) => x.tipo === 'passou')
+    const passo = montarDecisoes(e, REPO_TESTE).find((x) => x.tipo === 'passou')
     expect(passo).toMatchObject({ tipo: 'passou', id: 'd-0010', skill: 'gm-ship', seguinte: 'g4' })
   })
 
   it('PARADA de outra skill, ou com item na fila, não vira passo', () => {
     const e = estadoDaF3()
-    const passos = montarDecisoes({
-      ...e,
-      despachos: e.despachos.filter((d) => d.id === 'd-0005' || d.id === 'd-0002'),
-    }).filter((x) => x.tipo === 'passou')
+    const passos = montarDecisoes(
+      {
+        ...e,
+        despachos: e.despachos.filter((d) => d.id === 'd-0005' || d.id === 'd-0002'),
+      },
+      REPO_TESTE,
+    ).filter((x) => x.tipo === 'passou')
     expect(passos).toEqual([])
   })
 })
@@ -248,7 +266,9 @@ describe('prDoMotivo e urlDaPr', () => {
   })
 
   it('urlDaPr aponta para a PR no repositório da fábrica', () => {
-    expect(urlDaPr(970)).toBe('https://github.com/leonardo-amaral-3/operations-center/pull/970')
+    expect(urlDaPr(970, REPO_TESTE)).toBe(
+      'https://github.com/leonardo-amaral-3/operations-center/pull/970',
+    )
   })
 })
 
@@ -279,21 +299,23 @@ describe('a estação e a sessão quebrada dos itens (F2.2)', () => {
 describe('ondeRodaDo (F2.2)', () => {
   const wt = ['operations-center-119-c', 'operations-center-119-a', 'operations-center-119-b']
   it('spec e tasks rodam em planning/', () => {
-    expect(ondeRodaDo('spec', 4, wt)).toBe('planning/')
-    expect(ondeRodaDo('tasks', 4, wt)).toBe('planning/')
+    expect(ondeRodaDo('spec', 4, wt, REPO_TESTE)).toBe('planning/')
+    expect(ondeRodaDo('tasks', 4, wt, REPO_TESTE)).toBe('planning/')
   })
   it.each(['implementacao', 'revisao'] as const)('%s: 0, 1 e 3 worktrees', (e) => {
-    expect(ondeRodaDo(e, 119, [])).toBe('worktree ainda não criada')
-    expect(ondeRodaDo(e, 119, ['operations-center-119-a'])).toBe('operations-center-119-a')
-    expect(ondeRodaDo(e, 119, wt)).toBe('operations-center-119-a +2')
+    expect(ondeRodaDo(e, 119, [], REPO_TESTE)).toBe('worktree ainda não criada')
+    expect(ondeRodaDo(e, 119, ['operations-center-119-a'], REPO_TESTE)).toBe(
+      'operations-center-119-a',
+    )
+    expect(ondeRodaDo(e, 119, wt, REPO_TESTE)).toBe('operations-center-119-a +2')
   })
   it('não casa o prefixo de outro card (1190 não é 119)', () => {
-    expect(ondeRodaDo('implementacao', 119, ['operations-center-1190-x'])).toBe(
+    expect(ondeRodaDo('implementacao', 119, ['operations-center-1190-x'], REPO_TESTE)).toBe(
       'worktree ainda não criada',
     )
   })
   it.each(['entrada', 'card', 'integracao', null] as const)('%s: sem worktree', (e) => {
-    expect(ondeRodaDo(e, 119, wt)).toBe('sem worktree')
+    expect(ondeRodaDo(e, 119, wt, REPO_TESTE)).toBe('sem worktree')
   })
 })
 
@@ -324,11 +346,11 @@ describe('viva e ondeRoda no retrato (F2.2)', () => {
 })
 
 describe('montarDecisoes (F2.2)', () => {
-  const ordem = (e: EstadoDaFabrica): string[] => montarDecisoes(e).map((d) => d.id)
+  const ordem = (e: EstadoDaFabrica): string[] => montarDecisoes(e, REPO_TESTE).map((d) => d.id)
 
   it('a fixture f2 dá os seis itens, nesta ordem', () => {
     expect(ordem(estadoF2())).toEqual(['d-0003', 'q-0022', 'd-0002', 'q-0016', 'q-0013', 'q-0019'])
-    const d = montarDecisoes(estadoF2())
+    const d = montarDecisoes(estadoF2(), REPO_TESTE)
     expect(d[0]).toEqual({
       tipo: 'passou',
       id: 'd-0003',
@@ -355,7 +377,7 @@ describe('montarDecisoes (F2.2)', () => {
         resolucao: null,
       },
     ]
-    const d = montarDecisoes({ ...e, fila })
+    const d = montarDecisoes({ ...e, fila }, REPO_TESTE)
     expect(d.some((x) => x.tipo === 'passou' && x.id === 'd-0002')).toBe(false)
     expect(d.some((x) => x.tipo === 'fila' && x.id === 'q-0030')).toBe(true)
   })
@@ -366,7 +388,7 @@ describe('montarDecisoes (F2.2)', () => {
     const despachos = e.despachos.map((d) =>
       d.id === 'd-0002' || d.id === 'd-0003' ? { ...d, concluidoEm: igual } : d,
     )
-    const d = montarDecisoes({ ...e, despachos, fila: [] })
+    const d = montarDecisoes({ ...e, despachos, fila: [] }, REPO_TESTE)
     // sem fila, o ship d-0021 (PARADA, sem item) também é passo: o G4 nasceu dele (#143)
     expect(d.map((x) => x.id)).toEqual(['d-0003', 'd-0002', 'd-0021'])
   })
@@ -378,7 +400,7 @@ describe('montarDecisoes (F2.2)', () => {
       id: `d-${String(100 + i)}`,
       concluidoEm: `2026-11-12T${String(i).padStart(2, '0')}:00:00.000Z`,
     }))
-    const d = montarDecisoes({ ...e, despachos, fila: [] })
+    const d = montarDecisoes({ ...e, despachos, fila: [] }, REPO_TESTE)
     expect(PASSOS_NA_SALA).toBe(8)
     expect(d).toHaveLength(8)
     expect(d[0]?.id).toBe('d-111')
@@ -397,7 +419,7 @@ describe('montarDecisoes (F2.2)', () => {
       fechadoEm: `2026-11-11T12:${String(i).padStart(2, '0')}:00.000Z`,
       resolucao: 'ok',
     }))
-    const d = montarDecisoes({ ...e, despachos: [], fila: [...e.fila, ...extras] })
+    const d = montarDecisoes({ ...e, despachos: [], fila: [...e.fila, ...extras] }, REPO_TESTE)
     const fechados = d.filter((x) => x.tipo === 'fila' && x.item.fechadoEm !== null)
     expect(fechados).toHaveLength(10)
     expect(fechados.map((x) => x.id)).not.toContain('q-100')
@@ -443,7 +465,7 @@ describe('montarSala sobre a fixture', () => {
     expect(sala.abertos[0]?.cardUrl).toBe(
       'https://github.com/leonardo-amaral-3/operations-center/issues/900',
     )
-    expect(urlDoCard(900)).toBe(sala.abertos[0]?.cardUrl)
+    expect(urlDoCard(900, REPO_TESTE)).toBe(sala.abertos[0]?.cardUrl)
   })
 
   it('com 12 fechados mostra 10, do fechamento mais recente', () => {
@@ -476,7 +498,7 @@ describe('montarPergunta', () => {
   const saida = readFileSync(join(FIXTURE, 'sessoes', 'd-0002', 'saida.json'), 'utf8')
 
   it('devolve o result inteiro e o comando de fechar', () => {
-    const p = montarPergunta(e, 'q-0003', saida)
+    const p = montarPergunta(e, 'q-0003', saida, REPO_TESTE)
     expect(p?.resultado).toContain('Feito o desenho.')
     expect(p?.resultado?.endsWith('PARADA: o nome do campo é escolha de produto')).toBe(true)
     expect(p?.fechar).toBe('yarn fabrica fechar q-0003 "<resolução>"')
@@ -486,12 +508,12 @@ describe('montarPergunta', () => {
   it.each([null, '', '{', '[]', '{"result":"  "}', '{"result":1}'])(
     'saída %j → resultado null',
     (s) => {
-      expect(montarPergunta(e, 'q-0003', s)?.resultado).toBeNull()
+      expect(montarPergunta(e, 'q-0003', s, REPO_TESTE)?.resultado).toBeNull()
     },
   )
 
   it('id desconhecido → null', () => {
-    expect(montarPergunta(e, 'q-9999', saida)).toBeNull()
+    expect(montarPergunta(e, 'q-9999', saida, REPO_TESTE)).toBeNull()
   })
 })
 
@@ -509,10 +531,10 @@ describe('a fixture f3 (F3.7)', () => {
   })
 
   it('montarPergunta do q-0013: parada, PR 970 e os quatro passos', () => {
-    const p = montarPergunta(estadoDaF3(), 'q-0013', null)
+    const p = montarPergunta(estadoDaF3(), 'q-0013', null, REPO_TESTE)
     expect(p?.fim).toBe('parada')
     expect(p?.pr).toBe(970)
-    expect(p?.prUrl).toBe(urlDaPr(970))
+    expect(p?.prUrl).toBe(urlDaPr(970, REPO_TESTE))
     expect(p?.passos).toEqual([
       {
         despacho: 'd-0007',
@@ -551,7 +573,7 @@ describe('a fixture f3 (F3.7)', () => {
   })
 
   it('montarPergunta do q-0009: pergunta, sem PR, um passo', () => {
-    const p = montarPergunta(estadoDaF3(), 'q-0009', null)
+    const p = montarPergunta(estadoDaF3(), 'q-0009', null, REPO_TESTE)
     expect(p?.item.tipo).toBe('pergunta')
     expect(p?.pr).toBeNull()
     expect(p?.prUrl).toBeNull()
@@ -560,7 +582,7 @@ describe('a fixture f3 (F3.7)', () => {
   })
 
   it('origem fora do estado → fim null e passos vazios', () => {
-    const p = montarPergunta({ ...estadoDaF3(), despachos: [] }, 'q-0009', null)
+    const p = montarPergunta({ ...estadoDaF3(), despachos: [] }, 'q-0009', null, REPO_TESTE)
     expect(p?.fim).toBeNull()
     expect(p?.passos).toEqual([])
   })
@@ -570,7 +592,7 @@ describe('a fixture f3 (F3.7)', () => {
     const despachos = e.despachos.map((d) =>
       d.id === 'd-0018' ? { ...d, desfecho: null, concluidoEm: null } : d,
     )
-    const p = montarPergunta({ ...e, despachos }, 'q-0013', null)
+    const p = montarPergunta({ ...e, despachos }, 'q-0013', null, REPO_TESTE)
     expect(p?.fim).toBeNull()
     expect(p?.item.tipo).toBe('pergunta')
     expect(p?.passos.at(-1)).toMatchObject({
@@ -587,9 +609,11 @@ describe('a fixture f3 (F3.7)', () => {
     it('q-0009 traz o resultado do saida.json; q-0016 não tem', () => {
       pasta = mkdtempSync(join(__dirname, '..', '..', 'node_modules', '.oc-fabrica-teste-'))
       cpSync(FIXTURE_F3, pasta, { recursive: true })
-      expect(lerPergunta(pasta, 'q-0009')?.resultado).toContain('A spec do #961 está escrita')
-      expect(lerPergunta(pasta, 'q-0016')?.resultado).toBeNull()
-      expect(lerPergunta(pasta, 'q-0013')?.pr).toBe(970)
+      expect(lerPergunta(pasta, 'q-0009', REPO_TESTE)?.resultado).toContain(
+        'A spec do #961 está escrita',
+      )
+      expect(lerPergunta(pasta, 'q-0016', REPO_TESTE)?.resultado).toBeNull()
+      expect(lerPergunta(pasta, 'q-0013', REPO_TESTE)?.pr).toBe(970)
     })
   })
 })
@@ -607,7 +631,7 @@ describe('a leitura da sala', () => {
   const agora = (): string => '2026-11-11T12:00:00.000Z'
 
   it('sem estado.json → sem-estado', () => {
-    expect(lerSala(nova(), 'linux', agora, FONTES)).toEqual({
+    expect(lerSala(nova(), 'linux', agora, FONTES, BOARD)).toEqual({
       kind: 'sem-estado',
       lidoEm: agora(),
       projeto: 'Operations Center · Project 2',
@@ -630,7 +654,7 @@ describe('a leitura da sala', () => {
       ['ilegivel', 'torto'],
       ['ok', 'fixture'],
     ] as const)('ramo %s: sem pausa.json → pausa null, e o projeto vem junto', (kind, estado) => {
-      const s = lerSala(comPausa(null, estado), 'linux', agora, FONTES)
+      const s = lerSala(comPausa(null, estado), 'linux', agora, FONTES, BOARD)
       expect(s.kind).toBe(kind)
       expect(s.pausa).toBeNull()
       expect(s.projeto).toBe('Operations Center · Project 2')
@@ -646,6 +670,7 @@ describe('a leitura da sala', () => {
         'linux',
         agora,
         FONTES,
+        BOARD,
       )
       expect(s.kind).toBe(kind)
       expect(s.pausa).toEqual({ desde: '2026-11-11T11:00:00Z' })
@@ -655,7 +680,7 @@ describe('a leitura da sala', () => {
       ['ilegivel', 'torto'],
       ['ok', 'fixture'],
     ] as const)('ramo %s: pausa.json torto → desde null (na dúvida, pausada)', (kind, estado) => {
-      const s = lerSala(comPausa('{torto', estado), 'linux', agora, FONTES)
+      const s = lerSala(comPausa('{torto', estado), 'linux', agora, FONTES, BOARD)
       expect(s.kind).toBe(kind)
       expect(s.pausa).toEqual({ desde: null })
     })
@@ -678,27 +703,33 @@ describe('a leitura da sala', () => {
     const boa = nova()
     cpSync(FIXTURE, boa, { recursive: true })
     for (const pasta of [nova(), torto, boa]) {
-      expect(lerSala(pasta, 'linux', agora, fontes).recursos).toEqual(esperado)
+      expect(lerSala(pasta, 'linux', agora, fontes, BOARD).recursos).toEqual(esperado)
     }
   })
 
   it('worktrees que lança → o retrato sai, com "worktree ainda não criada"', () => {
     const p = nova()
     cpSync(FIXTURE_F2, p, { recursive: true })
-    const s = lerSala(p, 'linux', agora, {
-      recursos: () => RECURSOS,
-      worktrees: () => {
-        throw new Error('x')
+    const s = lerSala(
+      p,
+      'linux',
+      agora,
+      {
+        recursos: () => RECURSOS,
+        worktrees: () => {
+          throw new Error('x')
+        },
       },
-    })
+      BOARD,
+    )
     expect(s.kind).toBe('ok')
   })
 
   it('despachos cuja sessão não existe em /proc → viva false; fora do Linux → null', () => {
     const p = nova()
     cpSync(FIXTURE_F2, p, { recursive: true })
-    const linux = lerSala(p, 'linux', agora, FONTES)
-    const outro = lerSala(p, 'win32', agora, FONTES)
+    const linux = lerSala(p, 'linux', agora, FONTES, BOARD)
+    const outro = lerSala(p, 'win32', agora, FONTES, BOARD)
     if (linux.kind !== 'ok' || outro.kind !== 'ok') throw new Error('esperava ok')
     expect(linux.emVoo.map((d) => d.viva)).toEqual([false, false, null, false])
     expect(outro.emVoo.map((d) => d.viva)).toEqual([null, null, null, null])
@@ -707,7 +738,7 @@ describe('a leitura da sala', () => {
   it('estado torto → ilegivel com a mensagem do parseEstado', () => {
     const p = nova()
     writeFileSync(join(p, 'estado.json'), '{')
-    const s = lerSala(p, 'linux', agora, FONTES)
+    const s = lerSala(p, 'linux', agora, FONTES, BOARD)
     expect(s.kind).toBe('ilegivel')
     if (s.kind === 'ilegivel') expect(s.erro.startsWith('estado.json ilegível')).toBe(true)
   })
@@ -716,16 +747,16 @@ describe('a leitura da sala', () => {
     const p = nova()
     const e = estadoDaFixture()
     writeFileSync(join(p, 'estado.json'), JSON.stringify({ ...e, fila: [null] }))
-    expect(lerSala(p, 'linux', agora, FONTES).kind).toBe('ilegivel')
+    expect(lerSala(p, 'linux', agora, FONTES, BOARD).kind).toBe('ilegivel')
   })
 
   it('a fixture copiada → ok, e a pergunta lê a saída da sessão', () => {
     const p = nova()
     cpSync(FIXTURE, p, { recursive: true })
-    expect(lerSala(p, 'linux', agora, FONTES).kind).toBe('ok')
-    expect(lerPergunta(p, 'q-0003')?.resultado).toContain('Feito o desenho.')
+    expect(lerSala(p, 'linux', agora, FONTES, BOARD).kind).toBe('ok')
+    expect(lerPergunta(p, 'q-0003', REPO_TESTE)?.resultado).toContain('Feito o desenho.')
     // saída vazia (0 byte) → sem resultado, mas a pergunta existe
-    expect(lerPergunta(p, 'q-0006')?.resultado).toBeNull()
+    expect(lerPergunta(p, 'q-0006', REPO_TESTE)?.resultado).toBeNull()
   })
 
   it('despacho torto no estado não vira caminho: a pergunta existe, sem resultado', () => {
@@ -734,15 +765,15 @@ describe('a leitura da sala', () => {
     const e = estadoDaFixture()
     const fila = e.fila.map((i) => (i.id === 'q-0003' ? { ...i, despacho: '../../x' } : i))
     writeFileSync(join(p, 'estado.json'), JSON.stringify({ ...e, fila }))
-    expect(lerPergunta(p, 'q-0003')?.resultado).toBeNull()
+    expect(lerPergunta(p, 'q-0003', REPO_TESTE)?.resultado).toBeNull()
   })
 
   it('id que não é q-<n> ou não existe → null', () => {
     const p = nova()
     cpSync(FIXTURE, p, { recursive: true })
-    expect(lerPergunta(p, '../x')).toBeNull()
-    expect(lerPergunta(p, 'q-9999')).toBeNull()
-    expect(lerPergunta(nova(), 'q-0003')).toBeNull()
+    expect(lerPergunta(p, '../x', REPO_TESTE)).toBeNull()
+    expect(lerPergunta(p, 'q-9999', REPO_TESTE)).toBeNull()
+    expect(lerPergunta(nova(), 'q-0003', REPO_TESTE)).toBeNull()
   })
 
   describe.skipIf(process.platform !== 'linux')('estadoDoDespachante', () => {
@@ -785,11 +816,12 @@ describe('a leitura da sala', () => {
 })
 
 describe('pastaDaSala', () => {
-  it('o default é a pasta-irmã do checkout do workspace', () => {
-    expect(pastaDaSala({}, '/h')).toBe('/h/pessoal/claude/despachos-fabrica')
+  const board = BOARD
+  it('o default é a pasta de estado do board padrão', () => {
+    expect(pastaDaSala({}, board)).toBe('/h/pessoal/claude/despachos-fabrica')
   })
   it('OC_FABRICA_DIR manda', () => {
-    expect(pastaDaSala({ OC_FABRICA_DIR: '/x/y' }, '/h')).toBe('/x/y')
+    expect(pastaDaSala({ OC_FABRICA_DIR: '/x/y' }, board)).toBe('/x/y')
   })
 })
 
@@ -865,7 +897,7 @@ describe('lerCardDaFabrica e lerEntradaDaSala (F4)', () => {
     cpSync(F4, pasta, { recursive: true })
     return pasta
   }
-  const card = (pasta: string, n: number) => lerCardDaFabrica(pasta, n, 'linux', FONTES)
+  const card = (pasta: string, n: number) => lerCardDaFabrica(pasta, n, 'linux', FONTES, REPO_TESTE)
 
   it('#4 ok sem resultado; #906 com o result; #1 sem-despacho', () => {
     const pasta = copiaDeF4()
@@ -965,5 +997,23 @@ describe('lerRevisoesDaSala (F5)', () => {
     const pasta = pastaDeTeste()
     mkdirSync(join(pasta, 'revisoes.jsonl'))
     expect(lerRevisoesDaSala(pasta).kind).toBe('ilegivel')
+  })
+})
+
+describe('a sala por repo (#144)', () => {
+  const FULANO = { owner: 'fulano', name: 'repo-x' }
+
+  it('CA-3: URLs e worktrees seguem o repo do board', () => {
+    expect(urlDoCard(5, FULANO)).toBe('https://github.com/fulano/repo-x/issues/5')
+    expect(urlDaPr(6, FULANO)).toBe('https://github.com/fulano/repo-x/pull/6')
+    const worktrees = ['repo-x-5-feito', 'operations-center-5-outro']
+    expect(ondeRodaDo('implementacao', 5, worktrees, FULANO)).toBe('repo-x-5-feito')
+    expect(ondeRodaDo('implementacao', 5, worktrees, REPO_TESTE)).toBe('operations-center-5-outro')
+  })
+
+  it('CA-1: o board padrão mantém as URLs de hoje', () => {
+    expect(urlDoCard(133, REPO_TESTE)).toBe(
+      'https://github.com/leonardo-amaral-3/operations-center/issues/133',
+    )
   })
 })

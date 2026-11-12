@@ -13,7 +13,7 @@ import {
   concluirTriagem,
   marcarTriagemLancando,
   marcarTriagemRodando,
-  NOTA_DA_TRIAGEM,
+  notaDaTriagem,
   temTriagemPorFazer,
   textoDoRelato,
   triagensEmVoo,
@@ -21,6 +21,7 @@ import {
   voltarTriagemAPendente,
   type EntradaDaFabrica,
 } from '../../core/fabrica/entrada'
+import type { BoardComMandato, ProibidosDoBoard } from '../../core/fabrica/configuracao'
 import { marcaDaProva, marcaDoDespacho, TETO_DE_SESSOES } from '../../core/fabrica/mandato'
 import type { Despacho, EstadoDaFabrica } from '../../core/fabrica/tipos'
 import {
@@ -48,7 +49,8 @@ export interface ContextoDoRodar {
   pasta: string
   workspace: string
   raizDoRepo: string
-  proibidos: readonly string[]
+  proibidos: ProibidosDoBoard
+  board: BoardComMandato
   deps: DepsDoCli
 }
 
@@ -183,7 +185,7 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
       const eventos: string[] = []
       let mudou = false
       const concluir = (id: string, saida: string): void => {
-        const r = concluirTriagem(estado, id, { saida, agora: deps.agora() })
+        const r = concluirTriagem(estado, id, { saida, agora: deps.agora(), repo: ctx.board.repo })
         estado = r.estado
         eventos.push(r.evento)
         mudou = true
@@ -239,7 +241,7 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
   let mandato: string
   let marcaDaProvaAtual: string
   try {
-    mandato = await deps.lerMandato()
+    mandato = await deps.lerMandato(ctx.board.mandato)
     marcaDaProvaAtual = marcaDaProva(mandato)
   } catch (erro) {
     memoria.falhasDoMandato += 1
@@ -280,6 +282,7 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
 
     const resultado = await lancar(preparado.despacho, {
       pasta,
+      repo: ctx.board.repo,
       workspace: ctx.workspace,
       raizDoRepo: ctx.raizDoRepo,
       mandato,
@@ -334,7 +337,7 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
     const concluirComErro = async (subtype: string): Promise<void> => {
       const saida = JSON.stringify({ type: 'result', is_error: true, subtype })
       const evento = await naEntrada(ctx, memoria, (e) => {
-        const r = concluirTriagem(e, item.id, { saida, agora: deps.agora() })
+        const r = concluirTriagem(e, item.id, { saida, agora: deps.agora(), repo: ctx.board.repo })
         return { estado: r.estado, resultado: r.evento }
       })
       if (evento !== undefined) linha(evento)
@@ -356,9 +359,10 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
       continue
     }
     const resultado = await lancar(
-      { id: item.id, comando, nota: NOTA_DA_TRIAGEM },
+      { id: item.id, comando, nota: notaDaTriagem(ctx.board) },
       {
         pasta,
+        repo: ctx.board.repo,
         workspace: ctx.workspace,
         raizDoRepo: ctx.raizDoRepo,
         mandato,

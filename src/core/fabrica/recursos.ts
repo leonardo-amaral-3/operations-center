@@ -1,4 +1,4 @@
-import { REPO_DA_FABRICA } from './mandato'
+import { escaparRegex } from './mandato'
 
 /**
  * Leituras puras dos recursos da fábrica (F2 §F2.2): o texto do `/proc/locks` e o caminho de uma
@@ -34,8 +34,8 @@ export function lerProcLocks(
  * O card da pasta onde a cwd está: o **último** `/<repo>-<n>-` do caminho (a pasta mais funda), ou
  * `null`. Um `flock` rodado em `<worktree-131>/test-results/operations-center-777-smoke` é do 777.
  */
-export function cardDaCwd(cwd: string): number | null {
-  const padrao = new RegExp(`/${REPO_DA_FABRICA.name}-(\\d+)-`, 'g')
+export function cardDaCwd(cwd: string, nomeDoRepo: string): number | null {
+  const padrao = new RegExp(`/${escaparRegex(nomeDoRepo)}-(\\d+)-`, 'g')
   let card: number | null = null
   for (const achou of `${cwd}/`.matchAll(padrao)) card = Number(achou[1])
   return card

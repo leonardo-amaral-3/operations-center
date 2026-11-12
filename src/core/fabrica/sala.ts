@@ -11,7 +11,7 @@ import type {
   SalaDaFabrica,
 } from '../../shared/fabrica'
 import { lerComandoDoG4, lerParecer } from './g4'
-import { REPO_DA_FABRICA } from './mandato'
+import { type RepoDoBoard, nomeDoRepo } from './configuracao'
 import type { Despacho, EstadoDaFabrica, ItemDaFila } from './tipos'
 
 /**
@@ -26,8 +26,8 @@ const FECHADOS_NA_SALA = 10
 /** Quantos passos da esteira entram em "O que a fábrica decidiu". */
 export const PASSOS_NA_SALA = 8
 
-export function urlDoCard(card: number): string {
-  return `https://github.com/${REPO_DA_FABRICA.owner}/${REPO_DA_FABRICA.name}/issues/${card}`
+export function urlDoCard(card: number, repo: RepoDoBoard): string {
+  return `https://github.com/${nomeDoRepo(repo)}/issues/${card}`
 }
 
 /** O número da PR que o motivo cita (`PR #<n>`, n ≥ 1, a primeira); nenhuma → `null`. */
@@ -36,8 +36,8 @@ export function prDoMotivo(motivo: string): number | null {
   return m?.[1] === undefined ? null : Number(m[1])
 }
 
-export function urlDaPr(pr: number): string {
-  return `https://github.com/${REPO_DA_FABRICA.owner}/${REPO_DA_FABRICA.name}/pull/${pr}`
+export function urlDaPr(pr: number, repo: RepoDoBoard): string {
+  return `https://github.com/${nomeDoRepo(repo)}/pull/${pr}`
 }
 
 function comparar(a: string, b: string): number {
@@ -49,10 +49,14 @@ function comparar(a: string, b: string): number {
  * contrato, da mesma PR do comando e sem bloqueante. Todo o resto — inclusive a PARADA de um
  * `/gm-ship`, que agora só vira item quando o G4 não pôde nascer — é pergunta.
  */
-export function tipoDoItem(item: ItemDaFila, origem: Despacho | undefined): 'pergunta' | 'decisao' {
+export function tipoDoItem(
+  item: ItemDaFila,
+  origem: Despacho | undefined,
+  repo: RepoDoBoard,
+): 'pergunta' | 'decisao' {
   if (origem === undefined || origem.desfecho?.tipo !== 'parada') return 'pergunta'
   const g4 = lerComandoDoG4(origem.comando)
-  const parecer = lerParecer(item.motivo)
+  const parecer = lerParecer(item.motivo, repo)
   return g4 !== null &&
     g4.card === item.card &&
     g4.card === origem.card &&
@@ -88,10 +92,11 @@ export function ondeRodaDo(
   estacao: EstacaoDaFabrica | null,
   card: number,
   worktrees: readonly string[],
+  repo: RepoDoBoard,
 ): string {
   if (estacao === 'spec' || estacao === 'tasks') return 'planning/'
   if (estacao === 'implementacao' || estacao === 'revisao') {
-    const prefixo = `${REPO_DA_FABRICA.name}-${card}-`
+    const prefixo = `${repo.name}-${card}-`
     const achadas = worktrees.filter((w) => w.startsWith(prefixo)).sort(comparar)
     if (achadas.length === 0) return 'worktree ainda não criada'
     const primeiro = achadas[0] as string
@@ -108,10 +113,11 @@ export function ondeRodaOComando(
   comando: string,
   card: number,
   worktrees: readonly string[],
+  repo: RepoDoBoard,
 ): string {
   return lerComandoDoG4(comando) !== null
     ? 'sem worktree'
-    : ondeRodaDo(estacaoDoComando(comando), card, worktrees)
+    : ondeRodaDo(estacaoDoComando(comando), card, worktrees, repo)
 }
 
 function skillDe(comando: string): string {
@@ -122,7 +128,7 @@ function skillDe(comando: string): string {
  * "O que a fábrica decidiu": os passos recentes que seguiram sozinhos, todo item aberto e os
  * fechados mais recentes, do mais novo ao mais velho (empate por id, decrescente).
  */
-export function montarDecisoes(e: EstadoDaFabrica): DecisaoNaSala[] {
+export function montarDecisoes(e: EstadoDaFabrica, repo: RepoDoBoard): DecisaoNaSala[] {
   const comItem = new Set(e.fila.map((i) => i.despacho))
   const passos: DecisaoNaSala[] = e.despachos
     .flatMap((d) =>
@@ -151,7 +157,7 @@ export function montarDecisoes(e: EstadoDaFabrica): DecisaoNaSala[] {
       tipo: 'fila' as const,
       id: i.id,
       card: i.card,
-      item: paraItem(e, i),
+      item: paraItem(e, i, repo),
       em: i.criadoEm,
     }))
   const fechados: DecisaoNaSala[] = e.fila
@@ -162,7 +168,7 @@ export function montarDecisoes(e: EstadoDaFabrica): DecisaoNaSala[] {
       tipo: 'fila' as const,
       id: i.id,
       card: i.card,
-      item: paraItem(e, i),
+      item: paraItem(e, i, repo),
       em: i.criadoEm,
     }))
   return [...passos, ...abertos, ...fechados].sort(
@@ -170,14 +176,14 @@ export function montarDecisoes(e: EstadoDaFabrica): DecisaoNaSala[] {
   )
 }
 
-function paraItem(e: EstadoDaFabrica, item: ItemDaFila): ItemNaSala {
+function paraItem(e: EstadoDaFabrica, item: ItemDaFila, repo: RepoDoBoard): ItemNaSala {
   const origem = e.despachos.find((d) => d.id === item.despacho)
   const comando = origem?.comando ?? null
   return {
     id: item.id,
-    tipo: tipoDoItem(item, origem),
+    tipo: tipoDoItem(item, origem, repo),
     card: item.card,
-    cardUrl: urlDoCard(item.card),
+    cardUrl: urlDoCard(item.card, repo),
     motivo: item.motivo,
     despacho: item.despacho,
     comando,
@@ -202,17 +208,18 @@ export function montarSala(
     worktrees: readonly string[]
     /** Ids dos despachos com sessão viva; `null` = não se sabe. */
     vivos: ReadonlySet<string> | null
+    repo: RepoDoBoard
   },
 ): Extract<SalaDaFabrica, { kind: 'ok' }> {
   const abertos = e.fila
     .filter((i) => i.fechadoEm === null)
     .sort((a, b) => comparar(a.criadoEm, b.criadoEm) || comparar(a.id, b.id))
-    .map((i) => paraItem(e, i))
+    .map((i) => paraItem(e, i, ctx.repo))
   const fechados = e.fila
     .filter((i) => i.fechadoEm !== null)
     .sort((a, b) => comparar(b.fechadoEm ?? '', a.fechadoEm ?? '') || comparar(b.id, a.id))
     .slice(0, FECHADOS_NA_SALA)
-    .map((i) => paraItem(e, i))
+    .map((i) => paraItem(e, i, ctx.repo))
   const emVoo: DespachoNaSala[] = e.despachos
     .filter((d) => d.estado !== 'concluido')
     .sort((a, b) => comparar(a.criadoEm, b.criadoEm) || comparar(a.id, b.id))
@@ -221,13 +228,13 @@ export function montarSala(
       return {
         id: d.id,
         card: d.card,
-        cardUrl: urlDoCard(d.card),
+        cardUrl: urlDoCard(d.card, ctx.repo),
         comando: d.comando,
         estacao,
         estado: d.estado as DespachoNaSala['estado'],
         criadoEm: d.criadoEm,
         lancadoEm: d.lancadoEm,
-        ondeRoda: ondeRodaOComando(d.comando, d.card, ctx.worktrees),
+        ondeRoda: ondeRodaOComando(d.comando, d.card, ctx.worktrees, ctx.repo),
         viva: d.estado === 'pendente' || ctx.vivos === null ? null : ctx.vivos.has(d.id),
       }
     })
@@ -241,7 +248,7 @@ export function montarSala(
     emVoo,
     abertos,
     fechados,
-    decisoes: montarDecisoes(e),
+    decisoes: montarDecisoes(e, ctx.repo),
     frentesAbertas: e.frentes.filter((f) => f.encerradaEm === null).length,
   }
 }
@@ -281,10 +288,11 @@ export function montarPergunta(
   e: EstadoDaFabrica,
   id: string,
   saida: string | null,
+  repo: RepoDoBoard,
 ): PerguntaDaFila | null {
   const achado = e.fila.find((i) => i.id === id)
   if (achado === undefined) return null
-  const item = paraItem(e, achado)
+  const item = paraItem(e, achado, repo)
   const origem = e.despachos.find((d) => d.id === achado.despacho)
   const pr = item.tipo === 'decisao' ? prDoMotivo(item.motivo) : null
   const passos =
@@ -300,7 +308,7 @@ export function montarPergunta(
     fechar: `yarn fabrica fechar ${id} "<resolução>"`,
     fim: origem?.desfecho?.tipo ?? null,
     pr,
-    prUrl: pr === null ? null : urlDaPr(pr),
+    prUrl: pr === null ? null : urlDaPr(pr, repo),
     passos,
   }
 }

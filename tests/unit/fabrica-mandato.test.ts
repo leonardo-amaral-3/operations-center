@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { boardPadrao } from '../../src/core/fabrica/configuracao'
+import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
 import {
   avaliarComando,
   avaliarNota,
@@ -10,16 +12,12 @@ import {
   marcaDaProva,
   marcaDoDespacho,
   montarPrompt,
-  MANDATO_DA_DEV_QUERY,
+  MANDATO_QUERY,
   textoDoMandato,
 } from '../../src/core/fabrica/mandato'
 
 const RAIZ = join(__dirname, '..', '..')
-const proibidos = caminhosProibidos(
-  '/home/u',
-  '/home/u/pessoal',
-  '/home/u/pessoal/operations-center',
-)
+const proibidos = caminhosProibidos('/home/u', boardPadrao(configuracaoDaFabrica('/home/u')))
 
 describe('avaliarComando', () => {
   it.each([
@@ -85,16 +83,44 @@ describe('avaliarNota', () => {
 
 describe('caminhosProibidos', () => {
   it('traz o caminho e as três grafias relativas dos que ficam dentro da home', () => {
-    expect(proibidos).toContain('/home/u/.local/bin/operations-center')
-    expect(proibidos).toContain('~/pessoal/operations-center')
-    expect(proibidos).toContain('$HOME/notoria')
-    expect(proibidos).toContain('${HOME}/.config/operations-center')
+    expect(proibidos.caminhos).toContain('/home/u/.local/bin/operations-center')
+    expect(proibidos.caminhos).toContain('~/pessoal/operations-center')
+    expect(proibidos.caminhos).toContain('$HOME/notoria')
+    expect(proibidos.caminhos).toContain('${HOME}/.config/operations-center')
+  })
+
+  it('o board padrão proíbe o mesmo conjunto de hoje, com o mesmo motivo', () => {
+    expect([...proibidos.caminhos].sort()).toEqual(
+      [
+        '/home/u/.local/bin/operations-center',
+        '~/.local/bin/operations-center',
+        '$HOME/.local/bin/operations-center',
+        '${HOME}/.local/bin/operations-center',
+        '/home/u/.config/operations-center',
+        '~/.config/operations-center',
+        '$HOME/.config/operations-center',
+        '${HOME}/.config/operations-center',
+        '/home/u/pessoal/operations-center',
+        '~/pessoal/operations-center',
+        '$HOME/pessoal/operations-center',
+        '${HOME}/pessoal/operations-center',
+        '/home/u/notoria',
+        '~/notoria',
+        '$HOME/notoria',
+        '${HOME}/notoria',
+      ].sort(),
+    )
+    expect(proibidos.motivo).toBe('a instalação viva, o checkout principal ou os repos da Notoria')
   })
 
   it('um alvo fora da home entra só pelo caminho absoluto', () => {
-    const r = caminhosProibidos('/home/u', '/w', '/srv/oc')
-    expect(r).toContain('/srv/oc')
-    expect(r.filter((p) => p.includes('srv'))).toEqual(['/srv/oc'])
+    const r = caminhosProibidos('/home/u', {
+      checkoutPrincipal: '/srv/oc',
+      proibidos: { caminhos: [], motivo: 'm' },
+    })
+    expect(r.caminhos).toContain('/srv/oc')
+    expect(r.caminhos.filter((p) => p.includes('srv'))).toEqual(['/srv/oc'])
+    expect(r.motivo).toBe('m')
   })
 })
 
@@ -153,12 +179,12 @@ describe('textoDoMandato', () => {
   const resposta = (text: unknown) => ({ data: { repository: { object: { text } } } })
 
   it('devolve o texto', () => {
-    expect(textoDoMandato(resposta('MANDATO\nresto'))).toBe('MANDATO\nresto')
+    expect(textoDoMandato(resposta('MANDATO\nresto'), 'dev')).toBe('MANDATO\nresto')
   })
   it('erro da API lança com a mensagem', () => {
-    expect(() => textoDoMandato({ data: null, errors: [{ message: 'Bad credentials' }] })).toThrow(
-      'Bad credentials',
-    )
+    expect(() =>
+      textoDoMandato({ data: null, errors: [{ message: 'Bad credentials' }] }, 'dev'),
+    ).toThrow('Bad credentials')
   })
   it.each([
     ['objeto nulo', { data: { repository: { object: null } } }],
@@ -167,9 +193,14 @@ describe('textoDoMandato', () => {
     ['texto vazio', resposta('  \n')],
     ['texto que não é string', resposta(7)],
   ])('%s lança', (_, r) => {
-    expect(() => textoDoMandato(r)).toThrow('mandato ilegível na dev: vazio')
+    expect(() => textoDoMandato(r, 'dev')).toThrow('mandato ilegível na dev: vazio')
   })
-  it('a query pede o fabrica/MANDATO.md da dev', () => {
-    expect(MANDATO_DA_DEV_QUERY).toContain('dev:fabrica/MANDATO.md')
+  it('a mensagem do vazio traz o ref que veio', () => {
+    expect(() => textoDoMandato({ data: null }, 'main2')).toThrow(
+      'mandato ilegível na main2: vazio',
+    )
+  })
+  it('a query pede a expressão pela variável', () => {
+    expect(MANDATO_QUERY).toContain('object(expression: $expressao)')
   })
 })

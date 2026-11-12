@@ -1,10 +1,12 @@
 import { ipcMain } from 'electron'
+import type { RepoDoBoard } from '../../core/fabrica/configuracao'
 import { urlDoCard } from '../../core/fabrica/sala'
 import type { EstadoDaFabrica } from '../../core/fabrica/tipos'
 import type { AssumirDespachoResult } from '../../shared/fabrica'
 import { IPC_INVOKE } from '../../shared/ipc'
 
 export interface DepsDoAssumir {
+  repo: RepoDoBoard // o repo do board: o cartão tem de ser o card dele
   lerEstado: () => EstadoDaFabrica | null // lança se ilegível
   cardDoItem: (itemId: string) => { number: number; url: string } | null
   sessaoAberta: (itemId: string) => string | null // a sessão do terminal vivo do cartão, se houver
@@ -65,7 +67,7 @@ export function criarAssumir(
 
       const c = deps.cardDoItem(itemId)
       if (c === null) return recusa('o card não está num board aberto no app')
-      if (c.number !== d.card || c.url !== urlDoCard(d.card))
+      if (c.number !== d.card || c.url !== urlDoCard(d.card, deps.repo))
         return recusa(`o card do pedido não é o #${d.card} do ${id}`)
 
       const aberta = deps.sessaoAberta(itemId)

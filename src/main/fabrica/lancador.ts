@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { closeSync, mkdirSync, openSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
+import type { RepoDoBoard } from '../../core/fabrica/configuracao'
 import { FERRAMENTAS_DO_G4, lerComandoDoG4, promptDoG4 } from '../../core/fabrica/g4'
 import { montarPrompt } from '../../core/fabrica/mandato'
 import type { Despacho } from '../../core/fabrica/tipos'
@@ -15,6 +16,8 @@ import { pastaDaSessao } from './arquivos'
 
 export interface ContextoDoLancamento {
   pasta: string
+  /** O repo do board: o G4 lê a PR e o card nele. */
+  repo: RepoDoBoard
   workspace: string
   raizDoRepo: string
   mandato: string
@@ -56,7 +59,7 @@ export async function lancar(
     mkdirSync(pastaDaSessaoAtual, { recursive: true })
     const g4 = lerComandoDoG4(d.comando)
     const prompt = montarPrompt(
-      g4 === null ? d.comando : promptDoG4(g4.card, g4.pr),
+      g4 === null ? d.comando : promptDoG4(g4.card, g4.pr, ctx.repo),
       ctx.mandato,
       d.nota,
     )

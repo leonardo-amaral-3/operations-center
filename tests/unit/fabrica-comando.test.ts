@@ -1,10 +1,11 @@
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ITEM_NO_BOARD_QUERY } from '../../src/core/fabrica/estacao'
 import type { ComandoDaFabrica } from '../../src/shared/fabrica'
 import type { DepsDoCli } from '../../src/main/fabrica/cli'
+import { configuracaoDeTeste } from './fabrica-board-de-teste'
 import {
   LIMITE_DA_NOTA_DO_APP,
   SUBCOMANDOS_DO_APP,
@@ -31,6 +32,7 @@ afterEach(() => {
 function base(env: NodeJS.ProcessEnv): Omit<DepsDoCli, 'argv' | 'escrever' | 'avisar'> {
   return {
     raizDoRepo: RAIZ,
+    configuracao: configuracaoDeTeste({ home: homedir(), workspace: dirname(RAIZ) }),
     env,
     platform: 'linux',
     home: homedir(),

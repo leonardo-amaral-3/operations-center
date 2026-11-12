@@ -12,13 +12,14 @@ import {
   writeSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve, sep } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import {
   entradaVazia,
   parseEntrada,
   serializarEntrada,
   type EntradaDaFabrica,
 } from '../../core/fabrica/entrada'
+import type { BoardDaFabrica } from '../../core/fabrica/configuracao'
 import { estadoVazio, parseEstado, serializarEstado } from '../../core/fabrica/estado'
 import type { EstadoDaFabrica } from '../../core/fabrica/tipos'
 
@@ -31,11 +32,18 @@ import type { EstadoDaFabrica } from '../../core/fabrica/tipos'
 const MENSAGEM_TEMPORARIA =
   'OC_FABRICA_DIR não pode ficar no /tmp: o estado da fábrica tem de sobreviver a um reinício (queda de 09/11/2026)'
 
-/** A pasta da fábrica: `OC_FABRICA_DIR`, ou `<workspace>/claude/despachos-fabrica`. */
-export function pastaDaFabrica(env: NodeJS.ProcessEnv, raizDoRepo: string): string {
+/**
+ * A pasta da fábrica: a `pastaDoEstado` do board. `OC_FABRICA_DIR` troca a pasta do board escolhido,
+ * seja ele qual for, e serve a teste e smoke. Limite admitido: com `OC_FABRICA_DIR` exportado, dois
+ * boards diferentes caem na mesma pasta.
+ */
+export function pastaDaFabrica(
+  env: NodeJS.ProcessEnv,
+  board: Pick<BoardDaFabrica, 'pastaDoEstado'>,
+): string {
   const configurada = env.OC_FABRICA_DIR
   if (configurada !== undefined && configurada !== '') return resolve(configurada)
-  return join(dirname(raizDoRepo), 'claude', 'despachos-fabrica')
+  return board.pastaDoEstado
 }
 
 /** Recusa `/tmp` e `os.tmpdir()` (e o que está dentro deles) antes de qualquer escrita. */

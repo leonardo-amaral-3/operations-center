@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GraphQLFn } from '../../src/core/board/types'
 import { marcarLancando } from '../../src/core/fabrica/despachante'
 import { avaliarNota } from '../../src/core/fabrica/mandato'
-import { NOTA_DA_TRIAGEM, textoDoRelato } from '../../src/core/fabrica/entrada'
+import { notaDaTriagem, textoDoRelato } from '../../src/core/fabrica/entrada'
 import { promptDoG4 } from '../../src/core/fabrica/g4'
 import { montarPrompt } from '../../src/core/fabrica/mandato'
 import type { ItemDaFila } from '../../src/core/fabrica/tipos'
@@ -29,8 +29,12 @@ import {
   pausar,
 } from '../../src/main/fabrica/arquivos'
 import { executar, type DepsDoCli } from '../../src/main/fabrica/cli'
+import { boardPadrao } from '../../src/core/fabrica/configuracao'
+import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
+import { boardFicticio, configuracaoDeTeste } from './fabrica-board-de-teste'
 import { lerItemNoBoard } from '../../src/main/fabrica/github'
 import { envLimpo } from '../../src/main/fabrica/lancador'
+import { REPO_TESTE } from './fabrica-board-de-teste'
 
 // O gancho da corrida: com `releitura` posta, a segunda leitura do `revisoes.jsonl` em diante devolve
 // o texto dela, como se outro escritor tivesse chegado antes (spec F5 §F5.5, passo 5).
@@ -123,6 +127,7 @@ function montar(
   const deps: DepsDoCli = {
     argv: [],
     raizDoRepo: RAIZ,
+    configuracao: configuracaoDeTeste({ home: homedir(), workspace: dirname(RAIZ) }),
     env: {
       ...process.env,
       OC_FABRICA_DIR: pasta,
@@ -182,6 +187,7 @@ const gravadoPeloFalso = (
   }
 
 describe('lerItemNoBoard', () => {
+  const BOARD = boardPadrao(configuracaoDaFabrica(homedir()))
   const resposta =
     (issue: unknown, errors?: { message: string }[]): GraphQLFn =>
     () =>
@@ -196,25 +202,25 @@ describe('lerItemNoBoard', () => {
         data: { repository: { issue: { state: 'OPEN', projectItems: { nodes: [] } } } },
       })
     }
-    await lerItemNoBoard(graphql, 7)
+    await lerItemNoBoard(graphql, BOARD, 7)
     expect(enviadas).toEqual([{ owner: 'leonardo-amaral-3', name: 'operations-center', n: 7 }])
   })
 
   it('errors lança a primeira mensagem', async () => {
     await expect(
-      lerItemNoBoard(resposta(null, [{ message: 'quebrou' }, { message: 'b' }]), 1),
+      lerItemNoBoard(resposta(null, [{ message: 'quebrou' }, { message: 'b' }]), BOARD, 1),
     ).rejects.toThrow('quebrou')
   })
 
   it('issue nula lança', async () => {
-    await expect(lerItemNoBoard(resposta(null), 9)).rejects.toThrow(
+    await expect(lerItemNoBoard(resposta(null), BOARD, 9)).rejects.toThrow(
       'não há issue #9 em leonardo-amaral-3/operations-center',
     )
   })
 
   it('card fechado lança', async () => {
     await expect(
-      lerItemNoBoard(resposta({ state: 'CLOSED', projectItems: { nodes: [] } }), 9),
+      lerItemNoBoard(resposta({ state: 'CLOSED', projectItems: { nodes: [] } }), BOARD, 9),
     ).rejects.toThrow('o #9 está fechado')
   })
 
@@ -222,7 +228,11 @@ describe('lerItemNoBoard', () => {
     const nos = (n: { project: { number: number }; fieldValueByName: { name: string } | null }[]) =>
       resposta({ state: 'OPEN', projectItems: { nodes: n } })
     expect(
-      await lerItemNoBoard(nos([{ project: { number: 3 }, fieldValueByName: { name: 'X' } }]), 1),
+      await lerItemNoBoard(
+        nos([{ project: { number: 3 }, fieldValueByName: { name: 'X' } }]),
+        BOARD,
+        1,
+      ),
     ).toEqual({ noProjeto: false })
     expect(
       await lerItemNoBoard(
@@ -230,11 +240,12 @@ describe('lerItemNoBoard', () => {
           { project: { number: 3 }, fieldValueByName: { name: 'X' } },
           { project: { number: 2 }, fieldValueByName: { name: '📋 Backlog' } },
         ]),
+        BOARD,
         1,
       ),
     ).toEqual({ noProjeto: true, status: '📋 Backlog' })
     expect(
-      await lerItemNoBoard(nos([{ project: { number: 2 }, fieldValueByName: null }]), 1),
+      await lerItemNoBoard(nos([{ project: { number: 2 }, fieldValueByName: null }]), BOARD, 1),
     ).toEqual({ noProjeto: true, status: null })
   })
 })
@@ -764,7 +775,11 @@ describe.skipIf(process.platform !== 'linux')('o laço do despachante', { timeou
     const g4 = gravadoPeloFalso('d-0003')
     expect(g4.args[g4.args.indexOf('--tools') + 1]).toBe('Bash,Read')
     expect(g4.prompt).toBe(
-      montarPrompt(promptDoG4(7, 9), MANDATO, `o /gm-ship terminou com: PARADA: ${motivoDoShip}`),
+      montarPrompt(
+        promptDoG4(7, 9, REPO_TESTE),
+        MANDATO,
+        `o /gm-ship terminou com: PARADA: ${motivoDoShip}`,
+      ),
     )
     expect(m.saida.some((l) => l.includes('d-0002 terminou: segue para o G4 (/g4 #7 PR #9)'))).toBe(
       true,
@@ -1107,7 +1122,9 @@ describe.skipIf(process.platform !== 'linux')('o laço do despachante', { timeou
       ).toBe(true)
       const prompt = gravadoPeloFalso('e-0001').prompt.split('\n')
       expect(prompt[0]).toBe(comandoDe('e-0001'))
-      expect(prompt.filter((l) => l !== '').at(-1)).toBe(`- Nesta sessão: ${NOTA_DA_TRIAGEM}`)
+      expect(prompt.filter((l) => l !== '').at(-1)).toBe(
+        `- Nesta sessão: ${notaDaTriagem(boardPadrao(m.deps.configuracao))}`,
+      )
       const e = lerEstado(pasta)
       expect(e?.despachos ?? []).toEqual([])
       expect(e?.fila ?? []).toEqual([])
@@ -1255,9 +1272,187 @@ describe.skipIf(process.platform !== 'linux')('o laço do despachante', { timeou
     })
 
     it('a nota fixa passa pelo avaliarNota e é de uma linha só', () => {
-      expect(NOTA_DA_TRIAGEM).not.toContain('\n')
-      const r = avaliarNota(NOTA_DA_TRIAGEM, [])
+      const nota = notaDaTriagem(boardPadrao(montar().deps.configuracao))
+      expect(nota).not.toContain('\n')
+      const r = avaliarNota(nota, { caminhos: [], motivo: 'nenhum' })
       expect(r.ok).toBe(true)
     })
   })
 })
+
+describe('board por configuração (#144)', () => {
+  const USO_COMEÇA = 'uso: yarn fabrica [--board <owner>/<n>] '
+  const SEM_MANDATO =
+    'fabrica: o board fulano/7 (Board Fictício) não tem mandato aprovado: falta o campo mandato em fabrica/boards.json'
+  const SEM_CONFIGURACAO =
+    'fabrica: o board ninguem/9 não está configurado em fabrica/boards.json: falta a entrada dele (repo, workspace, pasta de estado e mandato)'
+  const subcomandos: readonly (readonly string[])[] = [
+    ['estado'],
+    ['rodar'],
+    ['iniciar', '5', '--comando', '/gm-spec #5'],
+    ['iniciar', '5', '--ensaio'],
+    ['pausar'],
+    ['entrada', 'x'],
+    ['fechar', 'q-0001', 'r'],
+  ]
+
+  function montarRecusa(mandato: boolean | null): {
+    m: Montagem
+    raiz: string
+    padrao: string
+    lerMandato: ReturnType<typeof vi.fn>
+    graphql: ReturnType<typeof vi.fn>
+  } {
+    const raiz = join(pasta, 'ficticio')
+    const padrao = join(pasta, 'ws-padrao')
+    const lerMandato = vi.fn(() => Promise.resolve(MANDATO))
+    const graphql = vi.fn(() => Promise.reject(new Error('graphql não esperado')))
+    const extras = mandato === null ? [] : [boardFicticio({ home: homedir(), raiz, mandato })]
+    const m = montar(
+      {},
+      {
+        configuracao: configuracaoDeTeste({ home: homedir(), workspace: padrao, extras }),
+        lerMandato: lerMandato as unknown as DepsDoCli['lerMandato'],
+        graphql: graphql as unknown as DepsDoCli['graphql'],
+      },
+      { OC_FABRICA_DIR: undefined },
+    )
+    return { m, raiz, padrao, lerMandato, graphql }
+  }
+
+  it.each(subcomandos)('board sem configuração: %s sai com 2 e não cria nada', async (...argv) => {
+    const { m, padrao, lerMandato, graphql } = montarRecusa(null)
+    const antes = readdirSync(pasta).sort()
+    expect(await rodar(m, '--board', 'ninguem/9', ...argv)).toBe(2)
+    expect(m.avisos[0]).toBe(SEM_CONFIGURACAO)
+    expect(readdirSync(pasta).sort()).toEqual(antes)
+    expect(existsSync(join(padrao, 'claude', 'despachos-fabrica'))).toBe(false)
+    expect(lerMandato).not.toHaveBeenCalled()
+    expect(graphql).not.toHaveBeenCalled()
+  })
+
+  it('board sem configuração: OC_FABRICA_DIR também não é criada', async () => {
+    const { m } = montarRecusa(null)
+    m.deps.env = { ...m.deps.env, OC_FABRICA_DIR: join(pasta, 'nova') }
+    expect(await rodar(m, '--board', 'ninguem/9', 'pausar')).toBe(2)
+    expect(existsSync(join(pasta, 'nova'))).toBe(false)
+  })
+
+  it.each(subcomandos)('board sem mandato: %s sai com 2 e não cria nada', async (...argv) => {
+    const { m, raiz, padrao, lerMandato, graphql } = montarRecusa(false)
+    const antes = readdirSync(pasta).sort()
+    expect(await rodar(m, '--board', 'fulano/7', ...argv)).toBe(2)
+    expect(m.avisos[0]).toBe(SEM_MANDATO)
+    expect(readdirSync(pasta).sort()).toEqual(antes)
+    expect(existsSync(join(raiz, 'estado'))).toBe(false)
+    expect(existsSync(join(padrao, 'claude', 'despachos-fabrica'))).toBe(false)
+    expect(lerMandato).not.toHaveBeenCalled()
+    expect(graphql).not.toHaveBeenCalled()
+  })
+
+  it('--board sem valor sai com 1 e mostra o uso', async () => {
+    const { m } = montarRecusa(null)
+    expect(await rodar(m, '--board')).toBe(1)
+    expect(m.avisos[0]).toBe('fabrica: --board sem valor')
+    expect(m.avisos[1]?.startsWith(USO_COMEÇA)).toBe(true)
+  })
+
+  it('--board inválido sai com 1 e mostra o uso', async () => {
+    const { m } = montarRecusa(null)
+    expect(await rodar(m, '--board', 'x', 'estado')).toBe(1)
+    expect(m.avisos[0]).toBe('fabrica: --board inválido: x (use <owner>/<número do Project>)')
+    expect(m.avisos[1]?.startsWith(USO_COMEÇA)).toBe(true)
+  })
+
+  it('--board fora da primeira posição não ganha tratamento novo', async () => {
+    const { m } = montarRecusa(null)
+    expect(await rodar(m, 'estado', '--board', 'fulano/7')).toBe(1)
+    expect(m.avisos[0]).toBe('fabrica: argumento a mais: --board')
+    expect(await rodar(m, 'iniciar', '5', '--board', 'fulano/7')).toBe(1)
+    expect(m.avisos.at(-2)).toBe('fabrica: flag desconhecida: --board')
+  })
+})
+
+describe.skipIf(process.platform !== 'linux')(
+  'um board novo entra só por configuração',
+  { timeout: 20_000 },
+  () => {
+    const MANDATO_FICTICIO = `MANDATO DO FULANO ${randomUUID()}\n- regra do fulano\n`
+
+    function montarFicticio(mandato: boolean): {
+      m: Montagem
+      raiz: string
+      padrao: string
+      lerMandato: ReturnType<typeof vi.fn>
+    } {
+      const raiz = join(pasta, 'ficticio')
+      const padrao = join(pasta, 'ws-padrao')
+      mkdirSync(join(raiz, 'ws', 'planning'), { recursive: true })
+      const lerMandato = vi.fn(() => Promise.resolve(MANDATO_FICTICIO))
+      const m = montar(
+        { '/gm-spec #5': 'PARADA: x' },
+        {
+          configuracao: configuracaoDeTeste({
+            home: homedir(),
+            workspace: padrao,
+            extras: [boardFicticio({ home: homedir(), raiz, mandato })],
+          }),
+          lerMandato: lerMandato as unknown as DepsDoCli['lerMandato'],
+        },
+        { OC_FABRICA_DIR: undefined },
+      )
+      return { m, raiz, padrao, lerMandato }
+    }
+
+    it('iniciar grava a frente na pasta do board novo, e não na do padrão', async () => {
+      const { m, raiz, padrao } = montarFicticio(true)
+      expect(
+        await rodar(m, '--board', 'fulano/7', 'iniciar', '5', '--comando', '/gm-spec #5'),
+      ).toBe(0)
+      expect(JSON.stringify(lerEstado(join(raiz, 'estado')))).toContain('#5')
+      expect(existsSync(join(padrao, 'claude', 'despachos-fabrica'))).toBe(false)
+    })
+
+    it('rodar pede o mandato do board novo e lança a sessão no workspace dele', async () => {
+      const { m, raiz, lerMandato } = montarFicticio(true)
+      expect(
+        await rodar(m, '--board', 'fulano/7', 'iniciar', '5', '--comando', '/gm-spec #5'),
+      ).toBe(0)
+      expect(await rodar(m, '--board', 'fulano/7', 'rodar')).toBe(0)
+      expect(lerMandato).toHaveBeenCalledWith(
+        expect.objectContaining({ repo: { owner: 'fulano', name: 'repo-x' } }),
+      )
+      const [id] = lancados()
+      const gravado = gravadoPeloFalso((id as string).replace(/\.json$/, ''))
+      expect(realpathSync(gravado.cwd)).toBe(realpathSync(join(raiz, 'ws')))
+      expect(gravado.args).toContain(`--add-dir=${join(raiz, 'ws', 'planning')}`)
+      expect(gravado.prompt).toContain(MANDATO_FICTICIO.split('\n')[0] as string)
+    })
+
+    it('uma nota que cita o checkout do board novo é recusada com o motivo dele', async () => {
+      const { m, raiz } = montarFicticio(true)
+      const nota = `veja ${join(raiz, 'ws', 'repo-x')}`
+      expect(
+        await rodar(
+          m,
+          '--board',
+          'fulano/7',
+          'iniciar',
+          '6',
+          '--comando',
+          '/gm-spec #6',
+          '--nota',
+          nota,
+        ),
+      ).toBe(1)
+      expect(m.avisos.join('\n')).toContain('a nota aponta para o que o board fictício proíbe')
+    })
+
+    it('o mesmo board, com mandato null, cai na recusa', async () => {
+      const { m, raiz } = montarFicticio(false)
+      expect(await rodar(m, '--board', 'fulano/7', 'rodar')).toBe(2)
+      expect(m.avisos[0]).toContain('não tem mandato aprovado')
+      expect(existsSync(join(raiz, 'estado'))).toBe(false)
+    })
+  },
+)

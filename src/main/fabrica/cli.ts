@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { GraphQLFn } from '../../core/board/types'
 import {
   abertosDaEntrada,
@@ -15,12 +15,15 @@ import {
   novaRevisao,
 } from '../../core/fabrica/revisoes'
 import { comandoDaEstacao } from '../../core/fabrica/estacao'
+import { avaliarComando, avaliarNota, caminhosProibidos } from '../../core/fabrica/mandato'
 import {
-  avaliarComando,
-  avaliarNota,
-  caminhosProibidos,
-  REPO_DA_FABRICA,
-} from '../../core/fabrica/mandato'
+  resolverBoard,
+  type BoardDaFabrica,
+  type ConfiguracaoDaFabrica,
+  type OrigemDoMandato,
+  type ProibidosDoBoard,
+} from '../../core/fabrica/configuracao'
+import { configuracaoDaFabrica } from './configuracao'
 import { createGhTokenSource } from '../github/token'
 import { createGitHubGraphQL } from '../github/graphql'
 import {
@@ -47,11 +50,12 @@ import { rodar } from './rodar'
 export interface DepsDoCli {
   argv: readonly string[]
   raizDoRepo: string
+  configuracao: ConfiguracaoDaFabrica
   env: NodeJS.ProcessEnv
   platform: NodeJS.Platform
   home: string
   agora: () => string
-  lerMandato: () => Promise<string>
+  lerMandato: (origem: OrigemDoMandato) => Promise<string>
   graphql: GraphQLFn
   intervaloMs: number
   sinal: AbortSignal
@@ -60,7 +64,7 @@ export interface DepsDoCli {
 }
 
 const USO =
-  'uso: yarn fabrica [iniciar <n> [--comando "<cmd>"] [--nota "<texto>"] [--ensaio] | rodar | estado | fechar <item> "<resolução>" | pausar | retomar | entrada "<texto>" | triar <item> "<resolução>" | confirmar <arquivo> | contestar <arquivo> "<motivo>" | atender <arquivo> "<resolução>"]'
+  'uso: yarn fabrica [--board <owner>/<n>] [iniciar <n> [--comando "<cmd>"] [--nota "<texto>"] [--ensaio] | rodar | estado | fechar <item> "<resolução>" | pausar | retomar | entrada "<texto>" | triar <item> "<resolução>" | confirmar <arquivo> | contestar <arquivo> "<motivo>" | atender <arquivo> "<resolução>"]'
 
 type Comando =
   | { tipo: 'iniciar'; card: number; comando: string | null; nota: string | null; ensaio: boolean }
@@ -76,7 +80,27 @@ type Comando =
   | { tipo: 'atender'; arquivo: string; resolucao: string }
 
 /** Lê os argumentos; devolve o que estava errado, em texto, quando não servem. */
-function lerArgumentos(argv: readonly string[]): Comando | { erro: string } {
+function lerArgumentos(
+  argv: readonly string[],
+): { board: string | null; comando: Comando } | { erro: string } {
+  if (argv[0] !== '--board') return lerComando(argv, null)
+  const valor = argv[1]
+  if (valor === undefined) return { erro: '--board sem valor' }
+  if (!/^[A-Za-z0-9-]+\/[1-9]\d*$/.test(valor)) {
+    return { erro: `--board inválido: ${valor} (use <owner>/<número do Project>)` }
+  }
+  return lerComando(argv.slice(2), valor)
+}
+
+function lerComando(
+  argv: readonly string[],
+  board: string | null,
+): { board: string | null; comando: Comando } | { erro: string } {
+  const lido = lerSubcomando(argv)
+  return 'erro' in lido ? lido : { board, comando: lido }
+}
+
+function lerSubcomando(argv: readonly string[]): Comando | { erro: string } {
   const sub = argv[0] ?? 'rodar'
   const resto = argv.slice(1)
   if (sub === 'rodar' || sub === 'estado' || sub === 'pausar' || sub === 'retomar') {
@@ -153,9 +177,9 @@ function codigoDoErro(mensagem: string): number {
 }
 
 export async function executar(deps: DepsDoCli): Promise<number> {
-  const lido = lerArgumentos(deps.argv)
-  if ('erro' in lido) {
-    deps.avisar(`fabrica: ${lido.erro}`)
+  const argumentos = lerArgumentos(deps.argv)
+  if ('erro' in argumentos) {
+    deps.avisar(`fabrica: ${argumentos.erro}`)
     deps.avisar(USO)
     return 1
   }
@@ -164,10 +188,16 @@ export async function executar(deps: DepsDoCli): Promise<number> {
     return 2
   }
 
-  const workspace = dirname(deps.raizDoRepo)
-  const checkoutPrincipal = join(workspace, REPO_DA_FABRICA.name)
-  const proibidos = caminhosProibidos(deps.home, workspace, checkoutPrincipal)
-  const pasta = pastaDaFabrica(deps.env, deps.raizDoRepo)
+  const lido = argumentos.comando
+  const resolvido = resolverBoard(deps.configuracao, argumentos.board)
+  if (!resolvido.ok) {
+    deps.avisar(`fabrica: ${resolvido.motivo}`)
+    return 2
+  }
+  const board = resolvido.board
+  const workspace = board.workspace
+  const proibidos = caminhosProibidos(deps.home, board)
+  const pasta = pastaDaFabrica(deps.env, board)
   try {
     recusarTemporaria(pasta)
   } catch (erro) {
@@ -232,7 +262,7 @@ export async function executar(deps: DepsDoCli): Promise<number> {
       deps.escrever(`${lido.item} triado`)
       return 0
     }
-    if (lido.tipo === 'iniciar') return await iniciar(deps, pasta, proibidos, lido)
+    if (lido.tipo === 'iniciar') return await iniciar(deps, pasta, proibidos, board, lido)
     if (lido.tipo === 'fechar') {
       const resultado = await alterarEstado(pasta, (e) => {
         const r = fecharItem(e, lido.item, lido.resolucao, deps.agora())
@@ -247,7 +277,7 @@ export async function executar(deps: DepsDoCli): Promise<number> {
       deps.escrever(`${lido.item} fechado`)
       return 0
     }
-    return await rodar({ pasta, workspace, raizDoRepo: deps.raizDoRepo, proibidos, deps })
+    return await rodar({ pasta, workspace, raizDoRepo: deps.raizDoRepo, proibidos, board, deps })
   } catch (erro) {
     const mensagem = mensagemDe(erro)
     deps.avisar(`fabrica: ${mensagem}`)
@@ -315,12 +345,13 @@ function revisar(
 async function iniciar(
   deps: DepsDoCli,
   pasta: string,
-  proibidos: readonly string[],
+  proibidos: ProibidosDoBoard,
+  board: BoardDaFabrica,
   p: Extract<Comando, { tipo: 'iniciar' }>,
 ): Promise<number> {
   let comando = p.comando
   if (comando === null) {
-    const proposto = comandoDaEstacao(p.card, await lerItemNoBoard(deps.graphql, p.card))
+    const proposto = comandoDaEstacao(p.card, await lerItemNoBoard(deps.graphql, board, p.card))
     if ('erro' in proposto) {
       deps.avisar(`fabrica: ${proposto.erro}`)
       return 1
@@ -444,9 +475,17 @@ export async function main(sinal: AbortSignal): Promise<number> {
     process.stderr.write('fabrica: rode pelo yarn fabrica (falta OC_FABRICA_RAIZ)\n')
     return 2
   }
+  let configuracao: ConfiguracaoDaFabrica
+  try {
+    configuracao = configuracaoDaFabrica(homedir())
+  } catch (erro) {
+    process.stderr.write(`fabrica: ${mensagemDe(erro)}\n`)
+    return 2
+  }
   return await executar({
     argv: process.argv.slice(2),
     raizDoRepo: resolve(raiz),
+    configuracao,
     env: process.env,
     platform: process.platform,
     home: homedir(),

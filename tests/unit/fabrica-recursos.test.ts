@@ -50,7 +50,7 @@ describe('cardDaCwd', () => {
     ['/h/operations-center-12x-y', null],
     ['', null],
   ])('%s → %s', (cwd, card) => {
-    expect(cardDaCwd(cwd)).toBe(card)
+    expect(cardDaCwd(cwd, 'operations-center')).toBe(card)
   })
 })
 
@@ -87,6 +87,7 @@ function portas(muda: Partial<PortasDosRecursos> = {}): PortasDosRecursos {
   return {
     plataforma: 'linux',
     env: { OC_SMOKE_CADEADO: '/x/c.lock' },
+    nomeDoRepo: 'operations-center',
     uid: 1000,
     pastaDaFabrica: '/w/claude/despachos-fabrica',
     marca: () => ({ kind: 'ok', marca: 'MANDATO' }),
@@ -358,6 +359,7 @@ describe('lerRecursos com o flock de verdade', () => {
           portasReais({
             env: { OC_SMOKE_CADEADO: arquivo },
             pastaDaFabrica: base,
+            nomeDoRepo: 'operations-center',
             marca: () => ({ kind: 'ok', marca: 'M' }),
           }),
         )
