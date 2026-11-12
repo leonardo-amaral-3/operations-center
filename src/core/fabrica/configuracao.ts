@@ -63,15 +63,19 @@ function textoNaoVazio(v: unknown): v is string {
   return typeof v === 'string' && v.trim() !== ''
 }
 
-/** `~` → home, `~/x` → home/x, `/x/` → `/x`; qualquer outro formato é inválido (`null`). */
+/** Tira a barra final, menos da raiz: `/x/` → `/x`, `/` → `/`. */
+function semBarraFinal(n: string): string {
+  return n.length > 1 && n.endsWith('/') ? n.slice(0, -1) : n
+}
+
+/**
+ * `~` → home, `~/x` e `~/x/` → home/x, `/x` e `/x/` → `/x`; o resultado nunca termina em `/`, salvo
+ * a raiz. Qualquer outro formato é inválido (`null`).
+ */
 function expandir(v: unknown, home: string): string | null {
   if (typeof v !== 'string') return null
-  if (v === '~') return home
-  if (v.startsWith('~/')) return join(home, v.slice(2))
-  if (v.startsWith('/')) {
-    const n = normalize(v)
-    return n.length > 1 && n.endsWith('/') ? n.slice(0, -1) : n
-  }
+  if (v === '~' || v.startsWith('~/')) return semBarraFinal(join(home, v.slice(2)))
+  if (v.startsWith('/')) return semBarraFinal(normalize(v))
   return null
 }
 
