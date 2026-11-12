@@ -6,6 +6,7 @@ import {
   parseConfiguracao,
   resolverBoard,
 } from '../../src/core/fabrica/configuracao'
+import { avaliarComando, caminhosProibidos } from '../../src/core/fabrica/mandato'
 import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
 import { boardFicticio, configuracaoDeTeste } from './fabrica-board-de-teste'
 
@@ -132,6 +133,14 @@ describe('parseConfiguracao', () => {
       mexer((m) => m.boards.push({ ...m.boards[0]!, projeto: 2 })),
       'boards[1].pastaDoEstado: repetida',
     ],
+    [
+      'pastaDoEstado repetida com barra final',
+      mexer((m) => {
+        m.boards[0]!.pastaDoEstado = '~/a'
+        m.boards.push({ ...m.boards[0]!, projeto: 2, pastaDoEstado: '~/a/' })
+      }),
+      'boards[1].pastaDoEstado: repetida',
+    ],
     ['padrao', mexer((m) => (m.padrao = 'z/9')), 'padrao'],
   ]
   it.each(casos)('%s', (_n, bruto, onde) => {
@@ -140,13 +149,52 @@ describe('parseConfiguracao', () => {
     )
   })
 
-  it('expande ~, ~/x e /x/', () => {
+  it.each([
+    ['~/x', '/home/u/x'],
+    ['~/x/', '/home/u/x'],
+    ['/x', '/x'],
+    ['/x/', '/x'],
+  ])('lê %s como %s em todos os campos de caminho', (valor, esperado) => {
+    const m = minimo()
+    const b0 = m.boards[0]!
+    b0.workspace = valor
+    b0.checkoutPrincipal = valor
+    b0.pastaDoEstado = valor
+    b0.proibidos = { ...b0.proibidos, caminhos: [valor] }
+    const b = boardPadrao(parseConfiguracao(m, HOME))
+    expect([b.workspace, b.checkoutPrincipal, b.pastaDoEstado, ...b.proibidos.caminhos]).toEqual([
+      esperado,
+      esperado,
+      esperado,
+      esperado,
+    ])
+  })
+  it('~ e ~/ são a home, / é a raiz', () => {
     const m = minimo()
     m.boards[0]!.workspace = '~'
-    m.boards[0]!.checkoutPrincipal = '~/x'
-    m.boards[0]!.pastaDoEstado = '/x/'
+    m.boards[0]!.checkoutPrincipal = '~/'
+    m.boards[0]!.pastaDoEstado = '/'
     const b = boardPadrao(parseConfiguracao(m, HOME))
-    expect([b.workspace, b.checkoutPrincipal, b.pastaDoEstado]).toEqual([HOME, '/home/u/x', '/x'])
+    expect([b.workspace, b.checkoutPrincipal, b.pastaDoEstado]).toEqual([HOME, HOME, '/'])
+    const m2 = minimo()
+    m2.boards[0]!.workspace = '~'
+    expect(boardPadrao(parseConfiguracao(m2, '/home/u/')).workspace).toBe('/home/u')
+    expect(boardPadrao(parseConfiguracao(m2, '/home/u//')).workspace).toBe('/home/u')
+  })
+  it('o proibido ~/notoria/ sai igual ao ~/notoria e barra o caminho absoluto', () => {
+    const com = minimo()
+    com.boards[0]!.proibidos = { ...com.boards[0]!.proibidos, caminhos: ['~/notoria/'] }
+    const sem = minimo()
+    sem.boards[0]!.proibidos = { ...sem.boards[0]!.proibidos, caminhos: ['~/notoria'] }
+    const b = boardPadrao(parseConfiguracao(com, HOME))
+    expect(b.proibidos.caminhos).toEqual(['/home/u/notoria'])
+    expect(boardPadrao(parseConfiguracao(sem, HOME)).proibidos.caminhos).toEqual([
+      '/home/u/notoria',
+    ])
+    expect(avaliarComando('/gm-card /home/u/notoria', caminhosProibidos(HOME, b))).toEqual({
+      ok: false,
+      motivo: 'o argumento aponta para m',
+    })
   })
   it('ignora campo desconhecido, e mandato ausente vira null', () => {
     const m = minimo()
