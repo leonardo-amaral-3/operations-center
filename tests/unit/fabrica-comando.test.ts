@@ -72,7 +72,7 @@ describe('argvDoComando', () => {
       { tipo: 'fechar', item: 'q-0009', resolucao: 'gravar no cofre' },
       { tipo: 'entrada', texto: 'o suporte pediu CSV' },
       { tipo: 'confirmar', arquivo: '2026-11-10-a-sala-le-o-mandato-pela-graphql.md' },
-      { tipo: 'iniciar', card: 940, nota: 'x' },
+      { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 940, nota: 'x' },
     ]
     for (const pedido of uniao) {
       const argv = argvDoComando(pedido)
@@ -373,35 +373,60 @@ describe('os comandos confirmar e contestar (F5, CA-5.2 e CA-E3)', () => {
 })
 
 describe('o comando iniciar (F6, CA-6.2)', () => {
-  it('vira ["iniciar", <card>, "--nota", <nota aparada>]', () => {
-    expect(argvDoComando({ tipo: 'iniciar', card: 940, nota: ' x ' })).toEqual([
-      'iniciar',
-      '940',
-      '--nota',
-      'x',
-    ])
-    expect(argvDoComando({ tipo: 'iniciar', card: 940, nota: 'a'.repeat(1000) })).not.toBeNull()
+  it('vira ["iniciar", <repo>#<card>, "--nota", <nota aparada>]', () => {
+    expect(
+      argvDoComando({
+        tipo: 'iniciar',
+        repo: 'leonardo-amaral-3/operations-center',
+        card: 940,
+        nota: ' x ',
+      }),
+    ).toEqual(['iniciar', 'leonardo-amaral-3/operations-center#940', '--nota', 'x'])
+    expect(
+      argvDoComando({
+        tipo: 'iniciar',
+        repo: 'leonardo-amaral-3/operations-center',
+        card: 940,
+        nota: 'a'.repeat(1000),
+      }),
+    ).not.toBeNull()
     expect(LIMITE_DA_NOTA_DO_APP).toBe(1000)
   })
 
   it.each([
-    { tipo: 'iniciar', card: 0, nota: 'x' },
-    { tipo: 'iniciar', card: -1, nota: 'x' },
-    { tipo: 'iniciar', card: 1.5, nota: 'x' },
-    { tipo: 'iniciar', card: '940', nota: 'x' },
-    { tipo: 'iniciar', card: NaN, nota: 'x' },
-    { tipo: 'iniciar', card: 940 },
-    { tipo: 'iniciar', card: 940, nota: 7 },
-    { tipo: 'iniciar', card: 940, nota: '' },
-    { tipo: 'iniciar', card: 940, nota: '   ' },
-    { tipo: 'iniciar', card: 940, nota: 'a\nb' },
-    { tipo: 'iniciar', card: 940, nota: 'a\rb' },
-    { tipo: 'iniciar', card: 940, nota: 'a\u0000b' },
-    { tipo: 'iniciar', card: 940, nota: 'a\u0085b' },
-    { tipo: 'iniciar', card: 940, nota: 'a\u2028b' },
-    { tipo: 'iniciar', card: 940, nota: 'a\u2029b' },
-    { tipo: 'iniciar', card: 940, nota: '--comando x' },
-    { tipo: 'iniciar', card: 940, nota: 'a'.repeat(1001) },
+    { tipo: 'iniciar', card: 940, nota: 'x' },
+    { tipo: 'iniciar', repo: '', card: 940, nota: 'x' },
+    { tipo: 'iniciar', repo: 'semBarra', card: 940, nota: 'x' },
+    { tipo: 'iniciar', repo: 'a b/c', card: 940, nota: 'x' },
+    { tipo: 'iniciar', repo: 'a/b/c', card: 940, nota: 'x' },
+    { tipo: 'iniciar', repo: 7, card: 940, nota: 'x' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 0, nota: 'x' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: -1, nota: 'x' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 1.5, nota: 'x' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: '940', nota: 'x' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: NaN, nota: 'x' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 940 },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 940, nota: 7 },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 940, nota: '' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 940, nota: '   ' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 940, nota: 'a\nb' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 940, nota: 'a\rb' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 940, nota: 'a\u0000b' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 940, nota: 'a\u0085b' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 940, nota: 'a\u2028b' },
+    { tipo: 'iniciar', repo: 'leonardo-amaral-3/operations-center', card: 940, nota: 'a\u2029b' },
+    {
+      tipo: 'iniciar',
+      repo: 'leonardo-amaral-3/operations-center',
+      card: 940,
+      nota: '--comando x',
+    },
+    {
+      tipo: 'iniciar',
+      repo: 'leonardo-amaral-3/operations-center',
+      card: 940,
+      nota: 'a'.repeat(1001),
+    },
   ])('%j → null', (pedido) => {
     expect(argvDoComando(pedido)).toBeNull()
   })
@@ -423,6 +448,7 @@ describe('o comando iniciar (F6, CA-6.2)', () => {
       ['iniciar', '940', '--nota', 'x', '--ensaio'],
       ['iniciar', '940'],
       ['iniciar', '0940', '--nota', 'x'],
+      ['iniciar', '940', '--nota', 'x'],
       ['iniciar', 'x', '--nota', 'x'],
       ['iniciar', '940', '--comando', 'x'],
     ]) {
@@ -431,7 +457,7 @@ describe('o comando iniciar (F6, CA-6.2)', () => {
     }
     expect(chamadas).toHaveLength(1)
 
-    const r = await com(['iniciar', '940', '--nota', 'x'])({})
+    const r = await com(['iniciar', 'leonardo-amaral-3/operations-center#940', '--nota', 'x'])({})
     expect(r.ok).toBe(true)
     expect(chamadas).toHaveLength(2)
   })
@@ -460,23 +486,36 @@ describe('o comando iniciar (F6, CA-6.2)', () => {
       lerMandato: () => Promise.resolve('MANDATO DE TESTE\n'),
     })
 
-    const recusou = await executor({ tipo: 'iniciar', card: 940, nota: 'sobe na main hoje' })
+    const recusou = await executor({
+      tipo: 'iniciar',
+      repo: 'leonardo-amaral-3/operations-center',
+      card: 940,
+      nota: 'sobe na main hoje',
+    })
     expect(recusou.ok).toBe(false)
     expect(recusou.erro).toContain('a nota cita main, release, tag ou hotfix')
     expect(existsSync(join(pasta, 'estado.json'))).toBe(false)
 
-    const r = await executor({ tipo: 'iniciar', card: 940, nota: ' Pronto às 8h ' })
+    const r = await executor({
+      tipo: 'iniciar',
+      repo: 'leonardo-amaral-3/operations-center',
+      card: 940,
+      nota: ' Pronto às 8h ',
+    })
     expect(r).toMatchObject({
       ok: true,
       codigo: 0,
-      argv: ['iniciar', '940', '--nota', 'Pronto às 8h'],
+      argv: ['iniciar', 'leonardo-amaral-3/operations-center#940', '--nota', 'Pronto às 8h'],
     })
     const estado = JSON.parse(readFileSync(join(pasta, 'estado.json'), 'utf8')) as {
       frentes: Array<{ card: number }>
       despachos: Array<{ card: number; comando: string; estado: string; nota: string | null }>
     }
     expect(estado.frentes).toHaveLength(1)
-    expect(estado.frentes[0]).toMatchObject({ card: 940 })
+    expect(estado.frentes[0]).toMatchObject({
+      card: 940,
+      repo: 'leonardo-amaral-3/operations-center',
+    })
     expect(estado.despachos).toHaveLength(1)
     expect(estado.despachos[0]).toMatchObject({
       card: 940,

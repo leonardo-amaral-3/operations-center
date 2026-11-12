@@ -8,6 +8,7 @@ export const LIMITE_DE_DESPACHOS_POR_FRENTE = 20
 export const LIMITE_DA_NOTA = 1000
 
 export interface FrenteDoBriefing {
+  repo: string // c.repository, 'owner/name'
   card: number
   titulo: string
   url: string
@@ -41,6 +42,7 @@ export function frentesDoBriefing(board: Board, sala: SalaDaFabrica | null): Fre
           estacaoDaColuna(colunaDoCard(board, c)) === estacao,
       )
       .map((c) => ({
+        repo: c.repository,
         card: c.number,
         titulo: c.title,
         url: c.url,

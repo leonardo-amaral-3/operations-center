@@ -277,6 +277,7 @@ describe('Briefing · Soltar o dia (CA-6.2)', () => {
     await waitFor(() => expect(screen.getAllByTestId('fabrica-briefing-resultado')).toHaveLength(2))
     expect(comando.mock.calls.map(([c]) => (c as { card: number }).card)).toEqual([940, 950])
     const primeira = comando.mock.calls[0]![0] as Extract<ComandoDaFabrica, { tipo: 'iniciar' }>
+    expect(primeira.repo).toBe('leonardo-amaral-3/operations-center')
     expect(primeira.nota).toMatch(
       /^Briefing do dia \d\d\/\d\d: pronto quando spec aprovada\. Contexto do dia: prazo da secretaria\.$/,
     )
