@@ -75,3 +75,30 @@ export function boardDeDoisRepos(p: { raiz: string }): unknown {
 
 /** O repo do board `padrao` (`leonardo-amaral-3/operations-center`). */
 export const REPO_TESTE: RepoDoBoard = { owner: 'leonardo-amaral-3', name: 'operations-center' }
+
+/**
+ * Duas boards (#157): o Project 2 real, com a pasta de estado em `<raiz>/estado1`, e o `fulano/8` de
+ * `boardDeDoisRepos` (`<raiz>/estado2`). `semMandato` tira o `mandato` do segundo.
+ */
+export function configuracaoComDoisBoards(p: {
+  raiz: string
+  home: string
+  semMandato?: boolean
+}): ConfiguracaoDaFabrica {
+  const cru = JSON.parse(
+    readFileSync(join(__dirname, '..', '..', 'fabrica', 'boards.json'), 'utf8'),
+  ) as { padrao: string; boards: EntradaCrua[] }
+  const padrao = cru.boards.find((b) => `${b.owner}/${b.projeto}` === cru.padrao)!
+  const segundo = boardDeDoisRepos({ raiz: p.raiz }) as Record<string, unknown>
+  return parseConfiguracao(
+    {
+      versao: 1,
+      padrao: cru.padrao,
+      boards: [
+        { ...padrao, pastaDoEstado: join(p.raiz, 'estado1') },
+        p.semMandato ? { ...segundo, mandato: null } : segundo,
+      ],
+    },
+    p.home,
+  )
+}

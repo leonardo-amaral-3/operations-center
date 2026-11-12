@@ -858,20 +858,25 @@ describe('a sala só lê', () => {
   // dependência injetada, e não nomeia porta de escrita da pasta da fábrica. O `mandatoNaSala.ts`
   // (#134) também: só lê o mandato da `dev`. As revisões são escritas só pelo `revisoes.ts`, chamado
   // pelo `executar` do CLI; o `lerRevisoesDaSala` do `sala.ts` só lê.
-  it.each(['sala.ts', 'comando.ts', 'recursos.ts', 'assumir.ts', 'mandatoNaSala.ts', 'sessoes.ts'])(
-    'src/main/fabrica/%s não nomeia nenhuma porta de escrita',
-    (arquivo) => {
-      const texto = readFileSync(
-        join(__dirname, '..', '..', 'src', 'main', 'fabrica', arquivo),
-        'utf8',
-      )
-      const achados = PROIBIDOS.filter((nome) => texto.includes(nome))
-      expect(
-        achados,
-        `${arquivo} só chega à pasta da fábrica pelo \`executar\` (#122, CA-3a.3): ${achados.join(', ')} é porta de escrita. Fechar um item é do \`yarn fabrica fechar\`, que passa pelo cadeado do estado.json`,
-      ).toEqual([])
-    },
-  )
+  it.each([
+    'sala.ts',
+    'comando.ts',
+    'recursos.ts',
+    'assumir.ts',
+    'mandatoNaSala.ts',
+    'sessoes.ts',
+    'boardDoApp.ts',
+  ])('src/main/fabrica/%s não nomeia nenhuma porta de escrita', (arquivo) => {
+    const texto = readFileSync(
+      join(__dirname, '..', '..', 'src', 'main', 'fabrica', arquivo),
+      'utf8',
+    )
+    const achados = PROIBIDOS.filter((nome) => texto.includes(nome))
+    expect(
+      achados,
+      `${arquivo} só chega à pasta da fábrica pelo \`executar\` (#122, CA-3a.3): ${achados.join(', ')} é porta de escrita. Fechar um item é do \`yarn fabrica fechar\`, que passa pelo cadeado do estado.json`,
+    ).toEqual([])
+  })
 
   // As sessões da máquina (#142) só leem; nenhum sinal para processo. `skill` não conta: o `\b`
   // exige fronteira antes do `k`.
