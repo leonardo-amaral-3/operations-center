@@ -28,7 +28,7 @@ import {
 } from '../linha'
 import { REPO_DOS_CARDS_DA_FABRICA } from '../boardDaFabrica'
 import { abaDaLinha, cardsDaLinha, mostraAFabrica, type CardNaLinha } from '../linhaDoBoard'
-import { CabecalhoDaSala } from '../Moldura'
+import { CabecalhoDaSala, ListaComTeto } from '../Moldura'
 import { rotaDoItem, type TelaDaFabrica } from '../rotas'
 import type { PropsDaTela } from '../telas'
 import { useCardsDoBoard } from '../useCardsDoBoard'
@@ -442,23 +442,31 @@ function Linha({
                   {rotulo}
                   <Nivel texto={nivel} />
                 </div>
-                {despachos.map((d) => (
-                  <CartaoDeDespacho
-                    key={d.id}
-                    d={d}
-                    card={cards.get(d.cardUrl)}
-                    segura={suite?.kind === 'ocupada' && suite.card === d.card}
-                    ir={ir}
-                  />
-                ))}
-                {itens.map((item) => (
-                  <CartaoParado key={item.id} item={item} card={cards.get(item.cardUrl)} ir={ir} />
-                ))}
-                {doBoardNaColuna.map((c) => (
-                  <CartaoDoBoard key={c.card.itemId} c={c} ir={ir} />
-                ))}
-                {despachos.length === 0 && itens.length === 0 && doBoardNaColuna.length === 0 && (
+                {despachos.length === 0 && itens.length === 0 && doBoardNaColuna.length === 0 ? (
                   <div className={VAZIO}>{vazio}</div>
+                ) : (
+                  <ListaComTeto lista={`linha-${coluna}`} className="flex flex-col gap-2.5">
+                    {despachos.map((d) => (
+                      <CartaoDeDespacho
+                        key={d.id}
+                        d={d}
+                        card={cards.get(d.cardUrl)}
+                        segura={suite?.kind === 'ocupada' && suite.card === d.card}
+                        ir={ir}
+                      />
+                    ))}
+                    {itens.map((item) => (
+                      <CartaoParado
+                        key={item.id}
+                        item={item}
+                        card={cards.get(item.cardUrl)}
+                        ir={ir}
+                      />
+                    ))}
+                    {doBoardNaColuna.map((c) => (
+                      <CartaoDoBoard key={c.card.itemId} c={c} ir={ir} />
+                    ))}
+                  </ListaComTeto>
                 )}
               </div>
             )
@@ -482,13 +490,13 @@ function Linha({
               <span className="text-xs font-bold">
                 {g.coluna === '' ? 'coluna não declarada no board' : g.coluna}
               </span>
-              <div className="flex flex-wrap gap-3">
+              <ListaComTeto lista={`a-parte-${g.coluna}`} className="flex flex-wrap gap-3">
                 {g.cards.map((c) => (
                   <div key={c.card.itemId} className="w-[210px]">
                     <CartaoDoBoard c={c} ir={ir} />
                   </div>
                 ))}
-              </div>
+              </ListaComTeto>
             </div>
           ))}
         </section>

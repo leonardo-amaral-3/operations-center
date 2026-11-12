@@ -19,7 +19,7 @@ import {
 } from '../briefing'
 import { linhaDoFim, rotuloDoEstado } from '../emVoo'
 import { rotuloDoCard } from '../linha'
-import { CabecalhoInterno } from '../Moldura'
+import { CabecalhoInterno, ListaComTeto } from '../Moldura'
 import { trilhaDa } from '../rotas'
 import type { PropsDaTela } from '../telas'
 import { useBoardDaFabrica } from '../useBoardDaFabrica'
@@ -388,7 +388,7 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
     )
   } else {
     lista = (
-      <>
+      <ListaComTeto lista="briefing-frentes" teto={1040} className="flex flex-col gap-4">
         {frentes.map((f) => (
           <Frente
             key={f.card}
@@ -410,7 +410,7 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
             onAbrir={() => ir({ tela: 'card', card: f.card })}
           />
         ))}
-      </>
+      </ListaComTeto>
     )
   }
 

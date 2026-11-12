@@ -569,6 +569,29 @@ describe('Sala · a Linha segue a aba', () => {
     expect(grupo.textContent).toContain('#911')
   })
 
+  it('(d2) as listas com teto (#149): cartões do board da coluna e do "Fora das estações" ficam dentro delas, e coluna vazia não tem lista', async () => {
+    comBoards(snapshot('ICSF-Solutions/19'))
+    await abrir()
+    await waitFor(() => {
+      expect(texto()).toBe('board Plataformas v2')
+    })
+
+    const naSpec = within(coluna('spec')).getByTestId('fabrica-lista-com-teto')
+    expect(naSpec.getAttribute('data-lista')).toBe('linha-spec')
+    expect(naSpec.getAttribute('data-teto')).toBe('640')
+    expect(within(naSpec).getByTestId('fabrica-board-card').textContent).toContain('#910')
+
+    const vazia = coluna('entrada')
+    expect(within(vazia).queryByTestId('fabrica-lista-com-teto')).toBeNull()
+    expect(vazia.textContent).not.toContain('#910')
+
+    const grupo = await screen.findByTestId('fabrica-a-parte-coluna')
+    const aParte = grupo.querySelector('[data-lista^="a-parte-"]')
+    expect(aParte).not.toBeNull()
+    expect(aParte!.getAttribute('data-lista')).toBe('a-parte-📋 Backlog')
+    expect(aParte!.textContent).toContain('#911')
+  })
+
   it('(e) sem-estado com o board ok mostra a mensagem e o card do board', async () => {
     comBoards(snapshot('ICSF-Solutions/19'))
     await abrir({ kind: 'sem-estado', ...cabecalho() })

@@ -6,7 +6,7 @@ import { Badge } from '../../ui/badge'
 import { Button } from '../../ui/button'
 import { Card } from '../../ui/card'
 import { abrirAoClicar } from '../cartao'
-import { CabecalhoInterno, LinkDoCard } from '../Moldura'
+import { CabecalhoInterno, LinkDoCard, ListaComTeto } from '../Moldura'
 import { trilhaDa } from '../rotas'
 import type { PropsDaTela } from '../telas'
 import {
@@ -104,7 +104,7 @@ export function Release({ tela, ir }: PropsDaTela): JSX.Element {
     doTrem = <Vazio testid="fabrica-release-vazio">Nenhum card na 🚂 Release do board.</Vazio>
   } else {
     doTrem = (
-      <>
+      <ListaComTeto lista="release-trem" className="flex flex-col gap-4">
         {trem.map((c) => {
           const tipo = tipoDoCard(c)
           return (
@@ -128,7 +128,7 @@ export function Release({ tela, ir }: PropsDaTela): JSX.Element {
             </Card>
           )
         })}
-      </>
+      </ListaComTeto>
     )
   }
 
@@ -150,35 +150,37 @@ export function Release({ tela, ir }: PropsDaTela): JSX.Element {
   } else {
     verificacao = (
       <>
-        {trem.flatMap((c) =>
-          linhasDaVerificacao(c, leituras.get(c.itemId)).map((l) =>
-            l.marcavel ? (
-              <label
-                key={l.chave}
-                data-testid="fabrica-release-check"
-                className="flex items-start gap-2.5 text-sm leading-5"
-                title={l.completo}
-              >
-                <input
-                  type="checkbox"
-                  className="size-5 flex-none accent-foreground"
-                  checked={marcadas.has(l.chave)}
-                  onChange={() => alternar(l.chave)}
-                />
-                <span>{l.texto}</span>
-              </label>
-            ) : (
-              <p
-                key={l.chave}
-                data-testid="fabrica-release-sem-check"
-                className="text-sm leading-5 text-foreground/75"
-                title={l.completo}
-              >
-                {l.texto}
-              </p>
+        <ListaComTeto lista="release-verificacao" className="flex flex-col gap-3">
+          {trem.flatMap((c) =>
+            linhasDaVerificacao(c, leituras.get(c.itemId)).map((l) =>
+              l.marcavel ? (
+                <label
+                  key={l.chave}
+                  data-testid="fabrica-release-check"
+                  className="flex items-start gap-2.5 text-sm leading-5"
+                  title={l.completo}
+                >
+                  <input
+                    type="checkbox"
+                    className="size-5 flex-none accent-foreground"
+                    checked={marcadas.has(l.chave)}
+                    onChange={() => alternar(l.chave)}
+                  />
+                  <span>{l.texto}</span>
+                </label>
+              ) : (
+                <p
+                  key={l.chave}
+                  data-testid="fabrica-release-sem-check"
+                  className="text-sm leading-5 text-foreground/75"
+                  title={l.completo}
+                >
+                  {l.texto}
+                </p>
+              ),
             ),
-          ),
-        )}
+          )}
+        </ListaComTeto>
         <p className="text-[13px] leading-[18px]">
           Nenhum agente roda estas consultas: quem confere é você. Marcar aqui não grava em lugar
           nenhum.
@@ -243,7 +245,7 @@ export function Release({ tela, ir }: PropsDaTela): JSX.Element {
               className="rounded-base border-2 border-dashed border-border bg-main/10 px-3.5 py-3 text-sm leading-[21px]"
             >
               <b>O que muda para você</b>
-              {notas}
+              <ListaComTeto lista="release-notas">{notas}</ListaComTeto>
             </div>
             <div className="flex items-center gap-3">
               <Button
