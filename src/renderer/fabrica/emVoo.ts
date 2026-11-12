@@ -96,6 +96,17 @@ export function cardCitado(texto: string): number | null {
   return m === null ? null : Number(m[1])
 }
 
+/**
+ * O card que o texto cita: `owner/name#n` traz o repo; `#n` solto vem com `repo: null` (o repo único
+ * do board). Sem citação, `null`.
+ */
+export function cardCitadoComRepo(texto: string): { repo: string | null; card: number } | null {
+  const m = /([A-Za-z0-9-]+\/[A-Za-z0-9._-]+)#([1-9]\d*)\b/.exec(texto)
+  if (m !== null) return { repo: m[1] ?? null, card: Number(m[2]) }
+  const card = cardCitado(texto)
+  return card === null ? null : { repo: null, card }
+}
+
 export function rotuloDoEstado(estado: DespachoDoCard['estado']): string {
   switch (estado) {
     case 'pendente':

@@ -28,7 +28,7 @@ export type TelaDaFabrica =
   | { tela: 'release' }
   | { tela: 'pergunta'; item: string } // id `q-<n>`
   | { tela: 'decisao'; item: string } // id `q-<n>`
-  | { tela: 'card'; card: number }
+  | { tela: 'card'; card: number; repo: string | null } // repo 'owner/name'; null = o repo único do board
 
 /** Um passo da trilha; `para: null` é a tela atual. */
 export interface Migalha {
@@ -62,6 +62,9 @@ export const NAVEGACAO_DA_SALA: ReadonlyArray<{ tela: NomeDaTela; rotulo: string
   { tela: 'release', rotulo: 'Release' },
   { tela: 'mandato', rotulo: 'Mandato e placar' },
 ]
+
+/** As telas que só existem com o board padrão (#157, Decisão 6): são do operations-center. */
+export const TELAS_SO_DO_PADRAO = ['relatorio', 'portfolio', 'release'] as const
 
 const SALA: TelaDaFabrica = { tela: 'sala' }
 

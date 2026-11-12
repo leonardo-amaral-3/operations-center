@@ -10,11 +10,13 @@ import type {
   OpenClaudeResult,
 } from '../shared/claude'
 import type {
+  BoardNaFabrica,
   CardNaFabrica,
-  ComandoDaFabrica,
+  PedidoDeComando,
   EntradaNaSala,
   MandatoNaSala,
   SessoesDaMaquina,
+  PedidoDoBoard,
   PerguntaDaFila,
   AssumirDespachoRequest,
   AssumirDespachoResult,
@@ -221,23 +223,26 @@ const api: OcApi = {
   readLayout: () => ipcRenderer.invoke(IPC_INVOKE.readLayout) as Promise<LayoutSnapshot>,
   setLayout: (snapshot: LayoutSnapshot) =>
     ipcRenderer.invoke(IPC_INVOKE.setLayout, snapshot) as Promise<void>,
-  readFabrica: () => ipcRenderer.invoke(IPC_INVOKE.readFabrica) as Promise<SalaDaFabrica>,
+  readFabrica: (pedido: PedidoDoBoard) =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabrica, pedido) as Promise<SalaDaFabrica>,
+  readFabricaBoard: (pedido: PedidoDoBoard) =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaBoard, pedido) as Promise<BoardNaFabrica>,
   readFabricaPergunta: (pedido: ReadPerguntaRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.readFabricaPergunta, pedido) as Promise<PerguntaDaFila | null>,
   readRelatorio: (pedido: ReadRelatorioRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.readRelatorio, pedido) as Promise<RelatorioDaSala>,
-  comandoFabrica: (pedido: ComandoDaFabrica) =>
+  comandoFabrica: (pedido: PedidoDeComando) =>
     ipcRenderer.invoke(IPC_INVOKE.comandoFabrica, pedido) as Promise<ResultadoDoComando>,
   readFabricaCard: (pedido: ReadCardDaFabricaRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.readFabricaCard, pedido) as Promise<CardNaFabrica>,
-  readFabricaEntrada: () =>
-    ipcRenderer.invoke(IPC_INVOKE.readFabricaEntrada) as Promise<EntradaNaSala>,
+  readFabricaEntrada: (pedido: PedidoDoBoard) =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaEntrada, pedido) as Promise<EntradaNaSala>,
   assumirDespacho: (pedido: AssumirDespachoRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.assumirDespacho, pedido) as Promise<AssumirDespachoResult>,
-  readFabricaRevisoes: () =>
-    ipcRenderer.invoke(IPC_INVOKE.readFabricaRevisoes) as Promise<RevisoesNaSala>,
-  readFabricaMandato: () =>
-    ipcRenderer.invoke(IPC_INVOKE.readFabricaMandato) as Promise<MandatoNaSala>,
+  readFabricaRevisoes: (pedido: PedidoDoBoard) =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaRevisoes, pedido) as Promise<RevisoesNaSala>,
+  readFabricaMandato: (pedido: PedidoDoBoard) =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaMandato, pedido) as Promise<MandatoNaSala>,
   readFabricaSessoes: () =>
     ipcRenderer.invoke(IPC_INVOKE.readFabricaSessoes) as Promise<SessoesDaMaquina>,
   openCardWindow: (request: OpenCardWindowRequest) =>

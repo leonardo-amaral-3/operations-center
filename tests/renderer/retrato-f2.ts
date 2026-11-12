@@ -14,6 +14,7 @@ const q0013: ItemNaSala = {
   id: 'q-0013',
   tipo: 'pergunta',
   card: 952,
+  repo: 'leonardo-amaral-3/operations-center',
   cardUrl: `${URL}/952`,
   motivo: 'o card não diz qual board é o alvo',
   despacho: 'd-0012',
@@ -30,6 +31,7 @@ const q0016: ItemNaSala = {
   id: 'q-0016',
   tipo: 'pergunta',
   card: 953,
+  repo: 'leonardo-amaral-3/operations-center',
   cardUrl: `${URL}/953`,
   motivo: 'a sessão terminou sem saída',
   despacho: 'd-0015',
@@ -46,6 +48,7 @@ const q0019: ItemNaSala = {
   id: 'q-0019',
   tipo: 'pergunta',
   card: 954,
+  repo: 'leonardo-amaral-3/operations-center',
   cardUrl: `${URL}/954`,
   motivo: 'espera o segundo revisor',
   despacho: 'd-0018',
@@ -62,6 +65,7 @@ const q0022: ItemNaSala = {
   id: 'q-0022',
   tipo: 'pergunta',
   card: 955,
+  repo: 'leonardo-amaral-3/operations-center',
   cardUrl: `${URL}/955`,
   motivo: 'PR #960 aberta na dev (Card: #955); o merge é da orquestradora',
   despacho: 'd-0021',
@@ -112,6 +116,7 @@ export const RETRATO_F2: Extract<SalaDaFabrica, { kind: 'ok' }> = {
     {
       id: 'd-0004',
       card: 1,
+      repo: 'leonardo-amaral-3/operations-center',
       cardUrl: `${URL}/1`,
       comando: '/gm-implement /home/u/pessoal/planning/1-fundar',
       estacao: 'implementacao',
@@ -124,6 +129,7 @@ export const RETRATO_F2: Extract<SalaDaFabrica, { kind: 'ok' }> = {
     {
       id: 'd-0006',
       card: 4,
+      repo: 'leonardo-amaral-3/operations-center',
       cardUrl: `${URL}/4`,
       comando: '/gm-spec #4',
       estacao: 'spec',
@@ -136,6 +142,7 @@ export const RETRATO_F2: Extract<SalaDaFabrica, { kind: 'ok' }> = {
     {
       id: 'd-0008',
       card: 2,
+      repo: 'leonardo-amaral-3/operations-center',
       cardUrl: `${URL}/2`,
       comando: '/gm-card #2',
       estacao: 'card',
@@ -148,6 +155,7 @@ export const RETRATO_F2: Extract<SalaDaFabrica, { kind: 'ok' }> = {
     {
       id: 'd-0010',
       card: 951,
+      repo: 'leonardo-amaral-3/operations-center',
       cardUrl: `${URL}/951`,
       comando: '/gm-ship /home/u/pessoal/planning/951-x',
       estacao: 'revisao',

@@ -6,6 +6,7 @@ import type { ComandoDaFabrica, PerguntaDaFila, SalaDaFabrica } from '../../src/
 import { Decisao } from '../../src/renderer/fabrica/telas/Decisao'
 import type { PropsDaTela } from '../../src/renderer/fabrica/telas'
 import { PERGUNTAS_F3, RETRATO_F3 } from './retrato-f3'
+import { BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 /**
  * A tela Decisão (#132, CA-3.2 a CA-3.4) montada direto com `PropsDaTela` e a ponte falsa: o main nem
@@ -35,6 +36,7 @@ function montar(item: string, extra: Partial<PropsDaTela> = {}, sala: SalaDaFabr
       ir={ir}
       comando={comando}
       emVoo={false}
+      board={BOARD_DO_PROJECT_2}
       {...extra}
     />,
   )
@@ -225,6 +227,7 @@ describe('Decisão · aprovar e devolver (CA-3.3)', () => {
         ir={ir}
         comando={comando}
         emVoo={false}
+        board={BOARD_DO_PROJECT_2}
       />,
     )
     await waitFor(() => {

@@ -16,8 +16,8 @@ import { ChipDaPosicao, Etiqueta, ItemFechado, TextoFinal, useItemDaFila } from 
  * pelo `/gm-ship`, esperando a aprovação de quem lê. As três ações (aprovar, devolver) rodam só `fechar`, com a resolução
  * `aprovado`, `aprovado: <nota>` ou `devolvido: <nota>`; o app não faz merge nem mexe no board.
  */
-export function Decisao({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.Element {
-  const { id, pergunta } = useItemDaFila(tela, sala)
+export function Decisao({ tela, sala, ir, comando, emVoo, board }: PropsDaTela): JSX.Element {
+  const { id, pergunta } = useItemDaFila(tela, sala, board.chave)
 
   return (
     <>
@@ -25,6 +25,7 @@ export function Decisao({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
         atual={tela.tela}
+        padrao={board.padrao}
         direita={
           <div className="flex flex-wrap gap-2">
             <Badge data-testid="fabrica-chip-tipo" className="bg-warning text-warning-foreground">

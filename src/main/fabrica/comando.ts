@@ -1,14 +1,17 @@
 import { ipcMain } from 'electron'
 import { LIMITE_DO_TEXTO_DA_ENTRADA } from '../../core/fabrica/entrada'
 import { LIMITE_DA_REVISAO, NOME_DO_COFRE } from '../../core/fabrica/revisoes'
-import type { ComandoDaFabrica, ResultadoDoComando } from '../../shared/fabrica'
+import type { PedidoDeComando, ResultadoDoComando } from '../../shared/fabrica'
 import { IPC_INVOKE } from '../../shared/ipc'
+import { FORMA_DA_CHAVE } from './boardDoApp'
 import { executar, type DepsDoCli } from './cli'
 
 /**
  * O canal de escrita da fábrica (#129, spec F1.3). O app só chega à pasta da fábrica por aqui, e só
  * pelo `executar` do `yarn fabrica`, com um subcomando de uma lista fechada: o renderer não manda
- * argv, manda uma união tipada, e o `rodar` e o `estado` não cabem nela.
+ * argv, manda uma união tipada, e o `rodar` e o `estado` não cabem nela. O board viaja no pedido (#157) e
+ * chega ao CLI como --board <chave>, sempre, inclusive o padrão: quem resolve e recusa é o executar, antes
+ * de tocar a pasta.
  */
 
 /**
@@ -107,7 +110,17 @@ export function criarExecutorDeComando(
   let fila: Promise<unknown> = Promise.resolve()
 
   async function uma(pedido: unknown): Promise<ResultadoDoComando> {
-    const argv = paraArgv(pedido)
+    const board = (pedido as { board?: unknown } | null)?.board
+    if (
+      typeof pedido !== 'object' ||
+      pedido === null ||
+      board === undefined ||
+      !(board === null || (typeof board === 'string' && FORMA_DA_CHAVE.test(board)))
+    ) {
+      return { ok: false, codigo: 1, argv: [], saida: '', erro: 'comando desconhecido' }
+    }
+    const chave = board ?? deps.configuracao.padrao
+    const argv = paraArgv((pedido as PedidoDeComando).comando)
     // A segunda guarda não confia na primeira: argv vazio viraria `rodar` (P19).
     // E, só para o `iniciar`, recusa toda forma que não seja `iniciar <owner>/<repo>#<card> --nota <nota>`: um
     // `--comando` ou um `--ensaio` nunca chega ao CLI.
@@ -122,18 +135,31 @@ export function criarExecutorDeComando(
     if (argv === null || argv.length === 0 || !ehSubcomandoDoApp(argv[0]) || formaInvalida) {
       return { ok: false, codigo: 1, argv: argv ?? [], saida: '', erro: 'comando desconhecido' }
     }
+    const completo = ['--board', chave, ...argv]
     const saida: string[] = []
     const erro: string[] = []
     try {
       const codigo = await rodarComando({
         ...deps,
-        argv,
+        argv: completo,
         escrever: (t) => saida.push(t),
         avisar: (t) => erro.push(t),
       })
-      return { ok: codigo === 0, codigo, argv, saida: saida.join('\n'), erro: erro.join('\n') }
+      return {
+        ok: codigo === 0,
+        codigo,
+        argv: completo,
+        saida: saida.join('\n'),
+        erro: erro.join('\n'),
+      }
     } catch (err) {
-      return { ok: false, codigo: 1, argv, saida: saida.join('\n'), erro: mensagemDe(err) }
+      return {
+        ok: false,
+        codigo: 1,
+        argv: completo,
+        saida: saida.join('\n'),
+        erro: mensagemDe(err),
+      }
     }
   }
 
@@ -149,6 +175,6 @@ export function registerComandoIpc(
 ): void {
   ipcMain.handle(
     IPC_INVOKE.comandoFabrica,
-    (_event, pedido: ComandoDaFabrica): Promise<ResultadoDoComando> => executor(pedido),
+    (_event, pedido: PedidoDeComando): Promise<ResultadoDoComando> => executor(pedido),
   )
 }

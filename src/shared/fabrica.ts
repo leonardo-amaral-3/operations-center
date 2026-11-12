@@ -22,6 +22,7 @@ export interface ItemNaSala {
   id: string // 'q-0003'
   tipo: 'pergunta' | 'decisao' // a F3 é dona da classificação
   card: number
+  repo: string // 'owner/name' do card (#157)
   cardUrl: string
   motivo: string
   despacho: string
@@ -37,6 +38,7 @@ export interface ItemNaSala {
 export interface DespachoNaSala {
   id: string
   card: number
+  repo: string // 'owner/name' do card (#157)
   cardUrl: string
   comando: string
   estacao: EstacaoDaFabrica | null // null: o comando não começa por uma skill da esteira
@@ -136,6 +138,33 @@ export interface ResultadoDoComando {
   erro: string // o que ele avisou, idem
 }
 
+/** Todo pedido de um canal da fábrica que lê ou escreve a pasta (#157). `null` = o `padrao` do `boards.json`. */
+export interface PedidoDoBoard {
+  board: string | null // a chave do board da aba, '<owner>/<projeto>'
+}
+
+/** O board da aba na fábrica (#157): servido, ou recusado com o motivo do `resolverBoard`. */
+export type BoardNaFabrica =
+  | {
+      kind: 'ok'
+      chave: string // 'leonardo-amaral-3/2'
+      nome: string // 'Operations Center'
+      projeto: number // 2
+      padrao: boolean // é o `padrao` do `boards.json`
+      owner: string // o owner do board (e dos repos dele)
+      repos: string[] | null // lista: os 'owner/name' na ordem do arquivo; null na forma '<owner>/*'
+      unico: string | null // 'owner/name' do repo único; null com vários ou com '<owner>/*'
+      urlDoMandato: string // https://github.com/<owner>/<name>/blob/<ref>/<caminho>
+    }
+  | { kind: 'recusado'; chave: string; motivo: string } // chave '' quando o pedido veio torto
+
+export type BoardNaFabricaOk = Extract<BoardNaFabrica, { kind: 'ok' }>
+
+/** O pedido do canal de escrita (#157): o comando e o board em que ele roda. */
+export interface PedidoDeComando extends PedidoDoBoard {
+  comando: ComandoDaFabrica
+}
+
 /** Como terminou o despacho de origem de um item (o `Desfecho['tipo']` do core, do lado de cá). */
 export type FimDoDespacho = 'proximo' | 'parada' | 'falha'
 
@@ -159,7 +188,7 @@ export interface PerguntaDaFila {
   passos: PassoDaFrente[] // os despachos da frente do item, do mais antigo ao mais novo
 }
 
-export interface ReadPerguntaRequest {
+export interface ReadPerguntaRequest extends PedidoDoBoard {
   id: string
 }
 
@@ -208,7 +237,8 @@ export type CardNaFabrica =
       terminados: DespachoDoCard[] // os concluídos do card, do mais novo ao mais velho
     }
 
-export interface ReadCardDaFabricaRequest {
+export interface ReadCardDaFabricaRequest extends PedidoDoBoard {
+  repo: string | null // 'owner/name'; null = o repo único do board
   card: number
 }
 
@@ -231,7 +261,7 @@ export type EntradaNaSala =
   | { kind: 'ilegivel'; erro: string }
 
 /** Assumir a sessão de um despacho terminado no cartão do card (F4). */
-export interface AssumirDespachoRequest {
+export interface AssumirDespachoRequest extends PedidoDoBoard {
   despacho: string // 'd-0007'
   itemId: string // o `itemId` do card no board do app
 }

@@ -16,8 +16,8 @@ import { ChipDaPosicao, Etiqueta, ItemFechado, TextoFinal, useItemDaFila } from 
  * botão que fecha o item pelo `yarn fabrica fechar`. As opções do protótipo não existem aqui: a
  * sessão não deixa opção estruturada, e a seção diz isso em vez de inventar (F3.6).
  */
-export function Pergunta({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.Element {
-  const { id, pergunta } = useItemDaFila(tela, sala)
+export function Pergunta({ tela, sala, ir, comando, emVoo, board }: PropsDaTela): JSX.Element {
+  const { id, pergunta } = useItemDaFila(tela, sala, board.chave)
 
   return (
     <>
@@ -25,6 +25,7 @@ export function Pergunta({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
         atual={tela.tela}
+        padrao={board.padrao}
         direita={
           <div className="flex flex-wrap gap-2">
             {pergunta ? (

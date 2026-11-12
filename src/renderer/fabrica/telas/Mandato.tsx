@@ -6,7 +6,6 @@ import { Badge } from '../../ui/badge'
 import { Button } from '../../ui/button'
 import { Card } from '../../ui/card'
 import { cn } from '../../ui/cn'
-import { URL_DO_MANDATO_DA_FABRICA } from '../boardDaFabrica'
 import { CabecalhoInterno } from '../Moldura'
 import { trilhaDa } from '../rotas'
 import type { PropsDaTela } from '../telas'
@@ -164,14 +163,14 @@ function Tabela({ leitura }: { leitura: Leitura }): JSX.Element {
   )
 }
 
-export function Mandato({ tela, ir }: PropsDaTela): JSX.Element {
+export function Mandato({ tela, ir, board }: PropsDaTela): JSX.Element {
   const [leitura, setLeitura] = useState<Leitura>(null)
 
   useEffect(() => {
     let vivo = true
 
     void Promise.resolve()
-      .then(() => window.oc.readFabricaMandato())
+      .then(() => window.oc.readFabricaMandato({ board: board.chave }))
       .then(
         (r) => r,
         (err: unknown): MandatoNaSala => ({
@@ -186,7 +185,7 @@ export function Mandato({ tela, ir }: PropsDaTela): JSX.Element {
     return () => {
       vivo = false
     }
-  }, [])
+  }, [board.chave])
 
   const regras = leitura?.kind === 'ok' ? leitura.regras : [REGRA_DAS_PARADAS]
 
@@ -198,7 +197,7 @@ export function Mandato({ tela, ir }: PropsDaTela): JSX.Element {
       <Button asChild size="sm" className="bg-attention text-attention-foreground">
         <a
           data-testid="fabrica-mandato-github"
-          href={URL_DO_MANDATO_DA_FABRICA}
+          href={board.urlDoMandato}
           target="_blank"
           rel="noreferrer"
         >
@@ -211,6 +210,7 @@ export function Mandato({ tela, ir }: PropsDaTela): JSX.Element {
   return (
     <>
       <CabecalhoInterno
+        padrao={board.padrao}
         trilha={trilhaDa(tela, new Date())}
         direita={direita}
         onIr={ir}

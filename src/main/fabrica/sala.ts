@@ -2,26 +2,36 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ipcMain } from 'electron'
 import { despachoAtualDoCard, montarCard } from '../../core/fabrica/card'
-import type { CardDaFabrica } from '../../core/fabrica/cardDaFabrica'
-import type { BoardDaFabrica, BoardDeUmRepo, RepoDoBoard } from '../../core/fabrica/configuracao'
+import {
+  resolverAlvo,
+  type AlvoDoIniciar,
+  type CardDaFabrica,
+} from '../../core/fabrica/cardDaFabrica'
+import {
+  lerRepo,
+  type BoardComMandato,
+  type BoardDaFabrica,
+  type ConfiguracaoDaFabrica,
+  type RepoDoBoard,
+} from '../../core/fabrica/configuracao'
 import { entradaNaSala } from '../../core/fabrica/entrada'
 import { lerRevisoes } from '../../core/fabrica/revisoes'
 import { montarPergunta, montarSala, urlDoCard } from '../../core/fabrica/sala'
 import { TETO_DE_SESSOES, marcaDoDespacho } from '../../core/fabrica/mandato'
 import type { EstadoDaFabrica } from '../../core/fabrica/tipos'
 import type {
+  BoardNaFabrica,
   CardNaFabrica,
   EntradaNaSala,
   EstadoDoDespachante,
   PausaDaFabrica,
   PerguntaDaFila,
-  ReadCardDaFabricaRequest,
-  ReadPerguntaRequest,
   RecursosDaFabrica,
   RevisoesNaSala,
   SalaDaFabrica,
 } from '../../shared/fabrica'
 import { IPC_INVOKE } from '../../shared/ipc'
+import { boardDoPedido, boardNaFabrica } from './boardDoApp'
 import { identidade, lerEntrada, lerEstado, lerPausa, lerSaida, pastaDaFabrica } from './arquivos'
 import { acharDespacho, despachoVivo } from './processos'
 import { lerTextoDasRevisoes } from './revisoes'
@@ -244,32 +254,111 @@ export function lerRevisoesDaSala(pasta: string): RevisoesNaSala {
   }
 }
 
-export function registerFabricaIpc(
-  pasta: string,
-  fontes: FontesDaSala,
-  board: BoardDeUmRepo,
-): void {
-  ipcMain.handle(IPC_INVOKE.readFabrica, (): SalaDaFabrica =>
-    lerSala(pasta, process.platform, () => new Date().toISOString(), fontes, board),
-  )
-  ipcMain.handle(
-    IPC_INVOKE.readFabricaPergunta,
-    (_event, pedido: ReadPerguntaRequest): PerguntaDaFila | null =>
-      typeof pedido?.id === 'string' ? lerPergunta(pasta, pedido.id, board.repoUnico) : null,
-  )
-  ipcMain.handle(
-    IPC_INVOKE.readFabricaCard,
-    (_event, pedido: ReadCardDaFabricaRequest): CardNaFabrica =>
-      Number.isInteger(pedido?.card) && pedido.card > 0
-        ? lerCardDaFabrica(
-            pasta,
-            { repo: board.repoUnico, n: pedido.card },
-            process.platform,
-            fontes,
-            board.repoUnico,
-          )
-        : { kind: 'ilegivel', card: 0, cardUrl: '', erro: 'pedido inválido' },
-  )
-  ipcMain.handle(IPC_INVOKE.readFabricaEntrada, (): EntradaNaSala => lerEntradaDaSala(pasta))
-  ipcMain.handle(IPC_INVOKE.readFabricaRevisoes, (): RevisoesNaSala => lerRevisoesDaSala(pasta))
+export interface DepsDasLeituras {
+  configuracao: ConfiguracaoDaFabrica
+  env: NodeJS.ProcessEnv
+  plataforma: NodeJS.Platform
+  agora: () => string
+  fontes: (board: BoardComMandato, pasta: string) => FontesDaSala
+}
+
+export interface LeiturasDaFabrica {
+  board: (pedido: unknown) => BoardNaFabrica
+  sala: (pedido: unknown) => SalaDaFabrica
+  pergunta: (pedido: unknown) => PerguntaDaFila | null
+  card: (pedido: unknown) => CardNaFabrica
+  entrada: (pedido: unknown) => EntradaNaSala
+  revisoes: (pedido: unknown) => RevisoesNaSala
+}
+
+function campo(pedido: unknown, nome: string): unknown {
+  return typeof pedido === 'object' && pedido !== null
+    ? (pedido as Record<string, unknown>)[nome]
+    : undefined
+}
+
+/** O card de um pedido: inteiro > 0, senão 0. */
+function cardDoPedido(pedido: unknown): number {
+  const n = campo(pedido, 'card')
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : 0
+}
+
+/** Nenhuma lança. A pasta de cada pedido é `pastaDaSala(d.env, board)` do board resolvido. */
+export function criarLeiturasDaFabrica(d: DepsDasLeituras): LeiturasDaFabrica {
+  const cardPedidoInvalido = (): CardNaFabrica => ({
+    kind: 'ilegivel',
+    card: 0,
+    cardUrl: '',
+    erro: 'pedido inválido',
+  })
+  return {
+    board: (pedido) => boardNaFabrica(d.configuracao, pedido),
+    sala: (pedido) => {
+      const r = boardDoPedido(d.configuracao, pedido)
+      if (!r.ok) {
+        return {
+          kind: 'ilegivel',
+          lidoEm: d.agora(),
+          projeto: '',
+          despachante: 'desconhecido',
+          pausa: null,
+          recursos: recursosSemLeitura(r.motivo),
+          erro: r.motivo,
+        }
+      }
+      const pasta = pastaDaSala(d.env, r.board)
+      return lerSala(pasta, d.plataforma, d.agora, d.fontes(r.board, pasta), r.board)
+    },
+    pergunta: (pedido) => {
+      const r = boardDoPedido(d.configuracao, pedido)
+      if (!r.ok) return null
+      const id = campo(pedido, 'id')
+      if (typeof id !== 'string') return null
+      return lerPergunta(pastaDaSala(d.env, r.board), id, r.board.repoUnico)
+    },
+    card: (pedido) => {
+      const r = boardDoPedido(d.configuracao, pedido)
+      const card = cardDoPedido(pedido)
+      if (!r.ok) return { kind: 'ilegivel', card, cardUrl: '', erro: r.motivo }
+      if (card === 0) return cardPedidoInvalido()
+      const repoPedido = campo(pedido, 'repo')
+      let alvo: AlvoDoIniciar
+      if (repoPedido === null) {
+        alvo = { owner: null, name: null, n: card }
+      } else {
+        const repo = lerRepo(repoPedido)
+        if (repo === null) return cardPedidoInvalido()
+        alvo = { owner: repo.owner, name: repo.name, n: card }
+      }
+      const a = resolverAlvo(r.board, alvo)
+      if (!a.ok) return { kind: 'ilegivel', card, cardUrl: '', erro: a.motivo }
+      const pasta = pastaDaSala(d.env, r.board)
+      return lerCardDaFabrica(
+        pasta,
+        a.card,
+        d.plataforma,
+        d.fontes(r.board, pasta),
+        r.board.repoUnico,
+      )
+    },
+    entrada: (pedido) => {
+      const r = boardDoPedido(d.configuracao, pedido)
+      if (!r.ok) return { kind: 'ilegivel', erro: r.motivo }
+      return lerEntradaDaSala(pastaDaSala(d.env, r.board))
+    },
+    revisoes: (pedido) => {
+      const r = boardDoPedido(d.configuracao, pedido)
+      if (!r.ok) return { kind: 'ilegivel', erro: r.motivo }
+      return lerRevisoesDaSala(pastaDaSala(d.env, r.board))
+    },
+  }
+}
+
+export function registerFabricaIpc(l: LeiturasDaFabrica): void {
+  ipcMain.handle(IPC_INVOKE.readFabricaBoard, (_event, pedido: unknown) => l.board(pedido))
+  ipcMain.handle(IPC_INVOKE.readFabrica, (_event, pedido: unknown) => l.sala(pedido))
+  ipcMain.handle(IPC_INVOKE.readFabricaPergunta, (_event, pedido: unknown) => l.pergunta(pedido))
+  ipcMain.handle(IPC_INVOKE.readFabricaCard, (_event, pedido: unknown) => l.card(pedido))
+  ipcMain.handle(IPC_INVOKE.readFabricaEntrada, (_event, pedido: unknown) => l.entrada(pedido))
+  ipcMain.handle(IPC_INVOKE.readFabricaRevisoes, (_event, pedido: unknown) => l.revisoes(pedido))
 }

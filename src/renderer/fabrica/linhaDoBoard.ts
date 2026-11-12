@@ -1,5 +1,5 @@
 import type { Board, BoardCard, BoardsSnapshot } from '../../shared/board'
-import { CHAVE_DO_BOARD_DA_FABRICA, colunaDoCard } from './boardDaFabrica'
+import { colunaDoCard } from './boardDaFabrica'
 import type { ColunaDaLinha } from './linha'
 
 /**
@@ -24,9 +24,24 @@ export function abaDaLinha(s: BoardsSnapshot | null): AbaDaLinha {
   return { kind: 'lendo', key: aba.key, titulo: aba.title }
 }
 
-/** A camada da fábrica aparece com a aba do Project 2 ou sem aba (inclui `s === null`). */
-export function mostraAFabrica(s: BoardsSnapshot | null): boolean {
-  return abaDaLinha(s).kind === 'sem-aba' || s?.activeKey === CHAVE_DO_BOARD_DA_FABRICA
+/** A aba que a fábrica serve (#157): `lendo` enquanto o retrato não chegou; `chave: null` = sem aba (o padrão). */
+export type AbaDaFabrica = { kind: 'lendo' } | { kind: 'pronta'; chave: string | null }
+
+/**
+ * A fábrica nunca pede o padrão antes de saber se há aba: sem retrato é `lendo`, sem aba é `chave: null`,
+ * e com aba (mesmo sem leitura ou com erro) é a `key` dela.
+ */
+export function abaDaFabrica(s: BoardsSnapshot | null): AbaDaFabrica {
+  const aba = abaDaLinha(s)
+  if (aba.kind === 'sem-aba') {
+    return aba.motivo === 'lendo' ? { kind: 'lendo' } : { kind: 'pronta', chave: null }
+  }
+  return { kind: 'pronta', chave: aba.key }
+}
+
+/** A camada da fábrica aparece com a aba do board servido (`chave`) ou sem aba (inclui `s === null`). */
+export function mostraAFabrica(s: BoardsSnapshot | null, chave: string): boolean {
+  return abaDaLinha(s).kind === 'sem-aba' || s?.activeKey === chave
 }
 
 /**

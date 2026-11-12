@@ -468,6 +468,11 @@ describe('montarSala sobre a fixture', () => {
     expect(urlDoCard(900, REPO_TESTE)).toBe(sala.abertos[0]?.cardUrl)
   })
 
+  it('o repo do card vai no item e no despacho (#157)', () => {
+    expect(sala.abertos.every((i) => i.repo === 'leonardo-amaral-3/operations-center')).toBe(true)
+    expect(sala.emVoo.every((d) => d.repo === 'leonardo-amaral-3/operations-center')).toBe(true)
+  })
+
   it('com 12 fechados mostra 10, do fechamento mais recente', () => {
     const e = estadoDaFixture()
     const extras: ItemDaFila[] = Array.from({ length: 12 }, (_, i) => ({
@@ -853,20 +858,25 @@ describe('a sala só lê', () => {
   // dependência injetada, e não nomeia porta de escrita da pasta da fábrica. O `mandatoNaSala.ts`
   // (#134) também: só lê o mandato da `dev`. As revisões são escritas só pelo `revisoes.ts`, chamado
   // pelo `executar` do CLI; o `lerRevisoesDaSala` do `sala.ts` só lê.
-  it.each(['sala.ts', 'comando.ts', 'recursos.ts', 'assumir.ts', 'mandatoNaSala.ts', 'sessoes.ts'])(
-    'src/main/fabrica/%s não nomeia nenhuma porta de escrita',
-    (arquivo) => {
-      const texto = readFileSync(
-        join(__dirname, '..', '..', 'src', 'main', 'fabrica', arquivo),
-        'utf8',
-      )
-      const achados = PROIBIDOS.filter((nome) => texto.includes(nome))
-      expect(
-        achados,
-        `${arquivo} só chega à pasta da fábrica pelo \`executar\` (#122, CA-3a.3): ${achados.join(', ')} é porta de escrita. Fechar um item é do \`yarn fabrica fechar\`, que passa pelo cadeado do estado.json`,
-      ).toEqual([])
-    },
-  )
+  it.each([
+    'sala.ts',
+    'comando.ts',
+    'recursos.ts',
+    'assumir.ts',
+    'mandatoNaSala.ts',
+    'sessoes.ts',
+    'boardDoApp.ts',
+  ])('src/main/fabrica/%s não nomeia nenhuma porta de escrita', (arquivo) => {
+    const texto = readFileSync(
+      join(__dirname, '..', '..', 'src', 'main', 'fabrica', arquivo),
+      'utf8',
+    )
+    const achados = PROIBIDOS.filter((nome) => texto.includes(nome))
+    expect(
+      achados,
+      `${arquivo} só chega à pasta da fábrica pelo \`executar\` (#122, CA-3a.3): ${achados.join(', ')} é porta de escrita. Fechar um item é do \`yarn fabrica fechar\`, que passa pelo cadeado do estado.json`,
+    ).toEqual([])
+  })
 
   // As sessões da máquina (#142) só leem; nenhum sinal para processo. `skill` não conta: o `\b`
   // exige fronteira antes do `k`.
@@ -1080,6 +1090,23 @@ describe('vários repos no mesmo board (#152, CA-3 e CA-1)', () => {
       ['https://github.com/fulano/repo-a/issues/5', 'repo-a-5-x'],
       ['https://github.com/fulano/repo-b/issues/5', 'repo-b-5-y'],
     ])
+  })
+
+  it('o despacho de um board de dois repos sai da Sala com o repo do seu registro (#157)', () => {
+    const e: EstadoDaFabrica = {
+      ...estadoDaF3(),
+      despachos: [
+        despacho({ id: 'd-0001' }),
+        despacho({ id: 'd-0002', repo: 'fulano/repo-b', criadoEm: '2026-11-12T09:01:00.000Z' }),
+      ],
+      fila: [item({ despacho: 'd-0002', repo: 'fulano/repo-b' })],
+    }
+    const sala = montarSala(e, { ...CTX, unico: null })
+    expect(sala.emVoo.map((d) => [d.id, d.repo])).toEqual([
+      ['d-0001', 'fulano/repo-a'],
+      ['d-0002', 'fulano/repo-b'],
+    ])
+    expect(sala.abertos.map((i) => i.repo)).toEqual(['fulano/repo-b'])
   })
 
   it('ondeRodaDo acha a worktree do repo do card, não a de outro repo com o mesmo número', () => {

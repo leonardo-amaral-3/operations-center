@@ -11,6 +11,7 @@ vi.mock('electron', () => ({
   },
 }))
 
+import type { BoardComMandato, RepoDoBoard } from '../../src/core/fabrica/configuracao'
 import { urlDoCard } from '../../src/core/fabrica/sala'
 import type { Despacho, EstadoDaFabrica } from '../../src/core/fabrica/tipos'
 import { criarAssumir, registerAssumirIpc } from '../../src/main/fabrica/assumir'
@@ -25,7 +26,7 @@ import { REPO_TESTE } from './fabrica-board-de-teste'
 
 const SESSAO = '754097b5-1111-4222-8333-444455556666'
 const OUTRA = '9339221c-1111-4222-8333-444455556666'
-const PEDIDO = { despacho: 'd-0004', itemId: 'PVTI_a' }
+const PEDIDO = { board: null, despacho: 'd-0004', itemId: 'PVTI_a' }
 
 function despacho(over: Partial<Despacho> = {}): Despacho {
   return {
@@ -49,9 +50,12 @@ function estadoCom(...despachos: Despacho[]): EstadoDaFabrica {
   return { despachos } as unknown as EstadoDaFabrica
 }
 
-function montar(over: Partial<DepsDoAssumir> = {}) {
+type Troca = Partial<DepsDoAssumir> & { unico?: RepoDoBoard | null }
+
+function montar({ unico = REPO_TESTE, ...over }: Troca = {}) {
+  const board = { repoUnico: unico } as unknown as BoardComMandato
   const deps = {
-    unico: REPO_TESTE,
+    boardDoPedido: vi.fn((): ReturnType<DepsDoAssumir['boardDoPedido']> => ({ ok: true, board })),
     lerEstado: vi.fn((): EstadoDaFabrica | null => estadoCom(despacho())),
     cardDoItem: vi.fn(() => ({ number: 133, url: urlDoCard(133, REPO_TESTE) })),
     sessaoAberta: vi.fn((): string | null => null),
@@ -65,7 +69,7 @@ function montar(over: Partial<DepsDoAssumir> = {}) {
   return { deps, assumir: criarAssumir(deps) }
 }
 
-async function recusa(over: Partial<DepsDoAssumir>, pedido: unknown = PEDIDO, motivo: string) {
+async function recusa(over: Troca, pedido: unknown = PEDIDO, motivo: string) {
   const t = montar(over)
   expect(await t.assumir(pedido)).toEqual({ ok: false, motivo })
   expect(t.deps.lembrar).not.toHaveBeenCalled()
@@ -76,12 +80,30 @@ describe('criarAssumir — as doze recusas, nada gravado', () => {
   it.each([
     ['null', null],
     ['string', 'd-0004'],
-    ['despacho fora do formato', { despacho: 'x-1', itemId: 'a' }],
-    ['despacho que não é string', { despacho: 4, itemId: 'a' }],
-    ['itemId vazio', { despacho: 'd-0004', itemId: '' }],
-    ['itemId que não é string', { despacho: 'd-0004', itemId: 7 }],
+    ['despacho fora do formato', { board: null, despacho: 'x-1', itemId: 'a' }],
+    ['despacho que não é string', { board: null, despacho: 4, itemId: 'a' }],
+    ['itemId vazio', { board: null, despacho: 'd-0004', itemId: '' }],
+    ['itemId que não é string', { board: null, despacho: 'd-0004', itemId: 7 }],
   ])('1. pedido inválido (%s)', async (_n, pedido) => {
     await recusa({}, pedido, 'pedido inválido')
+  })
+
+  it('1. board recusado: o motivo do resolverBoard, sem ler o estado (#157)', async () => {
+    const motivo = 'o board ICSF-Solutions/19 não está configurado em fabrica/boards.json'
+    const lerEstado = vi.fn()
+    await recusa(
+      { boardDoPedido: () => ({ ok: false, motivo }), lerEstado },
+      { ...PEDIDO, board: 'ICSF-Solutions/19' },
+      motivo,
+    )
+    expect(lerEstado).not.toHaveBeenCalled()
+  })
+
+  it('1. o board do pedido chega ao boardDoPedido e ao lerEstado (#157)', async () => {
+    const t = montar()
+    await t.assumir({ ...PEDIDO, board: 'fulano/8' })
+    expect(t.deps.boardDoPedido).toHaveBeenCalledWith({ ...PEDIDO, board: 'fulano/8' })
+    expect(t.deps.lerEstado).toHaveBeenCalledWith({ repoUnico: REPO_TESTE })
   })
 
   it('2. sem estado.json', async () => {
@@ -117,6 +139,33 @@ describe('criarAssumir — as doze recusas, nada gravado', () => {
     )
   })
 
+  it('5. board de dois repos: as duas mensagens citam o fulano/repo-b#5 (#157, CA-2)', async () => {
+    const pedido = { board: 'fulano/8', despacho: 'd-0001', itemId: 'PVTI_b' }
+    const d1 = despacho({ id: 'd-0001', card: 5, repo: 'fulano/repo-b' })
+    const d2 = despacho({
+      id: 'd-0002',
+      card: 5,
+      repo: 'fulano/repo-b',
+      estado: 'rodando',
+      concluidoEm: null,
+      sessaoClaude: null,
+    })
+    await recusa(
+      { unico: null, lerEstado: () => estadoCom(d1, d2) },
+      pedido,
+      'o fulano/repo-b#5 tem despacho em voo (d-0002): só dá para assumir depois que ele termina',
+    )
+    await recusa(
+      {
+        unico: null,
+        lerEstado: () => estadoCom(d1),
+        cardDoItem: () => ({ number: 5, url: 'https://github.com/fulano/repo-a/issues/5' }),
+      },
+      pedido,
+      'o card do pedido não é o fulano/repo-b#5 do d-0001',
+    )
+  })
+
   it('6. terminou sem id de sessão', async () => {
     await recusa(
       { lerEstado: () => estadoCom(despacho({ sessaoClaude: null })) },
@@ -149,7 +198,7 @@ describe('criarAssumir — as doze recusas, nada gravado', () => {
     await recusa(
       { unico: null, lerEstado: () => estadoCom(d), cardDoItem: () => cartao('fulano/repo-a') },
       PEDIDO,
-      'o card do pedido não é o #133 do d-0004',
+      'o card do pedido não é o fulano/repo-b#133 do d-0004',
     )
     const t = montar({
       unico: null,

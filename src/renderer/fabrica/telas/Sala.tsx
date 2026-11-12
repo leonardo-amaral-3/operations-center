@@ -2,6 +2,7 @@ import type { JSX, ReactNode } from 'react'
 
 import type { BoardCard, BoardsSnapshot } from '../../../shared/board'
 import type {
+  BoardNaFabricaOk,
   DecisaoNaSala,
   DespachoNaSala,
   ItemNaSala,
@@ -26,7 +27,7 @@ import {
   rotuloDoCard,
   skillDoComando,
 } from '../linha'
-import { REPO_DOS_CARDS_DA_FABRICA } from '../boardDaFabrica'
+import { repoDaFabrica } from '../boardDaFabrica'
 import { abaDaLinha, cardsDaLinha, mostraAFabrica, type CardNaLinha } from '../linhaDoBoard'
 import { CabecalhoDaSala, ListaComTeto } from '../Moldura'
 import { rotaDoItem, type TelaDaFabrica } from '../rotas'
@@ -119,16 +120,30 @@ function BadgeDaSuite({ testid }: { testid?: string }): JSX.Element {
  * produção e os recursos, tudo lido do retrato. **Contrato entre fases:** todo cartão da fila tem
  * `fabrica-aberto` e todo despacho em voo `fabrica-em-voo` com `data-state`.
  */
-export function Sala({ sala, ir, comando, emVoo }: PropsDaTela): JSX.Element {
+export function Sala({ sala, ir, comando, emVoo, board }: PropsDaTela): JSX.Element {
   return (
     <>
-      <CabecalhoDaSala sala={sala} emVoo={emVoo} onIr={ir} onComando={(c) => void comando(c)} />
-      <Corpo sala={sala} ir={ir} />
+      <CabecalhoDaSala
+        sala={sala}
+        emVoo={emVoo}
+        onIr={ir}
+        onComando={(c) => void comando(c)}
+        padrao={board.padrao}
+      />
+      <Corpo sala={sala} ir={ir} board={board} />
     </>
   )
 }
 
-function Corpo({ sala, ir }: { sala: SalaDaFabrica | null; ir: Ir }): JSX.Element {
+function Corpo({
+  sala,
+  ir,
+  board,
+}: {
+  sala: SalaDaFabrica | null
+  ir: Ir
+  board: BoardNaFabricaOk
+}): JSX.Element {
   const cards = useCardsDoBoard()
   const boards = useRetratoDosBoards()
 
@@ -146,7 +161,7 @@ function Corpo({ sala, ir }: { sala: SalaDaFabrica | null; ir: Ir }): JSX.Elemen
         <div data-testid="fabrica-vazia" className={VAZIO}>
           Nenhum despacho registrado ainda. A fábrica começa num yarn fabrica iniciar.
         </div>
-        <Linha sala={null} ir={ir} cards={cards} boards={boards} />
+        <Linha sala={null} ir={ir} cards={cards} boards={boards} board={board} />
         <Recursos recursos={sala.recursos} />
       </>
     )
@@ -159,7 +174,7 @@ function Corpo({ sala, ir }: { sala: SalaDaFabrica | null; ir: Ir }): JSX.Elemen
           <p>Não foi possível ler o estado da fábrica.</p>
           <p className="text-xs break-words text-foreground/75">{sala.erro}</p>
         </div>
-        <Linha sala={null} ir={ir} cards={cards} boards={boards} />
+        <Linha sala={null} ir={ir} cards={cards} boards={boards} board={board} />
         <Recursos recursos={sala.recursos} />
       </>
     )
@@ -170,7 +185,7 @@ function Corpo({ sala, ir }: { sala: SalaDaFabrica | null; ir: Ir }): JSX.Elemen
       <Resumo sala={sala} ir={ir} />
       <div className="flex flex-wrap items-start gap-5">
         <Esperando sala={sala} ir={ir} cards={cards} />
-        <Linha sala={sala} ir={ir} cards={cards} boards={boards} />
+        <Linha sala={sala} ir={ir} cards={cards} boards={boards} board={board} />
         <aside
           aria-label="Recursos e atividade"
           className="flex flex-[1_1_280px] max-w-[340px] flex-col gap-4"
@@ -358,7 +373,7 @@ function CartaoAberto({
                 size="sm"
                 variant="neutral"
                 data-testid="fabrica-ver-contexto"
-                onClick={navegar({ tela: 'card', card: item.card })}
+                onClick={navegar({ tela: 'card', card: item.card, repo: item.repo })}
               >
                 Ver contexto
               </Button>
@@ -379,19 +394,32 @@ function CartaoAberto({
   )
 }
 
+/**
+ * A Linha só leitura do board da aba, para a fábrica que recusou o board (#157, §11): sem retrato da
+ * fábrica não há despacho, e os cartões do board são só os que o board mostra.
+ */
+export function LinhaSemFabrica(): JSX.Element {
+  const cards = useCardsDoBoard()
+  const boards = useRetratoDosBoards()
+
+  return <Linha sala={null} ir={() => undefined} cards={cards} boards={boards} board={null} />
+}
+
 function Linha({
   sala,
   ir,
   cards,
   boards,
+  board,
 }: {
   sala: SalaOk | null
   ir: Ir
   cards: Cards
   boards: BoardsSnapshot | null
+  board: BoardNaFabricaOk | null
 }): JSX.Element {
   const suite = sala?.recursos.suite
-  const fabrica = sala !== null && mostraAFabrica(boards)
+  const fabrica = sala !== null && board !== null && mostraAFabrica(boards, board.chave)
   const emVoo = fabrica ? sala.emVoo : []
   const abertos = fabrica ? sala.abertos : []
   const foraDaLinha = emVoo.filter((d) => d.estacao === null)
@@ -464,7 +492,7 @@ function Linha({
                       />
                     ))}
                     {doBoardNaColuna.map((c) => (
-                      <CartaoDoBoard key={c.card.itemId} c={c} ir={ir} />
+                      <CartaoDoBoard key={c.card.itemId} c={c} ir={ir} board={board} />
                     ))}
                   </ListaComTeto>
                 )}
@@ -493,7 +521,7 @@ function Linha({
               <ListaComTeto lista={`a-parte-${g.coluna}`} className="flex flex-wrap gap-3">
                 {g.cards.map((c) => (
                   <div key={c.card.itemId} className="w-[210px]">
-                    <CartaoDoBoard c={c} ir={ir} />
+                    <CartaoDoBoard c={c} ir={ir} board={board} />
                   </div>
                 ))}
               </ListaComTeto>
@@ -515,7 +543,7 @@ function Linha({
               data-state={d.estado}
               className="text-left underline"
               onClick={() => {
-                ir({ tela: 'card', card: d.card })
+                ir({ tela: 'card', card: d.card, repo: d.repo })
               }}
             >
               {`${rotuloDoCard(d.card, cards.get(d.cardUrl)?.title ?? null)} ${d.comando}`}
@@ -540,10 +568,18 @@ function rotuloDaAba(aba: ReturnType<typeof abaDaLinha>): string {
   }
 }
 
-/** Card aberto do board da aba: só o do operations-center navega (os comandos da fábrica são presos a ele, CA-3). */
-function CartaoDoBoard({ c, ir }: { c: CardNaLinha; ir: Ir }): JSX.Element {
+/** Card aberto do board da aba: só o de um repo do board da fábrica navega (os comandos da fábrica são presos a ele, CA-3). */
+function CartaoDoBoard({
+  c,
+  ir,
+  board,
+}: {
+  c: CardNaLinha
+  ir: Ir
+  board: BoardNaFabricaOk | null
+}): JSX.Element {
   const rotulo = rotuloDoCard(c.card.number, c.card.title)
-  const daFabrica = c.card.repository.toLowerCase() === REPO_DOS_CARDS_DA_FABRICA
+  const repo = board === null ? null : repoDaFabrica(board, c.card.repository)
 
   return (
     <Card asChild className="gap-1.5 bg-secondary-background p-2.5">
@@ -553,13 +589,13 @@ function CartaoDoBoard({ c, ir }: { c: CardNaLinha; ir: Ir }): JSX.Element {
         data-coluna-do-board={c.coluna}
       >
         <Etiquetas card={c.card} />
-        {daFabrica ? (
+        {repo !== null ? (
           <button
             type="button"
             data-testid="fabrica-board-card-abrir"
             className="text-left text-[13px] leading-[17px] font-bold underline"
             onClick={() => {
-              ir({ tela: 'card', card: c.card.number })
+              ir({ tela: 'card', card: c.card.number, repo })
             }}
           >
             {rotulo}
@@ -594,7 +630,7 @@ function CartaoDeDespacho({
       <article
         data-abre-card={d.card}
         onClick={abrirAoClicar(() => {
-          ir({ tela: 'card', card: d.card })
+          ir({ tela: 'card', card: d.card, repo: d.repo })
         })}
       >
         <Etiquetas card={card} />
@@ -604,7 +640,7 @@ function CartaoDeDespacho({
           data-state={d.estado}
           className="text-left text-[13px] leading-[17px] font-bold underline"
           onClick={() => {
-            ir({ tela: 'card', card: d.card })
+            ir({ tela: 'card', card: d.card, repo: d.repo })
           }}
         >
           {rotuloDoCard(d.card, card?.title ?? null)}
@@ -636,7 +672,7 @@ function CartaoParado({
         data-testid="fabrica-linha-parada"
         data-abre-card={item.card}
         onClick={abrirAoClicar(() => {
-          ir({ tela: 'card', card: item.card })
+          ir({ tela: 'card', card: item.card, repo: item.repo })
         })}
       >
         <Etiquetas card={card} />

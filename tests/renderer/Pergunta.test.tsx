@@ -7,6 +7,7 @@ import type { PropsDaTela } from '../../src/renderer/fabrica/telas'
 import type { PerguntaDaFila, SalaDaFabrica } from '../../src/shared/fabrica'
 
 import { PERGUNTAS_F3, RETRATO_F3 } from './retrato-f3'
+import { BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 /**
  * A tela Pergunta (#132, CA-3.1, CA-3.3 e CA-3.4 do lado da tela): montada direto com as props, com
@@ -40,6 +41,7 @@ function montar(
       ir={ir}
       comando={comando}
       emVoo={extra.emVoo ?? false}
+      board={BOARD_DO_PROJECT_2}
     />,
   )
 }
@@ -265,6 +267,7 @@ describe('Pergunta · Responder e fechar o item (CA-3.3)', () => {
         ir={ir}
         comando={comando}
         emVoo={false}
+        board={BOARD_DO_PROJECT_2}
       />,
     )
 

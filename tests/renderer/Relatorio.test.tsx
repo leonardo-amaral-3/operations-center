@@ -12,6 +12,7 @@ import type {
   RevisoesNaSala,
 } from '../../src/shared/fabrica'
 import { A2, A3, A4, PAINEL_F5, REVISAO_A4 } from './painel-f5'
+import { BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 /**
  * A tela Relatório da F5 (#134, CA-5.1/5.2/5.5, CA-E4): a ponte (`readRelatorio`,
@@ -54,6 +55,7 @@ function props(extra: Partial<PropsDaTela> = {}): PropsDaTela {
     ir: vi.fn(),
     comando: () => Promise.resolve(),
     emVoo: false,
+    board: BOARD_DO_PROJECT_2,
     ...extra,
   }
 }

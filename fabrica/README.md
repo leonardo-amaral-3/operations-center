@@ -24,14 +24,14 @@ Depois que o `/gm-ship` abre a PR, a fábrica lança a revisão de IA independen
 
 `fabrica/boards.json` (`versao: 1`) é a fonte única do que muda de um board para outro. Cada entrada de `boards` tem `owner`, `projeto`, `nome`, `repo` (`<owner>/<nome>`, com `checkoutPrincipal`) **ou** `repos` (lista de `<owner>/<nome>`, ou `<owner>/*`; o checkout principal de cada repo é `<workspace>/<nome>`), `workspace`, `pastaDoEstado`, `proibidos` (`caminhos` e `motivo`) e `mandato` (`repo`, `ref`, `caminho` e `aprovacao`). `padrao` é a chave (`<owner>/<projeto>`) do board usado quando nada o escolhe. `~` vale a home de quem roda. Uma versão diferente de 1 é recusada como ilegível.
 
-- **Escolher o board:** `yarn fabrica --board <owner>/<projeto> <subcomando>`. Sem `--board`, vale o `padrao`, e a linha de comando de antes não muda. O app instalado não escolhe board: usa sempre o `padrao`.
+- **Escolher o board:** `yarn fabrica --board <owner>/<projeto> <subcomando>`. Sem `--board`, vale o `padrao`, e a linha de comando de antes não muda.
 - **Mandato aprovado** é o board ter o campo `mandato`: o mandato de uma origem versionada, com a decisão que o aprovou em `aprovacao`. Sem o campo, ou com `null`, o board não tem mandato aprovado.
 - **A recusa:** uma chave que não está no arquivo, ou um board sem mandato aprovado, sai com código `2` e a mensagem no stderr, **antes** de criar qualquer pasta, de ler o GitHub ou de olhar o `OC_FABRICA_DIR`. Vale para todos os subcomandos, inclusive `estado` e `iniciar --ensaio`.
 - **`OC_FABRICA_DIR`** troca a pasta de estado do board escolhido; sem ela vale o `pastaDoEstado` dele. Um board novo não herda a pasta de outro.
 - **Incluir um board:** PR com a entrada nova neste arquivo e o mandato versionado na origem que ela aponta. Nenhum arquivo de `src/` muda.
 - **Card de um repo:** `yarn fabrica iniciar <n>` num board de um repo; `iniciar <repo>#<n>` ou `<owner>/<repo>#<n>` em qualquer board. Num board de vários repos, `iniciar <n>` é recusado.
 - **O repo no estado:** campo `repo` em frentes, despachos e itens; ausente = o repo único do board.
-- **O padrão tem repo único:** o app serve só o padrão.
+- **O app serve o board da aba:** com a aba de um board servido (no `boards.json` e com mandato), as telas da fábrica leem a pasta dele e todo botão roda `yarn fabrica --board <chave> …`. Sem aba, vale o padrão. Board recusado: a fábrica mostra o motivo e a Linha só leitura, sem botão. Relatório, Portfólio e Release só aparecem com o padrão.
 - **Limite do app:** o app instalado lê o `boards.json` que foi empacotado no build dele, então mudar o arquivo exige rebuild do app. O CLI o relê a cada `yarn fabrica`, porque recompila o bundle.
 
 ## Por que não no CLAUDE.md

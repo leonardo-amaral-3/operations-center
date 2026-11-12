@@ -5,6 +5,7 @@ import {
   ARQUIVO_DO_PROTOTIPO,
   NAVEGACAO_DA_SALA,
   rotaDoItem,
+  TELAS_SO_DO_PADRAO,
   trilhaDa,
   type NomeDaTela,
   type TelaDaFabrica,
@@ -24,7 +25,7 @@ describe('trilhaDa', () => {
       [{ tela: 'agentes' }, ['Sala de controle', 'Agentes']],
       [{ tela: 'pergunta', item: 'q-1' }, ['Sala de controle', 'Esperando você', 'Pergunta']],
       [{ tela: 'decisao', item: 'q-1' }, ['Sala de controle', 'Esperando você', 'Revisão · G4']],
-      [{ tela: 'card', card: 129 }, ['Sala de controle', 'Linha', '#129']],
+      [{ tela: 'card', card: 129, repo: null }, ['Sala de controle', 'Linha', '#129']],
       [{ tela: 'entrada' }, ['Sala de controle', 'Entrada']],
       [{ tela: 'relatorio' }, ['Sala de controle', 'Relatório de 11/11']],
       [{ tela: 'portfolio' }, ['Sala de controle', 'Portfólio']],
@@ -44,9 +45,17 @@ describe('trilhaDa', () => {
   it('as duas primeiras migalhas voltam à Sala e a última é a tela atual', () => {
     const pergunta = trilhaDa({ tela: 'pergunta', item: 'q-1' }, HOJE)
     expect(pergunta.map((m) => m.para)).toEqual([SALA, SALA, null])
-    const card = trilhaDa({ tela: 'card', card: 7 }, HOJE)
+    const card = trilhaDa({ tela: 'card', card: 7, repo: null }, HOJE)
     expect(card.map((m) => m.para)).toEqual([SALA, SALA, null])
     expect(trilhaDa({ tela: 'agentes' }, HOJE).map((m) => m.para)).toEqual([SALA, null])
+  })
+})
+
+describe('TELAS_SO_DO_PADRAO (#157)', () => {
+  it('são as três telas do operations-center, e todas estão na navegação', () => {
+    expect([...TELAS_SO_DO_PADRAO]).toEqual(['relatorio', 'portfolio', 'release'])
+    const naNavegacao = NAVEGACAO_DA_SALA.map((n) => n.tela)
+    for (const t of TELAS_SO_DO_PADRAO) expect(naNavegacao).toContain(t)
   })
 })
 
@@ -55,6 +64,7 @@ describe('rotaDoItem', () => {
     id: 'q-0003',
     tipo,
     card: 1,
+    repo: 'leonardo-amaral-3/operations-center',
     cardUrl: 'u',
     motivo: 'm',
     despacho: 'd-1',

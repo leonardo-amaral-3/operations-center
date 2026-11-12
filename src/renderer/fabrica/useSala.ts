@@ -22,7 +22,7 @@ export interface UsoDaSala {
  * `reler` (#130, §F1.5) serve ao botão Pausar: com uma leitura em voo, espera ela e faz mais uma,
  * porque a em voo pode ter lido o estado de antes do comando.
  */
-export function useSala(): UsoDaSala {
+export function useSala(board: string): UsoDaSala {
   const [sala, setSala] = useState<SalaDaFabrica | null>(null)
   const emVoo = useRef<Promise<void> | null>(null)
   const vivo = useRef(true)
@@ -31,7 +31,7 @@ export function useSala(): UsoDaSala {
     if (emVoo.current !== null) return emVoo.current
 
     const leitura: Promise<void> = window.oc
-      .readFabrica()
+      .readFabrica({ board })
       .then((retrato) => {
         if (vivo.current) setSala(retrato)
       })
@@ -46,7 +46,7 @@ export function useSala(): UsoDaSala {
     emVoo.current = leitura
 
     return leitura
-  }, [])
+  }, [board])
 
   const reler = useCallback(async (): Promise<void> => {
     if (emVoo.current !== null) await emVoo.current

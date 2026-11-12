@@ -5,7 +5,13 @@ import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Card } from '../ui/card'
 import { cn } from '../ui/cn'
-import { NAVEGACAO_DA_SALA, type Migalha, type NomeDaTela, type TelaDaFabrica } from './rotas'
+import {
+  NAVEGACAO_DA_SALA,
+  TELAS_SO_DO_PADRAO,
+  type Migalha,
+  type NomeDaTela,
+  type TelaDaFabrica,
+} from './rotas'
 
 /**
  * A moldura da fábrica (#130, F1.2): o cabeçalho da Sala, o das telas internas, o crachá de estado,
@@ -114,17 +120,27 @@ export function BotaoPausar({
   )
 }
 
-/** Os oito botões de tela (#145): os mesmos em todo cabeçalho, com a tela atual marcada. */
+/**
+ * Os botões de tela (#145): os mesmos em todo cabeçalho, com a tela atual marcada. Com `padrao ===
+ * false` (um board servido que não é o padrão) saem Relatório, Portfólio e Release (#157, Decisão 6).
+ */
 export function NavegacaoDasTelas({
   atual,
   onIr,
+  padrao,
 }: {
   atual: NomeDaTela
   onIr: (tela: TelaDaFabrica) => void
+  padrao: boolean
 }): JSX.Element {
+  const telas = padrao
+    ? NAVEGACAO_DA_SALA
+    : NAVEGACAO_DA_SALA.filter(
+        (n) => !(TELAS_SO_DO_PADRAO as readonly NomeDaTela[]).includes(n.tela),
+      )
   return (
     <nav aria-label="Telas" data-testid="fabrica-nav" className="flex flex-wrap items-center gap-2">
-      {NAVEGACAO_DA_SALA.map(({ tela, rotulo }) => (
+      {telas.map(({ tela, rotulo }) => (
         <Button
           key={tela}
           type="button"
@@ -143,42 +159,51 @@ export function NavegacaoDasTelas({
   )
 }
 
+/** A marca da fábrica (o ícone, o título e a linha), sem navegação nem botão. */
+export function MarcaDaFabrica(): JSX.Element {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex size-9 items-center justify-center rounded-base border-2 border-border bg-main">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.5}
+          className="size-5"
+          aria-hidden="true"
+        >
+          <path d="M3 21V10l5 3V10l5 3V6l8 4v11z" />
+        </svg>
+      </div>
+      <div>
+        <h1 className="font-heading text-xl leading-tight">Operations Center</h1>
+        <div className="text-xs text-foreground/75">Sala de controle da fábrica</div>
+      </div>
+    </div>
+  )
+}
+
 export function CabecalhoDaSala({
   sala,
   emVoo,
   onIr,
   onComando,
+  padrao,
 }: {
   sala: SalaDaFabrica | null
   emVoo: boolean
   onIr: (tela: TelaDaFabrica) => void
   onComando: (comando: ComandoDaFabrica) => void
+  padrao: boolean
 }): JSX.Element {
   return (
     <Card
       data-testid="fabrica-cabecalho"
       className="flex-row flex-wrap items-center justify-between gap-4 bg-secondary-background px-4 py-3"
     >
-      <div className="flex items-center gap-3">
-        <div className="flex size-9 items-center justify-center rounded-base border-2 border-border bg-main">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2.5}
-            className="size-5"
-            aria-hidden="true"
-          >
-            <path d="M3 21V10l5 3V10l5 3V6l8 4v11z" />
-          </svg>
-        </div>
-        <div>
-          <h1 className="font-heading text-xl leading-tight">Operations Center</h1>
-          <div className="text-xs text-foreground/75">Sala de controle da fábrica</div>
-        </div>
-      </div>
+      <MarcaDaFabrica />
 
-      <NavegacaoDasTelas atual="sala" onIr={onIr} />
+      <NavegacaoDasTelas atual="sala" onIr={onIr} padrao={padrao} />
 
       <div className="flex items-center gap-2">
         {sala !== null && (
@@ -198,11 +223,13 @@ export function CabecalhoInterno({
   direita,
   onIr,
   atual,
+  padrao,
 }: {
   trilha: Migalha[]
   direita?: ReactNode
   onIr: (tela: TelaDaFabrica) => void
   atual: NomeDaTela
+  padrao: boolean
 }): JSX.Element {
   return (
     <Card
@@ -234,7 +261,7 @@ export function CabecalhoInterno({
           </span>
         ))}
       </nav>
-      <NavegacaoDasTelas atual={atual} onIr={onIr} />
+      <NavegacaoDasTelas atual={atual} onIr={onIr} padrao={padrao} />
       {direita}
     </Card>
   )

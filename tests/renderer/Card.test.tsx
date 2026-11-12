@@ -14,6 +14,7 @@ import {
   CONTEUDO_DO_4,
   CORPO_TASKS_4,
 } from './retrato-f4'
+import { BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 /** A tela Card da F4 (#133, CA-4.1/4.2/4.4) sobre os literais do "esperado F4". A ponte é falsa. */
 
@@ -59,11 +60,12 @@ const SALA: SalaDaFabrica = RETRATO_F2
 
 function props(card: number, sala: SalaDaFabrica | null = SALA): PropsDaTela {
   return {
-    tela: { tela: 'card', card },
+    tela: { tela: 'card', card, repo: 'leonardo-amaral-3/operations-center' },
     sala,
     ir: vi.fn(),
     comando: () => Promise.resolve(),
     emVoo: false,
+    board: BOARD_DO_PROJECT_2,
   }
 }
 
@@ -209,7 +211,11 @@ describe('Card · o #906 parado', () => {
     fireEvent.click(screen.getByTestId('fabrica-card-assumir'))
     const aviso = await screen.findByTestId('fabrica-card-assumido')
     expect(assumirDespacho).toHaveBeenCalledTimes(1)
-    expect(assumirDespacho).toHaveBeenCalledWith({ despacho: 'd-0007', itemId: 'PVTI_f4_906' })
+    expect(assumirDespacho).toHaveBeenCalledWith({
+      board: 'leonardo-amaral-3/2',
+      despacho: 'd-0007',
+      itemId: 'PVTI_f4_906',
+    })
     expect(aviso.textContent).toContain('A sessão abriu na janela do card.')
     expect(aviso.textContent).toContain('claude --resume conversa-velha')
   })

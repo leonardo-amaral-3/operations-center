@@ -12,6 +12,7 @@ import type {
   SessoesDaMaquina,
 } from '../../src/shared/fabrica'
 import { BOARDS_F2, RETRATO_F2 } from './retrato-f2'
+import { readFabricaBoardDeTeste } from './boardNaFabrica'
 
 /**
  * Agentes da F2 (#131, CA-2.2 e a parte de tela do CA-2.3) sobre o retrato literal da fixture `f2`:
@@ -29,6 +30,7 @@ beforeEach(() => {
   Object.defineProperty(window, 'oc', {
     value: {
       readFabrica,
+      readFabricaBoard: readFabricaBoardDeTeste,
       readFabricaPergunta,
       readRelatorio: () => new Promise(() => {}),
       comandoFabrica,
@@ -275,10 +277,10 @@ describe('Agentes · cadeados, próximos e a queda', () => {
 })
 
 describe('Agentes · fora do ramo ok', () => {
-  it('sem retrato mostra o fabrica-lendo e nenhum crachá de sessões', () => {
+  it('sem retrato mostra o fabrica-lendo e nenhum crachá de sessões', async () => {
     readFabrica.mockReturnValue(new Promise(() => {}))
     render(<Fabrica />)
-    fireEvent.click(screen.getByTestId('fabrica-nav-agentes'))
+    fireEvent.click(await screen.findByTestId('fabrica-nav-agentes'))
 
     expect(screen.getByTestId('fabrica-lendo')).toBeTruthy()
     expect(screen.queryByTestId('fabrica-sessoes')).toBeNull()
@@ -450,10 +452,10 @@ describe('Agentes · sessões da máquina (#142, CA-2 e CA-3)', () => {
     )
   })
 
-  it('sem retrato da fábrica a seção não aparece', () => {
+  it('sem retrato da fábrica a seção não aparece', async () => {
     readFabrica.mockReturnValue(new Promise(() => {}))
     render(<Fabrica />)
-    fireEvent.click(screen.getByTestId('fabrica-nav-agentes'))
+    fireEvent.click(await screen.findByTestId('fabrica-nav-agentes'))
 
     expect(screen.queryByTestId('fabrica-maquina')).toBeNull()
   })

@@ -14,6 +14,7 @@ import type {
   RevisoesNaSala,
 } from '../../src/shared/fabrica'
 import { A1, A2, A3, A4, A5, A8, A9, PAINEL_F5, REVISAO_A4 } from './painel-f5'
+import { BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 /**
  * A tela Portfólio da F5 (#134, CA-5.2/5.3/5.5, CA-E4): a ponte (`readRelatorio`,
@@ -51,6 +52,7 @@ function props(extra: Partial<PropsDaTela> = {}): PropsDaTela {
     ir: vi.fn(),
     comando: () => Promise.resolve(),
     emVoo: false,
+    board: BOARD_DO_PROJECT_2,
     ...extra,
   }
 }
@@ -245,7 +247,11 @@ describe('Portfólio: o detalhe', () => {
   it('"Abrir o card" leva ao card e fica desabilitado sem card', async () => {
     const { p } = await abrir()
     fireEvent.click(within(detalhe()).getByTestId('fabrica-abrir-transcrito'))
-    expect(p.ir).toHaveBeenCalledWith({ tela: 'card', card: 120 })
+    expect(p.ir).toHaveBeenCalledWith({
+      tela: 'card',
+      card: 120,
+      repo: 'leonardo-amaral-3/operations-center',
+    })
 
     fireEvent.click(document.querySelector(`[data-arquivo="${A9}"]`) as HTMLElement)
     const botao = within(detalhe()).getByTestId<HTMLButtonElement>('fabrica-abrir-transcrito')

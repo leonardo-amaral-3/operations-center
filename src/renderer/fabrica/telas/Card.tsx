@@ -85,20 +85,22 @@ function notaDoAssumir(atual: DespachoDoCard, itemId: string | null): string {
   return 'Assumir abre o mesmo terminal que o cartão abre hoje, retomando a sessão deste despacho. Com a frente encerrada, a fábrica só volta a este card por yarn fabrica iniciar.'
 }
 
-export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
+export function CardEmVoo({ tela, sala, ir, board }: PropsDaTela): JSX.Element {
   // A raiz só monta esta tela com `tela: 'card'`; fora disso não há card a ler.
   const card = tela.tela === 'card' ? tela.card : 0
+  const repo = tela.tela === 'card' ? tela.repo : null
   const lidoEm = sala?.lidoEm
 
   const [dados, setDados] = useState<CardNaFabrica | null>(null)
   const geracao = useRef(0)
-  const ultimoCard = useRef<number | null>(null)
+  const ultimoCard = useRef<string | null>(null)
 
   useEffect(() => {
     // `dados` só volta a `null` quando o card muda: na releitura por `lidoEm` o valor anterior
     // fica na tela até a resposta chegar.
-    if (ultimoCard.current !== card) {
-      ultimoCard.current = card
+    const doCard = `${repo ?? ''}#${String(card)}`
+    if (ultimoCard.current !== doCard) {
+      ultimoCard.current = doCard
       setDados(null)
     }
     const minha = ++geracao.current
@@ -108,7 +110,7 @@ export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
     }
     void (async () => {
       try {
-        aplicar(await window.oc.readFabricaCard({ card }))
+        aplicar(await window.oc.readFabricaCard({ board: board.chave, repo, card }))
       } catch (e) {
         aplicar({
           kind: 'ilegivel',
@@ -118,7 +120,7 @@ export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
         })
       }
     })()
-  }, [card, lidoEm])
+  }, [board.chave, card, repo, lidoEm])
 
   const cards = useCardsDoBoard()
   const doBoard = dados !== null && dados.cardUrl !== '' ? cards.get(dados.cardUrl) : undefined
@@ -164,7 +166,7 @@ export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
   useEffect(() => {
     setAssumindo(false)
     setAssumido(null)
-  }, [card])
+  }, [card, repo])
 
   const ok = dados?.kind === 'ok' ? dados : null
   const suite = sala?.recursos.suite
@@ -175,7 +177,7 @@ export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
     setAssumindo(true)
     let r: AssumirDespachoResult
     try {
-      r = await window.oc.assumirDespacho({ despacho: ok.atual.id, itemId })
+      r = await window.oc.assumirDespacho({ board: board.chave, despacho: ok.atual.id, itemId })
     } catch (e) {
       r = { ok: false, motivo: e instanceof Error ? e.message : String(e) }
     }
@@ -188,6 +190,7 @@ export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
   return (
     <>
       <CabecalhoInterno
+        padrao={board.padrao}
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
         atual={tela.tela}

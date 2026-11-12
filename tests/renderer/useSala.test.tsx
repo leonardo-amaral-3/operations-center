@@ -41,10 +41,11 @@ describe('useSala', () => {
   it('lê na montagem e de novo a cada 5000 ms', async () => {
     readFabrica.mockResolvedValue(lido('a'))
 
-    const { result } = renderHook(() => useSala())
+    const { result } = renderHook(() => useSala('leonardo-amaral-3/2'))
 
     expect(result.current.sala).toBeNull()
     expect(readFabrica).toHaveBeenCalledTimes(1)
+    expect(readFabrica).toHaveBeenCalledWith({ board: 'leonardo-amaral-3/2' })
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
@@ -73,7 +74,7 @@ describe('useSala', () => {
     )
     readFabrica.mockResolvedValue(lido('b'))
 
-    renderHook(() => useSala())
+    renderHook(() => useSala('leonardo-amaral-3/2'))
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(INTERVALO_DA_SALA_MS * 3)
@@ -92,7 +93,7 @@ describe('useSala', () => {
     readFabrica.mockRejectedValueOnce(new Error('falhou'))
     readFabrica.mockResolvedValueOnce(lido('c'))
 
-    const { result } = renderHook(() => useSala())
+    const { result } = renderHook(() => useSala('leonardo-amaral-3/2'))
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
@@ -122,7 +123,7 @@ describe('useSala', () => {
         }),
     )
 
-    const { result, unmount } = renderHook(() => useSala())
+    const { result, unmount } = renderHook(() => useSala('leonardo-amaral-3/2'))
 
     unmount()
     await act(async () => {
@@ -138,7 +139,7 @@ describe('useSala', () => {
     readFabrica.mockResolvedValueOnce(lido('a'))
     readFabrica.mockResolvedValueOnce(lido('b'))
 
-    const { result } = renderHook(() => useSala())
+    const { result } = renderHook(() => useSala('leonardo-amaral-3/2'))
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
@@ -163,7 +164,7 @@ describe('useSala', () => {
     )
     readFabrica.mockRejectedValueOnce(new Error('falhou'))
 
-    const { result } = renderHook(() => useSala())
+    const { result } = renderHook(() => useSala('leonardo-amaral-3/2'))
     let resolvido = false
     let pedido: Promise<void> = Promise.resolve()
 

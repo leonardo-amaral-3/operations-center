@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CHAVE_DO_BOARD_DA_FABRICA } from '../../src/renderer/fabrica/boardDaFabrica'
 import { useBoardDaFabrica } from '../../src/renderer/fabrica/useBoardDaFabrica'
 import type { BoardsSnapshot } from '../../src/shared/board'
+import { BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 afterEach(cleanup)
 
@@ -37,7 +38,7 @@ beforeEach(() => {
 describe('useBoardDaFabrica', () => {
   it('começa lendo e aplica o retrato lido', async () => {
     resposta = Promise.resolve(COM_BOARD)
-    const { result } = renderHook(() => useBoardDaFabrica())
+    const { result } = renderHook(() => useBoardDaFabrica(BOARD_DO_PROJECT_2))
     expect(result.current).toEqual({ kind: 'lendo' })
     await waitFor(() => expect(result.current).toEqual({ kind: 'ok', board }))
   })
@@ -47,7 +48,7 @@ describe('useBoardDaFabrica', () => {
     resposta = new Promise((r) => {
       soltar = r
     })
-    const { result } = renderHook(() => useBoardDaFabrica())
+    const { result } = renderHook(() => useBoardDaFabrica(BOARD_DO_PROJECT_2))
     act(() => publicar(COM_BOARD))
     expect(result.current.kind).toBe('ok')
     await act(async () => {
@@ -59,12 +60,12 @@ describe('useBoardDaFabrica', () => {
 
   it('rejeição vira erro com a mensagem', async () => {
     resposta = Promise.reject(new Error('sem ponte'))
-    const { result } = renderHook(() => useBoardDaFabrica())
+    const { result } = renderHook(() => useBoardDaFabrica(BOARD_DO_PROJECT_2))
     await waitFor(() => expect(result.current).toEqual({ kind: 'erro', erro: 'sem ponte' }))
   })
 
   it('cancela a assinatura ao desmontar', () => {
-    const { unmount } = renderHook(() => useBoardDaFabrica())
+    const { unmount } = renderHook(() => useBoardDaFabrica(BOARD_DO_PROJECT_2))
     unmount()
     expect(cancelamentos).toBe(1)
   })
