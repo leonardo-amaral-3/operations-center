@@ -17,6 +17,7 @@ import { estadoVazio } from '../../src/core/fabrica/estado'
 import { caminhosProibidos } from '../../src/core/fabrica/mandato'
 import { tipoDoItem } from '../../src/core/fabrica/sala'
 import type { Despacho, EstadoDaFabrica } from '../../src/core/fabrica/tipos'
+import { REPO_TESTE } from './fabrica-board-de-teste'
 
 const proibidos = caminhosProibidos('/home/u', boardPadrao(configuracaoDaFabrica('/home/u')))
 const T0 = '2026-11-11T10:00:00.000Z'
@@ -297,6 +298,7 @@ describe('G4: os três caminhos até a fila', () => {
     return tipoDoItem(
       item,
       f.despachos.find((d) => d.id === item.despacho),
+      REPO_TESTE,
     )
   }
 
@@ -337,6 +339,7 @@ describe('G4: os três caminhos até a fila', () => {
       tipoDoItem(
         item,
         e.despachos.find((d) => d.id === item.despacho),
+        REPO_TESTE,
       ),
     ).toBe('pergunta')
   })

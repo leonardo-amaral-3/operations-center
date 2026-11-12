@@ -1,3 +1,4 @@
+import { REPO_TESTE } from './fabrica-board-de-teste'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -10,7 +11,12 @@ import type { Despacho, EstadoDaFabrica } from '../../src/core/fabrica/tipos'
 const F4 = join(__dirname, '..', 'fixtures', 'fabrica', 'f4')
 const estado = (): EstadoDaFabrica => parseEstado(readFileSync(join(F4, 'estado.json'), 'utf8'))
 const SAIDA = readFileSync(join(F4, 'sessoes', 'd-0007', 'saida.json'), 'utf8')
-const CTX = { worktrees: [] as string[], vivos: null as ReadonlySet<string> | null, saida: null }
+const CTX = {
+  worktrees: [] as string[],
+  vivos: null as ReadonlySet<string> | null,
+  saida: null,
+  repo: REPO_TESTE,
+}
 
 function despacho(p: Partial<Despacho> & { id: string }): Despacho {
   return {

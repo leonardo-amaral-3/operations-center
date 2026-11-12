@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { parseConfiguracao, type ConfiguracaoDaFabrica } from '../../src/core/fabrica/configuracao'
+import {
+  parseConfiguracao,
+  type ConfiguracaoDaFabrica,
+  type RepoDoBoard,
+} from '../../src/core/fabrica/configuracao'
 
 interface EntradaCrua {
   owner: string
@@ -49,3 +53,6 @@ export function boardFicticio(p: { home: string; raiz: string; mandato: boolean 
       : null,
   }
 }
+
+/** O repo do board `padrao` (`leonardo-amaral-3/operations-center`). */
+export const REPO_TESTE: RepoDoBoard = { owner: 'leonardo-amaral-3', name: 'operations-center' }

@@ -282,6 +282,7 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
 
     const resultado = await lancar(preparado.despacho, {
       pasta,
+      repo: ctx.board.repo,
       workspace: ctx.workspace,
       raizDoRepo: ctx.raizDoRepo,
       mandato,
@@ -361,6 +362,7 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
       { id: item.id, comando, nota: NOTA_DA_TRIAGEM },
       {
         pasta,
+        repo: ctx.board.repo,
         workspace: ctx.workspace,
         raizDoRepo: ctx.raizDoRepo,
         mandato,

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
@@ -7,6 +8,7 @@ import {
   prAbertaDoShip,
   promptDoG4,
 } from '../../src/core/fabrica/g4'
+import { REPO_TESTE } from './fabrica-board-de-teste'
 
 const URL9 = 'https://github.com/leonardo-amaral-3/operations-center/pull/9#issuecomment-5'
 
@@ -31,17 +33,25 @@ describe('prAbertaDoShip', () => {
 
 describe('lerParecer', () => {
   it('sem bloqueante → 0', () => {
-    expect(lerParecer(`G4 da PR #9: sem bloqueante · parecer ${URL9}`)).toEqual({
+    expect(lerParecer(`G4 da PR #9: sem bloqueante · parecer ${URL9}`, REPO_TESTE)).toEqual({
       pr: 9,
       bloqueantes: 0,
       url: URL9,
     })
   })
   it('1 bloqueante e 3 bloqueantes', () => {
-    expect(lerParecer(`G4 da PR #9: 1 bloqueante · parecer ${URL9}`)?.bloqueantes).toBe(1)
-    expect(lerParecer(`G4 da PR #9: 3 bloqueantes · parecer ${URL9}`)?.bloqueantes).toBe(3)
-    expect(lerParecer(`G4 da PR #9: 1 bloqueantes · parecer ${URL9}`)?.bloqueantes).toBe(1)
-    expect(lerParecer(`G4 da PR #9: 2 bloqueante · parecer ${URL9}`)?.bloqueantes).toBe(2)
+    expect(lerParecer(`G4 da PR #9: 1 bloqueante · parecer ${URL9}`, REPO_TESTE)?.bloqueantes).toBe(
+      1,
+    )
+    expect(
+      lerParecer(`G4 da PR #9: 3 bloqueantes · parecer ${URL9}`, REPO_TESTE)?.bloqueantes,
+    ).toBe(3)
+    expect(
+      lerParecer(`G4 da PR #9: 1 bloqueantes · parecer ${URL9}`, REPO_TESTE)?.bloqueantes,
+    ).toBe(1)
+    expect(lerParecer(`G4 da PR #9: 2 bloqueante · parecer ${URL9}`, REPO_TESTE)?.bloqueantes).toBe(
+      2,
+    )
   })
   it.each([
     ['0 bloqueantes', `G4 da PR #9: 0 bloqueantes · parecer ${URL9}`],
@@ -54,12 +64,12 @@ describe('lerParecer', () => {
     ['não rodou', 'G4 da PR #9 não rodou: PR fechada'],
     ['texto depois da URL', `G4 da PR #9: sem bloqueante · parecer ${URL9} ok`],
   ])('%s → null', (_n, motivo) => {
-    expect(lerParecer(motivo)).toBeNull()
+    expect(lerParecer(motivo, REPO_TESTE)).toBeNull()
   })
 })
 
 describe('promptDoG4', () => {
-  const p = promptDoG4(7, 9)
+  const p = promptDoG4(7, 9, REPO_TESTE)
   it('começa pela revisão e não por barra', () => {
     expect(p.startsWith('Revisão G4 da PR #9 do card #7')).toBe(true)
     expect(p.startsWith('/')).toBe(false)
@@ -79,5 +89,37 @@ describe('fabrica/README.md', () => {
     const claude = readme.indexOf('## Por que não no CLAUDE.md')
     expect(g4).toBeGreaterThan(-1)
     expect(claude).toBeGreaterThan(g4)
+  })
+})
+
+describe('o G4 por repo (#144)', () => {
+  const FULANO = { owner: 'fulano', name: 'repo-x' }
+
+  it('CA-1: o prompt do operations-center é o texto da dev 19aea54, byte a byte', () => {
+    // sha256 do `promptDoG4(143, 141)` da `origin/dev` 19aea54, medido antes da mudança.
+    const hash = createHash('sha256')
+      .update(promptDoG4(143, 141, REPO_TESTE))
+      .digest('hex')
+    expect(hash).toBe('c0d195c1741094996b9ef79dbdeb82304d08278b9e841badf691127a4e5fc035')
+  })
+
+  it('CA-3: o prompt de outro board cita só o repo dele', () => {
+    const p = promptDoG4(5, 6, FULANO)
+    expect(p).toContain('--repo fulano/repo-x')
+    expect(p).not.toContain('leonardo-amaral-3')
+  })
+
+  it('CA-3: o parecer só vale na URL do repo do board', () => {
+    const url = 'https://github.com/fulano/repo-x/pull/9#issuecomment-5'
+    const motivo = `G4 da PR #9: sem bloqueante · parecer ${url}`
+    expect(lerParecer(motivo, FULANO)?.url).toBe(url)
+    expect(lerParecer(motivo, REPO_TESTE)).toBeNull()
+  })
+
+  it('o ponto do nome do repo não casa qualquer caractere', () => {
+    const r = { owner: 'a', name: 'b.c' }
+    const url = (n: string): string => `https://github.com/a/${n}/pull/9#issuecomment-5`
+    expect(lerParecer(`G4 da PR #9: sem bloqueante · parecer ${url('b.c')}`, r)).not.toBeNull()
+    expect(lerParecer(`G4 da PR #9: sem bloqueante · parecer ${url('bxc')}`, r)).toBeNull()
   })
 })

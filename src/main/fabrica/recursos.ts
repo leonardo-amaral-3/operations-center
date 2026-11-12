@@ -18,6 +18,8 @@ export interface PortasDosRecursos {
   env: NodeJS.ProcessEnv
   uid: number
   pastaDaFabrica: string
+  /** O nome do repo do board (`<nome>-<n>-<slug>` é a worktree do card). */
+  nomeDoRepo: string
   marca: () => EstadoDaMarca
   contarSessoes: (marca: string) => number
   existe: (caminho: string) => boolean
@@ -87,7 +89,7 @@ export function lerRecursos(p: PortasDosRecursos): RecursosDaFabrica {
         suite =
           dono === null
             ? { kind: 'livre' }
-            : { kind: 'ocupada', card: cardDaCwd(p.cwdDe(dono) ?? ''), esperando }
+            : { kind: 'ocupada', card: cardDaCwd(p.cwdDe(dono) ?? '', p.nomeDoRepo), esperando }
       }
     }
   } catch (erro) {
@@ -174,6 +176,7 @@ export function worktreesDo(workspace: string): string[] {
 export function portasReais(o: {
   env: NodeJS.ProcessEnv
   pastaDaFabrica: string
+  nomeDoRepo: string
   marca: () => EstadoDaMarca
 }): PortasDosRecursos {
   return {
@@ -181,6 +184,7 @@ export function portasReais(o: {
     env: o.env,
     uid: process.getuid?.() ?? -1,
     pastaDaFabrica: o.pastaDaFabrica,
+    nomeDoRepo: o.nomeDoRepo,
     marca: o.marca,
     contarSessoes: contarSessoesDaProva,
     existe: existsSync,

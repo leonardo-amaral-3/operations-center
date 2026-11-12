@@ -32,6 +32,7 @@ import { executar, type DepsDoCli } from '../../src/main/fabrica/cli'
 import { configuracaoDeTeste } from './fabrica-board-de-teste'
 import { lerItemNoBoard } from '../../src/main/fabrica/github'
 import { envLimpo } from '../../src/main/fabrica/lancador'
+import { REPO_TESTE } from './fabrica-board-de-teste'
 
 // O gancho da corrida: com `releitura` posta, a segunda leitura do `revisoes.jsonl` em diante devolve
 // o texto dela, como se outro escritor tivesse chegado antes (spec F5 §F5.5, passo 5).
@@ -766,7 +767,11 @@ describe.skipIf(process.platform !== 'linux')('o laço do despachante', { timeou
     const g4 = gravadoPeloFalso('d-0003')
     expect(g4.args[g4.args.indexOf('--tools') + 1]).toBe('Bash,Read')
     expect(g4.prompt).toBe(
-      montarPrompt(promptDoG4(7, 9), MANDATO, `o /gm-ship terminou com: PARADA: ${motivoDoShip}`),
+      montarPrompt(
+        promptDoG4(7, 9, REPO_TESTE),
+        MANDATO,
+        `o /gm-ship terminou com: PARADA: ${motivoDoShip}`,
+      ),
     )
     expect(m.saida.some((l) => l.includes('d-0002 terminou: segue para o G4 (/g4 #7 PR #9)'))).toBe(
       true,

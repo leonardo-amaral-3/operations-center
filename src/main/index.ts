@@ -409,11 +409,23 @@ if (screen === 'kanban') {
     () => lerMandatoDoBoard(graphql, boardDoApp),
     () => Date.now(),
   )
-  registerFabricaIpc(pasta, {
-    recursos: () => lerRecursos(portasReais({ env: process.env, pastaDaFabrica: pasta, marca })),
-    // O avô da pasta da fábrica é o inverso do default (`<workspace>/claude/despachos-fabrica`).
-    worktrees: () => worktreesDo(dirname(dirname(pasta))),
-  })
+  registerFabricaIpc(
+    pasta,
+    {
+      recursos: () =>
+        lerRecursos(
+          portasReais({
+            env: process.env,
+            pastaDaFabrica: pasta,
+            marca,
+            nomeDoRepo: boardDoApp.repo.name,
+          }),
+        ),
+      // O avô da pasta da fábrica é o inverso do default (`<workspace>/claude/despachos-fabrica`).
+      worktrees: () => worktreesDo(dirname(dirname(pasta))),
+    },
+    boardDoApp,
+  )
   // As sessões `claude` da máquina (#142): lê `/proc` e o `origin` das pastas; o cache do `origin`
   // vive nas portas, criadas uma vez aqui.
   const portasDasSessoes = portasReaisDasSessoes(homedir())
@@ -817,6 +829,7 @@ if (screen === 'kanban') {
   const pastaDoAssumir = pastaDaSala(process.env, boardDoApp)
   registerAssumirIpc(
     criarAssumir({
+      repo: boardDoApp.repo,
       lerEstado: () => lerEstado(pastaDoAssumir),
       cardDoItem: (itemId) => boardsIpc?.cardById(itemId) ?? null,
       sessaoAberta: (itemId) => claudeIpc.sessaoAberta({ kind: 'card', itemId }),

@@ -602,7 +602,7 @@ test('um item da pasta de verdade', async () => {
   if (item === undefined) throw new Error(`o item ${id} não está no estado.json`)
   const origem = estado.despachos.find((d) => d.id === item.despacho)
   // A regra de Decisão é a do núcleo (#143 §G4.4): só o parecer do G4 sem bloqueante.
-  const tipo = tipoDoItem(item, origem)
+  const tipo = tipoDoItem(item, origem, { owner: 'leonardo-amaral-3', name: 'operations-center' })
   const saida = JSON.parse(
     readFileSync(join(pasta, 'sessoes', item.despacho, 'saida.json'), 'utf8'),
   ) as { result: string }

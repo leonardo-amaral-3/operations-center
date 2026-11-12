@@ -1,4 +1,5 @@
-import { REPO_DA_FABRICA, escaparRegex } from './mandato'
+import { type RepoDoBoard, nomeDoRepo } from './configuracao'
+import { escaparRegex } from './mandato'
 
 /**
  * A estação G4 do despachante (#143 §G4.1): depois que o `/gm-ship` abre a PR, a fábrica lança uma
@@ -37,15 +38,13 @@ export interface Parecer {
   url: string
 }
 
-const REPO = escaparRegex(`${REPO_DA_FABRICA.owner}/${REPO_DA_FABRICA.name}`)
-const PARECER = new RegExp(
-  `^G4 da PR #([1-9]\\d*): (sem bloqueante|([1-9]\\d*) bloqueantes?) · parecer ` +
-    `(https://github\\.com/${REPO}/pull/([1-9]\\d*)#issuecomment-\\d+)$`,
-)
-
 /** O motivo de uma PARADA do G4 → parecer; fora do contrato → null. */
-export function lerParecer(motivo: string): Parecer | null {
-  const m = PARECER.exec(motivo.trim())
+export function lerParecer(motivo: string, repo: RepoDoBoard): Parecer | null {
+  const parecer = new RegExp(
+    `^G4 da PR #([1-9]\\d*): (sem bloqueante|([1-9]\\d*) bloqueantes?) · parecer ` +
+      `(https://github\\.com/${escaparRegex(nomeDoRepo(repo))}/pull/([1-9]\\d*)#issuecomment-\\d+)$`,
+  )
+  const m = parecer.exec(motivo.trim())
   if (m === null) return null
   const pr = Number(m[1] ?? '')
   if (Number(m[5] ?? '') !== pr) return null
@@ -54,8 +53,8 @@ export function lerParecer(motivo: string): Parecer | null {
 }
 
 /** O prompt da sessão do G4 (#143 §G4.2). Só card, PR e repo são interpolados. */
-export function promptDoG4(card: number, pr: number): string {
-  const repo = `${REPO_DA_FABRICA.owner}/${REPO_DA_FABRICA.name}`
+export function promptDoG4(card: number, pr: number, r: RepoDoBoard): string {
+  const repo = nomeDoRepo(r)
   return `Revisão G4 da PR #${pr} do card #${card}, despachada pela fábrica.
 
 Você é o revisor de IA independente (G4) desta PR, num contexto novo. Não há humano nesta sessão. Só leitura: não edite arquivo, não faça commit, push, merge, fetch nem mude o board, e não grave no cofre (sem mcp__brain__lembrar: o parecer na PR é o registro); a única escrita permitida é um comentário na PR #${pr}. Não espere o CI. O mandato abaixo vale para as proibições; o "decide sozinho" dele, nesta sessão, é só o parecer.
