@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { boardPadrao } from '../../src/core/fabrica/configuracao'
+import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
 import {
   ARQUIVO_DO_RELATO,
   NOTA_DA_TRIAGEM,
@@ -237,11 +239,7 @@ describe('triagem do item', () => {
       `/gm-triage /p/sessoes/e-0001/${ARQUIVO_DO_RELATO}`,
     )
     expect(NOTA_DA_TRIAGEM).not.toContain('\n')
-    const proibidos = caminhosProibidos(
-      '/home/u',
-      '/home/u/pessoal',
-      '/home/u/pessoal/operations-center',
-    )
+    const proibidos = caminhosProibidos('/home/u', boardPadrao(configuracaoDaFabrica('/home/u')))
     expect(avaliarNota(NOTA_DA_TRIAGEM, proibidos).ok).toBe(true)
   })
 

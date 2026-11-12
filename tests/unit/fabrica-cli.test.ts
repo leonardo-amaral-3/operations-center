@@ -1258,7 +1258,7 @@ describe.skipIf(process.platform !== 'linux')('o laço do despachante', { timeou
 
     it('a nota fixa passa pelo avaliarNota e é de uma linha só', () => {
       expect(NOTA_DA_TRIAGEM).not.toContain('\n')
-      const r = avaliarNota(NOTA_DA_TRIAGEM, [])
+      const r = avaliarNota(NOTA_DA_TRIAGEM, { caminhos: [], motivo: 'nenhum' })
       expect(r.ok).toBe(true)
     })
   })

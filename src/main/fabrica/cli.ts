@@ -15,12 +15,13 @@ import {
   novaRevisao,
 } from '../../core/fabrica/revisoes'
 import { comandoDaEstacao } from '../../core/fabrica/estacao'
+import { avaliarComando, avaliarNota, caminhosProibidos } from '../../core/fabrica/mandato'
 import {
-  avaliarComando,
-  avaliarNota,
-  caminhosProibidos,
-} from '../../core/fabrica/mandato'
-import { resolverBoard, type ConfiguracaoDaFabrica } from '../../core/fabrica/configuracao'
+  resolverBoard,
+  type ConfiguracaoDaFabrica,
+  type OrigemDoMandato,
+  type ProibidosDoBoard,
+} from '../../core/fabrica/configuracao'
 import { configuracaoDaFabrica } from './configuracao'
 import { createGhTokenSource } from '../github/token'
 import { createGitHubGraphQL } from '../github/graphql'
@@ -53,7 +54,7 @@ export interface DepsDoCli {
   platform: NodeJS.Platform
   home: string
   agora: () => string
-  lerMandato: () => Promise<string>
+  lerMandato: (origem: OrigemDoMandato) => Promise<string>
   graphql: GraphQLFn
   intervaloMs: number
   sinal: AbortSignal
@@ -174,8 +175,7 @@ export async function executar(deps: DepsDoCli): Promise<number> {
   }
   const board = resolvido.board
   const workspace = board.workspace
-  const checkoutPrincipal = board.checkoutPrincipal
-  const proibidos = caminhosProibidos(deps.home, workspace, checkoutPrincipal)
+  const proibidos = caminhosProibidos(deps.home, board)
   const pasta = pastaDaFabrica(deps.env, board)
   try {
     recusarTemporaria(pasta)
@@ -256,7 +256,7 @@ export async function executar(deps: DepsDoCli): Promise<number> {
       deps.escrever(`${lido.item} fechado`)
       return 0
     }
-    return await rodar({ pasta, workspace, raizDoRepo: deps.raizDoRepo, proibidos, deps })
+    return await rodar({ pasta, workspace, raizDoRepo: deps.raizDoRepo, proibidos, board, deps })
   } catch (erro) {
     const mensagem = mensagemDe(erro)
     deps.avisar(`fabrica: ${mensagem}`)
@@ -324,7 +324,7 @@ function revisar(
 async function iniciar(
   deps: DepsDoCli,
   pasta: string,
-  proibidos: readonly string[],
+  proibidos: ProibidosDoBoard,
   p: Extract<Comando, { tipo: 'iniciar' }>,
 ): Promise<number> {
   let comando = p.comando

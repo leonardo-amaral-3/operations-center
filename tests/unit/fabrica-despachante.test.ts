@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { boardPadrao } from '../../src/core/fabrica/configuracao'
+import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
 import { comandoDaEstacao } from '../../src/core/fabrica/estacao'
 import {
   concluirDespacho,
@@ -16,11 +18,7 @@ import { caminhosProibidos } from '../../src/core/fabrica/mandato'
 import { tipoDoItem } from '../../src/core/fabrica/sala'
 import type { Despacho, EstadoDaFabrica } from '../../src/core/fabrica/tipos'
 
-const proibidos = caminhosProibidos(
-  '/home/u',
-  '/home/u/pessoal',
-  '/home/u/pessoal/operations-center',
-)
+const proibidos = caminhosProibidos('/home/u', boardPadrao(configuracaoDaFabrica('/home/u')))
 const T0 = '2026-11-11T10:00:00.000Z'
 const T1 = '2026-11-11T10:05:00.000Z'
 

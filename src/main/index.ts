@@ -42,7 +42,7 @@ import { configuracaoDaFabrica } from './fabrica/configuracao'
 import { criarAssumir, registerAssumirIpc } from './fabrica/assumir'
 import { lerEstado } from './fabrica/arquivos'
 import { criarExecutorDeComando, registerComandoIpc } from './fabrica/comando'
-import { lerMandato, lerMandatoPelaGraphQL } from './fabrica/github'
+import { lerMandato, lerMandatoDoBoard } from './fabrica/github'
 import { registerMandatoIpc } from './fabrica/mandatoNaSala'
 import { criarMarcaEmCache, lerRecursos, portasReais, worktreesDo } from './fabrica/recursos'
 import { pastaDaSala, registerFabricaIpc } from './fabrica/sala'
@@ -406,7 +406,7 @@ if (screen === 'kanban') {
   // O mandato da `dev` vem pela GraphQL, em cache de 60 s: a sala relê a cada 5 s.
   const graphql = createGraphQL()
   const marca = criarMarcaEmCache(
-    () => lerMandatoPelaGraphQL(graphql),
+    () => lerMandatoDoBoard(graphql, boardDoApp),
     () => Date.now(),
   )
   registerFabricaIpc(pasta, {
@@ -452,7 +452,7 @@ if (screen === 'kanban')
 if (screen === 'kanban') {
   const graphqlDoMandato = createGraphQL()
 
-  registerMandatoIpc(() => lerMandatoPelaGraphQL(graphqlDoMandato))
+  registerMandatoIpc(() => lerMandatoDoBoard(graphqlDoMandato, boardDoApp))
 }
 
 function publicarPerigo(): void {

@@ -13,7 +13,7 @@ import { CARD_QUERY, OWNERS_QUERY, PR_LINK_QUERY, PR_QUERY, PROJECTS_QUERY } fro
 import type { GraphQLFn, GraphQLResponse, RestGetFn } from '../../core'
 import { ITEM_NO_BOARD_QUERY } from '../../core/fabrica/estacao'
 import {
-  MANDATO_DA_DEV_QUERY,
+  MANDATO_QUERY,
   PROJETO_DA_FABRICA,
   REPO_DA_FABRICA,
 } from '../../core/fabrica/mandato'
@@ -74,7 +74,7 @@ export function createFixtureGraphQL(files: FixtureFiles): GraphQLFn {
       return readItemNoBoard(files.board, variables['owner'], variables['name'], variables['n'])
     }
 
-    if (document === MANDATO_DA_DEV_QUERY) return readMandato(files.mandato)
+    if (document === MANDATO_QUERY) return readMandato(files.mandato)
 
     return readBoard(files.board, variables['owner'], variables['number'])
   }

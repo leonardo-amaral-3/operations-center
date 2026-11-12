@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { boardPadrao } from '../../src/core/fabrica/configuracao'
+import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
 
 import { normalizeStation } from '../../src/core/board/stations'
 import { comandoDaEstacao } from '../../src/core/fabrica/estacao'
@@ -86,7 +88,7 @@ describe('NAO_FAZER_HOJE diz o que o código aplica', () => {
   it('o item 1 cita as quatro palavras do textoProibido', () => {
     for (const palavra of ['main', 'release', 'tag', 'hotfix']) {
       expect(NAO_FAZER_HOJE[0]).toContain(palavra)
-      expect(avaliarNota(`cita ${palavra} aqui`, []).ok).toBe(false)
+      expect(avaliarNota(`cita ${palavra} aqui`, { caminhos: [], motivo: 'nenhum' }).ok).toBe(false)
     }
   })
 })
@@ -95,8 +97,7 @@ describe('notaDoBriefing passa no filtro do mandato', () => {
   it('um Pronto quando e um contexto limpos', () => {
     const proibidos = caminhosProibidos(
       '/home/teste',
-      '/home/teste/pessoal',
-      '/home/teste/pessoal/operations-center',
+      boardPadrao(configuracaoDaFabrica('/home/teste')),
     )
     const nota = notaDoBriefing({
       dia: '2026-11-12',

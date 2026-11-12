@@ -1,5 +1,6 @@
-import { join, relative } from 'node:path/posix'
+import { relative } from 'node:path/posix'
 import type { GraphQLResponse } from '../board/types'
+import type { BoardDaFabrica, ProibidosDoBoard } from './configuracao'
 
 /**
  * O que o mandato da prova (cofre 1439) deixa a fábrica despachar. Tudo aqui é constante ou função
@@ -40,15 +41,9 @@ export function escaparRegex(texto: string): string {
  */
 export function caminhosProibidos(
   home: string,
-  _workspace: string,
-  checkoutPrincipal: string,
-): string[] {
-  const alvos = [
-    join(home, '.local/bin/operations-center'),
-    join(home, '.config/operations-center'),
-    checkoutPrincipal,
-    join(home, 'notoria'),
-  ]
+  board: Pick<BoardDaFabrica, 'checkoutPrincipal' | 'proibidos'>,
+): ProibidosDoBoard {
+  const alvos = [...board.proibidos.caminhos, board.checkoutPrincipal]
   const saida: string[] = []
   for (const a of alvos) {
     saida.push(a)
@@ -57,7 +52,7 @@ export function caminhosProibidos(
       saida.push('~/' + r, '$HOME/' + r, '${HOME}/' + r)
     }
   }
-  return saida
+  return { caminhos: saida, motivo: board.proibidos.motivo }
 }
 
 /**
@@ -65,17 +60,17 @@ export function caminhosProibidos(
  * não continua o nome: a worktree irmã (`…/operations-center-121-x`) passa, e `…/operations-center.`
  * ou `…/operations-center)` não.
  */
-export function textoProibido(texto: string, proibidos: readonly string[]): string | null {
+export function textoProibido(texto: string, proibidos: ProibidosDoBoard): string | null {
   if (/\b(main|releases?|tags?|hotfix)\b/i.test(texto)) return 'cita main, release, tag ou hotfix'
-  for (const p of proibidos) {
+  for (const p of proibidos.caminhos) {
     if (new RegExp(escaparRegex(p) + '(?![A-Za-z0-9_-])').test(texto)) {
-      return 'aponta para a instalação viva, o checkout principal ou os repos da Notoria'
+      return `aponta para ${proibidos.motivo}`
     }
   }
   return null
 }
 
-export function avaliarComando(comando: string, proibidos: readonly string[]): Avaliacao {
+export function avaliarComando(comando: string, proibidos: ProibidosDoBoard): Avaliacao {
   const m = /^\/(gm-[a-z-]+)(?:\s+([\s\S]*))?$/.exec(comando)
   if (!m) return { ok: false, motivo: `não é um comando /gm-*: ${comando}` }
   const skill = m[1] ?? ''
@@ -90,7 +85,7 @@ export function avaliarComando(comando: string, proibidos: readonly string[]): A
   return { ok: true }
 }
 
-export function avaliarNota(nota: string, proibidos: readonly string[]): Avaliacao {
+export function avaliarNota(nota: string, proibidos: ProibidosDoBoard): Avaliacao {
   const proibido = textoProibido(nota, proibidos)
   return proibido === null ? { ok: true } : { ok: false, motivo: `a nota ${proibido}` }
 }
@@ -130,15 +125,15 @@ export function cardDoComando(comando: string): number | null {
   return null
 }
 
-/** O `fabrica/MANDATO.md` da `dev` pela GraphQL, que tem porta de fixture (F2 §F2.4, Decisão 4). */
-export const MANDATO_DA_DEV_QUERY = `query MandatoDaDev($owner: String!, $name: String!) {
+/** O mandato do board pela GraphQL, que tem porta de fixture (F2 §F2.4, Decisão 4). */
+export const MANDATO_QUERY = `query Mandato($owner: String!, $name: String!, $expressao: String!) {
   repository(owner: $owner, name: $name) {
-    object(expression: "dev:fabrica/MANDATO.md") { ... on Blob { text } }
+    object(expression: $expressao) { ... on Blob { text } }
   }
 }`
 
-/** O texto do `fabrica/MANDATO.md` da `dev` na resposta; erro, objeto ausente ou vazio lança. */
-export function textoDoMandato(resposta: GraphQLResponse): string {
+/** O texto do mandato na resposta; erro, objeto ausente ou vazio lança. */
+export function textoDoMandato(resposta: GraphQLResponse, ref: string): string {
   const primeiro = resposta.errors?.[0]
   if (primeiro !== undefined) throw new Error(primeiro.message)
   const data = resposta.data as {
@@ -146,5 +141,5 @@ export function textoDoMandato(resposta: GraphQLResponse): string {
   } | null
   const texto = data?.repository?.object?.text
   if (typeof texto === 'string' && texto.trim() !== '') return texto
-  throw new Error('mandato ilegível na dev: vazio')
+  throw new Error(`mandato ilegível na ${ref}: vazio`)
 }

@@ -1,3 +1,4 @@
+import type { ProibidosDoBoard } from './configuracao'
 import { lerDesfecho } from './desfecho'
 import { novoId } from './estado'
 import { comandoDoG4, lerComandoDoG4, prAbertaDoShip } from './g4'
@@ -144,7 +145,7 @@ function novoPendente(
 export function concluirDespacho(
   e: EstadoDaFabrica,
   id: string,
-  p: { saida: string; agora: string; proibidos: readonly string[] },
+  p: { saida: string; agora: string; proibidos: ProibidosDoBoard },
 ): EstadoDaFabrica {
   const atual = e.despachos.find((d) => d.id === id)
   if (atual === undefined) throw new Error(`não há despacho ${id}`)

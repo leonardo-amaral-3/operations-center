@@ -2,7 +2,12 @@ import { execFile } from 'node:child_process'
 import type { GraphQLFn } from '../../core/board/types'
 import { ITEM_NO_BOARD_QUERY, type ItemNoBoard } from '../../core/fabrica/estacao'
 import {
-  MANDATO_DA_DEV_QUERY,
+  motivoSemMandato,
+  type BoardDaFabrica,
+  type OrigemDoMandato,
+} from '../../core/fabrica/configuracao'
+import {
+  MANDATO_QUERY,
   PROJETO_DA_FABRICA,
   REPO_DA_FABRICA,
   textoDoMandato,
@@ -13,9 +18,14 @@ import {
  * Quem move card é a sessão, pela skill.
  */
 
-/** O `fabrica/MANDATO.md` da `dev`, pelo `gh api` e não pelo `git` (Decisão 10 do épico). */
-export function lerMandato(): Promise<string> {
-  const caminho = `repos/${REPO_DA_FABRICA.owner}/${REPO_DA_FABRICA.name}/contents/fabrica/MANDATO.md?ref=dev`
+/** O caminho do `gh api` que lê o mandato na origem que o board declara. */
+export function caminhoDoMandato(origem: OrigemDoMandato): string {
+  return `repos/${origem.repo.owner}/${origem.repo.name}/contents/${origem.caminho}?ref=${encodeURIComponent(origem.ref)}`
+}
+
+/** O mandato do board, pelo `gh api` e não pelo `git` (Decisão 10 do épico). */
+export function lerMandato(origem: OrigemDoMandato): Promise<string> {
+  const caminho = caminhoDoMandato(origem)
   return new Promise((resolver, rejeitar) => {
     execFile(
       'gh',
@@ -23,9 +33,9 @@ export function lerMandato(): Promise<string> {
       { maxBuffer: 4 * 1024 * 1024 },
       (erro, stdout, stderr) => {
         if (erro !== null) {
-          rejeitar(new Error(`mandato ilegível na dev: ${stderr.trim() || erro.message}`))
+          rejeitar(new Error(`mandato ilegível na ${origem.ref}: ${stderr.trim() || erro.message}`))
         } else if (stdout.trim() === '') {
-          rejeitar(new Error('mandato ilegível na dev: vazio'))
+          rejeitar(new Error(`mandato ilegível na ${origem.ref}: vazio`))
         } else {
           resolver(stdout)
         }
@@ -35,13 +45,27 @@ export function lerMandato(): Promise<string> {
 }
 
 /** O mesmo mandato, pela GraphQL do app: é a que tem fixture, então o smoke não toca a rede. */
-export async function lerMandatoPelaGraphQL(graphql: GraphQLFn): Promise<string> {
+export async function lerMandatoPelaGraphQL(
+  graphql: GraphQLFn,
+  origem: OrigemDoMandato,
+): Promise<string> {
   return textoDoMandato(
-    await graphql(MANDATO_DA_DEV_QUERY, {
-      owner: REPO_DA_FABRICA.owner,
-      name: REPO_DA_FABRICA.name,
+    await graphql(MANDATO_QUERY, {
+      owner: origem.repo.owner,
+      name: origem.repo.name,
+      expressao: `${origem.ref}:${origem.caminho}`,
     }),
+    origem.ref,
   )
+}
+
+/** O mandato do board do app: board sem mandato aprovado rejeita sem tocar a rede. */
+export async function lerMandatoDoBoard(
+  graphql: GraphQLFn,
+  board: BoardDaFabrica,
+): Promise<string> {
+  if (board.mandato === null) throw new Error(motivoSemMandato(board))
+  return lerMandatoPelaGraphQL(graphql, board.mandato)
 }
 
 interface Resposta {

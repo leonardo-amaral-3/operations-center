@@ -21,6 +21,7 @@ import {
   voltarTriagemAPendente,
   type EntradaDaFabrica,
 } from '../../core/fabrica/entrada'
+import type { BoardComMandato, ProibidosDoBoard } from '../../core/fabrica/configuracao'
 import { marcaDaProva, marcaDoDespacho, TETO_DE_SESSOES } from '../../core/fabrica/mandato'
 import type { Despacho, EstadoDaFabrica } from '../../core/fabrica/tipos'
 import {
@@ -48,7 +49,8 @@ export interface ContextoDoRodar {
   pasta: string
   workspace: string
   raizDoRepo: string
-  proibidos: readonly string[]
+  proibidos: ProibidosDoBoard
+  board: BoardComMandato
   deps: DepsDoCli
 }
 
@@ -239,7 +241,7 @@ async function passo(ctx: ContextoDoRodar, memoria: Memoria): Promise<number | n
   let mandato: string
   let marcaDaProvaAtual: string
   try {
-    mandato = await deps.lerMandato()
+    mandato = await deps.lerMandato(ctx.board.mandato)
     marcaDaProvaAtual = marcaDaProva(mandato)
   } catch (erro) {
     memoria.falhasDoMandato += 1
