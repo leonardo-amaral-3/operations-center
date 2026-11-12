@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GraphQLFn } from '../../src/core/board/types'
 import { marcarLancando } from '../../src/core/fabrica/despachante'
 import { avaliarNota } from '../../src/core/fabrica/mandato'
-import { NOTA_DA_TRIAGEM, textoDoRelato } from '../../src/core/fabrica/entrada'
+import { notaDaTriagem, textoDoRelato } from '../../src/core/fabrica/entrada'
 import { promptDoG4 } from '../../src/core/fabrica/g4'
 import { montarPrompt } from '../../src/core/fabrica/mandato'
 import type { ItemDaFila } from '../../src/core/fabrica/tipos'
@@ -29,6 +29,8 @@ import {
   pausar,
 } from '../../src/main/fabrica/arquivos'
 import { executar, type DepsDoCli } from '../../src/main/fabrica/cli'
+import { boardPadrao } from '../../src/core/fabrica/configuracao'
+import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
 import { configuracaoDeTeste } from './fabrica-board-de-teste'
 import { lerItemNoBoard } from '../../src/main/fabrica/github'
 import { envLimpo } from '../../src/main/fabrica/lancador'
@@ -185,6 +187,7 @@ const gravadoPeloFalso = (
   }
 
 describe('lerItemNoBoard', () => {
+  const BOARD = boardPadrao(configuracaoDaFabrica(homedir()))
   const resposta =
     (issue: unknown, errors?: { message: string }[]): GraphQLFn =>
     () =>
@@ -199,25 +202,25 @@ describe('lerItemNoBoard', () => {
         data: { repository: { issue: { state: 'OPEN', projectItems: { nodes: [] } } } },
       })
     }
-    await lerItemNoBoard(graphql, 7)
+    await lerItemNoBoard(graphql, BOARD, 7)
     expect(enviadas).toEqual([{ owner: 'leonardo-amaral-3', name: 'operations-center', n: 7 }])
   })
 
   it('errors lança a primeira mensagem', async () => {
     await expect(
-      lerItemNoBoard(resposta(null, [{ message: 'quebrou' }, { message: 'b' }]), 1),
+      lerItemNoBoard(resposta(null, [{ message: 'quebrou' }, { message: 'b' }]), BOARD, 1),
     ).rejects.toThrow('quebrou')
   })
 
   it('issue nula lança', async () => {
-    await expect(lerItemNoBoard(resposta(null), 9)).rejects.toThrow(
+    await expect(lerItemNoBoard(resposta(null), BOARD, 9)).rejects.toThrow(
       'não há issue #9 em leonardo-amaral-3/operations-center',
     )
   })
 
   it('card fechado lança', async () => {
     await expect(
-      lerItemNoBoard(resposta({ state: 'CLOSED', projectItems: { nodes: [] } }), 9),
+      lerItemNoBoard(resposta({ state: 'CLOSED', projectItems: { nodes: [] } }), BOARD, 9),
     ).rejects.toThrow('o #9 está fechado')
   })
 
@@ -225,7 +228,11 @@ describe('lerItemNoBoard', () => {
     const nos = (n: { project: { number: number }; fieldValueByName: { name: string } | null }[]) =>
       resposta({ state: 'OPEN', projectItems: { nodes: n } })
     expect(
-      await lerItemNoBoard(nos([{ project: { number: 3 }, fieldValueByName: { name: 'X' } }]), 1),
+      await lerItemNoBoard(
+        nos([{ project: { number: 3 }, fieldValueByName: { name: 'X' } }]),
+        BOARD,
+        1,
+      ),
     ).toEqual({ noProjeto: false })
     expect(
       await lerItemNoBoard(
@@ -233,11 +240,12 @@ describe('lerItemNoBoard', () => {
           { project: { number: 3 }, fieldValueByName: { name: 'X' } },
           { project: { number: 2 }, fieldValueByName: { name: '📋 Backlog' } },
         ]),
+        BOARD,
         1,
       ),
     ).toEqual({ noProjeto: true, status: '📋 Backlog' })
     expect(
-      await lerItemNoBoard(nos([{ project: { number: 2 }, fieldValueByName: null }]), 1),
+      await lerItemNoBoard(nos([{ project: { number: 2 }, fieldValueByName: null }]), BOARD, 1),
     ).toEqual({ noProjeto: true, status: null })
   })
 })
@@ -1114,7 +1122,9 @@ describe.skipIf(process.platform !== 'linux')('o laço do despachante', { timeou
       ).toBe(true)
       const prompt = gravadoPeloFalso('e-0001').prompt.split('\n')
       expect(prompt[0]).toBe(comandoDe('e-0001'))
-      expect(prompt.filter((l) => l !== '').at(-1)).toBe(`- Nesta sessão: ${NOTA_DA_TRIAGEM}`)
+      expect(prompt.filter((l) => l !== '').at(-1)).toBe(
+        `- Nesta sessão: ${notaDaTriagem(boardPadrao(m.deps.configuracao))}`,
+      )
       const e = lerEstado(pasta)
       expect(e?.despachos ?? []).toEqual([])
       expect(e?.fila ?? []).toEqual([])
@@ -1262,8 +1272,9 @@ describe.skipIf(process.platform !== 'linux')('o laço do despachante', { timeou
     })
 
     it('a nota fixa passa pelo avaliarNota e é de uma linha só', () => {
-      expect(NOTA_DA_TRIAGEM).not.toContain('\n')
-      const r = avaliarNota(NOTA_DA_TRIAGEM, { caminhos: [], motivo: 'nenhum' })
+      const nota = notaDaTriagem(boardPadrao(montar().deps.configuracao))
+      expect(nota).not.toContain('\n')
+      const r = avaliarNota(nota, { caminhos: [], motivo: 'nenhum' })
       expect(r.ok).toBe(true)
     })
   })

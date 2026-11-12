@@ -18,6 +18,7 @@ import { comandoDaEstacao } from '../../core/fabrica/estacao'
 import { avaliarComando, avaliarNota, caminhosProibidos } from '../../core/fabrica/mandato'
 import {
   resolverBoard,
+  type BoardDaFabrica,
   type ConfiguracaoDaFabrica,
   type OrigemDoMandato,
   type ProibidosDoBoard,
@@ -241,7 +242,7 @@ export async function executar(deps: DepsDoCli): Promise<number> {
       deps.escrever(`${lido.item} triado`)
       return 0
     }
-    if (lido.tipo === 'iniciar') return await iniciar(deps, pasta, proibidos, lido)
+    if (lido.tipo === 'iniciar') return await iniciar(deps, pasta, proibidos, board, lido)
     if (lido.tipo === 'fechar') {
       const resultado = await alterarEstado(pasta, (e) => {
         const r = fecharItem(e, lido.item, lido.resolucao, deps.agora())
@@ -325,11 +326,12 @@ async function iniciar(
   deps: DepsDoCli,
   pasta: string,
   proibidos: ProibidosDoBoard,
+  board: BoardDaFabrica,
   p: Extract<Comando, { tipo: 'iniciar' }>,
 ): Promise<number> {
   let comando = p.comando
   if (comando === null) {
-    const proposto = comandoDaEstacao(p.card, await lerItemNoBoard(deps.graphql, p.card))
+    const proposto = comandoDaEstacao(p.card, await lerItemNoBoard(deps.graphql, board, p.card))
     if ('erro' in proposto) {
       deps.avisar(`fabrica: ${proposto.erro}`)
       return 1

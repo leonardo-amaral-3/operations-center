@@ -84,7 +84,8 @@ describe('createFixtureGraphQL, os documentos do relatório', () => {
   })
 })
 
-const ORIGEM = boardPadrao(configuracaoDaFabrica('/home/u')).mandato!
+const BOARD_PADRAO = boardPadrao(configuracaoDaFabrica('/home/u'))
+const ORIGEM = BOARD_PADRAO.mandato!
 
 describe('createFixtureGraphQL, o mandato da dev', () => {
   it('com `mandato`, devolve o texto do arquivo no envelope do GitHub', async () => {
@@ -121,12 +122,16 @@ describe('createFixtureGraphQL, o Status de um card (F6)', () => {
 
   it('o lerItemNoBoard manda exatamente ITEM_NO_BOARD_QUERY', async () => {
     const documentos: string[] = []
-    await lerItemNoBoard((documento) => {
-      documentos.push(documento)
-      return Promise.resolve({
-        data: { repository: { issue: { state: 'OPEN', projectItems: { nodes: [] } } } },
-      })
-    }, 7)
+    await lerItemNoBoard(
+      (documento) => {
+        documentos.push(documento)
+        return Promise.resolve({
+          data: { repository: { issue: { state: 'OPEN', projectItems: { nodes: [] } } } },
+        })
+      },
+      BOARD_PADRAO,
+      7,
+    )
     expect(documentos).toEqual([ITEM_NO_BOARD_QUERY])
     expect(ITEM_NO_BOARD_QUERY).not.toContain('mutation')
   })
@@ -158,7 +163,10 @@ describe('createFixtureGraphQL, o Status de um card (F6)', () => {
   })
 
   it('o lerItemNoBoard sobre a fixture dá o Status do card', async () => {
-    expect(await lerItemNoBoard(graphql, 2)).toEqual({ noProjeto: true, status: '📥 Triagem' })
-    await expect(lerItemNoBoard(graphql, 999)).rejects.toThrow('não há issue #999')
+    expect(await lerItemNoBoard(graphql, BOARD_PADRAO, 2)).toEqual({
+      noProjeto: true,
+      status: '📥 Triagem',
+    })
+    await expect(lerItemNoBoard(graphql, BOARD_PADRAO, 999)).rejects.toThrow('não há issue #999')
   })
 })

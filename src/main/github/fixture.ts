@@ -8,15 +8,14 @@
  */
 
 import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 
 import { CARD_QUERY, OWNERS_QUERY, PR_LINK_QUERY, PR_QUERY, PROJECTS_QUERY } from '../../core'
 import type { GraphQLFn, GraphQLResponse, RestGetFn } from '../../core'
 import { ITEM_NO_BOARD_QUERY } from '../../core/fabrica/estacao'
-import {
-  MANDATO_QUERY,
-  PROJETO_DA_FABRICA,
-  REPO_DA_FABRICA,
-} from '../../core/fabrica/mandato'
+import { boardPadrao } from '../../core/fabrica/configuracao'
+import { MANDATO_QUERY } from '../../core/fabrica/mandato'
+import { configuracaoDaFabrica } from '../fabrica/configuracao'
 import { RELATORIO_MOVIDOS_QUERY } from '../../core/relatorio'
 
 export interface FixtureFiles {
@@ -111,7 +110,7 @@ async function readItemNoBoard(
   name: unknown,
   n: unknown,
 ): Promise<GraphQLResponse> {
-  const key = `${REPO_DA_FABRICA.owner}/${PROJETO_DA_FABRICA}`
+  const { chave: key, projeto: numeroDoProjeto } = boardPadrao(configuracaoDaFabrica(homedir()))
   const envelope = (await readMap(path, 'boards'))[key]
 
   if (envelope === undefined) throw new Error(`sem fixture de board para ${key}`)
@@ -146,7 +145,7 @@ async function readItemNoBoard(
           projectItems: {
             nodes: [
               {
-                project: { number: PROJETO_DA_FABRICA },
+                project: { number: numeroDoProjeto },
                 fieldValueByName: typeof status === 'string' ? { name: status } : null,
               },
             ],

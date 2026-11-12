@@ -3,15 +3,11 @@ import type { GraphQLFn } from '../../core/board/types'
 import { ITEM_NO_BOARD_QUERY, type ItemNoBoard } from '../../core/fabrica/estacao'
 import {
   motivoSemMandato,
+  nomeDoRepo,
   type BoardDaFabrica,
   type OrigemDoMandato,
 } from '../../core/fabrica/configuracao'
-import {
-  MANDATO_QUERY,
-  PROJETO_DA_FABRICA,
-  REPO_DA_FABRICA,
-  textoDoMandato,
-} from '../../core/fabrica/mandato'
+import { MANDATO_QUERY, textoDoMandato } from '../../core/fabrica/mandato'
 
 /**
  * A fábrica só **lê** o GitHub (card 121, spec P2 §9): o mandato da `dev` e o Status de um card.
@@ -79,21 +75,25 @@ interface Resposta {
   } | null
 }
 
-/** Onde o card está no Project 2. Card fechado ou inexistente lança. */
-export async function lerItemNoBoard(graphql: GraphQLFn, card: number): Promise<ItemNoBoard> {
+/** Onde o card está no Project do board. Card fechado ou inexistente lança. */
+export async function lerItemNoBoard(
+  graphql: GraphQLFn,
+  board: Pick<BoardDaFabrica, 'repo' | 'projeto'>,
+  card: number,
+): Promise<ItemNoBoard> {
   const resposta = await graphql(ITEM_NO_BOARD_QUERY, {
-    owner: REPO_DA_FABRICA.owner,
-    name: REPO_DA_FABRICA.name,
+    owner: board.repo.owner,
+    name: board.repo.name,
     n: card,
   })
   const primeiro = resposta.errors?.[0]
   if (primeiro !== undefined) throw new Error(primeiro.message)
   const issue = (resposta.data as Resposta | null)?.repository?.issue ?? null
   if (issue === null) {
-    throw new Error(`não há issue #${card} em ${REPO_DA_FABRICA.owner}/${REPO_DA_FABRICA.name}`)
+    throw new Error(`não há issue #${card} em ${nomeDoRepo(board.repo)}`)
   }
   if (issue.state === 'CLOSED') throw new Error(`o #${card} está fechado`)
-  const item = issue.projectItems.nodes.find((n) => n.project.number === PROJETO_DA_FABRICA)
+  const item = issue.projectItems.nodes.find((n) => n.project.number === board.projeto)
   if (item === undefined) return { noProjeto: false }
   return { noProjeto: true, status: item.fieldValueByName?.name ?? null }
 }
