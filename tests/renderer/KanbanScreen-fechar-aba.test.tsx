@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { KanbanScreen } from '../../src/renderer/screens/KanbanScreen'
 import type { BoardCard, BoardTab, BoardsSnapshot } from '../../src/shared/board'
 import type { ClaudeStateEvent, OpenClaudeResult } from '../../src/shared/claude'
+import { readFabricaBoardDeTeste } from './boardNaFabrica'
 
 /**
  * Fechar a aba de um card (#114, CA-1/CA-2/CA-3), pela tela: o `ClaudeTerminal` é o **real** e só o
@@ -115,6 +116,7 @@ beforeEach(() => {
     readCardWindows: () => Promise.resolve([]),
     focusCardWindow,
     openCardWindow: () => Promise.resolve(),
+    readFabricaBoard: readFabricaBoardDeTeste,
   }
 
   Object.defineProperty(window, 'oc', { value: ponte, configurable: true })

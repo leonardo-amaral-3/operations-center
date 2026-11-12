@@ -2,6 +2,7 @@ import type { JSX, ReactNode } from 'react'
 
 import type { BoardCard, BoardsSnapshot } from '../../../shared/board'
 import type {
+  BoardNaFabricaOk,
   DecisaoNaSala,
   DespachoNaSala,
   ItemNaSala,
@@ -119,16 +120,30 @@ function BadgeDaSuite({ testid }: { testid?: string }): JSX.Element {
  * produção e os recursos, tudo lido do retrato. **Contrato entre fases:** todo cartão da fila tem
  * `fabrica-aberto` e todo despacho em voo `fabrica-em-voo` com `data-state`.
  */
-export function Sala({ sala, ir, comando, emVoo }: PropsDaTela): JSX.Element {
+export function Sala({ sala, ir, comando, emVoo, board }: PropsDaTela): JSX.Element {
   return (
     <>
-      <CabecalhoDaSala sala={sala} emVoo={emVoo} onIr={ir} onComando={(c) => void comando(c)} />
-      <Corpo sala={sala} ir={ir} />
+      <CabecalhoDaSala
+        sala={sala}
+        emVoo={emVoo}
+        onIr={ir}
+        onComando={(c) => void comando(c)}
+        padrao={board.padrao}
+      />
+      <Corpo sala={sala} ir={ir} board={board} />
     </>
   )
 }
 
-function Corpo({ sala, ir }: { sala: SalaDaFabrica | null; ir: Ir }): JSX.Element {
+function Corpo({
+  sala,
+  ir,
+  board,
+}: {
+  sala: SalaDaFabrica | null
+  ir: Ir
+  board: BoardNaFabricaOk
+}): JSX.Element {
   const cards = useCardsDoBoard()
   const boards = useRetratoDosBoards()
 
@@ -146,7 +161,7 @@ function Corpo({ sala, ir }: { sala: SalaDaFabrica | null; ir: Ir }): JSX.Elemen
         <div data-testid="fabrica-vazia" className={VAZIO}>
           Nenhum despacho registrado ainda. A fábrica começa num yarn fabrica iniciar.
         </div>
-        <Linha sala={null} ir={ir} cards={cards} boards={boards} />
+        <Linha sala={null} ir={ir} cards={cards} boards={boards} board={board} />
         <Recursos recursos={sala.recursos} />
       </>
     )
@@ -159,7 +174,7 @@ function Corpo({ sala, ir }: { sala: SalaDaFabrica | null; ir: Ir }): JSX.Elemen
           <p>Não foi possível ler o estado da fábrica.</p>
           <p className="text-xs break-words text-foreground/75">{sala.erro}</p>
         </div>
-        <Linha sala={null} ir={ir} cards={cards} boards={boards} />
+        <Linha sala={null} ir={ir} cards={cards} boards={boards} board={board} />
         <Recursos recursos={sala.recursos} />
       </>
     )
@@ -170,7 +185,7 @@ function Corpo({ sala, ir }: { sala: SalaDaFabrica | null; ir: Ir }): JSX.Elemen
       <Resumo sala={sala} ir={ir} />
       <div className="flex flex-wrap items-start gap-5">
         <Esperando sala={sala} ir={ir} cards={cards} />
-        <Linha sala={sala} ir={ir} cards={cards} boards={boards} />
+        <Linha sala={sala} ir={ir} cards={cards} boards={boards} board={board} />
         <aside
           aria-label="Recursos e atividade"
           className="flex flex-[1_1_280px] max-w-[340px] flex-col gap-4"
@@ -379,19 +394,32 @@ function CartaoAberto({
   )
 }
 
+/**
+ * A Linha só leitura do board da aba, para a fábrica que recusou o board (#157, §11): sem retrato da
+ * fábrica não há despacho, e os cartões do board são só os que o board mostra.
+ */
+export function LinhaSemFabrica(): JSX.Element {
+  const cards = useCardsDoBoard()
+  const boards = useRetratoDosBoards()
+
+  return <Linha sala={null} ir={() => undefined} cards={cards} boards={boards} board={null} />
+}
+
 function Linha({
   sala,
   ir,
   cards,
   boards,
+  board,
 }: {
   sala: SalaOk | null
   ir: Ir
   cards: Cards
   boards: BoardsSnapshot | null
+  board: BoardNaFabricaOk | null
 }): JSX.Element {
   const suite = sala?.recursos.suite
-  const fabrica = sala !== null && mostraAFabrica(boards)
+  const fabrica = sala !== null && board !== null && mostraAFabrica(boards, board.chave)
   const emVoo = fabrica ? sala.emVoo : []
   const abertos = fabrica ? sala.abertos : []
   const foraDaLinha = emVoo.filter((d) => d.estacao === null)

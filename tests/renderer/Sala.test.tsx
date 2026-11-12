@@ -11,6 +11,7 @@ import type {
   SalaDaFabrica,
 } from '../../src/shared/fabrica'
 import { BOARDS_F2, RETRATO_F2 } from './retrato-f2'
+import { readFabricaBoardDeTeste } from './boardNaFabrica'
 
 /**
  * A Sala da F2 (#131, CA-2.1) sobre o retrato literal da fixture `f2`: os quatro números, os três
@@ -28,6 +29,7 @@ beforeEach(() => {
   Object.defineProperty(window, 'oc', {
     value: {
       readFabrica,
+      readFabricaBoard: readFabricaBoardDeTeste,
       readFabricaPergunta,
       readRelatorio: () => new Promise(() => {}),
       comandoFabrica,
@@ -42,10 +44,11 @@ afterEach(cleanup)
 
 const telaAtual = () => screen.getByTestId('fabrica-tela').dataset.tela
 
-async function abrir(retrato: SalaDaFabrica = RETRATO_F2) {
+/** `esperar`: o que prova que a fábrica abriu; com a aba recusada (#157) é `fabrica-recusa`. */
+async function abrir(retrato: SalaDaFabrica = RETRATO_F2, esperar = 'fabrica-recursos') {
   readFabrica.mockResolvedValue(retrato)
   render(<Fabrica />)
-  await screen.findByTestId('fabrica-recursos')
+  await screen.findByTestId(esperar)
 }
 
 function coluna(nome: string): HTMLElement {
@@ -506,16 +509,25 @@ describe('Sala · a Linha segue a aba', () => {
     }
   }
 
-  let empurrar: (s: BoardsSnapshot) => void = () => {}
+  // A raiz e a Linha assinam os dois: o `empurrar` entrega a cada ouvinte (#157).
+  const ouvintes = new Set<(s: BoardsSnapshot) => void>()
+  let ultimo: BoardsSnapshot | null = null
+  const empurrar = (s: BoardsSnapshot): void => {
+    ultimo = s
+    for (const cb of ouvintes) cb(s)
+  }
 
   function comBoards(retrato: BoardsSnapshot | null) {
+    ultimo = retrato
     Object.defineProperty(window, 'oc', {
       value: {
         ...window.oc,
-        readBoards: () => Promise.resolve(retrato as BoardsSnapshot),
+        readBoards: () => Promise.resolve(ultimo as BoardsSnapshot),
         onBoards: (cb: (s: BoardsSnapshot) => void) => {
-          empurrar = cb
-          return () => {}
+          ouvintes.add(cb)
+          return () => {
+            ouvintes.delete(cb)
+          }
         },
       },
       configurable: true,
@@ -526,7 +538,7 @@ describe('Sala · a Linha segue a aba', () => {
 
   it('(b) com a aba do Plataformas, o #910 está na spec, o #952 sai da entrada e o rótulo diz a aba', async () => {
     comBoards(snapshot('ICSF-Solutions/19'))
-    await abrir()
+    await abrir(RETRATO_F2, 'fabrica-recusa')
     await waitFor(() => {
       expect(texto()).toBe('board Plataformas v2')
     })
@@ -540,13 +552,12 @@ describe('Sala · a Linha segue a aba', () => {
     expect(screen.queryAllByTestId('fabrica-em-voo')).toHaveLength(0)
   })
 
-  it('(c) o snapshot empurrado com a aba do Project 2 devolve o #952 sem remontar', async () => {
+  it('(c) o snapshot empurrado com a aba do Project 2 troca a recusa pela Sala com o #952', async () => {
     comBoards(snapshot('ICSF-Solutions/19'))
-    await abrir()
+    await abrir(RETRATO_F2, 'fabrica-recusa')
     await waitFor(() => {
       expect(coluna('spec').textContent).toContain('#910')
     })
-    const recursos = screen.getByTestId('fabrica-recursos')
 
     act(() => {
       empurrar(snapshot('leonardo-amaral-3/2'))
@@ -555,14 +566,15 @@ describe('Sala · a Linha segue a aba', () => {
     await waitFor(() => {
       expect(coluna('entrada').textContent).toContain('#952')
     })
+    expect(screen.queryByTestId('fabrica-recusa')).toBeNull()
     expect(coluna('spec').textContent).not.toContain('#910')
     expect(texto()).toBe('board Operations Center')
-    expect(screen.getByTestId('fabrica-recursos')).toBe(recursos)
+    expect(screen.getByTestId('fabrica-recursos')).toBeTruthy()
   })
 
   it('(d) o card do Backlog vai para "Fora das estações da linha", agrupado pelo nome da coluna', async () => {
     comBoards(snapshot('ICSF-Solutions/19'))
-    await abrir()
+    await abrir(RETRATO_F2, 'fabrica-recusa')
 
     const grupo = await screen.findByTestId('fabrica-a-parte-coluna')
     expect(grupo.dataset.colunaDoBoard).toBe('📋 Backlog')
@@ -571,7 +583,7 @@ describe('Sala · a Linha segue a aba', () => {
 
   it('(d2) as listas com teto (#149): cartões do board da coluna e do "Fora das estações" ficam dentro delas, e coluna vazia não tem lista', async () => {
     comBoards(snapshot('ICSF-Solutions/19'))
-    await abrir()
+    await abrir(RETRATO_F2, 'fabrica-recusa')
     await waitFor(() => {
       expect(texto()).toBe('board Plataformas v2')
     })
@@ -592,26 +604,6 @@ describe('Sala · a Linha segue a aba', () => {
     expect(aParte!.textContent).toContain('#911')
   })
 
-  it('(e) sem-estado com o board ok mostra a mensagem e o card do board', async () => {
-    comBoards(snapshot('ICSF-Solutions/19'))
-    await abrir({ kind: 'sem-estado', ...cabecalho() })
-
-    expect(screen.getByTestId('fabrica-vazia')).toBeTruthy()
-    await waitFor(() => {
-      expect(within(coluna('spec')).getByTestId('fabrica-board-card').textContent).toContain('#910')
-    })
-  })
-
-  it("(e') ilegivel com o board ok mostra o erro e o card do board", async () => {
-    comBoards(snapshot('ICSF-Solutions/19'))
-    await abrir({ kind: 'ilegivel', erro: 'JSON torto', ...cabecalho() })
-
-    expect(screen.getByTestId('fabrica-erro')).toBeTruthy()
-    await waitFor(() => {
-      expect(within(coluna('spec')).getByTestId('fabrica-board-card').textContent).toContain('#910')
-    })
-  })
-
   it('(f) card do operations-center sem despacho abre a tela Card', async () => {
     const retrato = snapshot('leonardo-amaral-3/2')
     const aba = retrato.boards![0]!
@@ -630,9 +622,10 @@ describe('Sala · a Linha segue a aba', () => {
   })
 
   it('(g) o rótulo do board em cada ramo', async () => {
+    // Sem retrato a raiz não monta a Sala (#157): só o `fabrica-lendo`, sem Linha.
     comBoards(null)
-    await abrir()
-    expect(texto()).toBe('lendo os boards…')
+    await abrir(RETRATO_F2, 'fabrica-lendo')
+    expect(screen.queryByTestId('fabrica-linha-board')).toBeNull()
     cleanup()
 
     comBoards(snapshot(null))
@@ -647,7 +640,7 @@ describe('Sala · a Linha segue a aba', () => {
       a.key === 'ICSF-Solutions/19' ? { ...a, board: null } : a,
     )
     comBoards({ ...semBoard, boards: abas })
-    await abrir()
+    await abrir(RETRATO_F2, 'fabrica-recusa')
     await waitFor(() => {
       expect(texto()).toBe('board Plataformas v2 · lendo…')
     })
@@ -657,7 +650,7 @@ describe('Sala · a Linha segue a aba', () => {
       ...semBoard,
       boards: abas.map((a) => (a.key === 'ICSF-Solutions/19' ? { ...a, error: 'rede caiu' } : a)),
     })
-    await abrir()
+    await abrir(RETRATO_F2, 'fabrica-recusa')
     await waitFor(() => {
       expect(texto()).toBe('board Plataformas v2 · sem leitura')
     })

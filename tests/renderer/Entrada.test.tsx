@@ -6,6 +6,7 @@ import { Entrada } from '../../src/renderer/fabrica/telas/Entrada'
 import type { PropsDaTela } from '../../src/renderer/fabrica/telas'
 import type { EntradaNaSala, ItemNaEntrada, SalaDaFabrica } from '../../src/shared/fabrica'
 import { RETRATO_F2 } from './retrato-f2'
+import { BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 /** A tela Entrada da F4 (#133, CA-4.3/4.4). A ponte e o comando são falsos. */
 
@@ -65,6 +66,7 @@ function props(extra: Partial<PropsDaTela> = {}): PropsDaTela {
     ir: vi.fn(),
     comando: () => Promise.resolve(),
     emVoo: false,
+    board: BOARD_DO_PROJECT_2,
     ...extra,
   }
 }

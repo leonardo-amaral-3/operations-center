@@ -85,7 +85,7 @@ function notaDoAssumir(atual: DespachoDoCard, itemId: string | null): string {
   return 'Assumir abre o mesmo terminal que o cartão abre hoje, retomando a sessão deste despacho. Com a frente encerrada, a fábrica só volta a este card por yarn fabrica iniciar.'
 }
 
-export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
+export function CardEmVoo({ tela, sala, ir, board }: PropsDaTela): JSX.Element {
   // A raiz só monta esta tela com `tela: 'card'`; fora disso não há card a ler.
   const card = tela.tela === 'card' ? tela.card : 0
   const lidoEm = sala?.lidoEm
@@ -108,7 +108,7 @@ export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
     }
     void (async () => {
       try {
-        aplicar(await window.oc.readFabricaCard({ board: null, repo: null, card }))
+        aplicar(await window.oc.readFabricaCard({ board: board.chave, repo: null, card }))
       } catch (e) {
         aplicar({
           kind: 'ilegivel',
@@ -118,7 +118,7 @@ export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
         })
       }
     })()
-  }, [card, lidoEm])
+  }, [board.chave, card, lidoEm])
 
   const cards = useCardsDoBoard()
   const doBoard = dados !== null && dados.cardUrl !== '' ? cards.get(dados.cardUrl) : undefined
@@ -175,7 +175,7 @@ export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
     setAssumindo(true)
     let r: AssumirDespachoResult
     try {
-      r = await window.oc.assumirDespacho({ board: null, despacho: ok.atual.id, itemId })
+      r = await window.oc.assumirDespacho({ board: board.chave, despacho: ok.atual.id, itemId })
     } catch (e) {
       r = { ok: false, motivo: e instanceof Error ? e.message : String(e) }
     }
@@ -188,6 +188,7 @@ export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
   return (
     <>
       <CabecalhoInterno
+        padrao={board.padrao}
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
         atual={tela.tela}

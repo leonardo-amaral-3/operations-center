@@ -83,7 +83,7 @@ export function useRelatorioDoDia(dia: string): {
   }
 }
 
-export function useRevisoes(): {
+export function useRevisoes(board: string): {
   revisoes: ReadonlyMap<string, RevisaoNaSala> | null
   erro: string | null
   ilegiveis: number
@@ -98,7 +98,7 @@ export function useRevisoes(): {
 
   const reler = useCallback(async (): Promise<void> => {
     try {
-      const r = await Promise.resolve().then(() => window.oc.readFabricaRevisoes({ board: null }))
+      const r = await Promise.resolve().then(() => window.oc.readFabricaRevisoes({ board }))
       if (!vivo.current) return
       if (r.kind === 'ok') {
         setEstado({
@@ -113,7 +113,7 @@ export function useRevisoes(): {
       if (!vivo.current) return
       setEstado({ revisoes: null, erro: mensagem(erro), ilegiveis: 0 })
     }
-  }, [])
+  }, [board])
 
   useEffect(() => {
     vivo.current = true

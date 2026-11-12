@@ -15,6 +15,7 @@ import {
   frentesDoBriefing,
   notaDoBriefing,
 } from '../../src/renderer/fabrica/briefing'
+import { BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 const COLUNAS = [
   { id: 'c-tri', name: '📥 Triagem' },
@@ -45,6 +46,7 @@ function boardDe(cards: BoardCard[]): Board {
 }
 
 describe('boardDaFabrica', () => {
+  const ALVO = BOARD_DO_PROJECT_2
   const aba = (parcial: Record<string, unknown>) => ({
     key: CHAVE_DO_BOARD_DA_FABRICA,
     title: 'x',
@@ -57,28 +59,34 @@ describe('boardDaFabrica', () => {
     ({ boards, activeKey: null, discoveryError }) as BoardsSnapshot
 
   it('sem retrato ou sem descoberta, lendo', () => {
-    expect(boardDaFabrica(null)).toEqual({ kind: 'lendo' })
-    expect(boardDaFabrica(snap(null))).toEqual({ kind: 'lendo' })
+    expect(boardDaFabrica(null, ALVO)).toEqual({ kind: 'lendo' })
+    expect(boardDaFabrica(snap(null), ALVO)).toEqual({ kind: 'lendo' })
   })
 
   it('sem a aba do Project 2, erro, com o erro da descoberta quando há', () => {
-    const r = boardDaFabrica(snap([]))
+    const r = boardDaFabrica(snap([]), ALVO)
     expect(r).toEqual({
       kind: 'erro',
       erro: 'o board do Operations Center (Project 2) não está entre os boards do app',
     })
-    const r2 = boardDaFabrica(snap([], 'sem rede'))
+    const r2 = boardDaFabrica(snap([], 'sem rede'), ALVO)
     expect(r2.kind === 'erro' && r2.erro.endsWith(': sem rede')).toBe(true)
   })
 
   it('aba sem board: o erro dela, ou lendo', () => {
-    expect(boardDaFabrica(snap([aba({ error: 'caiu' })]))).toEqual({ kind: 'erro', erro: 'caiu' })
-    expect(boardDaFabrica(snap([aba({})]))).toEqual({ kind: 'lendo' })
+    expect(boardDaFabrica(snap([aba({ error: 'caiu' })]), ALVO)).toEqual({
+      kind: 'erro',
+      erro: 'caiu',
+    })
+    expect(boardDaFabrica(snap([aba({})]), ALVO)).toEqual({ kind: 'lendo' })
   })
 
   it('com board, ok, mesmo com erro preenchido', () => {
     const board = boardDe([])
-    expect(boardDaFabrica(snap([aba({ board, error: 'velho' })]))).toEqual({ kind: 'ok', board })
+    expect(boardDaFabrica(snap([aba({ board, error: 'velho' })]), ALVO)).toEqual({
+      kind: 'ok',
+      board,
+    })
   })
 })
 

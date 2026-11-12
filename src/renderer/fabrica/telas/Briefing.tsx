@@ -229,8 +229,15 @@ function PlanoDoCard({
   )
 }
 
-export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.Element {
-  const board = useBoardDaFabrica()
+export function Briefing({
+  tela,
+  sala,
+  ir,
+  comando,
+  emVoo,
+  board: alvo,
+}: PropsDaTela): JSX.Element {
+  const board = useBoardDaFabrica(alvo)
   const [marcadas, setMarcadas] = useState<Set<number>>(() => new Set())
   const [pronto, setPronto] = useState<Record<number, string>>({})
   const [contexto, setContexto] = useState('')
@@ -267,7 +274,7 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
       void (async (): Promise<void> => {
         let plano: Plano
         try {
-          plano = await window.oc.readFabricaCard({ board: null, repo: null, card })
+          plano = await window.oc.readFabricaCard({ board: alvo.chave, repo: null, card })
         } catch (e) {
           plano = { kind: 'falha', erro: mensagem(e) }
         }
@@ -275,7 +282,7 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
         setPlanos((antes) => new Map(antes).set(card, plano))
       })()
     }
-  }, [chaveDosMostrados, lidoEm])
+  }, [alvo.chave, chaveDosMostrados, lidoEm])
 
   const textoDoTeto =
     sala === null
@@ -284,7 +291,7 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
 
   const lerSala = async (): Promise<DespachoNaSala[] | null> => {
     try {
-      const lida = await window.oc.readFabrica({ board: null })
+      const lida = await window.oc.readFabrica({ board: alvo.chave })
       if (lida.kind === 'ok') return lida.emVoo
       if (lida.kind === 'sem-estado') return []
       return null
@@ -377,7 +384,7 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
   } else if (board.kind === 'erro') {
     lista = (
       <p role="alert" data-testid="fabrica-briefing-erro" className="text-sm">
-        {`Sem leitura do board do Operations Center: ${board.erro}`}
+        {`Sem leitura do board do ${alvo.nome}: ${board.erro}`}
       </p>
     )
   } else if (frentes.length === 0) {
@@ -451,6 +458,7 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
   return (
     <>
       <CabecalhoInterno
+        padrao={alvo.padrao}
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
         atual={tela.tela}

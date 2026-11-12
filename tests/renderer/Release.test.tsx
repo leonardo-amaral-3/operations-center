@@ -12,6 +12,7 @@ import {
 } from '../../src/renderer/fabrica/trem'
 import type { BoardCard, BoardsSnapshot, CardContent } from '../../src/shared/board'
 import type { ReadCardResult } from '../../src/shared/ipc'
+import { BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 /** A tela Release da F6 (#135, CA-6.3/6.4). A ponte é falsa; nada é escrito em lugar nenhum. */
 
@@ -113,6 +114,7 @@ function props(extra: Partial<PropsDaTela> = {}): PropsDaTela {
     ir: vi.fn(),
     comando: () => Promise.resolve(),
     emVoo: false,
+    board: BOARD_DO_PROJECT_2,
     ...extra,
   }
 }

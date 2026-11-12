@@ -14,6 +14,7 @@ import type {
 } from '../../src/shared/fabrica'
 import { RETRATO_F2 } from './retrato-f2'
 import { CARD_4_EM_VOO } from './retrato-f4'
+import { BOARD_DE_DOIS_REPOS, BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 /** A tela Briefing da F6 (#135, CA-6.1/6.2). A ponte e o comando são falsos; nada é solto de verdade. */
 
@@ -106,6 +107,7 @@ function props(extra: Partial<PropsDaTela> = {}): PropsDaTela {
     ir: vi.fn(),
     comando: () => Promise.resolve(),
     emVoo: false,
+    board: BOARD_DO_PROJECT_2,
     ...extra,
   }
 }
@@ -221,6 +223,11 @@ describe('Briefing · as frentes (CA-6.1)', () => {
     render(<Briefing {...props()} />)
     expect((await screen.findByTestId('fabrica-briefing-erro')).textContent).toBe(
       'Sem leitura do board do Operations Center: sem rede',
+    )
+    cleanup()
+    render(<Briefing {...props({ board: BOARD_DE_DOIS_REPOS })} />)
+    expect((await screen.findByTestId('fabrica-briefing-erro')).textContent).toBe(
+      'Sem leitura do board do Board de Dois Repos: sem rede',
     )
     cleanup()
     readBoards.mockResolvedValue(boards([card(960, 'c-esp')]))
@@ -401,7 +408,11 @@ describe('Briefing · plano devolvido', () => {
     const em = sala([despacho('d-0006', 4)])
     await abrir({ sala: em })
     const passos = await screen.findAllByTestId('fabrica-briefing-passo')
-    expect(readFabricaCard).toHaveBeenCalledWith({ board: null, repo: null, card: 4 })
+    expect(readFabricaCard).toHaveBeenCalledWith({
+      board: 'leonardo-amaral-3/2',
+      repo: null,
+      card: 4,
+    })
     expect(passos.length).toBe(4)
     expect(passos.at(-1)!.textContent).toContain(CARD_4_EM_VOO.atual.comando)
   })

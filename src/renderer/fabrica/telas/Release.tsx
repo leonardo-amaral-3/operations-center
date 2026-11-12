@@ -40,8 +40,8 @@ function mensagem(e: unknown): string {
 }
 
 /** O trem da 🚂 Release do board e o rascunho do que o /gm-release vai conferir. Nada aqui escreve. */
-export function Release({ tela, ir }: PropsDaTela): JSX.Element {
-  const board = useBoardDaFabrica()
+export function Release({ tela, ir, board: alvo }: PropsDaTela): JSX.Element {
+  const board = useBoardDaFabrica(alvo)
   const trem = useMemo(() => (board.kind === 'ok' ? cardsDoTrem(board.board) : []), [board])
   const [leituras, setLeituras] = useState<Map<string, ReadCardResult>>(new Map())
   const [marcadas, setMarcadas] = useState<Set<string>>(new Set())
@@ -192,6 +192,7 @@ export function Release({ tela, ir }: PropsDaTela): JSX.Element {
   return (
     <>
       <CabecalhoInterno
+        padrao={alvo.padrao}
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
         atual={tela.tela}

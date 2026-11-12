@@ -47,7 +47,7 @@ function corDoPonto(d: DespachoNaSala): string {
   return 'bg-secondary-background'
 }
 
-export function Agentes({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.Element {
+export function Agentes({ tela, sala, ir, comando, emVoo, board }: PropsDaTela): JSX.Element {
   const cards = useCardsDoBoard()
   const titulo: Titulos = (url) => cards.get(url)?.title ?? null
   const recursos = sala?.recursos ?? null
@@ -59,6 +59,7 @@ export function Agentes({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
   return (
     <>
       <CabecalhoInterno
+        padrao={board.padrao}
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
         atual={tela.tela}

@@ -14,6 +14,7 @@ import {
   CONTEUDO_DO_4,
   CORPO_TASKS_4,
 } from './retrato-f4'
+import { BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 /** A tela Card da F4 (#133, CA-4.1/4.2/4.4) sobre os literais do "esperado F4". A ponte é falsa. */
 
@@ -64,6 +65,7 @@ function props(card: number, sala: SalaDaFabrica | null = SALA): PropsDaTela {
     ir: vi.fn(),
     comando: () => Promise.resolve(),
     emVoo: false,
+    board: BOARD_DO_PROJECT_2,
   }
 }
 
@@ -210,7 +212,7 @@ describe('Card · o #906 parado', () => {
     const aviso = await screen.findByTestId('fabrica-card-assumido')
     expect(assumirDespacho).toHaveBeenCalledTimes(1)
     expect(assumirDespacho).toHaveBeenCalledWith({
-      board: null,
+      board: 'leonardo-amaral-3/2',
       despacho: 'd-0007',
       itemId: 'PVTI_f4_906',
     })

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PropsDaTela } from '../../src/renderer/fabrica/telas'
 import { Mandato } from '../../src/renderer/fabrica/telas/Mandato'
 import type { MandatoNaSala, PortaoDoMandato } from '../../src/shared/fabrica'
+import { BOARD_DE_DOIS_REPOS, BOARD_DO_PROJECT_2 } from './boardNaFabrica'
 
 /** A tela Mandato da F5 (#134, CA-5.4/5.5, CA-E4): só a ponte `readFabricaMandato` é falsa. */
 
@@ -59,6 +60,7 @@ function props(extra: Partial<PropsDaTela> = {}): PropsDaTela {
     ir: vi.fn(),
     comando: () => Promise.resolve(),
     emVoo: false,
+    board: BOARD_DO_PROJECT_2,
     ...extra,
   }
 }
@@ -69,6 +71,17 @@ const quemDe = (linha: HTMLElement) =>
     .map((c) => c.querySelector('[data-quem]')?.getAttribute('data-quem'))
 
 describe('Mandato', () => {
+  it('o board da aba decide a pasta lida e o link do mandato (#157)', async () => {
+    render(<Mandato {...props({ board: BOARD_DE_DOIS_REPOS })} />)
+
+    await waitFor(() => {
+      expect(readFabricaMandato).toHaveBeenCalledWith({ board: 'fulano/8' })
+    })
+    expect(screen.getByTestId('fabrica-mandato-github').getAttribute('href')).toBe(
+      'https://github.com/fulano/repo-a/blob/dev/fabrica/MANDATO.md',
+    )
+  })
+
   it('enquanto lê, mostra o aviso e a tabela com "sem leitura"', () => {
     readFabricaMandato.mockReturnValue(new Promise(() => undefined))
     render(<Mandato {...props()} />)

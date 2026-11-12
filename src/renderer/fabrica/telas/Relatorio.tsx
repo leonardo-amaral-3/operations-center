@@ -207,14 +207,16 @@ function Corpo({
   ir,
   comando,
   emVoo,
+  board,
 }: {
   dia: string
   p: PainelDoDia
   ir: PropsDaTela['ir']
   comando: PropsDaTela['comando']
   emVoo: boolean
+  board: string
 }): JSX.Element {
-  const { revisoes, erro, ilegiveis, reler } = useRevisoes()
+  const { revisoes, erro, ilegiveis, reler } = useRevisoes(board)
   const mapa = revisoes ?? new Map()
   const n = numerosDoDia(p, mapa)
   const segmentos = segmentosDoEsforco(p)
@@ -395,7 +397,7 @@ function Corpo({
   )
 }
 
-export function Relatorio({ tela, ir, comando, emVoo }: PropsDaTela): JSX.Element {
+export function Relatorio({ tela, ir, comando, emVoo, board }: PropsDaTela): JSX.Element {
   const dia = (tela.tela === 'relatorio' ? tela.dia : undefined) ?? hojeEmUtc(new Date())
   const { relatorio, gerarDeNovo } = useRelatorioDoDia(dia)
 
@@ -443,6 +445,7 @@ export function Relatorio({ tela, ir, comando, emVoo }: PropsDaTela): JSX.Elemen
   return (
     <>
       <CabecalhoInterno
+        padrao={board.padrao}
         trilha={trilhaDa(tela, new Date())}
         direita={direita}
         onIr={ir}
@@ -458,7 +461,14 @@ export function Relatorio({ tela, ir, comando, emVoo }: PropsDaTela): JSX.Elemen
         </div>
       )}
       {relatorio?.kind === 'ok' && (
-        <Corpo dia={dia} p={relatorio.painel} ir={ir} comando={comando} emVoo={emVoo} />
+        <Corpo
+          dia={dia}
+          p={relatorio.painel}
+          ir={ir}
+          comando={comando}
+          emVoo={emVoo}
+          board={board.chave}
+        />
       )}
     </>
   )

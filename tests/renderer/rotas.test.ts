@@ -5,6 +5,7 @@ import {
   ARQUIVO_DO_PROTOTIPO,
   NAVEGACAO_DA_SALA,
   rotaDoItem,
+  TELAS_SO_DO_PADRAO,
   trilhaDa,
   type NomeDaTela,
   type TelaDaFabrica,
@@ -47,6 +48,14 @@ describe('trilhaDa', () => {
     const card = trilhaDa({ tela: 'card', card: 7 }, HOJE)
     expect(card.map((m) => m.para)).toEqual([SALA, SALA, null])
     expect(trilhaDa({ tela: 'agentes' }, HOJE).map((m) => m.para)).toEqual([SALA, null])
+  })
+})
+
+describe('TELAS_SO_DO_PADRAO (#157)', () => {
+  it('são as três telas do operations-center, e todas estão na navegação', () => {
+    expect([...TELAS_SO_DO_PADRAO]).toEqual(['relatorio', 'portfolio', 'release'])
+    const naNavegacao = NAVEGACAO_DA_SALA.map((n) => n.tela)
+    for (const t of TELAS_SO_DO_PADRAO) expect(naNavegacao).toContain(t)
   })
 })
 

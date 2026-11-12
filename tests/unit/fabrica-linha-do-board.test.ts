@@ -4,6 +4,7 @@ import { normalizeStation } from '../../src/core/board/stations'
 import { ESTEIRA_STATIONS } from '../../src/core/board/query'
 import { CHAVE_DO_BOARD_DA_FABRICA } from '../../src/renderer/fabrica/boardDaFabrica'
 import {
+  abaDaFabrica,
   abaDaLinha,
   cardsDaLinha,
   colunaDaLinhaDoBoard,
@@ -110,14 +111,32 @@ describe('abaDaLinha e mostraAFabrica (CA-1 aba)', () => {
     })
   })
   it('mostraAFabrica', () => {
-    expect(mostraAFabrica(null)).toBe(true)
-    expect(mostraAFabrica(snap(null, OUTRA))).toBe(true)
-    expect(mostraAFabrica(snap([aba(OUTRA)], null))).toBe(true)
-    expect(mostraAFabrica(snap([aba(OUTRA)], 'x/1'))).toBe(true)
-    expect(mostraAFabrica(snap([aba(CHAVE_DO_BOARD_DA_FABRICA)], CHAVE_DO_BOARD_DA_FABRICA))).toBe(
-      true,
-    )
-    expect(mostraAFabrica(snap([aba(OUTRA)], OUTRA))).toBe(false)
+    expect(mostraAFabrica(null, CHAVE_DO_BOARD_DA_FABRICA)).toBe(true)
+    expect(mostraAFabrica(snap(null, OUTRA), CHAVE_DO_BOARD_DA_FABRICA)).toBe(true)
+    expect(mostraAFabrica(snap([aba(OUTRA)], null), CHAVE_DO_BOARD_DA_FABRICA)).toBe(true)
+    expect(mostraAFabrica(snap([aba(OUTRA)], 'x/1'), CHAVE_DO_BOARD_DA_FABRICA)).toBe(true)
+    expect(
+      mostraAFabrica(
+        snap([aba(CHAVE_DO_BOARD_DA_FABRICA)], CHAVE_DO_BOARD_DA_FABRICA),
+        'leonardo-amaral-3/2',
+      ),
+    ).toBe(true)
+    expect(mostraAFabrica(snap([aba(OUTRA)], OUTRA), 'leonardo-amaral-3/2')).toBe(false)
+    // A chave é a do board servido (#157): a aba de outro board esconde a camada dele.
+    expect(mostraAFabrica(snap([aba('fulano/8')], 'fulano/8'), 'fulano/8')).toBe(true)
+    expect(mostraAFabrica(snap([aba('fulano/8')], 'fulano/8'), 'leonardo-amaral-3/2')).toBe(false)
+  })
+
+  it('abaDaFabrica (#157)', () => {
+    expect(abaDaFabrica(null)).toEqual({ kind: 'lendo' })
+    expect(abaDaFabrica(snap(null, OUTRA))).toEqual({ kind: 'lendo' })
+    expect(abaDaFabrica(snap([aba(OUTRA)], null))).toEqual({ kind: 'pronta', chave: null })
+    expect(abaDaFabrica(snap([aba(OUTRA)], 'x/1'))).toEqual({ kind: 'pronta', chave: null })
+    expect(abaDaFabrica(snap([aba(OUTRA)], OUTRA))).toEqual({ kind: 'pronta', chave: OUTRA })
+    expect(abaDaFabrica(snap([aba(OUTRA, { error: 'caiu' })], OUTRA))).toEqual({
+      kind: 'pronta',
+      chave: OUTRA,
+    })
   })
 })
 

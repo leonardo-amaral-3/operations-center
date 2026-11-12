@@ -20,6 +20,7 @@ import type { TelaDaFabrica } from '../rotas'
 export function useItemDaFila(
   tela: TelaDaFabrica,
   sala: SalaDaFabrica | null,
+  board: string,
 ): { id: string | null; pergunta: PerguntaDaFila | null | undefined } {
   const id = tela.tela === 'pergunta' || tela.tela === 'decisao' ? tela.item : null
   const [pergunta, setPergunta] = useState<PerguntaDaFila | null | undefined>(undefined)
@@ -40,7 +41,7 @@ export function useItemDaFila(
     idLido.current = id
 
     window.oc
-      .readFabricaPergunta({ board: null, id })
+      .readFabricaPergunta({ board, id })
       .then((resposta) => {
         // Uma resposta de um item que já não é o atual é descartada.
         if (atual) setPergunta(resposta)
@@ -52,7 +53,7 @@ export function useItemDaFila(
     return () => {
       atual = false
     }
-  }, [id, fechadoEm])
+  }, [board, id, fechadoEm])
 
   return { id, pergunta }
 }

@@ -34,7 +34,7 @@ describe('NavegacaoDasTelas', () => {
     (atual) => {
       const onIr = vi.fn()
 
-      render(<NavegacaoDasTelas atual={atual} onIr={onIr} />)
+      render(<NavegacaoDasTelas atual={atual} onIr={onIr} padrao />)
 
       const botoes = Array.from(screen.getByTestId('fabrica-nav').querySelectorAll('button'))
 
@@ -58,6 +58,22 @@ describe('NavegacaoDasTelas', () => {
   )
 })
 
+describe('NavegacaoDasTelas sem o padrão (#157)', () => {
+  it('padrao=false tira Relatório, Portfólio e Release', () => {
+    render(<NavegacaoDasTelas atual="sala" onIr={vi.fn()} padrao={false} />)
+
+    const botoes = Array.from(screen.getByTestId('fabrica-nav').querySelectorAll('button'))
+
+    expect(botoes.map((b) => b.dataset.testid)).toEqual([
+      'fabrica-nav-sala',
+      'fabrica-nav-briefing',
+      'fabrica-nav-entrada',
+      'fabrica-nav-agentes',
+      'fabrica-nav-mandato',
+    ])
+  })
+})
+
 describe('CabecalhoInterno', () => {
   it('renderiza a trilha e o menu', () => {
     render(
@@ -67,6 +83,7 @@ describe('CabecalhoInterno', () => {
           { rotulo: 'Entrada', para: null },
         ]}
         atual="entrada"
+        padrao
         onIr={() => {}}
       />,
     )

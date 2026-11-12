@@ -162,7 +162,7 @@ function ItemDaEntrada({
   )
 }
 
-export function Entrada({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.Element {
+export function Entrada({ tela, sala, ir, comando, emVoo, board }: PropsDaTela): JSX.Element {
   const lidoEm = sala?.lidoEm
 
   const [entrada, setEntrada] = useState<EntradaNaSala | null>(null)
@@ -180,7 +180,7 @@ export function Entrada({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
     const minha = ++geracao.current
     let lida: EntradaNaSala
     try {
-      lida = await window.oc.readFabricaEntrada({ board: null })
+      lida = await window.oc.readFabricaEntrada({ board: board.chave })
     } catch (e) {
       lida = { kind: 'ilegivel', erro: e instanceof Error ? e.message : String(e) }
     }
@@ -189,7 +189,7 @@ export function Entrada({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
       setEntrada(lida)
     }
     return lida
-  }, [])
+  }, [board.chave])
 
   useEffect(() => {
     void ler()
@@ -255,6 +255,7 @@ export function Entrada({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
   return (
     <>
       <CabecalhoInterno
+        padrao={board.padrao}
         trilha={trilhaDa(tela, new Date())}
         onIr={ir}
         atual={tela.tela}

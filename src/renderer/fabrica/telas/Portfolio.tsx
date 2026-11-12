@@ -225,14 +225,16 @@ function Corpo({
   ir,
   comando,
   emVoo,
+  board,
 }: {
   dia: string
   p: PainelDoDia
   ir: PropsDaTela['ir']
   comando: PropsDaTela['comando']
   emVoo: boolean
+  board: string
 }): JSX.Element {
-  const { revisoes, reler } = useRevisoes()
+  const { revisoes, reler } = useRevisoes(board)
   const [filtro, setFiltro] = useState<Filtro>('Todas')
   const [sel, setSel] = useState<string | null>(null)
   const revisaoDe = (d: DecisaoDoDia): RevisaoNaSala | undefined => revisoes?.get(d.arquivo)
@@ -340,7 +342,7 @@ function Corpo({
   )
 }
 
-export function Portfolio({ tela, ir, comando, emVoo }: PropsDaTela): JSX.Element {
+export function Portfolio({ tela, ir, comando, emVoo, board }: PropsDaTela): JSX.Element {
   const dia = (tela.tela === 'portfolio' ? tela.dia : undefined) ?? hojeEmUtc(new Date())
   const { relatorio } = useRelatorioDoDia(dia)
 
@@ -365,6 +367,7 @@ export function Portfolio({ tela, ir, comando, emVoo }: PropsDaTela): JSX.Elemen
   return (
     <>
       <CabecalhoInterno
+        padrao={board.padrao}
         trilha={trilhaDa(tela, new Date())}
         direita={direita}
         onIr={ir}
@@ -380,7 +383,14 @@ export function Portfolio({ tela, ir, comando, emVoo }: PropsDaTela): JSX.Elemen
         </div>
       )}
       {relatorio?.kind === 'ok' && (
-        <Corpo dia={dia} p={relatorio.painel} ir={ir} comando={comando} emVoo={emVoo} />
+        <Corpo
+          dia={dia}
+          p={relatorio.painel}
+          ir={ir}
+          comando={comando}
+          emVoo={emVoo}
+          board={board.chave}
+        />
       )}
     </>
   )

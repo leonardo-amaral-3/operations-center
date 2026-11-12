@@ -63,6 +63,9 @@ export const NAVEGACAO_DA_SALA: ReadonlyArray<{ tela: NomeDaTela; rotulo: string
   { tela: 'mandato', rotulo: 'Mandato e placar' },
 ]
 
+/** As telas que só existem com o board padrão (#157, Decisão 6): são do operations-center. */
+export const TELAS_SO_DO_PADRAO = ['relatorio', 'portfolio', 'release'] as const
+
 const SALA: TelaDaFabrica = { tela: 'sala' }
 
 /** `dd/mm` de um dia `AAAA-MM-DD`. */

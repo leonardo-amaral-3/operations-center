@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { KanbanScreen } from '../../src/renderer/screens/KanbanScreen'
 import type { BoardCard, BoardTab, BoardsSnapshot } from '../../src/shared/board'
 import type { ClaudeStateEvent } from '../../src/shared/claude'
+import { readFabricaBoardDeTeste } from './boardNaFabrica'
 
 /**
  * A faixa de conversas na tela (#100, CA-1): clicar na aba de um card de **outro** board pede a
@@ -58,7 +59,10 @@ function retrato(activeKey: string): BoardsSnapshot {
   return { boards: BOARDS, activeKey, discoveryError: null }
 }
 
-let publicarBoards: (snapshot: BoardsSnapshot) => void
+const ouvintesDeBoards = new Set<(snapshot: BoardsSnapshot) => void>()
+const publicarBoards = (snapshot: BoardsSnapshot): void => {
+  for (const ouvinte of ouvintesDeBoards) ouvinte(snapshot)
+}
 let publicarClaude: (event: ClaudeStateEvent) => void
 let publicarJanelas: (itemIds: string[]) => void
 const activateBoard = vi.fn()
@@ -77,9 +81,11 @@ beforeEach(() => {
     onTheme: semAssinar,
     readTheme: () => new Promise(() => {}),
     onBoards: (ouvinte: (snapshot: BoardsSnapshot) => void) => {
-      publicarBoards = ouvinte
+      ouvintesDeBoards.add(ouvinte)
 
-      return () => {}
+      return () => {
+        ouvintesDeBoards.delete(ouvinte)
+      }
     },
     readBoards: () => Promise.resolve(retrato('o/1')),
     onConversations: semAssinar,
@@ -114,6 +120,7 @@ beforeEach(() => {
           disco: { kind: 'ok', livres: 50 * 1024 ** 3, minimo: 2 * 1024 ** 3 },
         },
       }),
+    readFabricaBoard: readFabricaBoardDeTeste,
     readFabricaPergunta: () => Promise.resolve(null),
     readRelatorio: () => new Promise(() => {}),
     comandoFabrica: () => Promise.resolve({ ok: true, codigo: 0, argv: [], saida: '', erro: '' }),

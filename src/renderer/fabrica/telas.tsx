@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import type { ComandoDaFabrica, SalaDaFabrica } from '../../shared/fabrica'
+import type { BoardNaFabricaOk, ComandoDaFabrica, SalaDaFabrica } from '../../shared/fabrica'
 import type { NomeDaTela, TelaDaFabrica } from './rotas'
 import { Agentes } from './telas/Agentes'
 import { Briefing } from './telas/Briefing'
@@ -21,6 +21,8 @@ export interface PropsDaTela {
   ir: (tela: TelaDaFabrica) => void
   comando: (comando: ComandoDaFabrica) => Promise<void>
   emVoo: boolean
+  /** O board servido da aba (#157): a chave vai em todo pedido, o resto decide o que a tela mostra. */
+  board: BoardNaFabricaOk
 }
 
 /**
