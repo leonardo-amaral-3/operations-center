@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { criarLeiturasDaFabrica, type FontesDaSala } from '../../src/main/fabrica/sala'
@@ -47,6 +47,57 @@ describe('criarLeiturasDaFabrica · board servido (CA-1)', () => {
     expect(l.sala({ board: 'fulano/8' }).kind).toBe('sem-estado')
     expect(l.entrada({ board: 'fulano/8' }).kind).toBe('ok')
     expect(l.revisoes({ board: 'fulano/8' }).kind).toBe('ok')
+  })
+
+  it('o despacho do estado2 sai no fulano/8 com o repo e a cardUrl do repo-b; o Project 2 não o vê (#157, CA-1)', () => {
+    const { raiz, l } = montar()
+    const agora = '2026-11-12T11:00:00.000Z'
+    mkdirSync(join(raiz, 'estado2'))
+    writeFileSync(
+      join(raiz, 'estado2', 'estado.json'),
+      JSON.stringify({
+        versao: 1,
+        instancia: '00000000-0000-4000-8000-000000000157',
+        contador: 2,
+        frentes: [
+          { id: 'fr-0001', card: 5, repo: 'fulano/repo-b', criadaEm: agora, encerradaEm: null },
+        ],
+        despachos: [
+          {
+            id: 'd-0002',
+            frente: 'fr-0001',
+            card: 5,
+            repo: 'fulano/repo-b',
+            comando: '/gm-spec #5',
+            nota: null,
+            estado: 'rodando',
+            pid: null,
+            criadoEm: agora,
+            lancadoEm: agora,
+            concluidoEm: null,
+            sessaoClaude: null,
+            desfecho: null,
+          },
+        ],
+        fila: [],
+      }),
+    )
+    const s = l.sala({ board: 'fulano/8' })
+    if (s.kind !== 'ok') throw new Error(`sala do fulano/8: ${s.kind}`)
+    expect(s.emVoo).toEqual([
+      expect.objectContaining({
+        id: 'd-0002',
+        card: 5,
+        repo: 'fulano/repo-b',
+        cardUrl: 'https://github.com/fulano/repo-b/issues/5',
+      }),
+    ])
+    for (const board of ['leonardo-amaral-3/2', null]) {
+      const p2 = l.sala({ board })
+      if (p2.kind !== 'ok') throw new Error(`sala do Project 2: ${p2.kind}`)
+      expect(p2.emVoo.map((d) => d.id)).not.toContain('d-0002')
+      expect(p2.emVoo.map((d) => d.repo)).not.toContain('fulano/repo-b')
+    }
   })
 
   it('a pergunta lê pelo id e devolve null para id torto', () => {
