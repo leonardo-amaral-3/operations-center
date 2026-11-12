@@ -468,6 +468,11 @@ describe('montarSala sobre a fixture', () => {
     expect(urlDoCard(900, REPO_TESTE)).toBe(sala.abertos[0]?.cardUrl)
   })
 
+  it('o repo do card vai no item e no despacho (#157)', () => {
+    expect(sala.abertos.every((i) => i.repo === 'leonardo-amaral-3/operations-center')).toBe(true)
+    expect(sala.emVoo.every((d) => d.repo === 'leonardo-amaral-3/operations-center')).toBe(true)
+  })
+
   it('com 12 fechados mostra 10, do fechamento mais recente', () => {
     const e = estadoDaFixture()
     const extras: ItemDaFila[] = Array.from({ length: 12 }, (_, i) => ({
@@ -1080,6 +1085,23 @@ describe('vários repos no mesmo board (#152, CA-3 e CA-1)', () => {
       ['https://github.com/fulano/repo-a/issues/5', 'repo-a-5-x'],
       ['https://github.com/fulano/repo-b/issues/5', 'repo-b-5-y'],
     ])
+  })
+
+  it('o despacho de um board de dois repos sai da Sala com o repo do seu registro (#157)', () => {
+    const e: EstadoDaFabrica = {
+      ...estadoDaF3(),
+      despachos: [
+        despacho({ id: 'd-0001' }),
+        despacho({ id: 'd-0002', repo: 'fulano/repo-b', criadoEm: '2026-11-12T09:01:00.000Z' }),
+      ],
+      fila: [item({ despacho: 'd-0002', repo: 'fulano/repo-b' })],
+    }
+    const sala = montarSala(e, { ...CTX, unico: null })
+    expect(sala.emVoo.map((d) => [d.id, d.repo])).toEqual([
+      ['d-0001', 'fulano/repo-a'],
+      ['d-0002', 'fulano/repo-b'],
+    ])
+    expect(sala.abertos.map((i) => i.repo)).toEqual(['fulano/repo-b'])
   })
 
   it('ondeRodaDo acha a worktree do repo do card, não a de outro repo com o mesmo número', () => {

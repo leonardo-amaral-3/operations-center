@@ -55,6 +55,7 @@ describe('rotaDoItem', () => {
     id: 'q-0003',
     tipo,
     card: 1,
+    repo: 'leonardo-amaral-3/operations-center',
     cardUrl: 'u',
     motivo: 'm',
     despacho: 'd-1',

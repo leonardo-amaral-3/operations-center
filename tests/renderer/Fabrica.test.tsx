@@ -21,6 +21,7 @@ const aberto: ItemNaSala = {
   id: 'q-0001',
   tipo: 'pergunta',
   card: 901,
+  repo: 'leonardo-amaral-3/operations-center',
   cardUrl: 'https://example.invalid/901',
   motivo: 'Qual rota?',
   despacho: 'd-0001',
@@ -49,6 +50,7 @@ function retrato(extra: { pausa?: SalaDaFabrica['pausa'] } = {}): SalaDaFabrica 
       {
         id: 'd-0002',
         card: 903,
+        repo: 'leonardo-amaral-3/operations-center',
         cardUrl: 'https://example.invalid/903',
         comando: '/gm-implement 903',
         estacao: 'implementacao',

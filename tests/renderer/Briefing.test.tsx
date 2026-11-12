@@ -68,6 +68,7 @@ function despacho(id: string, n: number): DespachoNaSala {
   return {
     id,
     card: n,
+    repo: 'leonardo-amaral-3/operations-center',
     cardUrl: `https://github.com/${REPO}/issues/${n}`,
     comando: `/gm-spec #${n}`,
     estacao: 'spec',

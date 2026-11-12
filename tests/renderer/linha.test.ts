@@ -144,6 +144,7 @@ describe('previsaoDosPendentes', () => {
   const pendente = (id: string): DespachoNaSala => ({
     id,
     card: 2,
+    repo: 'leonardo-amaral-3/operations-center',
     cardUrl: 'u',
     comando: '/gm-card #2',
     estacao: 'card',
@@ -224,6 +225,7 @@ describe('estadoNaLinha', () => {
   const d = (estado: DespachoNaSala['estado'], viva: boolean | null): DespachoNaSala => ({
     id: 'd-1',
     card: 1,
+    repo: 'leonardo-amaral-3/operations-center',
     cardUrl: 'u',
     comando: '/gm-spec #1',
     estacao: 'spec',

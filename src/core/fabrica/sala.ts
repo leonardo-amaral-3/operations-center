@@ -183,6 +183,7 @@ function paraItem(e: EstadoDaFabrica, item: ItemDaFila, unico: RepoDoBoard | nul
     id: item.id,
     tipo: tipoDoItem(item, origem, unico),
     card: item.card,
+    repo: nomeDoRepo(repoDoRegistro(item, unico)),
     cardUrl: urlDoCard(item.card, repoDoRegistro(item, unico)),
     motivo: item.motivo,
     despacho: item.despacho,
@@ -228,6 +229,7 @@ export function montarSala(
       return {
         id: d.id,
         card: d.card,
+        repo: nomeDoRepo(repoDoRegistro(d, ctx.unico)),
         cardUrl: urlDoCard(d.card, repoDoRegistro(d, ctx.unico)),
         comando: d.comando,
         estacao,
