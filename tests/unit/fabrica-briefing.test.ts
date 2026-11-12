@@ -50,10 +50,10 @@ describe('os literais do renderer são os do boards.json', () => {
     const mandato = board.mandato
     if (mandato === null) throw new Error('o board padrão tem mandato')
     expect(CHAVE_DO_BOARD_DA_FABRICA).toBe(board.chave)
-    expect(REPO_DOS_CARDS_DA_FABRICA).toBe(nomeDoRepo(board.repo))
+    expect(REPO_DOS_CARDS_DA_FABRICA).toBe(nomeDoRepo(board.repoUnico))
     expect(URL_DO_BOARD_DA_FABRICA).toBe(`https://github.com/users/${owner}/projects/${projeto}`)
     expect(URL_DA_DEV_PARA_MAIN).toBe(
-      `https://github.com/${nomeDoRepo(board.repo)}/compare/main...dev`,
+      `https://github.com/${nomeDoRepo(board.repoUnico)}/compare/main...dev`,
     )
     expect(URL_DO_MANDATO_DA_FABRICA).toBe(
       `https://github.com/${nomeDoRepo(mandato.repo)}/blob/${mandato.ref}/${mandato.caminho}`,

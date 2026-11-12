@@ -27,13 +27,13 @@ export interface BoardDaFabrica {
   readonly owner: string
   readonly projeto: number
   readonly nome: string
-  readonly repo: RepoDoBoard
   readonly repos: ReposDoBoard
   /** O repo, quando o board atende um só (`repo`, ou `repos` com um item); `null` com vários ou com `<owner>/*`. */
   readonly repoUnico: RepoDoBoard | null
   /** Absoluto, já expandido. */
   readonly workspace: string
-  readonly checkoutPrincipal: string
+  /** O declarado, só na forma `repo`; `null` na forma `repos`. Use `checkoutPrincipalDe`. */
+  readonly checkoutPrincipal: string | null
   readonly pastaDoEstado: string
   /** Caminhos absolutos, já expandidos, na ordem do arquivo. */
   readonly proibidos: ProibidosDoBoard
@@ -47,6 +47,7 @@ export interface ConfiguracaoDaFabrica {
 }
 
 const RE_OWNER = /^[A-Za-z0-9-]+$/
+const RE_OWNER_CURINGA = /^([A-Za-z0-9-]+)\/\*$/
 const RE_REPO = /^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)$/
 const RE_REF = /^[A-Za-z0-9._/-]+$/
 const RE_CAMINHO_NO_REPO = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/
@@ -157,12 +158,58 @@ function lerBoard(item: unknown, i: number, home: string): BoardDaFabrica {
     throw ilegivel(`${onde}.projeto`)
   }
   if (!textoNaoVazio(item.nome)) throw ilegivel(`${onde}.nome`)
-  const repo = lerRepo(item.repo)
-  if (!repo) throw ilegivel(`${onde}.repo`)
+  if (item.repo !== undefined && item.repos !== undefined) {
+    throw ilegivel(`${onde}: use repo ou repos, não os dois`)
+  }
+  if (item.repo === undefined && item.repos === undefined) throw ilegivel(`${onde}.repo`)
+  let repos: ReposDoBoard
+  let repoUnico: RepoDoBoard | null
+  if (item.repo !== undefined) {
+    const repo = lerRepo(item.repo)
+    if (!repo) throw ilegivel(`${onde}.repo`)
+    repos = { tipo: 'lista', repos: [repo] }
+    repoUnico = repo
+  } else if (typeof item.repos === 'string') {
+    const m = RE_OWNER_CURINGA.exec(item.repos)
+    if (!m) throw ilegivel(`${onde}.repos`)
+    repos = { tipo: 'owner', owner: m[1]! }
+    repoUnico = null
+  } else {
+    if (!Array.isArray(item.repos) || item.repos.length === 0) throw ilegivel(`${onde}.repos`)
+    const lista: RepoDoBoard[] = item.repos.map((x: unknown, j: number) => {
+      const r = lerRepo(x)
+      if (!r) throw ilegivel(`${onde}.repos[${j}]`)
+      return r
+    })
+    const nomes = new Set<string>()
+    lista.forEach((r, j) => {
+      if (nomes.has(r.name)) throw ilegivel(`${onde}.repos[${j}]: nome repetido ${r.name}`)
+      nomes.add(r.name)
+    })
+    repos = { tipo: 'lista', repos: lista }
+    repoUnico = lista.length === 1 ? lista[0]! : null
+  }
   const workspace = expandir(item.workspace, home)
   if (workspace === null) throw ilegivel(`${onde}.workspace`)
-  const checkoutPrincipal = expandir(item.checkoutPrincipal, home)
-  if (checkoutPrincipal === null) throw ilegivel(`${onde}.checkoutPrincipal`)
+  let checkoutPrincipal: string | null = null
+  if (item.repo !== undefined) {
+    checkoutPrincipal = expandir(item.checkoutPrincipal, home)
+    if (checkoutPrincipal === null) throw ilegivel(`${onde}.checkoutPrincipal`)
+  } else if (item.checkoutPrincipal !== undefined) {
+    throw ilegivel(`${onde}.checkoutPrincipal: só vale com repo`)
+  }
+  if (item.repo === undefined) {
+    if (repos.tipo === 'owner') {
+      if (repos.owner !== item.owner) throw ilegivel(`${onde}.repos: owner diferente do board`)
+    } else {
+      repos.repos.forEach((r, j) => {
+        if (r.owner !== item.owner) throw ilegivel(`${onde}.repos[${j}]: owner diferente do board`)
+        if (r.name === '.' || r.name === '..') throw ilegivel(`${onde}.repos[${j}]`)
+        const outro = repos.repos.find((o) => o !== r && r.name.startsWith(`${o.name}-`))
+        if (outro) throw ilegivel(`${onde}.repos[${j}]: nome começa com ${outro.name}-`)
+      })
+    }
+  }
   const pastaDoEstado = expandir(item.pastaDoEstado, home)
   if (pastaDoEstado === null) throw ilegivel(`${onde}.pastaDoEstado`)
 
@@ -182,9 +229,8 @@ function lerBoard(item: unknown, i: number, home: string): BoardDaFabrica {
     owner: item.owner,
     projeto,
     nome: item.nome,
-    repo,
-    repos: { tipo: 'lista', repos: [repo] },
-    repoUnico: repo,
+    repos,
+    repoUnico,
     workspace,
     checkoutPrincipal,
     pastaDoEstado,
@@ -209,6 +255,9 @@ export function parseConfiguracao(bruto: unknown, home: string): ConfiguracaoDaF
     boards.push(b)
   })
   if (typeof bruto.padrao !== 'string' || !chaves.has(bruto.padrao)) throw ilegivel('padrao')
+  if (boards.find((b) => b.chave === bruto.padrao)!.repoUnico === null) {
+    throw ilegivel('padrao: o board padrão atende um repo só')
+  }
   return { padrao: bruto.padrao, boards }
 }
 

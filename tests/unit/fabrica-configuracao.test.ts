@@ -13,7 +13,7 @@ import {
   type ReposDoBoard,
 } from '../../src/core/fabrica/configuracao'
 import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
-import { boardFicticio, configuracaoDeTeste } from './fabrica-board-de-teste'
+import { boardDeDoisRepos, boardFicticio, configuracaoDeTeste } from './fabrica-board-de-teste'
 
 const HOME = '/home/u'
 
@@ -55,7 +55,6 @@ describe('o boards.json versionado', () => {
   })
   it('traz os valores do operations-center', () => {
     const b = boardPadrao(c)
-    expect(b.repo).toEqual({ owner: 'leonardo-amaral-3', name: 'operations-center' })
     expect(b.repoUnico).toEqual({ owner: 'leonardo-amaral-3', name: 'operations-center' })
     expect(b.repos).toEqual({ tipo: 'lista', repos: [b.repoUnico] })
     expect(checkoutPrincipalDe(b, b.repoUnico)).toBe('/home/u/pessoal/operations-center')
@@ -147,6 +146,115 @@ describe('parseConfiguracao', () => {
     expect(() => parseConfiguracao(bruto, HOME)).toThrow(
       new Error(`fabrica/boards.json ilegível: ${onde}`),
     )
+  })
+
+  describe('a forma repos (CA-1)', () => {
+    const com = (repos: unknown, extra: Obj = {}): unknown =>
+      mexer((m) => {
+        const b = m.boards[0]!
+        delete b.repo
+        delete b.checkoutPrincipal
+        b.owner = 'a'
+        b.repos = repos
+        Object.assign(b, extra)
+      })
+    const maisUmBoard = (b: Obj): unknown =>
+      mexer((m) => {
+        m.boards.push({ ...m.boards[0]!, projeto: 2, pastaDoEstado: '/w/e2', ...b })
+      })
+    const lanca = (bruto: unknown, onde: string): void =>
+      expect(() => parseConfiguracao(bruto, HOME)).toThrow(
+        new Error(`fabrica/boards.json ilegível: ${onde}`),
+      )
+
+    it('lista: dois repos, sem repoUnico nem checkoutPrincipal', () => {
+      // o padrão precisa ser de repo único, então o de vários vai em outra entrada
+      const c = parseConfiguracao(
+        maisUmBoard({ repo: undefined, checkoutPrincipal: undefined, repos: ['a/x', 'a/y'] }),
+        HOME,
+      )
+      const b = c.boards[1]!
+      expect(b.repos).toEqual({
+        tipo: 'lista',
+        repos: [
+          { owner: 'a', name: 'x' },
+          { owner: 'a', name: 'y' },
+        ],
+      })
+      expect(b.repoUnico).toBeNull()
+      expect(b.checkoutPrincipal).toBeNull()
+      expect(checkoutPrincipalDe(b, { owner: 'a', name: 'y' })).toBe('/w/y')
+    })
+    it('lista de um item tem repoUnico', () => {
+      const b = parseConfiguracao(com(['a/r']), HOME).boards[0]!
+      expect(b.repoUnico).toEqual({ owner: 'a', name: 'r' })
+      expect(b.checkoutPrincipal).toBeNull()
+    })
+    it('<owner>/*', () => {
+      const c = parseConfiguracao(
+        maisUmBoard({ repo: undefined, checkoutPrincipal: undefined, repos: 'a/*' }),
+        HOME,
+      )
+      expect(c.boards[1]!.repos).toEqual({ tipo: 'owner', owner: 'a' })
+      expect(c.boards[1]!.repoUnico).toBeNull()
+      expect(c.boards[1]!.checkoutPrincipal).toBeNull()
+    })
+    it('o boards.json de teste de dois repos', () => {
+      const c = configuracaoDeTeste({
+        home: HOME,
+        workspace: '/w',
+        extras: [boardDeDoisRepos({ raiz: '/t' })],
+      })
+      const b = c.boards.find((x) => x.chave === 'fulano/8')!
+      expect(b.repoUnico).toBeNull()
+      expect(b.workspace).toBe('/t/ws2')
+    })
+
+    it('os dois', () => {
+      lanca(
+        mexer((m) => (m.boards[0]!.repos = ['a/r'])),
+        'boards[0]: use repo ou repos, não os dois',
+      )
+    })
+    it('nenhum dos dois', () => {
+      lanca(
+        mexer((m) => delete m.boards[0]!.repo),
+        'boards[0].repo',
+      )
+    })
+    it('repos em texto torto', () => lanca(com('a/r'), 'boards[0].repos'))
+    it('repos vazio ou de outro tipo', () => {
+      lanca(com([]), 'boards[0].repos')
+      lanca(com(7), 'boards[0].repos')
+    })
+    it('item torto', () => lanca(com(['a/x', 'sem-barra']), 'boards[0].repos[1]'))
+    it('nome repetido', () =>
+      lanca(com(['a/x', 'a/y', 'a/x']), 'boards[0].repos[2]: nome repetido x'))
+    it('checkoutPrincipal com repos', () =>
+      lanca(
+        com(['a/x', 'a/y'], { checkoutPrincipal: '/w/x' }),
+        'boards[0].checkoutPrincipal: só vale com repo',
+      ))
+    it('owner diferente do board, na lista e no texto', () => {
+      lanca(com(['a/x', 'b/y']), 'boards[0].repos[1]: owner diferente do board')
+      lanca(
+        maisUmBoard({ repo: undefined, checkoutPrincipal: undefined, repos: 'b/*' }),
+        'boards[1].repos: owner diferente do board',
+      )
+    })
+    it('. e ..', () => {
+      lanca(com(['a/x', 'a/..']), 'boards[0].repos[1]')
+      lanca(com(['a/.', 'a/x']), 'boards[0].repos[0]')
+    })
+    it('nome que começa com outro seguido de -', () => {
+      lanca(com(['a/app', 'a/app-2']), 'boards[0].repos[1]: nome começa com app-')
+      // 'app' e 'apple' passam pela regra e só caem no padrão de vários repos
+      lanca(com(['a/app', 'a/apple']), 'padrao: o board padrão atende um repo só')
+    })
+    it('padrão de vários repos', () => {
+      lanca(com(['a/x', 'a/y']), 'padrao: o board padrão atende um repo só')
+      lanca(com('a/*'), 'padrao: o board padrão atende um repo só')
+    })
   })
 
   it('expande ~, ~/x e /x/', () => {
