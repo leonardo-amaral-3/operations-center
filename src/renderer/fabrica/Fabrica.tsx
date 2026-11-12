@@ -31,7 +31,7 @@ export function Fabrica(): JSX.Element {
       let recebido: ResultadoDoComando
 
       try {
-        recebido = await window.oc.comandoFabrica(pedido)
+        recebido = await window.oc.comandoFabrica({ board: null, comando: pedido })
       } catch (erro) {
         recebido = {
           ok: false,

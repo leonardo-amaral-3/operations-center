@@ -209,7 +209,11 @@ describe('Card · o #906 parado', () => {
     fireEvent.click(screen.getByTestId('fabrica-card-assumir'))
     const aviso = await screen.findByTestId('fabrica-card-assumido')
     expect(assumirDespacho).toHaveBeenCalledTimes(1)
-    expect(assumirDespacho).toHaveBeenCalledWith({ despacho: 'd-0007', itemId: 'PVTI_f4_906' })
+    expect(assumirDespacho).toHaveBeenCalledWith({
+      board: null,
+      despacho: 'd-0007',
+      itemId: 'PVTI_f4_906',
+    })
     expect(aviso.textContent).toContain('A sessão abriu na janela do card.')
     expect(aviso.textContent).toContain('claude --resume conversa-velha')
   })

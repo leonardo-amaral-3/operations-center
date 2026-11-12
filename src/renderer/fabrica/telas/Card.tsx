@@ -175,7 +175,7 @@ export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
     setAssumindo(true)
     let r: AssumirDespachoResult
     try {
-      r = await window.oc.assumirDespacho({ despacho: ok.atual.id, itemId })
+      r = await window.oc.assumirDespacho({ board: null, despacho: ok.atual.id, itemId })
     } catch (e) {
       r = { ok: false, motivo: e instanceof Error ? e.message : String(e) }
     }

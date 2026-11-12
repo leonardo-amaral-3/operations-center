@@ -817,11 +817,10 @@ const claudeIpc = registerClaudeTerminalIpc({
 // `conversations.json` do app, como abrir o chat de um card já faz, e abre a janela do card. Não
 // toca a pasta da fábrica nem o board.
 if (screen === 'kanban') {
-  const pastaDoAssumir = pastaDaSala(process.env, boardDoApp)
   registerAssumirIpc(
     criarAssumir({
-      unico: boardDoApp.repoUnico,
-      lerEstado: () => lerEstado(pastaDoAssumir),
+      boardDoPedido: (p) => boardDoPedido(configuracaoDaFabricaNoApp, p),
+      lerEstado: (b) => lerEstado(pastaDaSala(process.env, b)),
       cardDoItem: (itemId) => boardsIpc?.cardById(itemId) ?? null,
       sessaoAberta: (itemId) => claudeIpc.sessaoAberta({ kind: 'card', itemId }),
       conversaDoCartao: async (itemId) => (await conversations.locate(itemId))?.sessionId ?? null,

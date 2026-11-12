@@ -11,7 +11,7 @@ import type { BoardsSnapshot, CardContent, PullRequestView } from './board'
 import type {
   BoardNaFabrica,
   CardNaFabrica,
-  ComandoDaFabrica,
+  PedidoDeComando,
   EntradaNaSala,
   MandatoNaSala,
   SessoesDaMaquina,
@@ -790,7 +790,7 @@ export interface OcApi {
   readFabricaBoard(pedido: PedidoDoBoard): Promise<BoardNaFabrica>
   readFabricaPergunta(pedido: ReadPerguntaRequest): Promise<PerguntaDaFila | null>
   readRelatorio(pedido: ReadRelatorioRequest): Promise<RelatorioDaSala>
-  comandoFabrica(pedido: ComandoDaFabrica): Promise<ResultadoDoComando>
+  comandoFabrica(pedido: PedidoDeComando): Promise<ResultadoDoComando>
   readFabricaCard(pedido: ReadCardDaFabricaRequest): Promise<CardNaFabrica>
   readFabricaEntrada(pedido: PedidoDoBoard): Promise<EntradaNaSala>
   assumirDespacho(pedido: AssumirDespachoRequest): Promise<AssumirDespachoResult>

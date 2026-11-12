@@ -1,14 +1,21 @@
 import { ipcMain } from 'electron'
-import { cardDoRegistro, mesmoCard, repoDoRegistro } from '../../core/fabrica/cardDaFabrica'
-import type { RepoDoBoard } from '../../core/fabrica/configuracao'
+import {
+  cardDoRegistro,
+  mesmoCard,
+  repoDoRegistro,
+  rotuloDoCard,
+} from '../../core/fabrica/cardDaFabrica'
+import type { BoardComMandato } from '../../core/fabrica/configuracao'
 import { urlDoCard } from '../../core/fabrica/sala'
 import type { EstadoDaFabrica } from '../../core/fabrica/tipos'
 import type { AssumirDespachoResult } from '../../shared/fabrica'
 import { IPC_INVOKE } from '../../shared/ipc'
 
 export interface DepsDoAssumir {
-  unico: RepoDoBoard | null // o repo único do board: registro sem `repo` é dele (#152)
-  lerEstado: () => EstadoDaFabrica | null // lança se ilegível
+  boardDoPedido: (
+    pedido: unknown,
+  ) => { ok: true; board: BoardComMandato } | { ok: false; motivo: string }
+  lerEstado: (board: BoardComMandato) => EstadoDaFabrica | null // lança se ilegível
   cardDoItem: (itemId: string) => { number: number; url: string } | null
   sessaoAberta: (itemId: string) => string | null // a sessão do terminal vivo do cartão, se houver
   conversaDoCartao: (itemId: string) => Promise<string | null> // a conversa lembrada do cartão
@@ -44,7 +51,10 @@ export function criarAssumir(
       const id = p.despacho
       const itemId = p.itemId
 
-      const e = deps.lerEstado()
+      const r = deps.boardDoPedido(p)
+      if (!r.ok) return recusa(r.motivo)
+      const unico = r.board.repoUnico
+      const e = deps.lerEstado(r.board)
       if (e === null) return recusa('a fábrica não tem estado.json')
 
       const d = e.despachos.find((x) => x.id === id)
@@ -57,14 +67,14 @@ export function criarAssumir(
           `a sessão do ${id} ainda está rodando: só dá para assumir depois que ela termina`,
         )
 
+      const rotulo = rotuloDoCard(cardDoRegistro(d, unico), unico)
       const outro = e.despachos.find(
         (x) =>
-          mesmoCard(cardDoRegistro(x, deps.unico), cardDoRegistro(d, deps.unico)) &&
-          x.estado !== 'concluido',
+          mesmoCard(cardDoRegistro(x, unico), cardDoRegistro(d, unico)) && x.estado !== 'concluido',
       )
       if (outro !== undefined)
         return recusa(
-          `o #${d.card} tem despacho em voo (${outro.id}): só dá para assumir depois que ele termina`,
+          `o ${rotulo} tem despacho em voo (${outro.id}): só dá para assumir depois que ele termina`,
         )
 
       const sessao = d.sessaoClaude
@@ -72,8 +82,8 @@ export function criarAssumir(
 
       const c = deps.cardDoItem(itemId)
       if (c === null) return recusa('o card não está num board aberto no app')
-      if (c.number !== d.card || c.url !== urlDoCard(d.card, repoDoRegistro(d, deps.unico)))
-        return recusa(`o card do pedido não é o #${d.card} do ${id}`)
+      if (c.number !== d.card || c.url !== urlDoCard(d.card, repoDoRegistro(d, unico)))
+        return recusa(`o card do pedido não é o ${rotulo} do ${id}`)
 
       const aberta = deps.sessaoAberta(itemId)
       if (aberta !== null && aberta !== sessao)

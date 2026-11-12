@@ -261,7 +261,7 @@ export type EntradaNaSala =
   | { kind: 'ilegivel'; erro: string }
 
 /** Assumir a sessão de um despacho terminado no cartão do card (F4). */
-export interface AssumirDespachoRequest {
+export interface AssumirDespachoRequest extends PedidoDoBoard {
   despacho: string // 'd-0007'
   itemId: string // o `itemId` do card no board do app
 }

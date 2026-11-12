@@ -12,7 +12,7 @@ import type {
 import type {
   BoardNaFabrica,
   CardNaFabrica,
-  ComandoDaFabrica,
+  PedidoDeComando,
   EntradaNaSala,
   MandatoNaSala,
   SessoesDaMaquina,
@@ -231,7 +231,7 @@ const api: OcApi = {
     ipcRenderer.invoke(IPC_INVOKE.readFabricaPergunta, pedido) as Promise<PerguntaDaFila | null>,
   readRelatorio: (pedido: ReadRelatorioRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.readRelatorio, pedido) as Promise<RelatorioDaSala>,
-  comandoFabrica: (pedido: ComandoDaFabrica) =>
+  comandoFabrica: (pedido: PedidoDeComando) =>
     ipcRenderer.invoke(IPC_INVOKE.comandoFabrica, pedido) as Promise<ResultadoDoComando>,
   readFabricaCard: (pedido: ReadCardDaFabricaRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.readFabricaCard, pedido) as Promise<CardNaFabrica>,

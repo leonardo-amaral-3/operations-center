@@ -241,7 +241,10 @@ describe('Fabrica · Pausar e Retomar (CA-1.2)', () => {
     readFabrica.mockResolvedValue(retrato({ pausa: { desde: '2026-11-11T12:30:00.000Z' } }))
 
     fireEvent.click(screen.getByTestId('fabrica-pausar'))
-    expect(comandoFabrica).toHaveBeenCalledExactlyOnceWith({ tipo: 'pausar' })
+    expect(comandoFabrica).toHaveBeenCalledExactlyOnceWith({
+      board: null,
+      comando: { tipo: 'pausar' },
+    })
     expect(screen.getByTestId('fabrica-pausar')).toHaveProperty('disabled', true)
 
     await waitFor(() => {
@@ -261,7 +264,7 @@ describe('Fabrica · Pausar e Retomar (CA-1.2)', () => {
     })
     readFabrica.mockResolvedValue(retrato())
     fireEvent.click(screen.getByTestId('fabrica-pausar'))
-    expect(comandoFabrica).toHaveBeenLastCalledWith({ tipo: 'retomar' })
+    expect(comandoFabrica).toHaveBeenLastCalledWith({ board: null, comando: { tipo: 'retomar' } })
     await waitFor(() => {
       expect(screen.getByTestId('fabrica-estado').textContent).toBe('Fábrica ligada')
     })
@@ -381,9 +384,8 @@ describe('Fabrica · fila acionável (F3)', () => {
 
     expect((await screen.findByTestId('fabrica-comando-erro')).textContent).toBe(recusa)
     expect(comandoFabrica).toHaveBeenCalledWith({
-      tipo: 'fechar',
-      item: 'q-0001',
-      resolucao: 'x',
+      board: null,
+      comando: { tipo: 'fechar', item: 'q-0001', resolucao: 'x' },
     })
     await waitFor(() => {
       expect(readFabricaPergunta).toHaveBeenCalledTimes(2)
