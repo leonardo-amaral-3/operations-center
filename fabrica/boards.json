@@ -1,0 +1,25 @@
+{
+  "versao": 1,
+  "padrao": "leonardo-amaral-3/2",
+  "boards": [
+    {
+      "owner": "leonardo-amaral-3",
+      "projeto": 2,
+      "nome": "Operations Center",
+      "repo": "leonardo-amaral-3/operations-center",
+      "workspace": "~/pessoal",
+      "checkoutPrincipal": "~/pessoal/operations-center",
+      "pastaDoEstado": "~/pessoal/claude/despachos-fabrica",
+      "proibidos": {
+        "caminhos": ["~/.local/bin/operations-center", "~/.config/operations-center", "~/notoria"],
+        "motivo": "a instalação viva, o checkout principal ou os repos da Notoria"
+      },
+      "mandato": {
+        "repo": "leonardo-amaral-3/operations-center",
+        "ref": "dev",
+        "caminho": "fabrica/MANDATO.md",
+        "aprovacao": "cofre #1439 (Leonardo, 10/11/2026)"
+      }
+    }
+  ]
+}
