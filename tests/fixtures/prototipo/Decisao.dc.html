@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Decisão: validação em dev do #1851</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ECE3F8}
+a{color:#000}a:hover{color:#4B2FA8}
+.nb{background:#fff;border:2px solid #000;border-radius:5px;box-shadow:4px 4px 0 #000;box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;gap:6px;border:2px solid #000;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700;line-height:18px;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;border:1.5px solid #000;border-radius:4px;padding:0 6px;font-size:11px;font-weight:700;line-height:18px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 18px;border:2px solid #000;border-radius:5px;box-shadow:3px 3px 0 #000;font:700 14px 'DM Sans',sans-serif;text-decoration:none;color:#000;cursor:pointer}
+.shot{height:150px;border:2px solid #000;border-radius:4px;background:repeating-linear-gradient(45deg,#F4F0FA,#F4F0FA 8px,#ECE3F8 8px,#ECE3F8 16px);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#3D3D3D}
+.step{display:flex;gap:10px;font-size:13px;line-height:18px}
+.num{flex:0 0 auto;width:24px;height:24px;border:2px solid #000;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:#fff}
+</style>
+</helmet>
+<div style="min-height: 1000px; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 20px; font-family: 'DM Sans', sans-serif; font-weight: 500; color: #000; background: #ECE3F8">
+
+<header class="nb" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px">
+  <nav aria-label="Caminho" style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700">
+    <a href="Main.dc.html">Sala de controle</a><span aria-hidden="true">/</span><a href="Main.dc.html">Esperando você</a><span aria-hidden="true">/</span><span>Validação em dev</span>
+  </nav>
+  <div style="display: flex; gap: 8px; flex-wrap: wrap"><span class="chip" style="background: #EFC75E">Nível B · você aprova</span><span class="chip" style="background: #fff">2 de 4 na fila</span></div>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+
+  <main style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+
+    <section class="nb" style="padding: 20px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; gap: 6px; flex-wrap: wrap"><span class="tag" style="background: #C8E7C5">Melhoria</span><span class="tag" style="background: #fff">modulo-processos#1851</span><span class="tag" style="background: #fff">PR #1857</span></div>
+      <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 26px; line-height: 32px">Regras do DATASUS em linguagem natural</h1>
+      <p style="margin: 0; font-size: 15px; line-height: 22px; max-width: 760px">A PR foi mergeada na dev em 09/11 às 14:12 e o deploy passou. O agente de validação rodou o roteiro do checklist da PR. Três itens têm evidência anexada; dois pontos ninguém conferiu ainda e pedem o seu olho.</p>
+    </section>
+
+    <section aria-label="Conferido pelo agente" style="display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Conferido pelo agente</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px">
+        <article class="nb" style="padding: 14px; display: flex; flex-direction: column; gap: 10px">
+          <span class="chip" style="background: #86DB84; align-self: flex-start">evidência anexada</span>
+          <h3 style="margin: 0; font-size: 15px">Três regras na tela</h3>
+          <div class="shot">captura da tela de regras</div>
+          <p style="margin: 0; font-size: 12px; color: #3D3D3D">Roteiro no navegador, perfil admin.</p>
+        </article>
+        <article class="nb" style="padding: 14px; display: flex; flex-direction: column; gap: 10px">
+          <span class="chip" style="background: #86DB84; align-self: flex-start">evidência anexada</span>
+          <h3 style="margin: 0; font-size: 15px">Painel da Atualização</h3>
+          <div class="shot">captura do painel</div>
+          <p style="margin: 0; font-size: 12px; color: #3D3D3D">Roteiro no navegador, perfil admin.</p>
+        </article>
+        <article class="nb" style="padding: 14px; display: flex; flex-direction: column; gap: 10px">
+          <span class="chip" style="background: #86DB84; align-self: flex-start">evidência anexada</span>
+          <h3 style="margin: 0; font-size: 15px">Rota fechada para não-admin</h3>
+          <pre style="margin: 0; height: 150px; box-sizing: border-box; border: 2px solid #000; border-radius: 4px; background: #1E1B24; color: #F4F0FA; padding: 10px; font: 12px/18px ui-monospace, monospace; white-space: pre-wrap">GET /regras/...
+perfil: operador
+→ 403 Forbidden</pre>
+          <p style="margin: 0; font-size: 12px; color: #3D3D3D">Chamada direta na dev, perfil sem admin.</p>
+        </article>
+      </div>
+    </section>
+
+    <section aria-label="Precisa do seu olho" style="display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Precisa do seu olho</h2>
+      <article class="nb" style="padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; background: #FBF1D3">
+        <span class="chip" style="background: #EFC75E">sem conferência</span>
+        <div style="flex: 1 1 320px; font-size: 14px; line-height: 20px"><b>O interruptor «Ver nomes técnicos».</b> Ele muda o que a tela mostra, e só dá para julgar olhando no navegador.</div>
+        <button class="btn" type="button" style="background: #fff; min-height: 40px">Abrir na dev</button>
+      </article>
+      <article class="nb" style="padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; background: #FBF1D3">
+        <span class="chip" style="background: #EFC75E">sem conferência</span>
+        <div style="flex: 1 1 320px; font-size: 14px; line-height: 20px"><b>A 060008.</b> Pode mostrar a condição inteira no lugar de uma linha. Se mostrar, é correção antes do release.</div>
+        <button class="btn" type="button" style="background: #fff; min-height: 40px">Abrir na dev</button>
+      </article>
+    </section>
+
+    <section class="nb" aria-label="Decisão" style="padding: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+      <button class="btn" type="button" style="background: #86DB84">Aprovar e mover para Release</button>
+      <button class="btn" type="button" style="background: #fff">Devolver com correção</button>
+      <label for="nota" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Nota para a fábrica</label>
+      <input id="nota" type="text" placeholder="Nota para a fábrica (opcional)" style="flex: 1 1 260px; min-height: 44px; box-sizing: border-box; border: 2px solid #000; border-radius: 5px; padding: 0 12px; font: 500 14px 'DM Sans', sans-serif; background: #fff">
+    </section>
+  </main>
+
+  <aside style="flex: 1 1 300px; max-width: 380px; display: flex; flex-direction: column; gap: 16px">
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #A388EE">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Se você aprovar</h2>
+      <div class="step"><span class="num">1</span><span>O card sai de Revisão e vai para Release.</span></div>
+      <div class="step"><span class="num">2</span><span>A fábrica prepara o trem e as notas.</span></div>
+      <div class="step"><span class="num">3</span><span>O merge na main e a produção continuam seus (G5).</span></div>
+    </section>
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Como chegou aqui</h2>
+      <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 13px; line-height: 18px">
+        <li style="display: flex; gap: 8px"><span class="tag" style="background: #fff; flex: 0 0 auto">G4</span><span>PR #1857 com revisão tratada e CI verde</span></li>
+        <li style="display: flex; gap: 8px"><span class="tag" style="background: #fff; flex: 0 0 auto">merge</span><span>Na dev, 09/11 às 14:12; deploy passou</span></li>
+        <li style="display: flex; gap: 8px"><span class="tag" style="background: #fff; flex: 0 0 auto">parado</span><span>Ficou em Revisão sem validação: hoje ninguém é avisado</span></li>
+        <li style="display: flex; gap: 8px"><span class="tag" style="background: #EFC75E; flex: 0 0 auto">fábrica</span><span>Agente de validação roda o checklist e põe a decisão na sua fila</span></li>
+      </ol>
+    </section>
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Linhagem</h2>
+      <a href="https://github.com/ICSF-Solutions/modulo-processos/issues/1851">Card #1851</a>
+      <a href="https://github.com/ICSF-Solutions/modulo-processos/pull/1857">PR #1857 e o checklist «Validação em dev»</a>
+      <span>Decisões do card no cofre</span>
+    </section>
+  </aside>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

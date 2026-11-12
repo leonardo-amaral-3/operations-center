@@ -95,3 +95,21 @@ export { parseAwsConfig } from './terminal/awsProfiles'
 export { TerminalHost } from './terminal/TerminalHost'
 export type { AwsProfile } from './terminal/awsProfiles'
 export type { LoadSpawn, PtyProcess, PtySpawner } from './terminal/TerminalHost'
+
+// A fábrica (card 121): o contrato do `estado.json` e do mandato, que a P3 lê de dentro do app.
+export type {
+  Desfecho,
+  Despacho,
+  EstadoDaFabrica,
+  EstadoDoDespacho,
+  Frente,
+  ItemDaFila,
+} from './fabrica/tipos'
+export { estadoVazio, parseEstado, serializarEstado } from './fabrica/estado'
+export {
+  LIMITE_DE_DESPACHOS_POR_FRENTE,
+  PROJETO_DA_FABRICA,
+  REPO_DA_FABRICA,
+  SKILLS_PERMITIDAS,
+  TETO_DE_SESSOES,
+} from './fabrica/mandato'

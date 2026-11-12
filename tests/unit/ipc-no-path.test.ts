@@ -28,9 +28,8 @@ const CONTRATO = [
   '../../src/shared/ipc.ts',
   '../../src/shared/board.ts',
   '../../src/shared/claude.ts',
-].map((relativo) =>
-  fileURLToPath(new URL(relativo, import.meta.url)),
-)
+  '../../src/shared/fabrica.ts',
+].map((relativo) => fileURLToPath(new URL(relativo, import.meta.url)))
 
 /**
  * O vocabulário de caminho. São os nomes que um campo de sistema de arquivos teria de verdade —
@@ -137,6 +136,13 @@ describe('nenhum caminho de disco atravessa a ponte', () => {
         'ConversationsSnapshot',
         'BoardTab',
         'BoardsSnapshot',
+        'SalaDaFabrica',
+        'ItemNaSala',
+        'DespachoNaSala',
+        'PerguntaDaFila',
+        'ReadPerguntaRequest',
+        'ReadRelatorioRequest',
+        'RelatorioDaSala',
       ]),
     )
     expect(cargas.every((carga) => carga.campos.length > 0)).toBe(true)

@@ -8,9 +8,11 @@ import { CardTabs } from '../components/CardTabs'
 import { Column } from '../components/Column'
 import { Freshness } from '../components/Freshness'
 import { ThemePicker } from '../components/ThemePicker'
+import { Fabrica } from '../fabrica/Fabrica'
 import { useTerminalAqui } from '../mesa/terminalAqui'
 import { end } from '../terminal/claudeTerminals'
 import { Badge } from '../ui/badge'
+import { Button } from '../ui/button'
 import { useTemaAplicado } from '../useTemaAplicado'
 import { abasDeConversa } from './cardTabs'
 import { activeTab, INITIAL_KANBAN, reduceKanban } from './kanbanState'
@@ -133,7 +135,12 @@ export function KanbanScreen(): JSX.Element {
     dispatch({ type: 'recolher' })
   }, [])
 
+  // A sala da fábrica (#122) é uma vista da `kanban-area`, e não uma tela: escolher um board ou uma
+  // conversa é pedir o kanban de volta.
+  const [vista, setVista] = useState<'kanban' | 'fabrica'>('kanban')
+
   const activate = useCallback((key: string) => {
+    setVista('kanban')
     // Nada muda na tela aqui: a troca chega de volta no retrato, como toda mudança de board. A
     // tela **não** adianta a escolha, e é de propósito — `key` desconhecida é ignorada no main, e
     // uma aba pintada de ativa antes da confirmação mentiria por um instante em cima justamente do
@@ -156,6 +163,7 @@ export function KanbanScreen(): JSX.Element {
 
   const focus = useCallback(
     (itemId: string) => {
+      setVista('kanban')
       // A `key` sai do retrato, e não da aba ativa: o card pode ser de **outro** board.
       const dono = (snapshot.boards ?? []).find((tab) =>
         tab.board?.cards.some((card) => card.itemId === itemId),
@@ -225,6 +233,17 @@ export function KanbanScreen(): JSX.Element {
           {/* Primeiro do agrupamento da direita: o carimbo de frescor continua no extremo, onde
               está desde o #12, e o seletor entra antes dele em vez de empurrá-lo. Ele não recebe
               nem devolve nada — cuida da própria combinação, e a tela não ganha estado por isso. */}
+          <Button
+            data-testid="fabrica-toggle"
+            variant="neutral"
+            size="xs"
+            aria-pressed={vista === 'fabrica'}
+            onClick={() => {
+              setVista((atual) => (atual === 'fabrica' ? 'kanban' : 'fabrica'))
+            }}
+          >
+            Fábrica
+          </Button>
           <ThemePicker corrente={tema} />
           {/* Um dono que não respondeu não apaga os boards dos que responderam — e também não some
               da tela. Fica ao lado do carimbo de frescor porque é a mesma frase: o que está aí é
@@ -253,7 +272,9 @@ export function KanbanScreen(): JSX.Element {
           outras abas, que são o caminho para o próximo card. Não é o `main`, porque o `absolute`
           dentro do `overflow-x-auto` dele rolaria junto com as colunas. */}
       <div data-testid="kanban-area" className="relative flex min-h-0 flex-1 flex-col">
-        {board ? (
+        {vista === 'fabrica' ? (
+          <Fabrica />
+        ) : board ? (
           <main className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3">
             {board.columns.map((column) => (
               <Column

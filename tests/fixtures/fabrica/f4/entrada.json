@@ -1,0 +1,9 @@
+{
+  "versao": 1,
+  "contador": 3,
+  "itens": [
+    { "id": "e-0001", "texto": "O gestor pediu para ver a fila de decisões pelo celular.", "fonte": "voce", "criadoEm": "2026-11-11T07:30:00.000Z", "triadoEm": "2026-11-11T07:50:00.000Z", "resolucao": "virou o #906" },
+    { "id": "e-0002", "texto": "A secretaria disse que a sala não avisa quando chega item novo na fila.", "fonte": "voce", "criadoEm": "2026-11-11T09:30:00.000Z", "triadoEm": null, "resolucao": null },
+    { "id": "e-0003", "texto": "Visão de produto: a sala tem de mostrar quanto da cota do plano já foi.\nDois pontos: o número e o aviso quando passar de 80%.", "fonte": "voce", "criadoEm": "2026-11-11T10:00:00.000Z", "triadoEm": null, "resolucao": null }
+  ]
+}

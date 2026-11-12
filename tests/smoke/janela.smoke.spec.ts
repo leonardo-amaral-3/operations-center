@@ -109,6 +109,11 @@ test('CA-2: os três botões da faixa comandam a janela, e o de fechar encerra o
   // a ver com a ponte.
   await esperarRetrato('visivel', true, 'a janela não chegou a aparecer na tela')
 
+  // CA-0.2 do #118: o Chromium grava dentro do `OC_STATE_DIR`, e não no userData real da máquina.
+  expect(await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'))).toBe(
+    join(state, 'chromium'),
+  )
+
   // O ponto de partida declarado, e não presumido: `createWindow` não chama `maximize()`, então a
   // janela nasce restaurada. Sem esta linha, um app que já abrisse maximizado faria a asserção
   // seguinte passar sem que clique nenhum tivesse feito nada.
@@ -150,7 +155,15 @@ test('CA-2: os três botões da faixa comandam a janela, e o de fechar encerra o
   // "encerrou tarde" contando a história de um app que encerrou na hora.
   const encerrou = app.waitForEvent('close', { timeout: ENCERRAMENTO_TIMEOUT })
 
-  await janela.getByTestId('window-close').click()
+  // O clique **é** o que fecha o app, e às vezes o app morre antes de o Playwright dar o clique por
+  // resolvido (M5: 9 de 23 rodadas headless no Linux). Só esse erro é tolerado. A prova continua
+  // sendo o `encerrou` logo abaixo: um clique que não fechasse nada cairia lá, no prazo.
+  await janela
+    .getByTestId('window-close')
+    .click()
+    .catch((erro: unknown) => {
+      if (!(erro instanceof Error) || !/has been closed/.test(erro.message)) throw erro
+    })
 
   // A única asserção deste arquivo que não é sobre estado de janela, e a mais importante das cinco:
   // com `frame: false` não há mais um `✕` do sistema atrás desta linha. Se ela cair, o app não tem

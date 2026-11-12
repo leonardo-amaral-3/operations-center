@@ -22,13 +22,15 @@ export interface ResolvedPreset extends TerminalPreset {
 
 /** As pontas de IO, injetadas para o teste (o mesmo desenho de `ClaudeBinProbes`). */
 export interface PresetDeps {
-  /** A primeira linha que o `where` devolve, ou `null` quando não acha. */
+  /** O caminho do executável: a primeira linha do `where` no Windows, o primeiro do PATH no POSIX; `null` quando não acha. */
   which(exe: string): string | null
   exists(path: string): boolean
   /** O texto de `~/.aws/config`, ou `null` quando não existe. */
   awsConfig(): string | null
   programFiles: string
   systemRoot: string
+  /** Decide entre os perfis do Windows e o do POSIX. */
+  platform: NodeJS.Platform
 }
 
 /** Sobe a partir do `git.exe` até achar `bin\bash.exe` — cobre `Git\cmd\` e `Git\mingw64\bin\`. */
@@ -47,23 +49,9 @@ function acharBash(deps: PresetDeps): string {
   return join(deps.programFiles, 'Git', 'bin', 'bash.exe')
 }
 
-export function buildPresets(deps: PresetDeps): ResolvedPreset[] {
-  const pwsh = deps.which('pwsh.exe')
-  const bash = acharBash(deps)
-  const argsBash = ['--login', '-i'] as const
-
-  const presets: ResolvedPreset[] = [
-    {
-      id: 'powershell',
-      label: 'PowerShell',
-      group: 'shell',
-      shell:
-        pwsh ?? join(deps.systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
-      args: ['-NoLogo'],
-      env: {},
-    },
-    { id: 'git-bash', label: 'Git Bash', group: 'shell', shell: bash, args: argsBash, env: {} },
-  ]
+/** Os perfis `aws:*`: o mesmo laço nos dois sistemas, com o shell já resolvido. */
+function perfisAws(deps: PresetDeps, bash: string, argsBash: readonly string[]): ResolvedPreset[] {
+  const presets: ResolvedPreset[] = []
 
   for (const perfil of parseAwsConfig(deps.awsConfig() ?? '')) {
     presets.push({
@@ -84,6 +72,36 @@ export function buildPresets(deps: PresetDeps): ResolvedPreset[] {
   }
 
   return presets
+}
+
+export function buildPresets(deps: PresetDeps): ResolvedPreset[] {
+  const argsBash = ['--login', '-i'] as const
+
+  if (deps.platform !== 'win32') {
+    const bash = deps.which('bash') ?? '/bin/bash'
+
+    return [
+      { id: 'bash', label: 'Bash', group: 'shell', shell: bash, args: argsBash, env: {} },
+      ...perfisAws(deps, bash, argsBash),
+    ]
+  }
+
+  const pwsh = deps.which('pwsh.exe')
+  const bash = acharBash(deps)
+
+  return [
+    {
+      id: 'powershell',
+      label: 'PowerShell',
+      group: 'shell',
+      shell:
+        pwsh ?? join(deps.systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+      args: ['-NoLogo'],
+      env: {},
+    },
+    { id: 'git-bash', label: 'Git Bash', group: 'shell', shell: bash, args: argsBash, env: {} },
+    ...perfisAws(deps, bash, argsBash),
+  ]
 }
 
 const DROPPED_FROM_BASE = new Set(['ELECTRON_RUN_AS_NODE', 'ELECTRON_RENDERER_URL', 'NO_COLOR'])

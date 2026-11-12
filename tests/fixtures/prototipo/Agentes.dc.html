@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Agentes, cadeados e recuperação</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ECE3F8}
+a{color:#000}a:hover{color:#4B2FA8}
+.nb{background:#fff;border:2px solid #000;border-radius:5px;box-shadow:4px 4px 0 #000;box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;gap:6px;border:2px solid #000;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700;line-height:18px;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 12px;border:2px solid #000;border-radius:5px;box-shadow:2px 2px 0 #000;font:700 12px 'DM Sans',sans-serif;text-decoration:none;color:#000;cursor:pointer;background:#fff}
+th,td{border-bottom:2px solid #000;padding:10px 12px;text-align:left;vertical-align:middle;font-size:13px}
+th{font-family:'Space Grotesk',sans-serif;background:#A388EE}
+tr:last-child td{border-bottom:0}
+.dot{width:10px;height:10px;border-radius:50%;border:2px solid #000;display:inline-block;margin-right:6px;vertical-align:middle}
+.mono{font:12px ui-monospace,monospace}
+</style>
+</helmet>
+<div style="min-height: 1000px; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 20px; font-family: 'DM Sans', sans-serif; font-weight: 500; color: #000; background: #ECE3F8">
+
+<header class="nb" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px">
+  <nav aria-label="Caminho" style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700">
+    <a href="Main.dc.html">Sala de controle</a><span aria-hidden="true">/</span><span>Agentes</span>
+  </nav>
+  <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center"><span class="chip" style="background: #fff">3 de 6 sessões</span><button class="btn" type="button" style="background: #F07468; min-height: 40px">Pausar fábrica</button></div>
+</header>
+
+<section aria-label="Sessões" style="display: flex; flex-direction: column; gap: 12px">
+  <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 24px">Sessões da fábrica</h1>
+  <div class="nb" style="overflow-x: auto">
+    <table style="width: 100%; min-width: 900px; border-collapse: collapse">
+      <thead><tr><th scope="col">Card</th><th scope="col">Estação</th><th scope="col">Agente</th><th scope="col">Onde roda</th><th scope="col">Estado</th><th scope="col"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Ações</span></th></tr></thead>
+      <tbody>
+        <tr><td><a href="Card.dc.html" style="font-weight: 700">#1852 Crítica legível e auditar</a></td><td>Implementação · task 2</td><td>gm-implement · Sonnet 5.5</td><td class="mono">modulo-processos-1852</td><td><span class="dot" style="background: #86DB84"></span>trabalhando · segura a suíte db</td><td style="white-space: nowrap"><button class="btn" type="button">Transcrito</button> <button class="btn" type="button">Assumir</button></td></tr>
+        <tr><td style="font-weight: 700">#1779 Fase 3a do #1775</td><td>Spec · G2</td><td>gm-spec · Opus 5.5</td><td class="mono">planning/</td><td><span class="dot" style="background: #86DB84"></span>escrevendo a spec</td><td style="white-space: nowrap"><button class="btn" type="button">Transcrito</button> <button class="btn" type="button">Assumir</button></td></tr>
+        <tr><td style="font-weight: 700">Operação</td><td>Operação</td><td>observador · Sonnet 5.5</td><td class="mono">sem worktree</td><td><span class="dot" style="background: #86DB84"></span>lendo o Vigia</td><td style="white-space: nowrap"><button class="btn" type="button">Transcrito</button></td></tr>
+        <tr style="background: #E3F3FB"><td><a href="Pergunta.dc.html" style="font-weight: 700">extractor#2 · leva 7</a></td><td>Implementação</td><td>sessões da leva</td><td class="mono">cópia do Ghidra por sessão</td><td><span class="dot" style="background: #6CC4EE"></span>paradas na sua pergunta</td><td style="white-space: nowrap"><a class="btn" href="Pergunta.dc.html">Responder</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <section class="nb" style="flex: 1 1 320px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Cadeados</h2>
+    <div style="border: 2px solid #000; border-radius: 5px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px"><div style="display: flex; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 14px"><span>Suíte db do modulo-processos</span><span class="chip" style="background: #EFC75E">ocupada</span></div><div style="font-size: 12px">Com o #1852, task 2. Fila vazia. Uma suíte por vez (Direção 5).</div></div>
+    <div style="border: 2px solid #000; border-radius: 5px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px"><div style="display: flex; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 14px"><span>Projeto do Ghidra</span><span class="chip" style="background: #86DB84">livre</span></div><div style="font-size: 12px">Cada sessão do extractor trabalha numa cópia própria.</div></div>
+    <div style="border: 2px solid #000; border-radius: 5px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px"><div style="display: flex; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 14px"><span>Disco</span><span class="chip" style="background: #86DB84">acima de 2 GB</span></div><div style="font-size: 12px">Abaixo do mínimo, nada é despachado. Worktree de card fechado é limpa.</div></div>
+  </section>
+
+  <section class="nb" style="flex: 1 1 320px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Próximos despachos</h2>
+    <p style="margin: 0; font-size: 12px; color: #3D3D3D">Ordem pela Classe do board: Expedite primeiro.</p>
+    <ol style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 18px">
+      <li><b>#1852 task 3</b> quando a task 2 fechar, depois do cadeado.</li>
+      <li><b>#1779</b>: spec pronta vai para a sua fila (G2, toca dado).</li>
+      <li><b>extractor#2 leva 7</b>: retoma quando você responder.</li>
+    </ol>
+  </section>
+
+  <section class="nb" style="flex: 1 1 320px; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #A388EE">
+    <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Se o PC cair</h2>
+    <p style="margin: 0; font-size: 13px; line-height: 18px">Como em 09/11 às 16:08. O estado da fábrica fica em disco, não no /tmp. Na volta, o despachante relê o board e retoma cada sessão em ambiente limpo, sem herdar variáveis de quem despacha.</p>
+    <p style="margin: 0; font-size: 13px; line-height: 18px">Antes de refazer, cada sessão confere o que a tentativa anterior deixou no disco.</p>
+  </section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

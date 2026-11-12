@@ -26,7 +26,7 @@
  */
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { app } from 'electron'
 
 /**
@@ -41,6 +41,21 @@ import { app } from 'electron'
  */
 export function stateDir(): string {
   return process.env.OC_STATE_DIR || app.getPath('userData')
+}
+
+/**
+ * Onde o Chromium do app grava o que é dele (DevToolsActivePort, Session Storage, caches), ou
+ * `null` para deixar o default do Electron.
+ * Com `OC_STATE_DIR`, uma subpasta dela. Sem isso, o smoke regravava `~/.config/operations-center`,
+ * a pasta da instalação viva (cofre #1462). `chromium/` e não a raiz, para os JSON do app não
+ * dividirem pasta com o Chromium. `resolve` porque `app.setPath` exige caminho absoluto, e um
+ * `OC_STATE_DIR` relativo derrubaria o boot.
+ * Vazia vale ausente, como em `stateDir()`.
+ */
+export function chromiumUserDataDir(env: NodeJS.ProcessEnv = process.env): string | null {
+  const raiz = env.OC_STATE_DIR
+
+  return raiz ? resolve(raiz, 'chromium') : null
 }
 
 /**

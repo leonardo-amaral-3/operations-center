@@ -1,0 +1,150 @@
+{
+  "versao": 1,
+  "instancia": "00000000-0000-4000-8000-000000000001",
+  "contador": 14,
+  "frentes": [
+    {
+      "id": "fr-0001",
+      "card": 900,
+      "criadaEm": "2026-11-11T10:00:00.000Z",
+      "encerradaEm": "2026-11-11T10:20:00.000Z"
+    },
+    {
+      "id": "fr-0004",
+      "card": 901,
+      "criadaEm": "2026-11-11T10:05:00.000Z",
+      "encerradaEm": "2026-11-11T10:30:00.000Z"
+    },
+    {
+      "id": "fr-0007",
+      "card": 902,
+      "criadaEm": "2026-11-11T10:10:00.000Z",
+      "encerradaEm": "2026-11-11T10:40:00.000Z"
+    },
+    {
+      "id": "fr-0010",
+      "card": 903,
+      "criadaEm": "2026-11-11T11:00:00.000Z",
+      "encerradaEm": null
+    },
+    {
+      "id": "fr-0013",
+      "card": 904,
+      "criadaEm": "2026-11-11T11:10:00.000Z",
+      "encerradaEm": null
+    }
+  ],
+  "despachos": [
+    {
+      "id": "d-0002",
+      "frente": "fr-0001",
+      "card": 900,
+      "comando": "/gm-spec #900",
+      "nota": null,
+      "estado": "concluido",
+      "pid": 4242,
+      "criadoEm": "2026-11-11T10:00:00.000Z",
+      "lancadoEm": "2026-11-11T10:00:05.000Z",
+      "concluidoEm": "2026-11-11T10:20:00.000Z",
+      "sessaoClaude": "sessao-900",
+      "desfecho": {
+        "tipo": "parada",
+        "motivo": "o nome do campo é escolha de produto"
+      }
+    },
+    {
+      "id": "d-0005",
+      "frente": "fr-0004",
+      "card": 901,
+      "comando": "/gm-card #901",
+      "nota": null,
+      "estado": "concluido",
+      "pid": 4243,
+      "criadoEm": "2026-11-11T10:05:00.000Z",
+      "lancadoEm": "2026-11-11T10:05:05.000Z",
+      "concluidoEm": "2026-11-11T10:30:00.000Z",
+      "sessaoClaude": null,
+      "desfecho": {
+        "tipo": "falha",
+        "motivo": "a sessão terminou sem saída"
+      }
+    },
+    {
+      "id": "d-0008",
+      "frente": "fr-0007",
+      "card": 902,
+      "comando": "/gm-spec #902",
+      "nota": null,
+      "estado": "concluido",
+      "pid": 4244,
+      "criadoEm": "2026-11-11T10:10:00.000Z",
+      "lancadoEm": "2026-11-11T10:10:05.000Z",
+      "concluidoEm": "2026-11-11T10:40:00.000Z",
+      "sessaoClaude": "sessao-902",
+      "desfecho": {
+        "tipo": "parada",
+        "motivo": "espera o segundo revisor"
+      }
+    },
+    {
+      "id": "d-0011",
+      "frente": "fr-0010",
+      "card": 903,
+      "comando": "/gm-plan-tasks /home/u/pessoal/planning/903-x",
+      "nota": null,
+      "estado": "rodando",
+      "pid": 999999,
+      "criadoEm": "2026-11-11T11:00:00.000Z",
+      "lancadoEm": "2026-11-11T11:00:05.000Z",
+      "concluidoEm": null,
+      "sessaoClaude": null,
+      "desfecho": null
+    },
+    {
+      "id": "d-0014",
+      "frente": "fr-0013",
+      "card": 904,
+      "comando": "/gm-spec #904",
+      "nota": null,
+      "estado": "pendente",
+      "pid": null,
+      "criadoEm": "2026-11-11T11:10:00.000Z",
+      "lancadoEm": null,
+      "concluidoEm": null,
+      "sessaoClaude": null,
+      "desfecho": null
+    }
+  ],
+  "fila": [
+    {
+      "id": "q-0003",
+      "card": 900,
+      "motivo": "o nome do campo é escolha de produto",
+      "despacho": "d-0002",
+      "sessaoClaude": "sessao-900",
+      "criadoEm": "2026-11-11T10:20:00.000Z",
+      "fechadoEm": null,
+      "resolucao": null
+    },
+    {
+      "id": "q-0006",
+      "card": 901,
+      "motivo": "a sessão terminou sem saída",
+      "despacho": "d-0005",
+      "sessaoClaude": null,
+      "criadoEm": "2026-11-11T10:30:00.000Z",
+      "fechadoEm": null,
+      "resolucao": null
+    },
+    {
+      "id": "q-0009",
+      "card": 902,
+      "motivo": "espera o segundo revisor",
+      "despacho": "d-0008",
+      "sessaoClaude": "sessao-902",
+      "criadoEm": "2026-11-11T10:40:00.000Z",
+      "fechadoEm": "2026-11-11T10:50:00.000Z",
+      "resolucao": "seguir sem segundo revisor"
+    }
+  ]
+}

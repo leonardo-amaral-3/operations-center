@@ -9,6 +9,23 @@
 
 import type { BoardsSnapshot, CardContent, PullRequestView } from './board'
 import type {
+  CardNaFabrica,
+  ComandoDaFabrica,
+  EntradaNaSala,
+  MandatoNaSala,
+  SessoesDaMaquina,
+  PerguntaDaFila,
+  AssumirDespachoRequest,
+  AssumirDespachoResult,
+  ReadCardDaFabricaRequest,
+  ReadPerguntaRequest,
+  ReadRelatorioRequest,
+  RelatorioDaSala,
+  ResultadoDoComando,
+  RevisoesNaSala,
+  SalaDaFabrica,
+} from './fabrica'
+import type {
   ClaudeReleasedEvent,
   ClaudeStateEvent,
   CloseClaudeRequest,
@@ -125,6 +142,44 @@ export const IPC_INVOKE = {
   bringBackCardWindow: 'cardWindow:bringBack',
   focusCardWindow: 'cardWindow:focus',
   readCardWindows: 'cardWindow:read',
+  /**
+   * A sala da fábrica (#122). Família `fabrica:` própria, de **leitura**: lê o `estado.json` e o
+   * `saida.json` das sessões em `OC_FABRICA_DIR`, nunca escreve ali e **nenhum destes canais toca o
+   * board**. A pasta não atravessa a ponte: o main a resolve uma vez, e a pergunta chega por id do item.
+   */
+  readFabrica: 'fabrica:read',
+  readFabricaPergunta: 'fabrica:read-pergunta',
+  /**
+   * O único canal que **escreve** na pasta da fábrica (#129), sempre por um subcomando do
+   * `yarn fabrica` numa lista fechada (`SUBCOMANDOS_DO_APP`; hoje `pausar`, `retomar`, `fechar`,
+   * `entrada`, `confirmar`, `contestar` e `iniciar`). O `iniciar` **lê** o Status do card no Project 2
+   * pela GraphQL para escolher o comando; continua sem escrever no board nem no GitHub.
+   */
+  comandoFabrica: 'fabrica:comando',
+  /** O card e a entrada da fábrica (F4): só leem a pasta da fábrica. */
+  readFabricaCard: 'fabrica:read-card',
+  readFabricaEntrada: 'fabrica:read-entrada',
+  /**
+   * Assumir a sessão de um despacho no cartão do card (F4): grava a conversa do cartão no
+   * `conversations.json` do app e abre a janela do card, sem tocar a pasta da fábrica nem o board.
+   */
+  assumirDespacho: 'fabrica:assumir',
+  /**
+   * As revisões **leem** o `revisoes.jsonl` da pasta da fábrica; o mandato **lê** o
+   * `fabrica/MANDATO.md` da `dev` pela GraphQL (F5). Nenhum dos dois escreve nem toca o board.
+   */
+  readFabricaRevisoes: 'fabrica:read-revisoes',
+  readFabricaMandato: 'fabrica:read-mandato',
+  /**
+   * As sessões `claude` vivas da máquina (#142): **lê** `/proc` e o `origin` das pastas pelo git.
+   * Não escreve em lugar nenhum, não sinaliza processo e não toca o board.
+   */
+  readFabricaSessoes: 'fabrica:read-sessoes',
+  /**
+   * O relatório do dia (#126), o mesmo do `yarn relatorio`. **Lê** o cofre, o git e o board, e não
+   * escreve em nenhum dos três.
+   */
+  readRelatorio: 'relatorio:read',
 } as const
 
 /** Main → renderer. Avisos de mão única, disparados pelo `core` quando a sessão se mexe. */
@@ -447,9 +502,9 @@ export interface CardWindowRequest {
 
 /** Um perfil visto do renderer: rótulo e grupo, nunca o executável nem o ambiente. */
 export interface TerminalPreset {
-  /** `powershell`, `git-bash` ou `aws:` seguido do nome do perfil AWS. */
+  /** `powershell`, `git-bash` (Windows), `bash` (Linux) ou `aws:` seguido do nome do perfil AWS. */
   id: string
-  /** `PowerShell`, `Git Bash` ou `AWS · ` seguido do nome do perfil. */
+  /** `PowerShell`, `Git Bash`, `Bash` ou `AWS · ` seguido do nome do perfil. */
   label: string
   group: 'shell' | 'aws'
 }
@@ -725,6 +780,18 @@ export interface OcApi {
   /** A disposição da mesa. O renderer é o dono do estado; `setLayout` só pede ao main que persista. */
   readLayout(): Promise<LayoutSnapshot>
   setLayout(snapshot: LayoutSnapshot): Promise<void>
+
+  /** A sala da fábrica (#122): só leitura, relida por pedido. */
+  readFabrica(): Promise<SalaDaFabrica>
+  readFabricaPergunta(pedido: ReadPerguntaRequest): Promise<PerguntaDaFila | null>
+  readRelatorio(pedido: ReadRelatorioRequest): Promise<RelatorioDaSala>
+  comandoFabrica(pedido: ComandoDaFabrica): Promise<ResultadoDoComando>
+  readFabricaCard(pedido: ReadCardDaFabricaRequest): Promise<CardNaFabrica>
+  readFabricaEntrada(): Promise<EntradaNaSala>
+  assumirDespacho(pedido: AssumirDespachoRequest): Promise<AssumirDespachoResult>
+  readFabricaRevisoes(): Promise<RevisoesNaSala>
+  readFabricaMandato(): Promise<MandatoNaSala>
+  readFabricaSessoes(): Promise<SessoesDaMaquina>
 }
 
 declare global {

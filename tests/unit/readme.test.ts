@@ -75,7 +75,16 @@ describe('README', () => {
     expect(readme).toMatch(/^## Comandos$/m)
 
     // `package` entrou no #56 e é o único da lista que produz artefato em vez de rodar algo.
-    for (const script of ['dev', 'build', 'test', 'smoke', 'lint', 'typecheck', 'package']) {
+    for (const script of [
+      'dev',
+      'build',
+      'test',
+      'smoke',
+      'lint',
+      'typecheck',
+      'package',
+      'fabrica',
+    ]) {
       expect(readme).toContain(`yarn ${script}`)
     }
   })
@@ -108,6 +117,12 @@ describe('README', () => {
       'OC_CLAUDE_PROJECTS',
       'OC_STATE_DIR',
       'OC_CLAUDE_BIN',
+      'OC_FABRICA_DIR',
+      'OC_RELATORIO_COFRE',
+      'OC_RELATORIO_REPO',
+      'OC_RELATORIO_FIXTURE',
+      'OC_FABRICA_MANDATO_FIXTURE',
+      'OC_SMOKE_CADEADO',
     ]) {
       expect(readme).toContain(variavel)
     }
@@ -130,5 +145,11 @@ describe('README', () => {
     expect(readme).toMatch(/^## Custo$/m)
     expect(readme).toContain('mesma cota')
     expect(readme).toContain('OC_MODEL')
+  })
+
+  it('documenta o modo sem janela dos smokes', () => {
+    // A porta de ambiente do smoke no Linux: sem ela documentada, quem roda `yarn smoke` rouba o
+    // foco de quem trabalha e não sabe por quê.
+    expect(readme).toContain('OC_SMOKE_HEADLESS')
   })
 })

@@ -65,3 +65,51 @@ export function smokeEnv(): Record<string, string> {
 
   return env
 }
+
+/** Os flags que sobem o Chromium sem janela e com uma tela virtual do tamanho de um monitor comum. */
+export const FLAGS_HEADLESS = [
+  '--ozone-platform=headless',
+  '--ozone-override-screen-size=1920,1080',
+] as const
+
+/**
+ * Os argumentos extras do `electron.launch`, lidos do ambiente de quem roda.
+ *
+ * `OC_SMOKE_HEADLESS=1`, e só `1`, liga o modo sem janela do Linux. Existe porque, sem ele, o
+ * Electron abre uma janela de verdade a cada smoke e rouba o foco de quem está usando a máquina
+ * (M2), e porque a tela virtual dá ao Chromium um monitor de tamanho conhecido, sem depender do
+ * compositor (M3). Mora aqui, e não em `smoke-app.ts`, porque este é o único módulo dos smokes que
+ * pode ler `process.env` (M16). É opt-in porque o Windows não tem ozone: lá a janela visível é o
+ * modo de sempre, e passar a flag derrubaria a subida.
+ */
+export function smokeLaunchArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  return env.OC_SMOKE_HEADLESS === '1' ? [...FLAGS_HEADLESS] : []
+}
+
+/**
+ * A pasta real da fábrica, para o smoke da verificação pós-deploy da sala (#122, teste 4).
+ *
+ * `OC_SMOKE_FABRICA_REAL=<pasta>`; sem valor, `null` e o teste se pula. Nenhuma sessão de
+ * implementação a define: a pasta de verdade é da verificação, que é de quem orquestra. Mora aqui
+ * porque este é o único módulo dos smokes que pode ler `process.env` (M16).
+ */
+export function smokeFabricaReal(env: NodeJS.ProcessEnv = process.env): string | null {
+  const valor = env.OC_SMOKE_FABRICA_REAL
+  return valor === undefined || valor === '' ? null : valor
+}
+
+/** O item da pasta real a abrir (teste 4b): `OC_SMOKE_FABRICA_ITEM=<q-...>`, ou `null`. */
+export function smokeFabricaItem(env: NodeJS.ProcessEnv = process.env): string | null {
+  const valor = env.OC_SMOKE_FABRICA_ITEM
+  return valor === undefined || valor === '' ? null : valor
+}
+
+/**
+ * A pasta de saída do harness de comparação (#130, §F1.6): `OC_COMPARACAO_DIR`, ou
+ * `test-results/comparacao/` do repo. O smoke a apaga e recria, então o valor aponta para uma pasta
+ * que só ele usa. Mora aqui porque este é o único módulo dos smokes que pode ler `process.env`.
+ */
+export function smokeComparacaoDir(env: NodeJS.ProcessEnv = process.env): string {
+  const valor = env.OC_COMPARACAO_DIR
+  return valor === undefined || valor === '' ? join(REPO_ROOT, 'test-results', 'comparacao') : valor
+}

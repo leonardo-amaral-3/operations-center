@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Trem do release</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ECE3F8}
+a{color:#000}a:hover{color:#4B2FA8}
+.nb{background:#fff;border:2px solid #000;border-radius:5px;box-shadow:4px 4px 0 #000;box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;gap:6px;border:2px solid #000;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700;line-height:18px;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;border:1.5px solid #000;border-radius:4px;padding:0 6px;font-size:11px;font-weight:700;line-height:18px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 18px;border:2px solid #000;border-radius:5px;box-shadow:3px 3px 0 #000;font:700 14px 'DM Sans',sans-serif;text-decoration:none;color:#000;cursor:pointer}
+.check{display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:20px}
+.check input{width:20px;height:20px;margin:0;accent-color:#000;flex:0 0 auto}
+</style>
+</helmet>
+<div style="min-height: 1000px; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 20px; font-family: 'DM Sans', sans-serif; font-weight: 500; color: #000; background: #ECE3F8">
+
+<header class="nb" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px">
+  <nav aria-label="Caminho" style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700">
+    <a href="Main.dc.html">Sala de controle</a><span aria-hidden="true">/</span><span>Release</span>
+  </nav>
+  <span class="chip" style="background: #F07468">G5 · nível C · só você</span>
+</header>
+
+<section class="nb" style="padding: 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <span style="font-size: 12px; font-weight: 700; color: #3D3D3D">TREM PROPOSTO PELA FÁBRICA · modulo-processos · dev → main</span>
+    <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 26px">Release [versão]</h1>
+    <p style="margin: 0; font-size: 14px; line-height: 20px; max-width: 720px">A fábrica junta os cards validados, escreve as notas e o checklist. O merge na main, a tag e a verificação de produção são seus.</p>
+  </div>
+  <div style="display: flex; flex-wrap: wrap; gap: 10px">
+    <button class="btn" type="button" style="background: #fff">Tirar um card</button>
+    <button class="btn" type="button" style="background: #F07468">Mergear na main</button>
+  </div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <main style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+    <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px">No trem</h2>
+    <article class="nb" style="padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+      <span class="tag" style="background: #C8E7C5">Melhoria</span>
+      <span style="flex: 1 1 280px; font-weight: 700">#1851 Regras do DATASUS em linguagem natural</span>
+      <span class="chip" style="background: #86DB84">validação aprovada por você</span>
+    </article>
+    <article class="nb" style="padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; background: #FBF1D3">
+      <span class="tag" style="background: #C8E7C5">Melhoria</span>
+      <span style="flex: 1 1 280px; font-weight: 700">#1868 BDNAIH e TB_MUN do SIHD2</span>
+      <span class="chip" style="background: #EFC75E">toca dado · sem ambiente de ensaio: o trem para e pergunta</span>
+    </article>
+
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Notas da release, rascunho da fábrica</h2>
+      <div style="border: 2px dashed #000; border-radius: 5px; padding: 12px 14px; font-size: 14px; line-height: 21px; background: #F4F0FA">
+        <b>O que muda para você</b><br>
+        As regras do DATASUS aparecem em linguagem natural na tela de regras. [Uma linha por card, escrita a partir da spec e do corpo da PR.]
+      </div>
+      <div><button class="btn" type="button" style="background: #fff">Editar notas</button></div>
+    </section>
+  </main>
+
+  <aside style="flex: 1 1 320px; max-width: 440px; display: flex; flex-direction: column; gap: 16px">
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Verificação pós-deploy</h2>
+      <p style="margin: 0; font-size: 12px; color: #3D3D3D">Bloqueante: o card não vai para Produção sem ela. A consulta vem da spec de cada card.</p>
+      <label class="check"><input type="checkbox"><span>#1851: as três regras na tela de produção</span></label>
+      <label class="check"><input type="checkbox"><span>#1851: rota devolve 403 para não-admin</span></label>
+      <label class="check"><input type="checkbox"><span>#1868: a consulta da spec contra produção</span></label>
+      <p style="margin: 0; font-size: 13px; line-height: 18px">O agente roda as consultas de leitura e traz o resultado; marcar como verde é com você.</p>
+    </section>
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 8px; background: #A388EE">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Depois da produção</h2>
+      <p style="margin: 0; font-size: 13px; line-height: 18px">O agente de operação passa a observar os cards do trem. Sinal estranho volta como rascunho na Entrada, com o card de origem ligado.</p>
+    </section>
+  </aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

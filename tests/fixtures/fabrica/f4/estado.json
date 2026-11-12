@@ -1,0 +1,19 @@
+{
+  "versao": 1,
+  "instancia": "00000000-0000-4000-8000-0000000000f4",
+  "contador": 8,
+  "frentes": [
+    { "id": "fr-0001", "card": 4, "criadaEm": "2026-11-11T08:00:00.000Z", "encerradaEm": null },
+    { "id": "fr-0006", "card": 906, "criadaEm": "2026-11-11T09:00:00.000Z", "encerradaEm": "2026-11-11T09:20:00.000Z" }
+  ],
+  "despachos": [
+    { "id": "d-0002", "frente": "fr-0001", "card": 4, "comando": "/gm-spec #4", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T08:00:00.000Z", "lancadoEm": "2026-11-11T08:00:05.000Z", "concluidoEm": "2026-11-11T08:10:00.000Z", "sessaoClaude": "sessao-4-spec", "desfecho": { "tipo": "proximo", "comando": "/gm-plan-tasks /home/u/pessoal/planning/4-board fase F1 (#4)" } },
+    { "id": "d-0003", "frente": "fr-0001", "card": 4, "comando": "/gm-plan-tasks /home/u/pessoal/planning/4-board fase F1 (#4)", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T08:10:00.000Z", "lancadoEm": "2026-11-11T08:10:05.000Z", "concluidoEm": "2026-11-11T08:20:00.000Z", "sessaoClaude": "sessao-4-tasks", "desfecho": { "tipo": "proximo", "comando": "/gm-implement /home/u/pessoal/planning/4-board fase F1 (#4)" } },
+    { "id": "d-0004", "frente": "fr-0001", "card": 4, "comando": "/gm-implement /home/u/pessoal/planning/4-board fase F1 (#4)", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T08:20:00.000Z", "lancadoEm": "2026-11-11T08:20:05.000Z", "concluidoEm": "2026-11-11T08:40:00.000Z", "sessaoClaude": "sessao-4-impl-1", "desfecho": { "tipo": "proximo", "comando": "/gm-implement /home/u/pessoal/planning/4-board fase F1 (#4)" } },
+    { "id": "d-0005", "frente": "fr-0001", "card": 4, "comando": "/gm-implement /home/u/pessoal/planning/4-board fase F1 (#4)", "nota": null, "estado": "rodando", "pid": 999999, "criadoEm": "2026-11-11T08:40:00.000Z", "lancadoEm": "2026-11-11T08:40:05.000Z", "concluidoEm": null, "sessaoClaude": null, "desfecho": null },
+    { "id": "d-0007", "frente": "fr-0006", "card": 906, "comando": "/gm-ship /home/u/pessoal/planning/906-y fase F1 (#906)", "nota": null, "estado": "concluido", "pid": null, "criadoEm": "2026-11-11T09:00:00.000Z", "lancadoEm": "2026-11-11T09:00:05.000Z", "concluidoEm": "2026-11-11T09:20:00.000Z", "sessaoClaude": "sessao-906", "desfecho": { "tipo": "parada", "motivo": "PR #930 aberta na dev (Card: #906); o merge é da orquestradora" } }
+  ],
+  "fila": [
+    { "id": "q-0008", "card": 906, "motivo": "PR #930 aberta na dev (Card: #906); o merge é da orquestradora", "despacho": "d-0007", "sessaoClaude": "sessao-906", "criadoEm": "2026-11-11T09:20:00.000Z", "fechadoEm": null, "resolucao": null }
+  ]
+}

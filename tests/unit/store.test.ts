@@ -17,7 +17,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({
@@ -28,7 +28,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { readState, stateDir, writeState } from '../../src/main/store'
+import { chromiumUserDataDir, readState, stateDir, writeState } from '../../src/main/store'
 
 const ARQUIVO = 'exemplo.json'
 
@@ -62,6 +62,24 @@ describe('stateDir', () => {
 
     expect(stateDir()).toBe('/fake/userData')
   })
+})
+
+describe('chromiumUserDataDir', () => {
+  it('põe o userData do Chromium numa subpasta do OC_STATE_DIR', () => {
+    expect(chromiumUserDataDir({ OC_STATE_DIR: '/x' })).toBe(resolve('/x', 'chromium'))
+  })
+
+  it('devolve caminho absoluto mesmo com OC_STATE_DIR relativo', () => {
+    // `app.setPath` exige absoluto: um relativo derrubaria o boot.
+    expect(chromiumUserDataDir({ OC_STATE_DIR: 'rel' })).toBe(resolve('rel', 'chromium'))
+  })
+
+  it.each([{}, { OC_STATE_DIR: '' }])(
+    'devolve null com %j, e o default do Electron fica',
+    (env) => {
+      expect(chromiumUserDataDir(env)).toBeNull()
+    },
+  )
 })
 
 describe('readState', () => {

@@ -9,6 +9,23 @@ import type {
   OpenClaudeRequest,
   OpenClaudeResult,
 } from '../shared/claude'
+import type {
+  CardNaFabrica,
+  ComandoDaFabrica,
+  EntradaNaSala,
+  MandatoNaSala,
+  SessoesDaMaquina,
+  PerguntaDaFila,
+  AssumirDespachoRequest,
+  AssumirDespachoResult,
+  ReadCardDaFabricaRequest,
+  ReadPerguntaRequest,
+  ReadRelatorioRequest,
+  RelatorioDaSala,
+  ResultadoDoComando,
+  RevisoesNaSala,
+  SalaDaFabrica,
+} from '../shared/fabrica'
 import { IPC_EVENT, IPC_INVOKE } from '../shared/ipc'
 import type {
   ActivateBoardRequest,
@@ -204,6 +221,25 @@ const api: OcApi = {
   readLayout: () => ipcRenderer.invoke(IPC_INVOKE.readLayout) as Promise<LayoutSnapshot>,
   setLayout: (snapshot: LayoutSnapshot) =>
     ipcRenderer.invoke(IPC_INVOKE.setLayout, snapshot) as Promise<void>,
+  readFabrica: () => ipcRenderer.invoke(IPC_INVOKE.readFabrica) as Promise<SalaDaFabrica>,
+  readFabricaPergunta: (pedido: ReadPerguntaRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaPergunta, pedido) as Promise<PerguntaDaFila | null>,
+  readRelatorio: (pedido: ReadRelatorioRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.readRelatorio, pedido) as Promise<RelatorioDaSala>,
+  comandoFabrica: (pedido: ComandoDaFabrica) =>
+    ipcRenderer.invoke(IPC_INVOKE.comandoFabrica, pedido) as Promise<ResultadoDoComando>,
+  readFabricaCard: (pedido: ReadCardDaFabricaRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaCard, pedido) as Promise<CardNaFabrica>,
+  readFabricaEntrada: () =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaEntrada) as Promise<EntradaNaSala>,
+  assumirDespacho: (pedido: AssumirDespachoRequest) =>
+    ipcRenderer.invoke(IPC_INVOKE.assumirDespacho, pedido) as Promise<AssumirDespachoResult>,
+  readFabricaRevisoes: () =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaRevisoes) as Promise<RevisoesNaSala>,
+  readFabricaMandato: () =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaMandato) as Promise<MandatoNaSala>,
+  readFabricaSessoes: () =>
+    ipcRenderer.invoke(IPC_INVOKE.readFabricaSessoes) as Promise<SessoesDaMaquina>,
   openCardWindow: (request: OpenCardWindowRequest) =>
     ipcRenderer.invoke(IPC_INVOKE.openCardWindow, request) as Promise<void>,
   bringBackCardWindow: (request: CardWindowRequest) =>

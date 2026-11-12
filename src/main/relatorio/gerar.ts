@@ -1,0 +1,156 @@
+import { join } from 'node:path'
+
+import type { GraphQLFn } from '../../core/board/types'
+import {
+  argsDoGitLog,
+  decisoesDoDia,
+  emMarkdown,
+  janelaDoDia,
+  lerCards,
+  lerCommits,
+  lerNumerosMovidos,
+  lerObjetivos,
+  montarPainel,
+  montarRelatorio,
+  resumirCofre,
+} from '../../core/relatorio'
+import type { EntradaDoRelatorio } from '../../core/relatorio'
+import type { PainelDoDia } from '../../shared/fabrica'
+
+/**
+ * O miolo do relatório (#126, spec-p3 §B1): o que o `yarn relatorio` (#120) e a sala da fábrica
+ * compartilham. Só lê (cofre, board e git); nada daqui escreve em nenhum dos três. O relatório é o
+ * da fábrica, que é este repo (Technical Decisions, 11).
+ */
+
+export const REPO = { owner: 'leonardo-amaral-3', name: 'operations-center' }
+export const PROJETO = 2
+
+export interface DepsDoRelatorio {
+  existe: (caminho: string) => boolean
+  listarPasta: (pasta: string) => Promise<string[]>
+  lerArquivo: (caminho: string) => Promise<string>
+  git: (args: readonly string[], cwd: string) => Promise<string>
+  graphql: GraphQLFn
+}
+
+export interface PedidoDoRelatorio {
+  /** `AAAA-MM-DD`, já validado. */
+  dia: string
+  pastaDoCofre: string
+  pastaDoRepo: string
+  /** ISO 8601. */
+  geradoEm: string
+}
+
+/** `AAAA-MM-DD` que existe no calendário: `2026-02-30` e `2026-13-01` não passam. */
+export function dataValida(dia: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return false
+
+  const d = new Date(`${dia}T00:00:00Z`)
+
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === dia
+}
+
+/**
+ * As pastas do relatório: `OC_RELATORIO_COFRE`/`OC_RELATORIO_REPO` ou os defaults. O CLI do
+ * `yarn fabrica` e a sala usam a mesma conta; este arquivo não importa `electron`.
+ */
+export function pastasDoRelatorio(
+  env: NodeJS.ProcessEnv,
+  home: string,
+): { cofre: string; repo: string } {
+  return {
+    cofre: env.OC_RELATORIO_COFRE || join(home, 'notoria', 'claude', 'decisoes'),
+    repo: env.OC_RELATORIO_REPO || join(home, 'pessoal', REPO.name),
+  }
+}
+
+/**
+ * Lê o dia (cofre, git e board) e monta a entrada do relatório, com os arquivos do cofre que o
+ * painel reaproveita para contar o cofre inteiro. Só lê.
+ */
+async function lerODia(
+  deps: DepsDoRelatorio,
+  pedido: PedidoDoRelatorio,
+): Promise<{ entrada: EntradaDoRelatorio; arquivos: { nome: string; texto: string }[] }> {
+  const { dia, pastaDoCofre, pastaDoRepo } = pedido
+  const janela = janelaDoDia(dia)
+  const nomes = (await deps.listarPasta(pastaDoCofre)).filter((n) => n.endsWith('.md'))
+  // Em lotes: o cofre passa de mil arquivos e abri-los todos de uma vez estoura o limite de fds.
+  const arquivos: { nome: string; texto: string }[] = []
+  for (let i = 0; i < nomes.length; i += 64) {
+    arquivos.push(
+      ...(await Promise.all(
+        nomes.slice(i, i + 64).map(async (nome) => ({
+          nome,
+          texto: await deps.lerArquivo(join(pastaDoCofre, nome)),
+        })),
+      )),
+    )
+  }
+  const { decisoes, ilegiveis } = decisoesDoDia(arquivos, dia, REPO)
+  const commits = lerCommits(await deps.git(argsDoGitLog(janela), pastaDoRepo), janela)
+  const movidos = await lerNumerosMovidos(deps.graphql, {
+    owner: REPO.owner,
+    repo: `${REPO.owner}/${REPO.name}`,
+    projeto: PROJETO,
+    inicio: janela.inicio,
+  })
+  const numeros = [
+    ...new Set([
+      ...decisoes.flatMap((d) => (d.card === null ? [] : [d.card])),
+      ...commits.flatMap((c) => (c.card === null ? [] : [c.card])),
+      ...movidos,
+    ]),
+  ].sort((a, b) => a - b)
+  const cards = await lerCards(deps.graphql, {
+    owner: REPO.owner,
+    name: REPO.name,
+    projeto: PROJETO,
+    numeros,
+  })
+  const direcao = join(pastaDoRepo, 'fabrica', 'DIRECAO.md')
+  const objetivos = deps.existe(direcao) ? lerObjetivos(await deps.lerArquivo(direcao)) : null
+
+  return {
+    entrada: {
+      janela,
+      repo: REPO,
+      projeto: PROJETO,
+      pastaDoCofre,
+      pastaDoRepo,
+      decisoes,
+      ilegiveis,
+      cards,
+      commits,
+      objetivos,
+    },
+    arquivos,
+  }
+}
+
+/**
+ * O relatório do dia em markdown e em painel, da mesma leitura (spec-f5 §F5.7). A exceção de
+ * qualquer leitura sobe para quem chamou.
+ */
+export async function gerarRelatorioComPainel(
+  deps: DepsDoRelatorio,
+  pedido: PedidoDoRelatorio,
+): Promise<{ markdown: string; semFonte: number; painel: PainelDoDia }> {
+  const { entrada, arquivos } = await lerODia(deps, pedido)
+  const r = montarRelatorio(entrada)
+  const painel = montarPainel(entrada, r, resumirCofre(arquivos, pedido.dia))
+
+  return { markdown: emMarkdown(r, pedido.geradoEm), semFonte: r.semFonte, painel }
+}
+
+/** Gera o markdown do dia. A saída do `yarn relatorio` é a de sempre, byte a byte. */
+export async function gerarRelatorio(
+  deps: DepsDoRelatorio,
+  pedido: PedidoDoRelatorio,
+): Promise<{ markdown: string; semFonte: number }> {
+  const { markdown, semFonte } = await gerarRelatorioComPainel(deps, pedido)
+
+  return { markdown, semFonte }
+}

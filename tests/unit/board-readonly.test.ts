@@ -21,8 +21,17 @@ import { IPC_EVENT, IPC_INVOKE } from '../../src/shared/ipc'
  *    conter um. Ela pega um documento novo em **qualquer arquivo** deles, e não só o `BOARD_QUERY`.
  */
 
-/** Onde um documento GraphQL pode nascer: o `core` que os escreve e o main que os envia. */
-const DIRETORIOS_DE_DOCUMENTO = ['../../src/core/board', '../../src/main/github']
+/**
+ * Onde um documento GraphQL pode nascer: o `core` que os escreve, o main que os envia e o relatório
+ * do dia (#120), que tem os seus.
+ */
+const DIRETORIOS_DE_DOCUMENTO = [
+  '../../src/core/board',
+  '../../src/main/github',
+  '../../src/core/relatorio',
+  '../../src/core/fabrica',
+  '../../src/main/fabrica',
+]
 
 /**
  * A palavra procurada. Ela não aparece em nenhum arquivo daqueles diretórios — nem em comentário,
@@ -141,6 +150,34 @@ describe('a superfície de board é somente-leitura', () => {
     // a janela e encerrar uma sessão são coisas diferentes, e dois `close` na mesma superfície é
     // como alguém liga o botão errado.
     //
+    // **E a dos dois canais da sala da fábrica (#122)**: `fabrica:read` e `fabrica:read-pergunta`
+    // leem a pasta da fábrica e não escrevem nela. Desde a F2 (#131) o `fabrica:read` também lê o
+    // GitHub: o `fabrica/MANDATO.md` da `dev`, pela GraphQL, para contar as sessões contra o teto.
+    // É leitura, e não toca o board nem o Project. Prefixo novo, sem exceção nominal no filtro de
+    // `boards:`/`card:`; a lista da asserção abaixo o registra.
+    //
+    // **E a do canal de escrita da fábrica (#129)**: `fabrica:comando` é o **único** canal que
+    // escreve na pasta da fábrica, e só por um subcomando do `yarn fabrica` numa lista fechada
+    // (`SUBCOMANDOS_DO_APP`: `pausar`, `retomar`, `fechar`, `entrada`, `confirmar`, `contestar`,
+    // `iniciar`). Não escreve no board nem no GitHub; só o `iniciar` **lê** o Status do card pela
+    // GraphQL (`ITEM_NO_BOARD_QUERY`, sem `mutation`), e por isso o canal entra no filtro abaixo, pelo
+    // nome. Fica na família `fabrica:`, sem exceção nominal no filtro de `boards:`/`card:`.
+    //
+    // **E os dois de leitura da F4 (#133)**: `fabrica:read-card` e `fabrica:read-entrada` só leem a
+    // pasta da fábrica (o despacho de um card, o `entrada.json`), nunca escrevem e não tocam o
+    // board. O card chega por número, e a pasta não atravessa a ponte.
+    //
+    // **E os dois de leitura da F5 (#134)**: `fabrica:read-revisoes` só lê o `revisoes.jsonl` da pasta
+    // da fábrica. `fabrica:read-mandato` lê o `fabrica/MANDATO.md` da `dev` pela GraphQL, como o
+    // `fabrica:read`: é leitura do GitHub, sem tocar o board nem o Project, e por isso entra no filtro
+    // e na lista abaixo. Nenhum dos dois escreve.
+    //
+    // **E a do `fabrica:assumir` (#133)**: assumir a sessão de um despacho no cartão do card. Grava a
+    // conversa do cartão (`itemId → sessão`) no `conversations.json` do app, como abrir o chat de um
+    // card já faz, e abre a janela do card. **Nunca escreve na pasta da fábrica** (a canária "a sala
+    // só lê" varre o `assumir.ts`) **nem toca o board**: o `itemId` só é conferido contra o card que
+    // o main já tem em memória. Fica na família `fabrica:`, sem exceção nominal no filtro.
+    //
     // **E a dos onze canais do #74** (terminal embutido, sessão livre, disposição da mesa).
     // **Nenhum toca o board, nem para ler**: `terminal:*` fala com um shell local; `free:*` e
     // `layout:*` falam com arquivos do próprio app em `OC_STATE_DIR`. Os prefixos são famílias novas,
@@ -184,6 +221,17 @@ describe('a superfície de board é somente-leitura', () => {
       bringBackCardWindow: 'cardWindow:bringBack',
       focusCardWindow: 'cardWindow:focus',
       readCardWindows: 'cardWindow:read',
+      readFabrica: 'fabrica:read',
+      readFabricaPergunta: 'fabrica:read-pergunta',
+      comandoFabrica: 'fabrica:comando',
+      readFabricaCard: 'fabrica:read-card',
+      readFabricaEntrada: 'fabrica:read-entrada',
+      assumirDespacho: 'fabrica:assumir',
+      readFabricaRevisoes: 'fabrica:read-revisoes',
+      readFabricaMandato: 'fabrica:read-mandato',
+      // Lê /proc e o git das pastas (#142); não escreve, não sinaliza processo, não toca o board.
+      readFabricaSessoes: 'fabrica:read-sessoes',
+      readRelatorio: 'relatorio:read',
     })
   })
 
@@ -261,11 +309,26 @@ describe('a superfície de board é somente-leitura', () => {
     // um `boards:activate` obrigaria esta lista a ganhar uma exceção nominal, e uma canária com
     // exceção nominal é uma canária a caminho de ser desligada.
     const canaisDoGitHub = [...Object.values(IPC_INVOKE), ...Object.values(IPC_EVENT)].filter(
-      (canal) => canal.startsWith('boards:') || canal.startsWith('card:'),
+      (canal) =>
+        canal.startsWith('boards:') ||
+        canal.startsWith('card:') ||
+        canal.startsWith('relatorio:') ||
+        canal === 'fabrica:read' ||
+        canal === 'fabrica:comando' ||
+        canal === 'fabrica:read-mandato',
     )
 
     // A ordem é a de declaração dos mapas: os `invoke` primeiro, o evento depois.
-    expect(canaisDoGitHub).toEqual(['boards:read', 'card:read', 'card:read-pr', 'boards:changed'])
+    expect(canaisDoGitHub).toEqual([
+      'boards:read',
+      'card:read',
+      'card:read-pr',
+      'fabrica:read',
+      'fabrica:comando',
+      'fabrica:read-mandato',
+      'relatorio:read',
+      'boards:changed',
+    ])
   })
 
   it('toda requisição HTTP do app é a do GraphQL ou um GET', () => {

@@ -1,0 +1,39 @@
+{
+  "4": {
+    "data": {
+      "repository": {
+        "issue": {
+          "number": 4,
+          "body": "## Estado atual\n\nO app abre com **uma sessão só**: `src/renderer/App.tsx` mantém um único `SessionView` e fala com ela\npela ponte do preload. Não há nenhuma leitura do GitHub no código — `src/main/` tem só `index.ts` e\n`ipc.ts` — e a pasta de trabalho vem de `OC_CWD`, não do repo de um card.\n\nO `core` já antecipa o plural (`SessionHost`, `tagSession()`/`listSessions()`) e todo evento da ponte\nIPC já carrega `sessionId`. O que falta é a origem dos cartões e a tela que os arruma.\n\n## Direção\n\nO app passa a **ler** o board do GitHub e desenhar um kanban cujas colunas são as estações da\nesteira, cada card na coluna do seu Status. Cartões de estado, ainda sem conversa: o cartão-chat vem\ndepois.\n\n## Por quê\n\nMetade do produto existe (a conversa, entregue no #1) e a outra metade não existe de forma alguma.\nRF-3, RF-4, RF-5 e RF-6 são todos \"cartão que vira chat\" — e hoje não há cartão.\n\nLer antes de escrever é também o recorte mais barato de errar: sem escrita, não há como corromper o\nProjects, que o PRD fixa como fonte da verdade. E força cedo a decisão de autenticação e leitura do\nGitHub, que é onde mora o desconhecido.\n\n## Critérios de aceite\n\n- Abrir o app mostra as 8 estações da esteira como colunas, e todo card do board aparece na coluna\n  correspondente ao seu Status (RF-2).\n- O app é comprovadamente somente-leitura: nenhuma mutação do GitHub é alcançável a partir da UI\n  (RF-11).\n- Um card com várias tasks continua sendo **um** cartão só (RF-12).\n- A releitura do board é por evento — foco da janela e retorno de suspensão, sem botão e sem polling\n  — acontece em silêncio, e quando falha os cartões permanecem na tela com o carimbo acusando a\n  idade do dado, em vez de o erro tomar a tela. *(Critério acrescentado na `/gm-spec`: a decisão de\n  atualizar por evento trouxe comportamento observável que precisava de critério próprio.)*\n\n## Rota\n\n**Completa** — subsistema novo (autenticação e leitura do GitHub), diff grande, não trivialmente\nreversível.\n\n## Fora do escopo\n\nAbas por board além de um (RF-1), chat no cartão (RF-3/4/6), retomada de sessão (RF-5), nova triagem\n(RF-9) e o mapeamento repo→pasta (RF-10, a Open Question #3 do PRD). A conversa que já existe fica\ncomo está.\n\n",
+          "comments": {
+            "totalCount": 1,
+            "nodes": [
+              {
+                "id": "IC_f4_tasks",
+                "author": {
+                  "login": "leonardo-amaral-3"
+                },
+                "createdAt": "2026-11-11T08:20:00Z",
+                "body": "<!-- gm:tasks -->\n### Tasks\n- [x] 1 — O leitor do board e o contrato\n- [ ] 2 — As colunas pela opção do Status\n- [ ] 3 — O cartão com os campos\n- [ ] 4 — A aba do board\n- [ ] 5 — Smoke e README"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "906": {
+    "data": {
+      "repository": {
+        "issue": {
+          "number": 906,
+          "body": "## Sintético: a primeira fase do épico #905\n\nEste cartão declara `parent` #905 e vive em 🔨 Implementação — outra coluna que a do épico. É ele\nque prova as duas metades de uma vez: o crachá `⤴ #905` no próprio cartão (CA-1) e uma das duas\nlinhas que o #905 desenha (CA-2).\n\nO `parent` traz o `repository` dentro dele porque o cruzamento da inversão é por `repo#número` dos\ndois lados — um número que casa com o repo errado não casa com nada, e o épico ficaria sem fases\nem silêncio.",
+          "comments": {
+            "totalCount": 0,
+            "nodes": []
+          }
+        }
+      }
+    }
+  }
+}

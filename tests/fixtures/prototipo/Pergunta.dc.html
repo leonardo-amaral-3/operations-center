@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Pergunta: registro civil por bloco</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ECE3F8}
+a{color:#000}a:hover{color:#4B2FA8}
+.nb{background:#fff;border:2px solid #000;border-radius:5px;box-shadow:4px 4px 0 #000;box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;gap:6px;border:2px solid #000;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700;line-height:18px;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;border:1.5px solid #000;border-radius:4px;padding:0 6px;font-size:11px;font-weight:700;line-height:18px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 18px;border:2px solid #000;border-radius:5px;box-shadow:3px 3px 0 #000;font:700 14px 'DM Sans',sans-serif;text-decoration:none;color:#000;cursor:pointer}
+.opt{display:flex;flex-direction:column;gap:8px;padding:16px;cursor:pointer}
+.rc{display:flex;align-items:center;gap:8px;border:2px solid #000;border-radius:4px;padding:6px 10px;font:500 13px ui-monospace,monospace;background:#fff}
+</style>
+</helmet>
+<div style="min-height: 1000px; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 20px; font-family: 'DM Sans', sans-serif; font-weight: 500; color: #000; background: #ECE3F8">
+
+<header class="nb" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px">
+  <nav aria-label="Caminho" style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700">
+    <a href="Main.dc.html">Sala de controle</a><span aria-hidden="true">/</span><a href="Main.dc.html">Esperando você</a><span aria-hidden="true">/</span><span>Pergunta</span>
+  </nav>
+  <div style="display: flex; gap: 8px; flex-wrap: wrap"><span class="chip" style="background: #6CC4EE">Pergunta · trava a leva 7</span><span class="chip" style="background: #fff">1 de 4 na fila</span></div>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <main style="flex: 999 1 660px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+
+    <section class="nb" style="padding: 20px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; gap: 6px; flex-wrap: wrap"><span class="tag" style="background: #fff">extractor#2</span><span class="tag" style="background: #fff">fase 5 · tradução</span><span class="tag" style="background: #fff">13 glosas da família 07</span></div>
+      <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 26px; line-height: 32px">O produto deve ler os 8 registros civis da AIH, e não só o primeiro?</h1>
+      <p style="margin: 0; font-size: 15px; line-height: 22px; max-width: 760px">Na linha 04 do arquivo, uma AIH pode trazer até 8 registros civis. O produto lê só o primeiro; o SIHD2 confere todos. Por isso 13 glosas da família 07 não fecham na tradução, e é a maior trava que sobrou do sprint.</p>
+    </section>
+
+    <section class="nb" style="padding: 20px; display: flex; flex-wrap: wrap; gap: 20px; align-items: center; background: #F4F0FA">
+      <div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 8px">
+        <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Exemplo</h2>
+        <p style="margin: 0; font-size: 14px; line-height: 20px">Uma AIH com dois registros civis, o segundo com problema. O SIHD2 glosa. O produto não vê, porque parou no primeiro.</p>
+      </div>
+      <div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 8px">
+        <div class="rc"><span class="tag" style="background: #86DB84">lido</span>registro 1 de 2 · em ordem</div>
+        <div class="rc"><span class="tag" style="background: #F07468">não lido</span>registro 2 de 2 · o SIHD2 glosa aqui</div>
+      </div>
+    </section>
+
+    <section aria-label="Opções" style="display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px">O que a fábrica faz com cada resposta</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px">
+        <sc-for list="{{opts}}" as="o" hint-placeholder-count="3">
+          <button type="button" class="nb opt" onClick="{{o.pick}}" aria-pressed="{{o.on}}" style="{{o.style}}">
+            <span style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 8px"><span style="font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 700; text-align: left">{{o.titulo}}</span><sc-if value="{{o.rec}}" hint-placeholder-val="{{false}}"><span class="chip" style="background: #86DB84">recomendado</span></sc-if></span>
+            <span style="font-size: 13px; line-height: 18px; text-align: left; font-weight: 500"><b>Efeito:</b> {{o.efeito}}</span>
+            <span style="font-size: 13px; line-height: 18px; text-align: left; font-weight: 500"><b>Custo:</b> {{o.custo}}</span>
+          </button>
+        </sc-for>
+      </div>
+    </section>
+
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+      <label for="resp" style="font-weight: 700; font-size: 14px">Ou responda com as suas palavras</label>
+      <textarea id="resp" rows="3" placeholder="Ex.: mede primeiro; se passar de [limite], lê os 8" style="box-sizing: border-box; width: 100%; border: 2px solid #000; border-radius: 5px; padding: 10px 12px; font: 500 14px 'DM Sans', sans-serif; resize: vertical"></textarea>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
+        <button class="btn" type="button" style="background: #6CC4EE">Responder e soltar a leva</button>
+        <span style="font-size: 13px; color: #3D3D3D">A resposta vai para o cofre com o porquê e para o card como decisão, e as sessões paradas retomam.</span>
+      </div>
+    </section>
+  </main>
+
+  <aside style="flex: 1 1 300px; max-width: 400px; display: flex; flex-direction: column; gap: 16px">
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Outras decisões suas que travam glosas</h2>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px">
+        <thead><tr><th scope="col" style="text-align: left; padding: 6px 0; border-bottom: 2px solid #000">Decisão</th><th scope="col" style="text-align: right; padding: 6px 0; border-bottom: 2px solid #000">Glosas</th></tr></thead>
+        <tbody>
+          <tr><td style="padding: 6px 0; border-bottom: 1px solid #000">Cabeçalho da linha 07</td><td style="text-align: right; font-weight: 700">3</td></tr>
+          <tr><td style="padding: 6px 0; border-bottom: 1px solid #000">INE da AIH</td><td style="text-align: right; font-weight: 700">2</td></tr>
+          <tr><td style="padding: 6px 0; border-bottom: 1px solid #000">Dados do paciente pelo CNS</td><td style="text-align: right; font-weight: 700">2</td></tr>
+          <tr><td style="padding: 6px 0; border-bottom: 1px solid #000">Complexidade da AIH</td><td style="text-align: right; font-weight: 700">1</td></tr>
+          <tr><td style="padding: 6px 0; border-bottom: 1px solid #000">AH_ST_MENTAL</td><td style="text-align: right; font-weight: 700">1</td></tr>
+          <tr><td style="padding: 6px 0; border-bottom: 1px solid #000">Estado da OPM entre linhas</td><td style="text-align: right; font-weight: 700">1</td></tr>
+          <tr><td style="padding: 6px 0">Regra morta (060122)</td><td style="text-align: right; font-weight: 700">1</td></tr>
+        </tbody>
+      </table>
+      <p style="margin: 0; font-size: 12px; color: #3D3D3D">Hoje esta lista mora num arquivo do sprint. Na fábrica, cada linha é um item da fila.</p>
+    </section>
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 8px; background: #A388EE">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Por que chegou a você</h2>
+      <p style="margin: 0; font-size: 13px; line-height: 18px">Muda o que o produto lê do arquivo: é decisão de dado, nível C no mandato. A sessão parou com PARADA em vez de escolher sozinha.</p>
+    </section>
+  </aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { picked: 'medir' };
+  }
+  renderVals() {
+    const base = [
+      { id: 'ler', titulo: 'Ler os 8 registros', rec: false, efeito: 'as 13 glosas entram na leva 7.', custo: 'mudança no parser da linha 04 e medição na base.' },
+      { id: 'medir', titulo: 'Medir antes de decidir', rec: true, efeito: 'o agente conta na base da dev quantas AIHs têm mais de um registro e volta com o número.', custo: 'nenhum código muda; a pergunta volta com o dado.' },
+      { id: 'manter', titulo: 'Manter só o primeiro', rec: false, efeito: 'as 13 saem da tradução como trava permanente.', custo: 'a meta de 100% das glosas deixa de ser alcançável.' }
+    ];
+    return {
+      opts: base.map((o) => {
+        const on = this.state.picked === o.id;
+        return Object.assign({}, o, {
+          on: on ? 'true' : 'false',
+          style: on ? 'background: #DCEFFA; border-width: 3px' : 'background: #fff',
+          pick: () => this.setState({ picked: o.id })
+        });
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

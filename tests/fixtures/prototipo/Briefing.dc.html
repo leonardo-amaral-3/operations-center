@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Briefing da manhã</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ECE3F8}
+a{color:#000}a:hover{color:#4B2FA8}
+.nb{background:#fff;border:2px solid #000;border-radius:5px;box-shadow:4px 4px 0 #000;box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;gap:6px;border:2px solid #000;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700;line-height:18px;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;border:1.5px solid #000;border-radius:4px;padding:0 6px;font-size:11px;font-weight:700;line-height:18px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 18px;border:2px solid #000;border-radius:5px;box-shadow:3px 3px 0 #000;font:700 14px 'DM Sans',sans-serif;text-decoration:none;color:#000;cursor:pointer}
+.seg{display:inline-flex;border:2px solid #000;border-radius:5px;overflow:hidden}
+.seg button{min-height:44px;padding:0 16px;border:0;border-right:2px solid #000;font:700 14px 'DM Sans',sans-serif;cursor:pointer;color:#000}
+.seg button:last-child{border-right:0}
+.fld{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700}
+.fld input{min-height:40px;box-sizing:border-box;border:2px solid #000;border-radius:5px;padding:0 10px;font:500 14px 'DM Sans',sans-serif;background:#fff}
+.step{display:flex;gap:10px;font-size:13px;line-height:18px}
+.num{flex:0 0 auto;width:22px;height:22px;border:2px solid #000;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#fff}
+</style>
+</helmet>
+<div style="min-height: 1100px; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 20px; font-family: 'DM Sans', sans-serif; font-weight: 500; color: #000; background: #ECE3F8">
+
+<header class="nb" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px">
+  <nav aria-label="Caminho" style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700">
+    <a href="Main.dc.html">Sala de controle</a><span aria-hidden="true">/</span><span>Briefing do dia</span>
+  </nav>
+  <div role="group" aria-label="Modo do dia" class="seg">
+    <sc-for list="{{modos}}" as="m" hint-placeholder-count="2">
+      <button type="button" aria-pressed="{{m.on}}" onClick="{{m.pick}}" style="{{m.style}}">{{m.nome}}</button>
+    </sc-for>
+  </div>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <main style="flex: 999 1 680px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+    <div>
+      <h1 style="margin: 0 0 4px; font-family: 'Space Grotesk', sans-serif; font-size: 26px">O que a fábrica toca hoje sem você</h1>
+      <p style="margin: 0; font-size: 14px; line-height: 20px; max-width: 760px">Cinco a dez minutos. Cada frente diz quando está pronta, a que objetivo serve e até onde pode ir. O que não couber aqui fica estacionado para a noite.</p>
+    </div>
+
+    <article class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 17px">extractor#2 · leva 7 da tradução</h2><span class="chip" style="background: #E2EFEE">objetivo: tradução 100% das glosas</span></div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+        <label class="fld" style="grid-column: span 3">Pronto quando<input type="text" value="PR da leva 7 aberta com a medição de 238 de 363, nenhuma perdida"></label>
+        <label class="fld">Teto de tempo<input type="text" value="[horas]"></label>
+        <label class="fld">Teto de sessões<input type="text" value="[n]"></label>
+        <label class="fld">Autonomia<input type="text" value="até a PR"></label>
+      </div>
+    </article>
+
+    <article class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 17px">modulo-processos#1872 · F1, fechar o banco à internet</h2><span class="chip" style="background: #E2EFEE">objetivo: bancos fechados</span></div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+        <label class="fld" style="grid-column: span 3">Pronto quando<input type="text" value="Tasks da F1 com PR na dev; nada aplicado em produção"></label>
+        <label class="fld">Teto de tempo<input type="text" value="[horas]"></label>
+        <label class="fld">Teto de sessões<input type="text" value="[n]"></label>
+        <label class="fld">Autonomia<input type="text" value="até a PR"></label>
+      </div>
+    </article>
+
+    <article class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 17px">claude-brain#46 · freio de contradição no lembrar</h2><span class="chip" style="background: #F07468">sem objetivo na Direção</span></div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+        <label class="fld" style="grid-column: span 3">Pronto quando<input type="text" value="Implementação até a PR, atrás da flag"></label>
+        <label class="fld">Teto de tempo<input type="text" value="[horas]"></label>
+        <label class="fld">Teto de sessões<input type="text" value="[n]"></label>
+        <label class="fld">Autonomia<input type="text" value="até a PR"></label>
+      </div>
+      <p style="margin: 0; font-size: 12px; color: #3D3D3D">Frente sem objetivo roda, mas aparece no relatório como esforço fora da Direção.</p>
+    </article>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px">
+      <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 8px">
+        <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Não fazer hoje</h2>
+        <ul style="margin: 0; padding-left: 18px; font-size: 14px; line-height: 22px">
+          <li>Nada em produção, nem leitura que tranque tabela</li>
+          <li>Não tocar em card atribuído a outro dev</li>
+          <li>Não rodar a suíte inteira local</li>
+        </ul>
+      </section>
+      <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 8px">
+        <label for="ctx" style="font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 700">Contexto do dia</label>
+        <textarea id="ctx" rows="4" placeholder="O que você sabe hoje e a fábrica não: conversa com o gestor, prazo de secretaria…" style="box-sizing: border-box; width: 100%; border: 2px solid #000; border-radius: 5px; padding: 10px 12px; font: 500 14px 'DM Sans', sans-serif; resize: vertical"></textarea>
+        <p style="margin: 0; font-size: 12px; color: #3D3D3D">Pode acionar no Slack: [devs da allowlist]</p>
+      </section>
+    </div>
+
+    <div><button class="btn" type="button" style="background: #A388EE">Soltar o dia</button></div>
+  </main>
+
+  <aside style="flex: 1 1 320px; max-width: 420px; display: flex; flex-direction: column; gap: 16px">
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Plano devolvido</h2><span style="font-size: 12px; color: #3D3D3D">você não precisa aprovar</span></div>
+      <h3 style="margin: 0; font-size: 14px">extractor#2</h3>
+      <div class="step"><span class="num">1</span><span>Junta os 6 commits fora da main na branch da leva 7. [proj.]</span></div>
+      <div class="step"><span class="num">2</span><span>Lint antes do teste; conflito de código à mão, nunca por união. [proj.]</span></div>
+      <div class="step"><span class="num">3</span><span>Mede nos 10 lotes e abre a PR. [proj.]</span></div>
+      <p style="margin: 0; font-size: 12px; line-height: 16px; color: #3D3D3D">O que pode alargar: um lote que cai, como o KeyError de 09/11.</p>
+      <h3 style="margin: 4px 0 0; font-size: 14px">#1872 F1 e claude-brain#46</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 18px">[os passos e a projeção de cada frente]</p>
+    </section>
+    <section class="nb" style="padding: 16px; display: flex; flex-direction: column; gap: 8px; background: #A388EE">
+      <h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 16px">Para que serve o plano</h2>
+      <p style="margin: 0; font-size: 13px; line-height: 18px">À noite, o relatório compara o que foi feito com este plano. Sem plano, não há desvio para medir.</p>
+    </section>
+  </aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { modo: 'auto' };
+  }
+  renderVals() {
+    const ms = [{ id: 'junto', nome: 'Eu acompanho' }, { id: 'auto', nome: 'Dia autônomo' }];
+    return {
+      modos: ms.map((m) => {
+        const on = this.state.modo === m.id;
+        return { nome: m.nome, on: on ? 'true' : 'false', style: on ? 'background: #A388EE' : 'background: #fff', pick: () => this.setState({ modo: m.id }) };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

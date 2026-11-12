@@ -1,0 +1,1 @@
+{"type":"result","subtype":"success","is_error":false,"session_id":"sessao-962-ship","result":"PR #970 está aberta na `dev`, com `Card: #962` na primeira linha.\n\n- **Portão local:** `yarn lint`, `yarn typecheck` e `yarn test` passaram.\n- **CI:** pendente.\n\nPARADA: PR #970 aberta na dev (Card: #962); o merge é da orquestradora"}

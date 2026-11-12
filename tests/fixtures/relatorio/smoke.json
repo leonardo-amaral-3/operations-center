@@ -1,0 +1,51 @@
+{
+  "movidos": {
+    "data": {
+      "user": {
+        "projectV2": {
+          "items": {
+            "pageInfo": { "hasNextPage": false, "endCursor": null },
+            "nodes": [
+              {
+                "content": {
+                  "__typename": "Issue",
+                  "number": 118,
+                  "repository": { "nameWithOwner": "leonardo-amaral-3/operations-center" },
+                  "timelineItems": { "nodes": [{ "createdAt": "2026-11-10T20:01:23Z" }] }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "organization": null
+    },
+    "errors": [
+      {
+        "message": "Could not resolve to an Organization with the login of 'leonardo-amaral-3'.",
+        "path": ["organization"],
+        "type": "NOT_FOUND"
+      }
+    ]
+  },
+  "cards": {
+    "118": {
+      "__typename": "Issue",
+      "number": 118,
+      "title": "Fábrica agêntica: o Operations Center despacha, governa e presta contas",
+      "url": "https://github.com/leonardo-amaral-3/operations-center/issues/118",
+      "parent": null,
+      "timelineItems": {
+        "pageInfo": { "hasNextPage": false },
+        "nodes": [
+          {
+            "createdAt": "2026-11-10T20:01:23Z",
+            "previousStatus": "📥 Triagem",
+            "status": "📋 Backlog",
+            "project": { "number": 2 }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,5 +1,6 @@
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
@@ -36,6 +37,16 @@ import {
   saveConversations,
 } from './conversations'
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
+import { REPO_DA_FABRICA } from '../core/fabrica/mandato'
+import { criarAssumir, registerAssumirIpc } from './fabrica/assumir'
+import { lerEstado } from './fabrica/arquivos'
+import { criarExecutorDeComando, registerComandoIpc } from './fabrica/comando'
+import { lerMandato, lerMandatoPelaGraphQL } from './fabrica/github'
+import { registerMandatoIpc } from './fabrica/mandatoNaSala'
+import { criarMarcaEmCache, lerRecursos, portasReais, worktreesDo } from './fabrica/recursos'
+import { pastaDaSala, registerFabricaIpc } from './fabrica/sala'
+import { lerSessoesDaMaquina, portasReaisDasSessoes, registerSessoesIpc } from './fabrica/sessoes'
+import { registerRelatorioIpc } from './relatorio/sala'
 import type { DangerGate } from './danger'
 import { createFixtureGraphQL, createFixtureRest } from './github/fixture'
 import { createGitHubGraphQL } from './github/graphql'
@@ -53,8 +64,18 @@ import { buildPresets, childEnv } from './terminalPresets'
 import { judgeNavigation } from './navigation'
 import { loadActiveBoard, loadTheme, saveActiveBoard } from './preferences'
 import { gitOrigin, scanSessionFolders } from './repos'
+import { chromiumUserDataDir } from './store'
 import { resolveThemeEnv, windowBackground } from './theme'
 import { registerWindowIpc } from './window'
+
+// Antes do `ready`, ou o Chromium já terá aberto o userData default (M12). A pasta é criada antes:
+// o `setPath` do Electron documenta que lança para diretório inexistente (`electron.d.ts:1799-1801`),
+// mesmo que no Electron 44 a medição M12 tenha passado sem ela.
+const userDataDoSmoke = chromiumUserDataDir()
+if (userDataDoSmoke !== null) {
+  mkdirSync(userDataDoSmoke, { recursive: true })
+  app.setPath('userData', userDataDoSmoke)
+}
 
 /**
  * A pasta de trabalho da sessão **sem cartão** — a da fatia vertical. Sem `OC_CWD`, é a raiz do repo:
@@ -111,6 +132,8 @@ function createGraphQL(): GraphQLFn {
         boards: process.env.OC_BOARDS_FIXTURE,
         cards: process.env.OC_CARD_FIXTURE,
         pulls: process.env.OC_PR_FIXTURE,
+        relatorio: process.env.OC_RELATORIO_FIXTURE,
+        mandato: process.env.OC_FABRICA_MANDATO_FIXTURE,
       })
     : createGitHubGraphQL(createGhTokenSource())
 }
@@ -368,6 +391,61 @@ const dangerIpc = screen === 'kanban' ? registerDangerIpc(danger) : null
 // Em paralelo à janela, como a primeira leitura do board: o disco é lido antes de o renderer pedir o
 // primeiro retrato, e o `onChange` corrige a tela quando ele responder.
 dangerIpc?.refresh()
+
+// A sala da fábrica (#122): só quando o processo sobe na tela do kanban, como o `registerDangerIpc`
+// acima; as janelas de card do mesmo processo não chamam estes canais. Só lê a pasta da fábrica.
+if (screen === 'kanban') {
+  const pasta = pastaDaSala(process.env, homedir())
+  // O mandato da `dev` vem pela GraphQL, em cache de 60 s: a sala relê a cada 5 s.
+  const graphql = createGraphQL()
+  const marca = criarMarcaEmCache(
+    () => lerMandatoPelaGraphQL(graphql),
+    () => Date.now(),
+  )
+  registerFabricaIpc(pasta, {
+    recursos: () => lerRecursos(portasReais({ env: process.env, pastaDaFabrica: pasta, marca })),
+    // O avô da pasta da fábrica é o inverso do default (`<workspace>/claude/despachos-fabrica`).
+    worktrees: () => worktreesDo(dirname(dirname(pasta))),
+  })
+  // As sessões `claude` da máquina (#142): lê `/proc` e o `origin` das pastas; o cache do `origin`
+  // vive nas portas, criadas uma vez aqui.
+  const portasDasSessoes = portasReaisDasSessoes(homedir())
+  registerSessoesIpc(() => lerSessoesDaMaquina(portasDasSessoes))
+}
+
+// O canal de escrita da fábrica (#129): roda os subcomandos de `SUBCOMANDOS_DO_APP` do `yarn fabrica` em
+// processo, pela mesma pasta que a sala lê (`OC_FABRICA_DIR` vale para os dois). Não toca o board.
+if (screen === 'kanban')
+  registerComandoIpc(
+    criarExecutorDeComando({
+      raizDoRepo: join(homedir(), 'pessoal', REPO_DA_FABRICA.name),
+      env: process.env,
+      platform: process.platform,
+      home: homedir(),
+      agora: () => new Date().toISOString(),
+      lerMandato,
+      graphql: createGraphQL(),
+      intervaloMs: 5000,
+      sinal: new AbortController().signal,
+    }),
+  )
+
+// O relatório do dia (#126), na mesma tela e pela mesma razão. Um `createGraphQL()` por leitor (O19).
+if (screen === 'kanban')
+  registerRelatorioIpc({
+    graphql: createGraphQL(),
+    env: process.env,
+    home: homedir(),
+    agora: () => new Date(),
+  })
+
+// O mandato da `dev` para a tela Mandato (F5): um `createGraphQL()` por leitor, e sem cache, porque
+// a tela lê uma vez ao abrir.
+if (screen === 'kanban') {
+  const graphqlDoMandato = createGraphQL()
+
+  registerMandatoIpc(() => lerMandatoPelaGraphQL(graphqlDoMandato))
+}
 
 function publicarPerigo(): void {
   dangerIpc?.publish()
@@ -723,6 +801,25 @@ const claudeIpc = registerClaudeTerminalIpc({
       ? janelaViva.webContents
       : null,
 })
+
+// Assumir a sessão de um despacho no cartão do card (#133). Grava a conversa do cartão no
+// `conversations.json` do app, como abrir o chat de um card já faz, e abre a janela do card. Não
+// toca a pasta da fábrica nem o board.
+if (screen === 'kanban') {
+  const pastaDoAssumir = pastaDaSala(process.env, homedir())
+  registerAssumirIpc(
+    criarAssumir({
+      lerEstado: () => lerEstado(pastaDoAssumir),
+      cardDoItem: (itemId) => boardsIpc?.cardById(itemId) ?? null,
+      sessaoAberta: (itemId) => claudeIpc.sessaoAberta({ kind: 'card', itemId }),
+      conversaDoCartao: async (itemId) => (await conversations.locate(itemId))?.sessionId ?? null,
+      transcriptExiste: async (sessao) => (await inspectSession(sessao)) !== null,
+      janelasDePe: () => cardWindows !== null,
+      lembrar: (itemId, sessao) => conversations.remember(itemId, sessao),
+      abrirJanela: (itemId) => cardWindows?.open(itemId, null),
+    }),
+  )
+}
 
 // O layout da mesa (#74 §6): só persiste, e por isso também incondicional — não toca o board.
 registerLayoutIpc()
