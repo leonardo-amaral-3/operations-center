@@ -147,6 +147,16 @@ describe('Briefing · as frentes (CA-6.1)', () => {
     expect(screen.queryByText(/objetivo:/)).toBeNull()
   })
 
+  it('as frentes ficam dentro da lista com teto de 1040 px (#149)', async () => {
+    await abrir()
+    const lista = document.querySelector('[data-lista="briefing-frentes"]')
+    expect(lista).not.toBeNull()
+    expect(lista!.getAttribute('data-teto')).toBe('1040')
+    const frentes = screen.getAllByTestId('fabrica-briefing-frente')
+    expect(frentes).toHaveLength(3)
+    for (const f of frentes) expect(lista!.contains(f)).toBe(true)
+  })
+
   it('o botão Soltar só habilita com frente marcada', async () => {
     await abrir()
     expect(soltar().disabled).toBe(true)

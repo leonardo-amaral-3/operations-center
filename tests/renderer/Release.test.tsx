@@ -136,6 +136,33 @@ describe('Release · o trem (CA-6.3)', () => {
     for (const l of linhas) expect(within(l).getByText('na 🚂 Release do board')).toBeTruthy()
   })
 
+  it('o trem, as notas e a verificação ficam em listas com teto (#149)', async () => {
+    await abrir()
+    const lista = (nome: string) => {
+      const el = document.querySelector(`[data-lista="${nome}"]`)
+      expect(el, nome).not.toBeNull()
+      expect(el!.getAttribute('data-teto')).toBe('640')
+      return el!
+    }
+    const trem = lista('release-trem')
+    for (const c of screen.getAllByTestId('fabrica-release-card'))
+      expect(trem.contains(c)).toBe(true)
+
+    const notas = lista('release-notas')
+    expect(notas.textContent).toContain('Título 210')
+    expect(notas.contains(screen.getByTestId('fabrica-release-notas'))).toBe(false)
+
+    const verificacao = await waitFor(() => {
+      const el = lista('release-verificacao')
+      expect(el.querySelectorAll('[data-testid="fabrica-release-check"]').length).toBeGreaterThan(0)
+      return el
+    })
+    for (const c of screen.getAllByTestId('fabrica-release-check'))
+      expect(verificacao.contains(c)).toBe(true)
+    const aviso = screen.getByText(/Nenhum agente roda estas consultas/)
+    expect(verificacao.contains(aviso)).toBe(false)
+  })
+
   it('as notas têm uma linha por card e Copiar notas copia o textoDasNotas', async () => {
     await abrir()
     const notas = screen.getByTestId('fabrica-release-notas')
