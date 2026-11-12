@@ -1,6 +1,7 @@
 import type { EntradaNaSala } from '../../shared/fabrica'
 import { lerDesfecho } from './desfecho'
 import { nomeDoRepo, type BoardDaFabrica, type RepoDoBoard } from './configuracao'
+import { aceitaORepo, repoDeOutroCard } from './cardDaFabrica'
 import { cardDoComando } from './mandato'
 
 /**
@@ -288,24 +289,7 @@ export function voltarTriagemAPendente(e: EntradaDaFabrica, id: string): Entrada
   return alterarItem(e, id, (i) => ({ ...i, triagem: null }))
 }
 
-/**
- * O primeiro repo que não é o `repo` do board citado junto a um card no fim da sessão, ou `null`.
- * Pega as duas formas que a `/gm-*` usa: `<repo>#n` (`claude-brain#43`,
- * `leonardo-amaral-3/claude-brain#43`) e `#n (<repo>)`. O `#n` sozinho é do operations-center,
- * porque o repo da triagem é só o do board; o parêntese só conta quando parece um repo (tem `-` ou `/`),
- * para `#12 (comentado)` não virar repo.
- */
-export function repoDeOutroCard(texto: string, repo: RepoDoBoard): string | null {
-  const ehDaTriagem = (r: string) => r === repo.name || r === nomeDoRepo(repo)
-  const candidatos = [
-    ...Array.from(texto.matchAll(/((?:[\w.-]+\/)?[\w.-]+)#\d+/g), (m) => m[1] ?? ''),
-    ...Array.from(
-      texto.matchAll(/#\d+\s*\(\s*((?:[\w.-]+\/)?[\w.-]*-[\w.-]*|[\w.-]+\/[\w.-]+)\s*\)/g),
-      (m) => m[1] ?? '',
-    ),
-  ]
-  return candidatos.find((r) => r !== '' && !ehDaTriagem(r)) ?? null
-}
+export { repoDeOutroCard } from './cardDaFabrica'
 
 /** Fecha a triagem pelo fim da sessão: triado com a resolução, ou `parou` com o motivo. */
 export function concluirTriagem(
@@ -331,7 +315,7 @@ export function concluirTriagem(
       : desfecho.tipo === 'parada'
         ? `PARADA: ${desfecho.motivo}`
         : null
-  const outro = fim === null ? null : repoDeOutroCard(fim, p.repo)
+  const outro = fim === null ? null : repoDeOutroCard(fim, aceitaORepo(p.repo))
   if (outro !== null) {
     parou = `o fim cita card de outro repo (${outro}): ${fim ?? ''}`
   } else if (desfecho.tipo === 'proximo') {

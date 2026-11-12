@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
   boardPadrao,
+  checkoutPrincipalDe,
+  descreverRepos,
+  lerRepo,
+  mesmoRepo,
   motivoSemMandato,
   nomeDoRepo,
   parseConfiguracao,
+  repoDoBoard,
   resolverBoard,
+  type ReposDoBoard,
 } from '../../src/core/fabrica/configuracao'
 import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
 import { boardFicticio, configuracaoDeTeste } from './fabrica-board-de-teste'
@@ -50,6 +56,9 @@ describe('o boards.json versionado', () => {
   it('traz os valores do operations-center', () => {
     const b = boardPadrao(c)
     expect(b.repo).toEqual({ owner: 'leonardo-amaral-3', name: 'operations-center' })
+    expect(b.repoUnico).toEqual({ owner: 'leonardo-amaral-3', name: 'operations-center' })
+    expect(b.repos).toEqual({ tipo: 'lista', repos: [b.repoUnico] })
+    expect(checkoutPrincipalDe(b, b.repoUnico)).toBe('/home/u/pessoal/operations-center')
     expect(b.projeto).toBe(2)
     expect(b.nome).toBe('Operations Center')
     expect(b.workspace).toBe('/home/u/pessoal')
@@ -188,5 +197,58 @@ describe('resolverBoard', () => {
     })
     const r = resolverBoard(c2, 'fulano/7')
     expect(r.ok && nomeDoRepo(r.board.mandato.repo)).toBe('fulano/repo-x')
+  })
+})
+
+describe('os helpers de repo do board (CA-1)', () => {
+  const A = { owner: 'fulano', name: 'repo-a' }
+  const B = { owner: 'fulano', name: 'repo-b' }
+  const lista: ReposDoBoard = { tipo: 'lista', repos: [A, B] }
+  const dono: ReposDoBoard = { tipo: 'owner', owner: 'fulano' }
+
+  it('lerRepo e mesmoRepo', () => {
+    expect(lerRepo('fulano/repo-a')).toEqual(A)
+    expect(lerRepo('repo-a')).toBeNull()
+    expect(lerRepo(7)).toBeNull()
+    expect(mesmoRepo(A, { ...A })).toBe(true)
+    expect(mesmoRepo(A, B)).toBe(false)
+    expect(mesmoRepo(A, { owner: 'Fulano', name: 'repo-a' })).toBe(false)
+  })
+  it('checkoutPrincipalDe: o declarado só para o repo único', () => {
+    const declarado = { workspace: '/w', checkoutPrincipal: '/x/a', repoUnico: A }
+    expect(checkoutPrincipalDe(declarado, A)).toBe('/x/a')
+    expect(checkoutPrincipalDe(declarado, B)).toBe('/w/repo-b')
+    expect(
+      checkoutPrincipalDe({ workspace: '/w', checkoutPrincipal: '/x/a', repoUnico: null }, B),
+    ).toBe('/w/repo-b')
+  })
+  it('descreverRepos', () => {
+    expect(descreverRepos(lista)).toBe('fulano/repo-a, fulano/repo-b')
+    expect(descreverRepos(dono)).toBe('qualquer repo de fulano')
+  })
+  it('repoDoBoard: lista com e sem owner', () => {
+    expect(repoDoBoard({ repos: lista }, null, 'repo-b')).toEqual(B)
+    expect(repoDoBoard({ repos: lista }, 'fulano', 'repo-a')).toEqual(A)
+    expect(repoDoBoard({ repos: lista }, 'outro', 'repo-a')).toBeNull()
+    expect(repoDoBoard({ repos: lista }, null, 'repo-z')).toBeNull()
+  })
+  it('repoDoBoard: forma owner', () => {
+    expect(repoDoBoard({ repos: dono }, null, 'qualquer')).toEqual({
+      owner: 'fulano',
+      name: 'qualquer',
+    })
+    expect(repoDoBoard({ repos: dono }, 'fulano', 'x.y_z')).toEqual({
+      owner: 'fulano',
+      name: 'x.y_z',
+    })
+    expect(repoDoBoard({ repos: dono }, 'outro', 'x')).toBeNull()
+    expect(repoDoBoard({ repos: dono }, null, '..')).toBeNull()
+    expect(repoDoBoard({ repos: dono }, null, '.')).toBeNull()
+    expect(repoDoBoard({ repos: dono }, null, 'a b')).toBeNull()
+  })
+  it('boardPadrao lança se o board não tem repo único', () => {
+    const c = parseConfiguracao(minimo(), HOME)
+    const sem = { ...c, boards: [{ ...c.boards[0]!, repoUnico: null }] }
+    expect(() => boardPadrao(sem)).toThrow(new Error('fabrica/boards.json ilegível: padrao'))
   })
 })

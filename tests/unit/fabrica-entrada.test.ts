@@ -1,3 +1,4 @@
+import { aceitaORepo } from '../../src/core/fabrica/cardDaFabrica'
 import { describe, expect, it } from 'vitest'
 import { boardPadrao, parseConfiguracao } from '../../src/core/fabrica/configuracao'
 import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
@@ -367,10 +368,10 @@ describe('triagem do item', () => {
   })
 
   it('repoDeOutroCard segue o repo do board (CA-3)', () => {
-    expect(repoDeOutroCard('PROXIMO: /gm-card #3', FULANO.repo)).toBeNull()
-    expect(repoDeOutroCard('PROXIMO: /gm-card operations-center#3', FULANO.repo)).toBe(
-      'operations-center',
-    )
+    expect(repoDeOutroCard('PROXIMO: /gm-card #3', aceitaORepo(FULANO.repoUnico))).toBeNull()
+    expect(
+      repoDeOutroCard('PROXIMO: /gm-card operations-center#3', aceitaORepo(FULANO.repoUnico)),
+    ).toBe('operations-center')
   })
 
   it('NOTA_DA_TRIAGEM nomeia o repo do card (#148, G4 item 1)', () => {

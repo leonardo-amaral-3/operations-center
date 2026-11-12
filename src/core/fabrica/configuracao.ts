@@ -17,6 +17,10 @@ export interface ProibidosDoBoard {
   readonly caminhos: readonly string[]
   readonly motivo: string
 }
+export type ReposDoBoard =
+  | { readonly tipo: 'lista'; readonly repos: readonly RepoDoBoard[] } // ≥ 1, `name` sem repetição, na ordem do arquivo
+  | { readonly tipo: 'owner'; readonly owner: string } // "<owner>/*"
+
 export interface BoardDaFabrica {
   /** `${owner}/${projeto}` */
   readonly chave: string
@@ -24,6 +28,9 @@ export interface BoardDaFabrica {
   readonly projeto: number
   readonly nome: string
   readonly repo: RepoDoBoard
+  readonly repos: ReposDoBoard
+  /** O repo, quando o board atende um só (`repo`, ou `repos` com um item); `null` com vários ou com `<owner>/*`. */
+  readonly repoUnico: RepoDoBoard | null
   /** Absoluto, já expandido. */
   readonly workspace: string
   readonly checkoutPrincipal: string
@@ -32,6 +39,7 @@ export interface BoardDaFabrica {
   readonly proibidos: ProibidosDoBoard
   readonly mandato: OrigemDoMandato | null
 }
+export type BoardDeUmRepo = BoardDaFabrica & { readonly repoUnico: RepoDoBoard }
 export type BoardComMandato = BoardDaFabrica & { readonly mandato: OrigemDoMandato }
 export interface ConfiguracaoDaFabrica {
   readonly padrao: string
@@ -75,10 +83,53 @@ function expandir(v: unknown, home: string): string | null {
   return null
 }
 
-function lerRepo(v: unknown): RepoDoBoard | null {
+/** `RE_REPO` em texto → repo; outra coisa → null. */
+export function lerRepo(v: unknown): RepoDoBoard | null {
   if (typeof v !== 'string') return null
   const m = RE_REPO.exec(v)
   return m ? { owner: m[1]!, name: m[2]! } : null
+}
+
+export function mesmoRepo(a: RepoDoBoard, b: RepoDoBoard): boolean {
+  return a.owner === b.owner && a.name === b.name
+}
+
+/** O declarado, se `r` é o repo único e há declarado; senão `join(workspace, r.name)` (posix). */
+export function checkoutPrincipalDe(
+  b: Pick<BoardDaFabrica, 'workspace' | 'checkoutPrincipal' | 'repoUnico'>,
+  r: RepoDoBoard,
+): string {
+  if (b.repoUnico !== null && b.checkoutPrincipal !== null && mesmoRepo(b.repoUnico, r)) {
+    return b.checkoutPrincipal
+  }
+  return join(b.workspace, r.name)
+}
+
+/** Lista: os `owner/name` juntos por ', '. Owner: `qualquer repo de <owner>`. */
+export function descreverRepos(r: ReposDoBoard): string {
+  return r.tipo === 'lista' ? r.repos.map(nomeDoRepo).join(', ') : `qualquer repo de ${r.owner}`
+}
+
+const RE_NOME_DE_REPO = /^[A-Za-z0-9._-]+$/
+
+/**
+ * O repo do board com esse nome. Lista: com `owner === null`, o item de mesmo `name`; com owner, o item de
+ * mesmo owner e name. Forma owner: `name` casa `[A-Za-z0-9._-]+` e não é `.` nem `..`, e `owner === null`
+ * ou `owner === b.repos.owner` → `{ owner: b.repos.owner, name }`. Senão `null`. Comparação exata.
+ */
+export function repoDoBoard(
+  b: Pick<BoardDaFabrica, 'repos'>,
+  owner: string | null,
+  name: string,
+): RepoDoBoard | null {
+  if (b.repos.tipo === 'lista') {
+    return (
+      b.repos.repos.find((r) => r.name === name && (owner === null || r.owner === owner)) ?? null
+    )
+  }
+  if (!RE_NOME_DE_REPO.test(name) || name === '.' || name === '..') return null
+  if (owner !== null && owner !== b.repos.owner) return null
+  return { owner: b.repos.owner, name }
 }
 
 function lerMandato(v: unknown, onde: string): OrigemDoMandato | null {
@@ -132,6 +183,8 @@ function lerBoard(item: unknown, i: number, home: string): BoardDaFabrica {
     projeto,
     nome: item.nome,
     repo,
+    repos: { tipo: 'lista', repos: [repo] },
+    repoUnico: repo,
     workspace,
     checkoutPrincipal,
     pastaDoEstado,
@@ -159,10 +212,10 @@ export function parseConfiguracao(bruto: unknown, home: string): ConfiguracaoDaF
   return { padrao: bruto.padrao, boards }
 }
 
-export function boardPadrao(c: ConfiguracaoDaFabrica): BoardDaFabrica {
+export function boardPadrao(c: ConfiguracaoDaFabrica): BoardDeUmRepo {
   const b = c.boards.find((x) => x.chave === c.padrao)
-  if (!b) throw ilegivel('padrao')
-  return b
+  if (!b || b.repoUnico === null) throw ilegivel('padrao')
+  return b as BoardDeUmRepo
 }
 
 export function resolverBoard(
