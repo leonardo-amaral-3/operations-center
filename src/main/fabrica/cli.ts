@@ -64,7 +64,7 @@ export interface DepsDoCli {
 }
 
 const USO =
-  'uso: yarn fabrica [iniciar <n> [--comando "<cmd>"] [--nota "<texto>"] [--ensaio] | rodar | estado | fechar <item> "<resolução>" | pausar | retomar | entrada "<texto>" | triar <item> "<resolução>" | confirmar <arquivo> | contestar <arquivo> "<motivo>" | atender <arquivo> "<resolução>"]'
+  'uso: yarn fabrica [--board <owner>/<n>] [iniciar <n> [--comando "<cmd>"] [--nota "<texto>"] [--ensaio] | rodar | estado | fechar <item> "<resolução>" | pausar | retomar | entrada "<texto>" | triar <item> "<resolução>" | confirmar <arquivo> | contestar <arquivo> "<motivo>" | atender <arquivo> "<resolução>"]'
 
 type Comando =
   | { tipo: 'iniciar'; card: number; comando: string | null; nota: string | null; ensaio: boolean }
@@ -80,7 +80,27 @@ type Comando =
   | { tipo: 'atender'; arquivo: string; resolucao: string }
 
 /** Lê os argumentos; devolve o que estava errado, em texto, quando não servem. */
-function lerArgumentos(argv: readonly string[]): Comando | { erro: string } {
+function lerArgumentos(
+  argv: readonly string[],
+): { board: string | null; comando: Comando } | { erro: string } {
+  if (argv[0] !== '--board') return lerComando(argv, null)
+  const valor = argv[1]
+  if (valor === undefined) return { erro: '--board sem valor' }
+  if (!/^[A-Za-z0-9-]+\/[1-9]\d*$/.test(valor)) {
+    return { erro: `--board inválido: ${valor} (use <owner>/<número do Project>)` }
+  }
+  return lerComando(argv.slice(2), valor)
+}
+
+function lerComando(
+  argv: readonly string[],
+  board: string | null,
+): { board: string | null; comando: Comando } | { erro: string } {
+  const lido = lerSubcomando(argv)
+  return 'erro' in lido ? lido : { board, comando: lido }
+}
+
+function lerSubcomando(argv: readonly string[]): Comando | { erro: string } {
   const sub = argv[0] ?? 'rodar'
   const resto = argv.slice(1)
   if (sub === 'rodar' || sub === 'estado' || sub === 'pausar' || sub === 'retomar') {
@@ -157,9 +177,9 @@ function codigoDoErro(mensagem: string): number {
 }
 
 export async function executar(deps: DepsDoCli): Promise<number> {
-  const lido = lerArgumentos(deps.argv)
-  if ('erro' in lido) {
-    deps.avisar(`fabrica: ${lido.erro}`)
+  const argumentos = lerArgumentos(deps.argv)
+  if ('erro' in argumentos) {
+    deps.avisar(`fabrica: ${argumentos.erro}`)
     deps.avisar(USO)
     return 1
   }
@@ -168,8 +188,8 @@ export async function executar(deps: DepsDoCli): Promise<number> {
     return 2
   }
 
-  // O `--board` chega na task 6; até lá vale o `padrao`.
-  const resolvido = resolverBoard(deps.configuracao, null)
+  const lido = argumentos.comando
+  const resolvido = resolverBoard(deps.configuracao, argumentos.board)
   if (!resolvido.ok) {
     deps.avisar(`fabrica: ${resolvido.motivo}`)
     return 2
