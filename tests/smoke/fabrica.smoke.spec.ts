@@ -475,6 +475,11 @@ test('a Linha mostra a aba selecionada', async () => {
     await expect(window.getByTestId('fabrica-linha-board')).toContainText('board Plataformas v2', {
       timeout: RELEITURA,
     })
+    // O board da aba não está no boards.json: a fábrica mostra o motivo e nenhum botão de comando.
+    await expect(window.getByTestId('fabrica-recusa')).toContainText(
+      'o board ICSF-Solutions/19 não está configurado',
+    )
+    await expect(window.getByTestId('fabrica-sala').locator('button')).toHaveCount(0)
     await expect(coluna('spec')).toContainText('#910', { timeout: RELEITURA })
     await expect(coluna('entrada')).not.toContainText('#952')
 
