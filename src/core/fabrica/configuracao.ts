@@ -17,21 +17,29 @@ export interface ProibidosDoBoard {
   readonly caminhos: readonly string[]
   readonly motivo: string
 }
+export type ReposDoBoard =
+  | { readonly tipo: 'lista'; readonly repos: readonly RepoDoBoard[] } // ≥ 1, `name` sem repetição, na ordem do arquivo
+  | { readonly tipo: 'owner'; readonly owner: string } // "<owner>/*"
+
 export interface BoardDaFabrica {
   /** `${owner}/${projeto}` */
   readonly chave: string
   readonly owner: string
   readonly projeto: number
   readonly nome: string
-  readonly repo: RepoDoBoard
+  readonly repos: ReposDoBoard
+  /** O repo, quando o board atende um só (`repo`, ou `repos` com um item); `null` com vários ou com `<owner>/*`. */
+  readonly repoUnico: RepoDoBoard | null
   /** Absoluto, já expandido. */
   readonly workspace: string
-  readonly checkoutPrincipal: string
+  /** O declarado, só na forma `repo`; `null` na forma `repos`. Use `checkoutPrincipalDe`. */
+  readonly checkoutPrincipal: string | null
   readonly pastaDoEstado: string
   /** Caminhos absolutos, já expandidos, na ordem do arquivo. */
   readonly proibidos: ProibidosDoBoard
   readonly mandato: OrigemDoMandato | null
 }
+export type BoardDeUmRepo = BoardDaFabrica & { readonly repoUnico: RepoDoBoard }
 export type BoardComMandato = BoardDaFabrica & { readonly mandato: OrigemDoMandato }
 export interface ConfiguracaoDaFabrica {
   readonly padrao: string
@@ -39,6 +47,7 @@ export interface ConfiguracaoDaFabrica {
 }
 
 const RE_OWNER = /^[A-Za-z0-9-]+$/
+const RE_OWNER_CURINGA = /^([A-Za-z0-9-]+)\/\*$/
 const RE_REPO = /^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)$/
 const RE_REF = /^[A-Za-z0-9._/-]+$/
 const RE_CAMINHO_NO_REPO = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/
@@ -75,10 +84,53 @@ function expandir(v: unknown, home: string): string | null {
   return null
 }
 
-function lerRepo(v: unknown): RepoDoBoard | null {
+/** `RE_REPO` em texto → repo; outra coisa → null. */
+export function lerRepo(v: unknown): RepoDoBoard | null {
   if (typeof v !== 'string') return null
   const m = RE_REPO.exec(v)
   return m ? { owner: m[1]!, name: m[2]! } : null
+}
+
+export function mesmoRepo(a: RepoDoBoard, b: RepoDoBoard): boolean {
+  return a.owner === b.owner && a.name === b.name
+}
+
+/** O declarado, se `r` é o repo único e há declarado; senão `join(workspace, r.name)` (posix). */
+export function checkoutPrincipalDe(
+  b: Pick<BoardDaFabrica, 'workspace' | 'checkoutPrincipal' | 'repoUnico'>,
+  r: RepoDoBoard,
+): string {
+  if (b.repoUnico !== null && b.checkoutPrincipal !== null && mesmoRepo(b.repoUnico, r)) {
+    return b.checkoutPrincipal
+  }
+  return join(b.workspace, r.name)
+}
+
+/** Lista: os `owner/name` juntos por ', '. Owner: `qualquer repo de <owner>`. */
+export function descreverRepos(r: ReposDoBoard): string {
+  return r.tipo === 'lista' ? r.repos.map(nomeDoRepo).join(', ') : `qualquer repo de ${r.owner}`
+}
+
+const RE_NOME_DE_REPO = /^[A-Za-z0-9._-]+$/
+
+/**
+ * O repo do board com esse nome. Lista: com `owner === null`, o item de mesmo `name`; com owner, o item de
+ * mesmo owner e name. Forma owner: `name` casa `[A-Za-z0-9._-]+` e não é `.` nem `..`, e `owner === null`
+ * ou `owner === b.repos.owner` → `{ owner: b.repos.owner, name }`. Senão `null`. Comparação exata.
+ */
+export function repoDoBoard(
+  b: Pick<BoardDaFabrica, 'repos'>,
+  owner: string | null,
+  name: string,
+): RepoDoBoard | null {
+  if (b.repos.tipo === 'lista') {
+    return (
+      b.repos.repos.find((r) => r.name === name && (owner === null || r.owner === owner)) ?? null
+    )
+  }
+  if (!RE_NOME_DE_REPO.test(name) || name === '.' || name === '..') return null
+  if (owner !== null && owner !== b.repos.owner) return null
+  return { owner: b.repos.owner, name }
 }
 
 function lerMandato(v: unknown, onde: string): OrigemDoMandato | null {
@@ -106,12 +158,58 @@ function lerBoard(item: unknown, i: number, home: string): BoardDaFabrica {
     throw ilegivel(`${onde}.projeto`)
   }
   if (!textoNaoVazio(item.nome)) throw ilegivel(`${onde}.nome`)
-  const repo = lerRepo(item.repo)
-  if (!repo) throw ilegivel(`${onde}.repo`)
+  if (item.repo !== undefined && item.repos !== undefined) {
+    throw ilegivel(`${onde}: use repo ou repos, não os dois`)
+  }
+  if (item.repo === undefined && item.repos === undefined) throw ilegivel(`${onde}.repo`)
+  let repos: ReposDoBoard
+  let repoUnico: RepoDoBoard | null
+  if (item.repo !== undefined) {
+    const repo = lerRepo(item.repo)
+    if (!repo) throw ilegivel(`${onde}.repo`)
+    repos = { tipo: 'lista', repos: [repo] }
+    repoUnico = repo
+  } else if (typeof item.repos === 'string') {
+    const m = RE_OWNER_CURINGA.exec(item.repos)
+    if (!m) throw ilegivel(`${onde}.repos`)
+    repos = { tipo: 'owner', owner: m[1]! }
+    repoUnico = null
+  } else {
+    if (!Array.isArray(item.repos) || item.repos.length === 0) throw ilegivel(`${onde}.repos`)
+    const lista: RepoDoBoard[] = item.repos.map((x: unknown, j: number) => {
+      const r = lerRepo(x)
+      if (!r) throw ilegivel(`${onde}.repos[${j}]`)
+      return r
+    })
+    const nomes = new Set<string>()
+    lista.forEach((r, j) => {
+      if (nomes.has(r.name)) throw ilegivel(`${onde}.repos[${j}]: nome repetido ${r.name}`)
+      nomes.add(r.name)
+    })
+    repos = { tipo: 'lista', repos: lista }
+    repoUnico = lista.length === 1 ? lista[0]! : null
+  }
   const workspace = expandir(item.workspace, home)
   if (workspace === null) throw ilegivel(`${onde}.workspace`)
-  const checkoutPrincipal = expandir(item.checkoutPrincipal, home)
-  if (checkoutPrincipal === null) throw ilegivel(`${onde}.checkoutPrincipal`)
+  let checkoutPrincipal: string | null = null
+  if (item.repo !== undefined) {
+    checkoutPrincipal = expandir(item.checkoutPrincipal, home)
+    if (checkoutPrincipal === null) throw ilegivel(`${onde}.checkoutPrincipal`)
+  } else if (item.checkoutPrincipal !== undefined) {
+    throw ilegivel(`${onde}.checkoutPrincipal: só vale com repo`)
+  }
+  if (item.repo === undefined) {
+    if (repos.tipo === 'owner') {
+      if (repos.owner !== item.owner) throw ilegivel(`${onde}.repos: owner diferente do board`)
+    } else {
+      repos.repos.forEach((r, j) => {
+        if (r.owner !== item.owner) throw ilegivel(`${onde}.repos[${j}]: owner diferente do board`)
+        if (r.name === '.' || r.name === '..') throw ilegivel(`${onde}.repos[${j}]`)
+        const outro = repos.repos.find((o) => o !== r && r.name.startsWith(`${o.name}-`))
+        if (outro) throw ilegivel(`${onde}.repos[${j}]: nome começa com ${outro.name}-`)
+      })
+    }
+  }
   const pastaDoEstado = expandir(item.pastaDoEstado, home)
   if (pastaDoEstado === null) throw ilegivel(`${onde}.pastaDoEstado`)
 
@@ -131,7 +229,8 @@ function lerBoard(item: unknown, i: number, home: string): BoardDaFabrica {
     owner: item.owner,
     projeto,
     nome: item.nome,
-    repo,
+    repos,
+    repoUnico,
     workspace,
     checkoutPrincipal,
     pastaDoEstado,
@@ -156,13 +255,16 @@ export function parseConfiguracao(bruto: unknown, home: string): ConfiguracaoDaF
     boards.push(b)
   })
   if (typeof bruto.padrao !== 'string' || !chaves.has(bruto.padrao)) throw ilegivel('padrao')
+  if (boards.find((b) => b.chave === bruto.padrao)!.repoUnico === null) {
+    throw ilegivel('padrao: o board padrão atende um repo só')
+  }
   return { padrao: bruto.padrao, boards }
 }
 
-export function boardPadrao(c: ConfiguracaoDaFabrica): BoardDaFabrica {
+export function boardPadrao(c: ConfiguracaoDaFabrica): BoardDeUmRepo {
   const b = c.boards.find((x) => x.chave === c.padrao)
-  if (!b) throw ilegivel('padrao')
-  return b
+  if (!b || b.repoUnico === null) throw ilegivel('padrao')
+  return b as BoardDeUmRepo
 }
 
 export function resolverBoard(

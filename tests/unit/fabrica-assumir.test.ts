@@ -51,7 +51,7 @@ function estadoCom(...despachos: Despacho[]): EstadoDaFabrica {
 
 function montar(over: Partial<DepsDoAssumir> = {}) {
   const deps = {
-    repo: REPO_TESTE,
+    unico: REPO_TESTE,
     lerEstado: vi.fn((): EstadoDaFabrica | null => estadoCom(despacho())),
     cardDoItem: vi.fn(() => ({ number: 133, url: urlDoCard(133, REPO_TESTE) })),
     sessaoAberta: vi.fn((): string | null => null),
@@ -141,6 +141,35 @@ describe('criarAssumir — as doze recusas, nada gravado', () => {
       PEDIDO,
       msg,
     )
+  })
+
+  it('7. o repo do registro vale: o cartão tem de ser o do repo gravado (#152)', async () => {
+    const d = despacho({ repo: 'fulano/repo-b' })
+    const cartao = (repo: string) => ({ number: 133, url: `https://github.com/${repo}/issues/133` })
+    await recusa(
+      { unico: null, lerEstado: () => estadoCom(d), cardDoItem: () => cartao('fulano/repo-a') },
+      PEDIDO,
+      'o card do pedido não é o #133 do d-0004',
+    )
+    const t = montar({
+      unico: null,
+      lerEstado: () => estadoCom(d),
+      cardDoItem: () => cartao('fulano/repo-b'),
+    })
+    expect(await t.assumir(PEDIDO)).toMatchObject({ ok: true })
+  })
+
+  it('7. em voo do mesmo número em outro repo não impede (#152)', async () => {
+    const t = montar({
+      unico: null,
+      lerEstado: () =>
+        estadoCom(
+          despacho({ repo: 'fulano/repo-b' }),
+          despacho({ id: 'd-0005', repo: 'fulano/repo-a', estado: 'rodando', concluidoEm: null }),
+        ),
+      cardDoItem: () => ({ number: 133, url: 'https://github.com/fulano/repo-b/issues/133' }),
+    })
+    expect(await t.assumir(PEDIDO)).toMatchObject({ ok: true })
   })
 
   it('8. terminal aberto em outra conversa', async () => {

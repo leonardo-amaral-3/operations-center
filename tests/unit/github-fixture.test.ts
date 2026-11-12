@@ -129,8 +129,8 @@ describe('createFixtureGraphQL, o Status de um card (F6)', () => {
           data: { repository: { issue: { state: 'OPEN', projectItems: { nodes: [] } } } },
         })
       },
-      BOARD_PADRAO,
-      7,
+      { repo: BOARD_PADRAO.repoUnico, n: 7 },
+      BOARD_PADRAO.projeto,
     )
     expect(documentos).toEqual([ITEM_NO_BOARD_QUERY])
     expect(ITEM_NO_BOARD_QUERY).not.toContain('mutation')
@@ -163,10 +163,14 @@ describe('createFixtureGraphQL, o Status de um card (F6)', () => {
   })
 
   it('o lerItemNoBoard sobre a fixture dá o Status do card', async () => {
-    expect(await lerItemNoBoard(graphql, BOARD_PADRAO, 2)).toEqual({
+    expect(
+      await lerItemNoBoard(graphql, { repo: BOARD_PADRAO.repoUnico, n: 2 }, BOARD_PADRAO.projeto),
+    ).toEqual({
       noProjeto: true,
       status: '📥 Triagem',
     })
-    await expect(lerItemNoBoard(graphql, BOARD_PADRAO, 999)).rejects.toThrow('não há issue #999')
+    await expect(
+      lerItemNoBoard(graphql, { repo: BOARD_PADRAO.repoUnico, n: 999 }, BOARD_PADRAO.projeto),
+    ).rejects.toThrow('não há issue #999')
   })
 })

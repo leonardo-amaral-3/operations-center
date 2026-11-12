@@ -32,11 +32,26 @@ export function lerProcLocks(
 
 /**
  * O card da pasta onde a cwd está: o **último** `/<repo>-<n>-` do caminho (a pasta mais funda), ou
- * `null`. Um `flock` rodado em `<worktree-131>/test-results/operations-center-777-smoke` é do 777.
+ * `null`. No mesmo ponto do caminho, vence o nome de repo mais longo (`app-2` antes de `app`). O
+ * retorno leva o nome que casou. Um `flock` rodado em `<worktree-131>/test-results/operations-center-777-smoke`
+ * é do 777.
  */
-export function cardDaCwd(cwd: string, nomeDoRepo: string): number | null {
-  const padrao = new RegExp(`/${escaparRegex(nomeDoRepo)}-(\\d+)-`, 'g')
-  let card: number | null = null
-  for (const achou of `${cwd}/`.matchAll(padrao)) card = Number(achou[1])
-  return card
+export function cardDaCwd(
+  cwd: string,
+  nomes: readonly string[],
+): { nome: string; n: number } | null {
+  let melhor: { nome: string; n: number; indice: number } | null = null
+  for (const nome of nomes) {
+    const padrao = new RegExp(`/${escaparRegex(nome)}-(\\d+)-`, 'g')
+    for (const achou of `${cwd}/`.matchAll(padrao)) {
+      const indice = achou.index ?? 0
+      if (
+        melhor === null ||
+        indice > melhor.indice ||
+        (indice === melhor.indice && nome.length > melhor.nome.length)
+      )
+        melhor = { nome, n: Number(achou[1]), indice }
+    }
+  }
+  return melhor === null ? null : { nome: melhor.nome, n: melhor.n }
 }

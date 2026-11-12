@@ -330,7 +330,7 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
           parou = true
           continue
         }
-        await comando({ tipo: 'iniciar', card: f.card, nota: notaDe(f.card) })
+        await comando({ tipo: 'iniciar', repo: f.repo, card: f.card, nota: notaDe(f.card) })
         const depois = await lerSala()
         if (depois === null) {
           registrar(f.card, 'sem-leitura')

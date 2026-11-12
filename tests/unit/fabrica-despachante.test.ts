@@ -19,7 +19,10 @@ import { tipoDoItem } from '../../src/core/fabrica/sala'
 import type { Despacho, EstadoDaFabrica } from '../../src/core/fabrica/tipos'
 import { REPO_TESTE } from './fabrica-board-de-teste'
 
-const proibidos = caminhosProibidos('/home/u', boardPadrao(configuracaoDaFabrica('/home/u')))
+const BOARD = boardPadrao(configuracaoDaFabrica('/home/u'))
+const proibidos = caminhosProibidos('/home/u', BOARD, REPO_TESTE)
+/** O que a casca resolve do card do despacho; num board de um repo o rótulo é `#<n>`. */
+const doCard = (n: number) => ({ proibidos, repo: REPO_TESTE, rotulo: `#${n}` })
 const T0 = '2026-11-11T10:00:00.000Z'
 const T1 = '2026-11-11T10:05:00.000Z'
 
@@ -34,7 +37,13 @@ function saida(result: string): string {
 }
 
 function comecar(card: number, comando: string, agora = T0, base = estadoVazio('u')) {
-  const r = iniciarFrente(base, { card, comando, nota: null, agora })
+  const r = iniciarFrente(base, {
+    card: { repo: REPO_TESTE, n: card },
+    unico: REPO_TESTE,
+    comando,
+    nota: null,
+    agora,
+  })
   if ('erro' in r) throw new Error(r.erro)
   return r
 }
@@ -87,14 +96,26 @@ describe('iniciarFrente', () => {
   it('recusa o card que já tem despacho em voo', () => {
     const r = comecar(2, '/gm-card #2')
     expect(
-      iniciarFrente(r.estado, { card: 2, comando: '/gm-card #2', nota: null, agora: T1 }),
+      iniciarFrente(r.estado, {
+        card: { repo: REPO_TESTE, n: 2 },
+        unico: REPO_TESTE,
+        comando: '/gm-card #2',
+        nota: null,
+        agora: T1,
+      }),
     ).toEqual({
       erro: 'o #2 já tem despacho em voo (d-0002)',
     })
   })
   it('recusa o comando que cita outro card', () => {
     expect(
-      iniciarFrente(estadoVazio('u'), { card: 2, comando: '/gm-card #3', nota: null, agora: T0 }),
+      iniciarFrente(estadoVazio('u'), {
+        card: { repo: REPO_TESTE, n: 2 },
+        unico: REPO_TESTE,
+        comando: '/gm-card #3',
+        nota: null,
+        agora: T0,
+      }),
     ).toEqual({ erro: 'o comando cita o #3, e a frente é do #2' })
   })
 })
@@ -154,7 +175,7 @@ describe('transições', () => {
     e = concluirDespacho(e, r.despacho, {
       saida: saida('feito\nPROXIMO: /gm-spec #1\n'),
       agora: T1,
-      proibidos,
+      ...doCard(1),
     })
     expect(e.despachos[0]).toMatchObject({
       estado: 'concluido',
@@ -187,10 +208,10 @@ describe('transições', () => {
     const e = concluirDespacho(r.estado, r.despacho, {
       saida: saida('PARADA: x'),
       agora: T1,
-      proibidos,
+      ...doCard(1),
     })
     expect(() =>
-      concluirDespacho(e, r.despacho, { saida: saida('PARADA: x'), agora: T1, proibidos }),
+      concluirDespacho(e, r.despacho, { saida: saida('PARADA: x'), agora: T1, ...doCard(1) }),
     ).toThrow()
   })
   it('um estado sem despachos é ocioso', () => {
@@ -205,7 +226,11 @@ describe('G4 depois do /gm-ship', () => {
     const r = comecar(7, comando, T0, base)
     return {
       r,
-      e: concluirDespacho(r.estado, r.despacho, { saida: saida(resultado), agora: T1, proibidos }),
+      e: concluirDespacho(r.estado, r.despacho, {
+        saida: saida(resultado),
+        agora: T1,
+        ...doCard(1),
+      }),
     }
   }
 
@@ -254,7 +279,7 @@ describe('G4 depois do /gm-ship', () => {
     const e = concluirDespacho(cheio, r.despacho, {
       saida: saida(`PARADA: ${PARADA_DO_SHIP}`),
       agora: T1,
-      proibidos,
+      ...doCard(1),
     })
     expect(e.despachos).toHaveLength(20)
     expect(e.fila).toHaveLength(1)
@@ -281,7 +306,7 @@ describe('G4: os três caminhos até a fila', () => {
     const e = concluirDespacho(r.estado, r.despacho, {
       saida: saida(`PARADA: ${PARADA_DO_SHIP}`),
       agora: T1,
-      proibidos,
+      ...doCard(1),
     })
     return { e, g4: e.despachos[1] as Despacho }
   }
@@ -291,7 +316,7 @@ describe('G4: os três caminhos até a fila', () => {
     const f = concluirDespacho(e, g4.id, {
       saida: resultado === null ? '' : saida(resultado),
       agora: T1,
-      proibidos,
+      ...doCard(1),
     })
     expect(f.fila).toHaveLength(1)
     const item = f.fila[0]!
@@ -332,7 +357,7 @@ describe('G4: os três caminhos até a fila', () => {
     const e = concluirDespacho(cheio, r.despacho, {
       saida: saida(`PARADA: ${PARADA_DO_SHIP}`),
       agora: T1,
-      proibidos,
+      ...doCard(1),
     })
     const item = e.fila[0]!
     expect(
@@ -351,13 +376,14 @@ describe('fila', () => {
     const e = concluirDespacho(r.estado, r.despacho, {
       saida: saida('x\nPARADA: espera o Leonardo'),
       agora: T1,
-      proibidos,
+      ...doCard(1),
     })
     expect(e.fila).toEqual([
       {
         id: 'q-0003',
         card: 5,
         motivo: 'espera o Leonardo',
+        repo: 'leonardo-amaral-3/operations-center',
         despacho: r.despacho,
         sessaoClaude: 's-1',
         criadoEm: T1,
@@ -370,7 +396,7 @@ describe('fila', () => {
   })
   it('falha vira item com o motivo da falha', () => {
     const r = comecar(5, '/gm-card #5')
-    const e = concluirDespacho(r.estado, r.despacho, { saida: '', agora: T1, proibidos })
+    const e = concluirDespacho(r.estado, r.despacho, { saida: '', agora: T1, ...doCard(1) })
     expect(e.fila[0]).toMatchObject({
       motivo: 'a sessão terminou sem saída',
       sessaoClaude: null,
@@ -382,7 +408,7 @@ describe('fila', () => {
     const e = concluirDespacho(r.estado, r.despacho, {
       saida: saida('PARADA: x'),
       agora: T1,
-      proibidos,
+      ...doCard(1),
     })
     const f = fecharItem(e, 'q-0003', 'feito', T1)
     if ('erro' in f) throw new Error(f.erro)
@@ -400,7 +426,7 @@ describe('cadeia', () => {
     const e = concluirDespacho(r.estado, r.despacho, {
       saida: saida('PROXIMO: /gm-release'),
       agora: T1,
-      proibidos,
+      ...doCard(1),
     })
     expect(e.despachos).toHaveLength(1)
     expect(e.fila[0]?.motivo).toBe(
@@ -425,7 +451,7 @@ describe('cadeia', () => {
     const e = concluirDespacho(cheio, r.despacho, {
       saida: saida('PROXIMO: /gm-spec #5'),
       agora: T1,
-      proibidos,
+      ...doCard(1),
     })
     expect(e.despachos).toHaveLength(20)
     expect(e.fila[0]?.motivo).toBe('a frente passou de 20 despachos: /gm-spec #5')
@@ -435,7 +461,7 @@ describe('cadeia', () => {
     const e = concluirDespacho(r.estado, r.despacho, {
       saida: saida('PROXIMO: /gm-plan-tasks /home/u/pessoal/planning/118-x'),
       agora: T1,
-      proibidos,
+      ...doCard(1),
     })
     expect(e.despachos[1]?.card).toBe(5)
   })
@@ -444,9 +470,99 @@ describe('cadeia', () => {
     const e = concluirDespacho(r.estado, r.despacho, {
       saida: saida('PROXIMO: /gm-spec #999'),
       agora: T1,
-      proibidos,
+      ...doCard(5),
     })
     expect(e.despachos).toHaveLength(1)
     expect(e.fila[0]?.motivo).toBe('PROXIMO cita o card #999, e a frente é do #5: /gm-spec #999')
+  })
+  it('PROXIMO que cita card de outro repo vira item (Decisão 7)', () => {
+    const r = comecar(152, '/gm-card #152')
+    const e = concluirDespacho(r.estado, r.despacho, {
+      saida: saida('PROXIMO: /gm-spec #152 claude-brain#43'),
+      agora: T1,
+      ...doCard(152),
+    })
+    expect(e.despachos).toHaveLength(1)
+    expect(e.fila[0]?.motivo).toBe(
+      'PROXIMO cita card de outro repo (claude-brain), e a frente é do #152: /gm-spec #152 claude-brain#43',
+    )
+  })
+  it('PROXIMO que cita o card do próprio repo segue', () => {
+    const r = comecar(152, '/gm-card #152')
+    const e = concluirDespacho(r.estado, r.despacho, {
+      saida: saida('PROXIMO: /gm-ship operations-center#152'),
+      agora: T1,
+      ...doCard(152),
+    })
+    expect(e.fila).toEqual([])
+    expect(e.despachos[1]).toMatchObject({ comando: '/gm-ship operations-center#152' })
+  })
+})
+
+describe('vários repos (#152)', () => {
+  const A = { owner: 'fulano', name: 'repo-a' }
+  const B = { owner: 'fulano', name: 'repo-b' }
+  const abrir = (base: EstadoDaFabrica, repo: typeof A, n: number, comando: string) =>
+    iniciarFrente(base, { card: { repo, n }, unico: null, comando, nota: null, agora: T0 })
+  const abrirOk = (base: EstadoDaFabrica, repo: typeof A, n: number, comando: string) => {
+    const r = abrir(base, repo, n, comando)
+    if ('erro' in r) throw new Error(r.erro)
+    return r
+  }
+  const doRepo = (repo: typeof A, n: number) => ({
+    proibidos,
+    repo,
+    rotulo: `${repo.owner}/${repo.name}#${n}`,
+  })
+
+  it('o mesmo número em repos diferentes coexiste; o mesmo repo é recusado com o rótulo', () => {
+    const a = abrirOk(estadoVazio('u'), A, 5, '/gm-card #5')
+    const b = abrirOk(a.estado, B, 5, '/gm-card #5')
+    expect(b.estado.frentes).toHaveLength(2)
+    expect(b.estado.despachos.map((d) => d.repo)).toEqual(['fulano/repo-a', 'fulano/repo-b'])
+    expect(abrir(b.estado, A, 5, '/gm-card #5')).toEqual({
+      erro: 'o fulano/repo-a#5 já tem despacho em voo (d-0002)',
+    })
+  })
+  it('recusa o comando que cita card de outro repo', () => {
+    expect(abrir(estadoVazio('u'), A, 5, '/gm-spec repo-b#5')).toEqual({
+      erro: 'o comando cita card de outro repo (repo-b), e a frente é do fulano/repo-a#5',
+    })
+  })
+  it('PROXIMO de outro repo vira item com o rótulo do repo', () => {
+    const a = abrirOk(estadoVazio('u'), A, 5, '/gm-card #5')
+    const e = concluirDespacho(a.estado, a.despacho, {
+      saida: saida('PROXIMO: /gm-card repo-b#5'),
+      agora: T1,
+      ...doRepo(A, 5),
+    })
+    expect(e.fila[0]).toMatchObject({
+      repo: 'fulano/repo-a',
+      motivo:
+        'PROXIMO cita card de outro repo (repo-b), e a frente é do fulano/repo-a#5: /gm-card repo-b#5',
+    })
+  })
+  it('novoPendente e o item gravam o repo mesmo quando o despacho de antes não o tem', () => {
+    const a = abrirOk(estadoVazio('u'), A, 5, '/gm-card #5')
+    const antigo: EstadoDaFabrica = {
+      ...a.estado,
+      despachos: a.estado.despachos.map((d) => {
+        const copia = { ...d }
+        delete copia.repo
+        return copia
+      }),
+    }
+    const e = concluirDespacho(antigo, a.despacho, {
+      saida: saida('PROXIMO: /gm-spec #5'),
+      agora: T1,
+      ...doRepo(A, 5),
+    })
+    expect(e.despachos[1]?.repo).toBe('fulano/repo-a')
+    const q = concluirDespacho(antigo, a.despacho, {
+      saida: saida('PARADA: x'),
+      agora: T1,
+      ...doRepo(A, 5),
+    })
+    expect(q.fila[0]?.repo).toBe('fulano/repo-a')
   })
 })

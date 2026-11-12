@@ -37,7 +37,7 @@ import {
   saveConversations,
 } from './conversations'
 import { loadDangerous, registerDangerIpc, saveDangerous } from './danger'
-import { boardPadrao } from '../core/fabrica/configuracao'
+import { boardPadrao, checkoutPrincipalDe } from '../core/fabrica/configuracao'
 import { configuracaoDaFabrica } from './fabrica/configuracao'
 import { criarAssumir, registerAssumirIpc } from './fabrica/assumir'
 import { lerEstado } from './fabrica/arquivos'
@@ -418,7 +418,7 @@ if (screen === 'kanban') {
             env: process.env,
             pastaDaFabrica: pasta,
             marca,
-            nomeDoRepo: boardDoApp.repo.name,
+            nomesDosRepos: [boardDoApp.repoUnico.name],
           }),
         ),
       // O avô da pasta da fábrica é o inverso do default (`<workspace>/claude/despachos-fabrica`).
@@ -437,7 +437,7 @@ if (screen === 'kanban') {
 if (screen === 'kanban')
   registerComandoIpc(
     criarExecutorDeComando({
-      raizDoRepo: boardDoApp.checkoutPrincipal,
+      raizDoRepo: checkoutPrincipalDe(boardDoApp, boardDoApp.repoUnico),
       configuracao: configuracaoDaFabricaNoApp,
       env: process.env,
       platform: process.platform,
@@ -829,7 +829,7 @@ if (screen === 'kanban') {
   const pastaDoAssumir = pastaDaSala(process.env, boardDoApp)
   registerAssumirIpc(
     criarAssumir({
-      repo: boardDoApp.repo,
+      unico: boardDoApp.repoUnico,
       lerEstado: () => lerEstado(pastaDoAssumir),
       cardDoItem: (itemId) => boardsIpc?.cardById(itemId) ?? null,
       sessaoAberta: (itemId) => claudeIpc.sessaoAberta({ kind: 'card', itemId }),

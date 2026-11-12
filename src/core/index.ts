@@ -109,18 +109,38 @@ export { estadoVazio, parseEstado, serializarEstado } from './fabrica/estado'
 export {
   boardPadrao,
   motivoSemMandato,
+  checkoutPrincipalDe,
+  descreverRepos,
+  lerRepo,
+  mesmoRepo,
   nomeDoRepo,
   parseConfiguracao,
+  repoDoBoard,
   resolverBoard,
 } from './fabrica/configuracao'
 export type {
   BoardComMandato,
   BoardDaFabrica,
+  BoardDeUmRepo,
   ConfiguracaoDaFabrica,
   OrigemDoMandato,
   ProibidosDoBoard,
   RepoDoBoard,
+  ReposDoBoard,
 } from './fabrica/configuracao'
+export {
+  aceitaOBoard,
+  aceitaORepo,
+  cardDoRegistro,
+  lerAlvo,
+  linhaDoRepo,
+  mesmoCard,
+  repoDeOutroCard,
+  repoDoRegistro,
+  resolverAlvo,
+  rotuloDoCard,
+} from './fabrica/cardDaFabrica'
+export type { AlvoDoIniciar, CardDaFabrica } from './fabrica/cardDaFabrica'
 export {
   LIMITE_DE_DESPACHOS_POR_FRENTE,
   SKILLS_PERMITIDAS,

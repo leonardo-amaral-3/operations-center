@@ -115,6 +115,7 @@ describe('frentesDoBriefing', () => {
     const f = frentesDoBriefing(board, null)
     expect(f.map((x) => x.card)).toEqual([2, 7, 1, 8])
     expect(f[0]).toMatchObject({
+      repo: REPO_DOS_CARDS_DA_FABRICA,
       coluna: '📋 Backlog',
       comando: '/gm-spec #2',
       titulo: 'Card 2',

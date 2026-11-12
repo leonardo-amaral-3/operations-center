@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import type { GraphQLFn } from '../../core/board/types'
 import { ITEM_NO_BOARD_QUERY, type ItemNoBoard } from '../../core/fabrica/estacao'
+import type { CardDaFabrica } from '../../core/fabrica/cardDaFabrica'
 import {
   motivoSemMandato,
   nomeDoRepo,
@@ -78,22 +79,22 @@ interface Resposta {
 /** Onde o card está no Project do board. Card fechado ou inexistente lança. */
 export async function lerItemNoBoard(
   graphql: GraphQLFn,
-  board: Pick<BoardDaFabrica, 'repo' | 'projeto'>,
-  card: number,
+  card: CardDaFabrica,
+  projeto: number,
 ): Promise<ItemNoBoard> {
   const resposta = await graphql(ITEM_NO_BOARD_QUERY, {
-    owner: board.repo.owner,
-    name: board.repo.name,
-    n: card,
+    owner: card.repo.owner,
+    name: card.repo.name,
+    n: card.n,
   })
   const primeiro = resposta.errors?.[0]
   if (primeiro !== undefined) throw new Error(primeiro.message)
   const issue = (resposta.data as Resposta | null)?.repository?.issue ?? null
   if (issue === null) {
-    throw new Error(`não há issue #${card} em ${nomeDoRepo(board.repo)}`)
+    throw new Error(`não há issue #${card.n} em ${nomeDoRepo(card.repo)}`)
   }
-  if (issue.state === 'CLOSED') throw new Error(`o #${card} está fechado`)
-  const item = issue.projectItems.nodes.find((n) => n.project.number === board.projeto)
+  if (issue.state === 'CLOSED') throw new Error(`o #${card.n} está fechado`)
+  const item = issue.projectItems.nodes.find((n) => n.project.number === projeto)
   if (item === undefined) return { noProjeto: false }
   return { noProjeto: true, status: item.fieldValueByName?.name ?? null }
 }

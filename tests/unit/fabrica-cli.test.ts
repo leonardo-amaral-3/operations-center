@@ -19,6 +19,7 @@ import { marcarLancando } from '../../src/core/fabrica/despachante'
 import { avaliarNota } from '../../src/core/fabrica/mandato'
 import { notaDaTriagem, textoDoRelato } from '../../src/core/fabrica/entrada'
 import { promptDoG4 } from '../../src/core/fabrica/g4'
+import { linhaDoRepo } from '../../src/core/fabrica/cardDaFabrica'
 import { montarPrompt } from '../../src/core/fabrica/mandato'
 import type { ItemDaFila } from '../../src/core/fabrica/tipos'
 import {
@@ -31,7 +32,7 @@ import {
 import { executar, type DepsDoCli } from '../../src/main/fabrica/cli'
 import { boardPadrao } from '../../src/core/fabrica/configuracao'
 import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
-import { boardFicticio, configuracaoDeTeste } from './fabrica-board-de-teste'
+import { boardDeDoisRepos, boardFicticio, configuracaoDeTeste } from './fabrica-board-de-teste'
 import { lerItemNoBoard } from '../../src/main/fabrica/github'
 import { envLimpo } from '../../src/main/fabrica/lancador'
 import { REPO_TESTE } from './fabrica-board-de-teste'
@@ -154,6 +155,13 @@ function montar(
   return { deps, saida, avisos }
 }
 
+/** Um registro como o de antes do #152: sem o campo `repo`. */
+function semRepo<T extends { repo?: string }>(r: T): T {
+  const copia = { ...r }
+  delete copia.repo
+  return copia
+}
+
 const rodar = (m: Montagem, ...argv: string[]): Promise<number> =>
   executar({ ...m.deps, argv: argv.length === 0 ? ['rodar'] : argv })
 
@@ -188,6 +196,7 @@ const gravadoPeloFalso = (
 
 describe('lerItemNoBoard', () => {
   const BOARD = boardPadrao(configuracaoDaFabrica(homedir()))
+  const card = (n: number) => ({ repo: BOARD.repoUnico, n })
   const resposta =
     (issue: unknown, errors?: { message: string }[]): GraphQLFn =>
     () =>
@@ -202,25 +211,33 @@ describe('lerItemNoBoard', () => {
         data: { repository: { issue: { state: 'OPEN', projectItems: { nodes: [] } } } },
       })
     }
-    await lerItemNoBoard(graphql, BOARD, 7)
+    await lerItemNoBoard(graphql, card(7), BOARD.projeto)
     expect(enviadas).toEqual([{ owner: 'leonardo-amaral-3', name: 'operations-center', n: 7 }])
   })
 
   it('errors lança a primeira mensagem', async () => {
     await expect(
-      lerItemNoBoard(resposta(null, [{ message: 'quebrou' }, { message: 'b' }]), BOARD, 1),
+      lerItemNoBoard(
+        resposta(null, [{ message: 'quebrou' }, { message: 'b' }]),
+        card(1),
+        BOARD.projeto,
+      ),
     ).rejects.toThrow('quebrou')
   })
 
   it('issue nula lança', async () => {
-    await expect(lerItemNoBoard(resposta(null), BOARD, 9)).rejects.toThrow(
+    await expect(lerItemNoBoard(resposta(null), card(9), BOARD.projeto)).rejects.toThrow(
       'não há issue #9 em leonardo-amaral-3/operations-center',
     )
   })
 
   it('card fechado lança', async () => {
     await expect(
-      lerItemNoBoard(resposta({ state: 'CLOSED', projectItems: { nodes: [] } }), BOARD, 9),
+      lerItemNoBoard(
+        resposta({ state: 'CLOSED', projectItems: { nodes: [] } }),
+        card(9),
+        BOARD.projeto,
+      ),
     ).rejects.toThrow('o #9 está fechado')
   })
 
@@ -230,8 +247,8 @@ describe('lerItemNoBoard', () => {
     expect(
       await lerItemNoBoard(
         nos([{ project: { number: 3 }, fieldValueByName: { name: 'X' } }]),
-        BOARD,
-        1,
+        card(1),
+        BOARD.projeto,
       ),
     ).toEqual({ noProjeto: false })
     expect(
@@ -240,12 +257,16 @@ describe('lerItemNoBoard', () => {
           { project: { number: 3 }, fieldValueByName: { name: 'X' } },
           { project: { number: 2 }, fieldValueByName: { name: '📋 Backlog' } },
         ]),
-        BOARD,
-        1,
+        card(1),
+        BOARD.projeto,
       ),
     ).toEqual({ noProjeto: true, status: '📋 Backlog' })
     expect(
-      await lerItemNoBoard(nos([{ project: { number: 2 }, fieldValueByName: null }]), BOARD, 1),
+      await lerItemNoBoard(
+        nos([{ project: { number: 2 }, fieldValueByName: null }]),
+        card(1),
+        BOARD.projeto,
+      ),
     ).toEqual({ noProjeto: true, status: null })
   })
 })
@@ -342,6 +363,57 @@ describe('CLI', () => {
     expect(lerEstado(pasta)?.despachos[0]?.nota).toBe('sem pressa')
     expect(await rodar(m, 'iniciar', '5', '--comando', '/gm-spec #5')).toBe(1)
     expect(m.avisos[0]).toBe('fabrica: o #5 já tem despacho em voo (d-0002)')
+  })
+
+  it('iniciar aceita <n>, <repo>#<n> e <owner>/<repo>#<n> no board padrão, e imprime #<n>', async () => {
+    const graphql: GraphQLFn = () =>
+      Promise.resolve({
+        data: {
+          repository: {
+            issue: {
+              state: 'OPEN',
+              projectItems: {
+                nodes: [{ project: { number: 2 }, fieldValueByName: { name: '📋 Backlog' } }],
+              },
+            },
+          },
+        },
+      })
+    for (const alvo of [
+      '152',
+      'operations-center#152',
+      'leonardo-amaral-3/operations-center#152',
+    ]) {
+      const m = montar({}, { graphql })
+      expect(await rodar(m, 'iniciar', alvo, '--ensaio')).toBe(0)
+      expect(m.saida).toEqual(['#152: /gm-spec #152'])
+    }
+    const m = montar({}, { graphql })
+    expect(await rodar(m, 'iniciar', 'operations-center#152', '--comando', '/gm-spec #152')).toBe(0)
+    expect(lerEstado(pasta)?.frentes[0]).toMatchObject({
+      card: 152,
+      repo: 'leonardo-amaral-3/operations-center',
+    })
+  })
+
+  it('estado de antes do #152 (sem repo) no board padrão sai com as linhas de hoje', async () => {
+    const m = montar()
+    await abrirFrente(m, 4, '/gm-spec #4')
+    const e = lerEstado(pasta)
+    if (e === null) throw new Error('sem estado')
+    writeFileSync(
+      join(pasta, 'estado.json'),
+      JSON.stringify({
+        ...e,
+        frentes: e.frentes.map(semRepo),
+        despachos: e.despachos.map(semRepo),
+        fila: e.fila.map(semRepo),
+      }),
+    )
+    m.saida.length = 0
+    expect(await rodar(m, 'estado')).toBe(0)
+    expect(m.saida[0]).toMatch(/^fr-0001 #4 aberta em /)
+    expect(m.saida[1]).toMatch(/^d-0002 #4 \S+ \/gm-spec #4$/)
   })
 
   it('estado: sem estado.json, nada registrado; com item aberto, lista o q; fechar fecha', async () => {
@@ -801,6 +873,29 @@ describe.skipIf(process.platform !== 'linux')('o laço do despachante', { timeou
     expect(m.saida.some((l) => l.includes('d-0002 terminou: PROXIMO /gm-spec #1'))).toBe(true)
     expect(m.saida.some((l) => l.includes('d-0003 terminou: fila q-0004 — fim'))).toBe(true)
     expect(m.saida.at(-1)).toContain('nada pendente nem em voo; fim')
+  })
+
+  it('estado de antes do #152: o pendente sem repo roda no board padrão, com a linha de hoje e sem linha do repo', async () => {
+    const m = montar({ '/gm-card #7': 'PARADA: fim' })
+    await abrirFrente(m, 7, '/gm-card #7')
+    expect(lerEstado(pasta)?.despachos[0]?.repo).toBe('leonardo-amaral-3/operations-center')
+    await alterarEstado(pasta, (e) => ({
+      estado: {
+        ...e,
+        frentes: e.frentes.map(semRepo),
+        despachos: e.despachos.map(semRepo),
+      },
+      resultado: undefined,
+    }))
+    expect(await rodar(m)).toBe(0)
+    expect(m.saida.some((l) => /lançado d-0002 #7 \/gm-card #7 \(pid \d+\)$/.test(l))).toBe(true)
+    const prompt = gravadoPeloFalso('d-0002').prompt
+    expect(prompt).not.toContain('- Repo do card:')
+    expect(prompt).toBe(montarPrompt('/gm-card #7', MANDATO, null))
+    expect(lerEstado(pasta)?.fila[0]).toMatchObject({
+      card: 7,
+      repo: 'leonardo-amaral-3/operations-center',
+    })
   })
 
   it('ceiling: com 3 sessões da prova vivas, espera vaga uma vez e não lança', async () => {
@@ -1453,6 +1548,162 @@ describe.skipIf(process.platform !== 'linux')(
       expect(await rodar(m, '--board', 'fulano/7', 'rodar')).toBe(2)
       expect(m.avisos[0]).toContain('não tem mandato aprovado')
       expect(existsSync(join(raiz, 'estado'))).toBe(false)
+    })
+  },
+)
+
+describe.skipIf(process.platform !== 'linux')(
+  'um board de dois repos (#152)',
+  { timeout: 20_000 },
+  () => {
+    const REPO_A = { owner: 'fulano', name: 'repo-a' }
+    const REPO_B = { owner: 'fulano', name: 'repo-b' }
+
+    function montarDois(
+      resposta: Record<string, string> = {},
+      graphql: GraphQLFn = () => Promise.reject(new Error('graphql não esperado')),
+    ): { m: Montagem; ws2: string; estado2: string } {
+      const raiz = join(pasta, 'dois')
+      const ws2 = join(raiz, 'ws2')
+      mkdirSync(join(ws2, 'planning'), { recursive: true })
+      const m = montar(
+        resposta,
+        {
+          configuracao: configuracaoDeTeste({
+            home: homedir(),
+            workspace: join(pasta, 'ws-padrao'),
+            extras: [boardDeDoisRepos({ raiz })],
+          }),
+          graphql,
+        },
+        { OC_FABRICA_DIR: undefined },
+      )
+      return { m, ws2, estado2: join(raiz, 'estado2') }
+    }
+    const rodarDois = (m: Montagem, ...argv: string[]): Promise<number> =>
+      rodar(m, '--board', 'fulano/8', ...argv)
+
+    const noBacklog: GraphQLFn = () =>
+      Promise.resolve({
+        data: {
+          repository: {
+            issue: {
+              state: 'OPEN',
+              projectItems: {
+                nodes: [{ project: { number: 8 }, fieldValueByName: { name: '📋 Backlog' } }],
+              },
+            },
+          },
+        },
+      })
+
+    it('iniciar repo-b#7 chama o ItemNoBoard do repo-b e grava o repo', async () => {
+      const chamadas: unknown[] = []
+      const { m, estado2 } = montarDois({}, (q, v) => {
+        chamadas.push(v)
+        return noBacklog(q, v)
+      })
+      expect(await rodarDois(m, 'iniciar', 'repo-b#7', '--ensaio')).toBe(0)
+      expect(chamadas[0]).toMatchObject({ owner: 'fulano', name: 'repo-b', n: 7 })
+      expect(m.saida).toEqual(['fulano/repo-b#7: /gm-spec #7'])
+      expect(existsSync(estado2)).toBe(false)
+      expect(await rodarDois(m, 'iniciar', 'repo-b#7')).toBe(0)
+      expect(lerEstado(estado2)?.frentes[0]).toMatchObject({ card: 7, repo: 'fulano/repo-b' })
+      expect(lerEstado(estado2)?.despachos[0]).toMatchObject({ card: 7, repo: 'fulano/repo-b' })
+    })
+
+    it('iniciar 7 e iniciar repo-z#7 são recusados, sem criar a pasta de estado', async () => {
+      const { m, estado2 } = montarDois()
+      expect(await rodarDois(m, 'iniciar', '7')).toBe(1)
+      expect(m.avisos[0]).toBe(
+        'fabrica: o board fulano/8 (Board de Dois Repos) atende vários repos: diga o repo do card, iniciar <repo>#7',
+      )
+      expect(await rodarDois(m, 'iniciar', 'repo-z#7')).toBe(1)
+      expect(m.avisos[1]).toBe(
+        'fabrica: o repo repo-z não é do board fulano/8 (Board de Dois Repos), que atende fulano/repo-a, fulano/repo-b',
+      )
+      expect(existsSync(estado2)).toBe(false)
+    })
+
+    it('estado antigo (sem repo): estado e rodar saem 2, e o estado não escreve linha', async () => {
+      const { m, estado2 } = montarDois({}, noBacklog)
+      expect(await rodarDois(m, 'iniciar', 'repo-b#4')).toBe(0)
+      const e = lerEstado(estado2)
+      if (e === null) throw new Error('sem estado')
+      writeFileSync(
+        join(estado2, 'estado.json'),
+        JSON.stringify({
+          ...e,
+          frentes: e.frentes.map(semRepo),
+          despachos: e.despachos.map(semRepo),
+          fila: e.fila.map(semRepo),
+        }),
+      )
+      m.saida.length = 0
+      m.avisos.length = 0
+      expect(await rodarDois(m, 'estado')).toBe(2)
+      expect(m.saida).toEqual([])
+      expect(m.avisos[0]).toMatch(
+        /^fabrica: estado\.json ilegível: o \S+ não diz o repo, e o board atende vários repos/,
+      )
+      expect(await rodarDois(m, 'rodar')).toBe(2)
+      expect(m.avisos.at(-1)).toMatch(/^fabrica: estado\.json ilegível: o \S+ não diz o repo/)
+    })
+
+    it('rodar com as duas frentes: o prompt de cada uma tem a linha do repo, e o cwd é o ws2', async () => {
+      const { m, ws2, estado2 } = montarDois({ '/gm-spec #5': 'PARADA: fim' }, noBacklog)
+      expect(await rodarDois(m, 'iniciar', 'repo-a#5')).toBe(0)
+      expect(await rodarDois(m, 'iniciar', 'repo-b#5')).toBe(0)
+      expect(lerEstado(estado2)?.frentes).toHaveLength(2)
+      expect(await rodarDois(m, 'rodar')).toBe(0)
+      const d = lerEstado(estado2)?.despachos ?? []
+      expect(d).toHaveLength(2)
+      for (const x of d) {
+        const g = gravadoPeloFalso(x.id)
+        const repo = x.repo === 'fulano/repo-a' ? REPO_A : REPO_B
+        expect(g.prompt).toContain(linhaDoRepo({ repo, n: 5 }))
+        expect(g.prompt).not.toContain(
+          linhaDoRepo({ repo: repo === REPO_A ? REPO_B : REPO_A, n: 5 }),
+        )
+        expect(realpathSync(g.cwd)).toBe(realpathSync(ws2))
+      }
+    })
+
+    it('a nota que cita o checkout do repo do card é recusada', async () => {
+      const { m, ws2 } = montarDois()
+      expect(
+        await rodarDois(
+          m,
+          'iniciar',
+          'repo-a#6',
+          '--comando',
+          '/gm-spec fulano/repo-a#6',
+          '--nota',
+          `olhe ${join(ws2, 'repo-a')}`,
+        ),
+      ).toBe(1)
+      expect(m.avisos.join('\n')).toContain('a nota aponta para o que o board de dois repos proíbe')
+    })
+
+    it('G4: a PARADA "PR #9 aberta" do ship de repo-b#5 vira /g4 #5 PR #9 do repo-b', async () => {
+      const motivoDoShip = 'PR #9 aberta na dev (Card: #5); o merge é da orquestradora'
+      const parecer =
+        'G4 da PR #9: sem bloqueante · parecer https://github.com/fulano/repo-b/pull/9#issuecomment-1'
+      const { m, estado2 } = montarDois({
+        '/gm-ship /x fulano/repo-b#5': `PARADA: ${motivoDoShip}`,
+        'Revisão G4 da PR #9 do card #5, despachada pela fábrica.': `PARADA: ${parecer}`,
+      })
+      expect(
+        await rodarDois(m, 'iniciar', 'repo-b#5', '--comando', '/gm-ship /x fulano/repo-b#5'),
+      ).toBe(0)
+      expect(await rodarDois(m)).toBe(0)
+      const e = lerEstado(estado2)
+      expect(e?.despachos.map((d) => [d.comando, d.repo])).toEqual([
+        ['/gm-ship /x fulano/repo-b#5', 'fulano/repo-b'],
+        ['/g4 #5 PR #9', 'fulano/repo-b'],
+      ])
+      const g4 = gravadoPeloFalso(e?.despachos[1]?.id as string)
+      expect(g4.prompt).toContain('--repo fulano/repo-b')
     })
   },
 )

@@ -54,5 +54,24 @@ export function boardFicticio(p: { home: string; raiz: string; mandato: boolean 
   }
 }
 
+/** Entrada crua de um board de dois repos: `fulano/8`, repos `fulano/repo-a` e `fulano/repo-b`. */
+export function boardDeDoisRepos(p: { raiz: string }): unknown {
+  return {
+    owner: 'fulano',
+    projeto: 8,
+    nome: 'Board de Dois Repos',
+    repos: ['fulano/repo-a', 'fulano/repo-b'],
+    workspace: join(p.raiz, 'ws2'),
+    pastaDoEstado: join(p.raiz, 'estado2'),
+    proibidos: { caminhos: [join(p.raiz, 'vivo2')], motivo: 'o que o board de dois repos proíbe' },
+    mandato: {
+      repo: 'fulano/repo-a',
+      ref: 'dev',
+      caminho: 'fabrica/MANDATO.md',
+      aprovacao: 'teste',
+    },
+  }
+}
+
 /** O repo do board `padrao` (`leonardo-amaral-3/operations-center`). */
 export const REPO_TESTE: RepoDoBoard = { owner: 'leonardo-amaral-3', name: 'operations-center' }

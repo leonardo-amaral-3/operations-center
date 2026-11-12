@@ -11,7 +11,8 @@ import type {
   SalaDaFabrica,
 } from '../../shared/fabrica'
 import { lerComandoDoG4, lerParecer } from './g4'
-import { type RepoDoBoard, nomeDoRepo } from './configuracao'
+import { type RepoDoBoard, mesmoRepo, nomeDoRepo } from './configuracao'
+import { type CardDaFabrica, cardDoRegistro, repoDoRegistro } from './cardDaFabrica'
 import type { Despacho, EstadoDaFabrica, ItemDaFila } from './tipos'
 
 /**
@@ -52,14 +53,15 @@ function comparar(a: string, b: string): number {
 export function tipoDoItem(
   item: ItemDaFila,
   origem: Despacho | undefined,
-  repo: RepoDoBoard,
+  unico: RepoDoBoard | null,
 ): 'pergunta' | 'decisao' {
   if (origem === undefined || origem.desfecho?.tipo !== 'parada') return 'pergunta'
   const g4 = lerComandoDoG4(origem.comando)
-  const parecer = lerParecer(item.motivo, repo)
+  const parecer = lerParecer(item.motivo, repoDoRegistro(item, unico))
   return g4 !== null &&
     g4.card === item.card &&
     g4.card === origem.card &&
+    mesmoRepo(repoDoRegistro(item, unico), repoDoRegistro(origem, unico)) &&
     parecer !== null &&
     parecer.pr === g4.pr &&
     parecer.bloqueantes === 0
@@ -90,13 +92,12 @@ export function estacaoDoComando(comando: string): EstacaoDaFabrica | null {
  */
 export function ondeRodaDo(
   estacao: EstacaoDaFabrica | null,
-  card: number,
+  card: CardDaFabrica,
   worktrees: readonly string[],
-  repo: RepoDoBoard,
 ): string {
   if (estacao === 'spec' || estacao === 'tasks') return 'planning/'
   if (estacao === 'implementacao' || estacao === 'revisao') {
-    const prefixo = `${repo.name}-${card}-`
+    const prefixo = `${card.repo.name}-${card.n}-`
     const achadas = worktrees.filter((w) => w.startsWith(prefixo)).sort(comparar)
     if (achadas.length === 0) return 'worktree ainda não criada'
     const primeiro = achadas[0] as string
@@ -111,13 +112,12 @@ export function ondeRodaDo(
  */
 export function ondeRodaOComando(
   comando: string,
-  card: number,
+  card: CardDaFabrica,
   worktrees: readonly string[],
-  repo: RepoDoBoard,
 ): string {
   return lerComandoDoG4(comando) !== null
     ? 'sem worktree'
-    : ondeRodaDo(estacaoDoComando(comando), card, worktrees, repo)
+    : ondeRodaDo(estacaoDoComando(comando), card, worktrees)
 }
 
 function skillDe(comando: string): string {
@@ -128,7 +128,7 @@ function skillDe(comando: string): string {
  * "O que a fábrica decidiu": os passos recentes que seguiram sozinhos, todo item aberto e os
  * fechados mais recentes, do mais novo ao mais velho (empate por id, decrescente).
  */
-export function montarDecisoes(e: EstadoDaFabrica, repo: RepoDoBoard): DecisaoNaSala[] {
+export function montarDecisoes(e: EstadoDaFabrica, unico: RepoDoBoard | null): DecisaoNaSala[] {
   const comItem = new Set(e.fila.map((i) => i.despacho))
   const passos: DecisaoNaSala[] = e.despachos
     .flatMap((d) =>
@@ -157,7 +157,7 @@ export function montarDecisoes(e: EstadoDaFabrica, repo: RepoDoBoard): DecisaoNa
       tipo: 'fila' as const,
       id: i.id,
       card: i.card,
-      item: paraItem(e, i, repo),
+      item: paraItem(e, i, unico),
       em: i.criadoEm,
     }))
   const fechados: DecisaoNaSala[] = e.fila
@@ -168,7 +168,7 @@ export function montarDecisoes(e: EstadoDaFabrica, repo: RepoDoBoard): DecisaoNa
       tipo: 'fila' as const,
       id: i.id,
       card: i.card,
-      item: paraItem(e, i, repo),
+      item: paraItem(e, i, unico),
       em: i.criadoEm,
     }))
   return [...passos, ...abertos, ...fechados].sort(
@@ -176,14 +176,14 @@ export function montarDecisoes(e: EstadoDaFabrica, repo: RepoDoBoard): DecisaoNa
   )
 }
 
-function paraItem(e: EstadoDaFabrica, item: ItemDaFila, repo: RepoDoBoard): ItemNaSala {
+function paraItem(e: EstadoDaFabrica, item: ItemDaFila, unico: RepoDoBoard | null): ItemNaSala {
   const origem = e.despachos.find((d) => d.id === item.despacho)
   const comando = origem?.comando ?? null
   return {
     id: item.id,
-    tipo: tipoDoItem(item, origem, repo),
+    tipo: tipoDoItem(item, origem, unico),
     card: item.card,
-    cardUrl: urlDoCard(item.card, repo),
+    cardUrl: urlDoCard(item.card, repoDoRegistro(item, unico)),
     motivo: item.motivo,
     despacho: item.despacho,
     comando,
@@ -208,18 +208,18 @@ export function montarSala(
     worktrees: readonly string[]
     /** Ids dos despachos com sessão viva; `null` = não se sabe. */
     vivos: ReadonlySet<string> | null
-    repo: RepoDoBoard
+    unico: RepoDoBoard | null
   },
 ): Extract<SalaDaFabrica, { kind: 'ok' }> {
   const abertos = e.fila
     .filter((i) => i.fechadoEm === null)
     .sort((a, b) => comparar(a.criadoEm, b.criadoEm) || comparar(a.id, b.id))
-    .map((i) => paraItem(e, i, ctx.repo))
+    .map((i) => paraItem(e, i, ctx.unico))
   const fechados = e.fila
     .filter((i) => i.fechadoEm !== null)
     .sort((a, b) => comparar(b.fechadoEm ?? '', a.fechadoEm ?? '') || comparar(b.id, a.id))
     .slice(0, FECHADOS_NA_SALA)
-    .map((i) => paraItem(e, i, ctx.repo))
+    .map((i) => paraItem(e, i, ctx.unico))
   const emVoo: DespachoNaSala[] = e.despachos
     .filter((d) => d.estado !== 'concluido')
     .sort((a, b) => comparar(a.criadoEm, b.criadoEm) || comparar(a.id, b.id))
@@ -228,13 +228,13 @@ export function montarSala(
       return {
         id: d.id,
         card: d.card,
-        cardUrl: urlDoCard(d.card, ctx.repo),
+        cardUrl: urlDoCard(d.card, repoDoRegistro(d, ctx.unico)),
         comando: d.comando,
         estacao,
         estado: d.estado as DespachoNaSala['estado'],
         criadoEm: d.criadoEm,
         lancadoEm: d.lancadoEm,
-        ondeRoda: ondeRodaOComando(d.comando, d.card, ctx.worktrees, ctx.repo),
+        ondeRoda: ondeRodaOComando(d.comando, cardDoRegistro(d, ctx.unico), ctx.worktrees),
         viva: d.estado === 'pendente' || ctx.vivos === null ? null : ctx.vivos.has(d.id),
       }
     })
@@ -248,7 +248,7 @@ export function montarSala(
     emVoo,
     abertos,
     fechados,
-    decisoes: montarDecisoes(e, ctx.repo),
+    decisoes: montarDecisoes(e, ctx.unico),
     frentesAbertas: e.frentes.filter((f) => f.encerradaEm === null).length,
   }
 }
@@ -288,11 +288,11 @@ export function montarPergunta(
   e: EstadoDaFabrica,
   id: string,
   saida: string | null,
-  repo: RepoDoBoard,
+  unico: RepoDoBoard | null,
 ): PerguntaDaFila | null {
   const achado = e.fila.find((i) => i.id === id)
   if (achado === undefined) return null
-  const item = paraItem(e, achado, repo)
+  const item = paraItem(e, achado, unico)
   const origem = e.despachos.find((d) => d.id === achado.despacho)
   const pr = item.tipo === 'decisao' ? prDoMotivo(item.motivo) : null
   const passos =
@@ -308,7 +308,7 @@ export function montarPergunta(
     fechar: `yarn fabrica fechar ${id} "<resolução>"`,
     fim: origem?.desfecho?.tipo ?? null,
     pr,
-    prUrl: pr === null ? null : urlDaPr(pr, repo),
+    prUrl: pr === null ? null : urlDaPr(pr, repoDoRegistro(achado, unico)),
     passos,
   }
 }

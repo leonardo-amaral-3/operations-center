@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ipcMain } from 'electron'
 import { despachoAtualDoCard, montarCard } from '../../core/fabrica/card'
-import type { BoardDaFabrica, RepoDoBoard } from '../../core/fabrica/configuracao'
+import type { CardDaFabrica } from '../../core/fabrica/cardDaFabrica'
+import type { BoardDaFabrica, BoardDeUmRepo, RepoDoBoard } from '../../core/fabrica/configuracao'
 import { entradaNaSala } from '../../core/fabrica/entrada'
 import { lerRevisoes } from '../../core/fabrica/revisoes'
 import { montarPergunta, montarSala, urlDoCard } from '../../core/fabrica/sala'
@@ -156,7 +157,7 @@ export function lerSala(
       recursos,
       worktrees: worktreesSeguras(fontes),
       vivos,
-      repo: board.repo,
+      unico: board.repoUnico,
     })
   } catch (err) {
     return { kind: 'ilegivel', lidoEm, projeto, despachante, pausa, recursos, erro: mensagem(err) }
@@ -164,7 +165,11 @@ export function lerSala(
 }
 
 /** O caminho da saída sai do `estado.json`, nunca do pedido. */
-export function lerPergunta(pasta: string, id: string, repo: RepoDoBoard): PerguntaDaFila | null {
+export function lerPergunta(
+  pasta: string,
+  id: string,
+  unico: RepoDoBoard | null,
+): PerguntaDaFila | null {
   if (!/^q-\d+$/.test(id)) return null
   try {
     const e = lerEstado(pasta)
@@ -178,7 +183,7 @@ export function lerPergunta(pasta: string, id: string, repo: RepoDoBoard): Pergu
     } catch {
       saida = null
     }
-    return montarPergunta(e, id, saida, repo)
+    return montarPergunta(e, id, saida, unico)
   } catch {
     return null
   }
@@ -190,16 +195,16 @@ export function lerPergunta(pasta: string, id: string, repo: RepoDoBoard): Pergu
  */
 export function lerCardDaFabrica(
   pasta: string,
-  card: number,
+  card: CardDaFabrica,
   plataforma: NodeJS.Platform,
   fontes: Pick<FontesDaSala, 'worktrees'>,
-  repo: RepoDoBoard,
+  unico: RepoDoBoard | null,
 ): CardNaFabrica {
-  const cardUrl = urlDoCard(card, repo)
+  const cardUrl = urlDoCard(card.n, card.repo)
   try {
     const e = lerEstado(pasta)
-    if (e === null) return { kind: 'sem-estado', card, cardUrl }
-    const atual = despachoAtualDoCard(e, card)
+    if (e === null) return { kind: 'sem-estado', card: card.n, cardUrl }
+    const atual = despachoAtualDoCard(e, card, unico)
     let saida: string | null = null
     if (atual?.estado === 'concluido' && /^d-\d+$/.test(atual.id)) {
       try {
@@ -212,10 +217,10 @@ export function lerCardDaFabrica(
       worktrees: worktreesSeguras(fontes),
       vivos: despachosVivos(e, plataforma),
       saida,
-      repo,
+      unico,
     })
   } catch (err) {
-    return { kind: 'ilegivel', card, cardUrl, erro: mensagem(err) }
+    return { kind: 'ilegivel', card: card.n, cardUrl, erro: mensagem(err) }
   }
 }
 
@@ -242,7 +247,7 @@ export function lerRevisoesDaSala(pasta: string): RevisoesNaSala {
 export function registerFabricaIpc(
   pasta: string,
   fontes: FontesDaSala,
-  board: BoardDaFabrica,
+  board: BoardDeUmRepo,
 ): void {
   ipcMain.handle(IPC_INVOKE.readFabrica, (): SalaDaFabrica =>
     lerSala(pasta, process.platform, () => new Date().toISOString(), fontes, board),
@@ -250,13 +255,19 @@ export function registerFabricaIpc(
   ipcMain.handle(
     IPC_INVOKE.readFabricaPergunta,
     (_event, pedido: ReadPerguntaRequest): PerguntaDaFila | null =>
-      typeof pedido?.id === 'string' ? lerPergunta(pasta, pedido.id, board.repo) : null,
+      typeof pedido?.id === 'string' ? lerPergunta(pasta, pedido.id, board.repoUnico) : null,
   )
   ipcMain.handle(
     IPC_INVOKE.readFabricaCard,
     (_event, pedido: ReadCardDaFabricaRequest): CardNaFabrica =>
       Number.isInteger(pedido?.card) && pedido.card > 0
-        ? lerCardDaFabrica(pasta, pedido.card, process.platform, fontes, board.repo)
+        ? lerCardDaFabrica(
+            pasta,
+            { repo: board.repoUnico, n: pedido.card },
+            process.platform,
+            fontes,
+            board.repoUnico,
+          )
         : { kind: 'ilegivel', card: 0, cardUrl: '', erro: 'pedido inválido' },
   )
   ipcMain.handle(IPC_INVOKE.readFabricaEntrada, (): EntradaNaSala => lerEntradaDaSala(pasta))

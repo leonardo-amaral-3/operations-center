@@ -1,4 +1,5 @@
 import type { CardNaFabrica, DespachoDoCard } from '../../shared/fabrica'
+import { type CardDaFabrica, cardDoRegistro, mesmoCard } from './cardDaFabrica'
 import type { RepoDoBoard } from './configuracao'
 import { estacaoDoComando, ondeRodaOComando, resultadoDaSaida, urlDoCard } from './sala'
 import type { Despacho, EstadoDaFabrica } from './tipos'
@@ -16,8 +17,12 @@ function maisNovoPrimeiro(a: Despacho, b: Despacho): number {
 }
 
 /** O em voo do card (há no máximo um, M14); sem ele, o concluído mais recente; senão `null`. */
-export function despachoAtualDoCard(e: EstadoDaFabrica, card: number): Despacho | null {
-  const doCard = e.despachos.filter((d) => d.card === card)
+export function despachoAtualDoCard(
+  e: EstadoDaFabrica,
+  card: CardDaFabrica,
+  unico: RepoDoBoard | null,
+): Despacho | null {
+  const doCard = e.despachos.filter((d) => mesmoCard(cardDoRegistro(d, unico), card))
   const emVoo = doCard.find((d) => d.estado !== 'concluido')
   if (emVoo !== undefined) return emVoo
   return doCard.filter((d) => d.estado === 'concluido').sort(maisNovoPrimeiro)[0] ?? null
@@ -42,28 +47,28 @@ export function paraDespachoDoCard(d: Despacho): DespachoDoCard {
 
 export function montarCard(
   e: EstadoDaFabrica,
-  card: number,
+  card: CardDaFabrica,
   ctx: {
     worktrees: readonly string[]
     vivos: ReadonlySet<string> | null
     saida: string | null
-    repo: RepoDoBoard
+    unico: RepoDoBoard | null
   },
 ): Extract<CardNaFabrica, { kind: 'ok' } | { kind: 'sem-despacho' }> {
-  const cardUrl = urlDoCard(card, ctx.repo)
-  const atual = despachoAtualDoCard(e, card)
-  if (atual === null) return { kind: 'sem-despacho', card, cardUrl }
+  const cardUrl = urlDoCard(card.n, card.repo)
+  const atual = despachoAtualDoCard(e, card, ctx.unico)
+  if (atual === null) return { kind: 'sem-despacho', card: card.n, cardUrl }
   const emAndamento = atual.estado === 'lancando' || atual.estado === 'rodando'
   return {
     kind: 'ok',
-    card,
+    card: card.n,
     cardUrl,
     atual: paraDespachoDoCard(atual),
-    ondeRoda: ondeRodaOComando(atual.comando, card, ctx.worktrees, ctx.repo),
+    ondeRoda: ondeRodaOComando(atual.comando, card, ctx.worktrees),
     viva: emAndamento && ctx.vivos !== null ? ctx.vivos.has(atual.id) : null,
     resultado: atual.estado === 'concluido' ? resultadoDaSaida(ctx.saida) : null,
     terminados: e.despachos
-      .filter((d) => d.card === card && d.estado === 'concluido')
+      .filter((d) => mesmoCard(cardDoRegistro(d, ctx.unico), card) && d.estado === 'concluido')
       .sort(maisNovoPrimeiro)
       .map(paraDespachoDoCard),
   }

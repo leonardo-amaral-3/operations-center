@@ -1,3 +1,4 @@
+import { REPO_TESTE } from './fabrica-board-de-teste'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -49,10 +50,10 @@ describe('os literais do renderer são os do boards.json', () => {
     const mandato = board.mandato
     if (mandato === null) throw new Error('o board padrão tem mandato')
     expect(CHAVE_DO_BOARD_DA_FABRICA).toBe(board.chave)
-    expect(REPO_DOS_CARDS_DA_FABRICA).toBe(nomeDoRepo(board.repo))
+    expect(REPO_DOS_CARDS_DA_FABRICA).toBe(nomeDoRepo(board.repoUnico))
     expect(URL_DO_BOARD_DA_FABRICA).toBe(`https://github.com/users/${owner}/projects/${projeto}`)
     expect(URL_DA_DEV_PARA_MAIN).toBe(
-      `https://github.com/${nomeDoRepo(board.repo)}/compare/main...dev`,
+      `https://github.com/${nomeDoRepo(board.repoUnico)}/compare/main...dev`,
     )
     expect(URL_DO_MANDATO_DA_FABRICA).toBe(
       `https://github.com/${nomeDoRepo(mandato.repo)}/blob/${mandato.ref}/${mandato.caminho}`,
@@ -102,10 +103,8 @@ describe('NAO_FAZER_HOJE diz o que o código aplica', () => {
 
 describe('notaDoBriefing passa no filtro do mandato', () => {
   it('um Pronto quando e um contexto limpos', () => {
-    const proibidos = caminhosProibidos(
-      '/home/teste',
-      boardPadrao(configuracaoDaFabrica('/home/teste')),
-    )
+    const board = boardPadrao(configuracaoDaFabrica('/home/teste'))
+    const proibidos = caminhosProibidos('/home/teste', board, REPO_TESTE)
     const nota = notaDoBriefing({
       dia: '2026-11-12',
       prontoQuando: 'a spec sai',

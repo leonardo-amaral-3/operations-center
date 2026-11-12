@@ -16,8 +16,10 @@ import { pastaDaSessao } from './arquivos'
 
 export interface ContextoDoLancamento {
   pasta: string
-  /** O repo do board: o G4 lê a PR e o card nele. */
-  repo: RepoDoBoard
+  /** O repo do card do despacho: o G4 lê a PR e o card nele. `null` na triagem. */
+  repo: RepoDoBoard | null
+  /** A linha que nomeia o repo no argumento; só em board de vários repos. */
+  linhaDoRepo: string | null
   workspace: string
   raizDoRepo: string
   mandato: string
@@ -52,16 +54,18 @@ export async function lancar(
   d: Pick<Despacho, 'id' | 'comando' | 'nota'>,
   ctx: ContextoDoLancamento,
 ): Promise<{ pid: number } | { erro: string }> {
+  const g4 = lerComandoDoG4(d.comando)
+  if (g4 !== null && ctx.repo === null) return { erro: 'o G4 precisa do repo do card' }
   const pastaDaSessaoAtual = pastaDaSessao(ctx.pasta, d.id)
   let fdSaida: number | undefined
   let fdErro: number | undefined
   try {
     mkdirSync(pastaDaSessaoAtual, { recursive: true })
-    const g4 = lerComandoDoG4(d.comando)
     const prompt = montarPrompt(
-      g4 === null ? d.comando : promptDoG4(g4.card, g4.pr, ctx.repo),
+      g4 === null || ctx.repo === null ? d.comando : promptDoG4(g4.card, g4.pr, ctx.repo),
       ctx.mandato,
       d.nota,
+      ctx.linhaDoRepo,
     )
     writeFileSync(join(pastaDaSessaoAtual, 'prompt.txt'), prompt)
 

@@ -1,6 +1,11 @@
 import { relative } from 'node:path/posix'
 import type { GraphQLResponse } from '../board/types'
-import type { BoardDaFabrica, ProibidosDoBoard } from './configuracao'
+import {
+  checkoutPrincipalDe,
+  type BoardDaFabrica,
+  type ProibidosDoBoard,
+  type RepoDoBoard,
+} from './configuracao'
 
 /**
  * O que o mandato da prova (cofre 1439) deixa a fábrica despachar. Tudo aqui é constante ou função
@@ -37,9 +42,10 @@ export function escaparRegex(texto: string): string {
  */
 export function caminhosProibidos(
   home: string,
-  board: Pick<BoardDaFabrica, 'checkoutPrincipal' | 'proibidos'>,
+  board: Pick<BoardDaFabrica, 'workspace' | 'checkoutPrincipal' | 'repoUnico' | 'proibidos'>,
+  repo: RepoDoBoard,
 ): ProibidosDoBoard {
-  const alvos = [...board.proibidos.caminhos, board.checkoutPrincipal]
+  const alvos = [...board.proibidos.caminhos, checkoutPrincipalDe(board, repo)]
   const saida: string[] = []
   for (const a of alvos) {
     saida.push(a)
@@ -90,12 +96,18 @@ export function avaliarNota(nota: string, proibidos: ProibidosDoBoard): Avaliaca
  * O prompt da sessão, igual byte a byte ao que o `d.sh` da orquestradora passa depois da P0 (N18):
  * o mandato entra sem os `\n` finais, e a nota opcional vira a última linha.
  */
-export function montarPrompt(comando: string, mandato: string, nota: string | null): string {
+export function montarPrompt(
+  comando: string,
+  mandato: string,
+  nota: string | null,
+  linhaDoRepo: string | null = null,
+): string {
   return [
     comando,
     '',
     'Argumento do despacho:',
     mandato.replace(/\n+$/, ''),
+    ...(linhaDoRepo !== null ? [linhaDoRepo] : []),
     ...(nota ? [`- Nesta sessão: ${nota}`] : []),
   ].join('\n')
 }

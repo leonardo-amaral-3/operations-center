@@ -110,11 +110,13 @@ test('Soltar o dia abre as frentes pelo yarn fabrica iniciar', async () => {
     const estado = lerEstado(pasta)
     expect(estado.frentes.filter((f) => f.card === 940 || f.card === 941)).toHaveLength(2)
     expect(estado.despachos.find((d) => d.card === 940)).toMatchObject({
+      repo: 'leonardo-amaral-3/operations-center',
       comando: '/gm-spec #940',
       estado: 'pendente',
       nota: `Briefing do dia ${data}: pronto quando a spec sai. Contexto do dia: dia calmo.`,
     })
     expect(estado.despachos.find((d) => d.card === 941)).toMatchObject({
+      repo: 'leonardo-amaral-3/operations-center',
       comando: '/gm-card #941',
       estado: 'pendente',
       nota: `Briefing do dia ${data}. Contexto do dia: dia calmo.`,

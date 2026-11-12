@@ -126,7 +126,7 @@ export type ComandoDaFabrica =
   | { tipo: 'entrada'; texto: string } // F4
   | { tipo: 'confirmar'; arquivo: string } // F5
   | { tipo: 'contestar'; arquivo: string; motivo: string } // F5
-  | { tipo: 'iniciar'; card: number; nota: string } // F6: yarn fabrica iniciar <card> --nota "<nota>"
+  | { tipo: 'iniciar'; repo: string; card: number; nota: string } // F6/#152: yarn fabrica iniciar <repo>#<card> --nota "<nota>"
 
 export interface ResultadoDoComando {
   ok: boolean // codigo === 0

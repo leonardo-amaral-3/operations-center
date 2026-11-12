@@ -21,8 +21,15 @@ import {
   type BoardDaFabrica,
   type ConfiguracaoDaFabrica,
   type OrigemDoMandato,
-  type ProibidosDoBoard,
 } from '../../core/fabrica/configuracao'
+import {
+  cardDoRegistro,
+  lerAlvo,
+  resolverAlvo,
+  rotuloDoCard,
+  type AlvoDoIniciar,
+  type CardDaFabrica,
+} from '../../core/fabrica/cardDaFabrica'
 import { configuracaoDaFabrica } from './configuracao'
 import { createGhTokenSource } from '../github/token'
 import { createGitHubGraphQL } from '../github/graphql'
@@ -64,10 +71,16 @@ export interface DepsDoCli {
 }
 
 const USO =
-  'uso: yarn fabrica [--board <owner>/<n>] [iniciar <n> [--comando "<cmd>"] [--nota "<texto>"] [--ensaio] | rodar | estado | fechar <item> "<resolução>" | pausar | retomar | entrada "<texto>" | triar <item> "<resolução>" | confirmar <arquivo> | contestar <arquivo> "<motivo>" | atender <arquivo> "<resolução>"]'
+  'uso: yarn fabrica [--board <owner>/<n>] [iniciar <n>|<repo>#<n> [--comando "<cmd>"] [--nota "<texto>"] [--ensaio] | rodar | estado | fechar <item> "<resolução>" | pausar | retomar | entrada "<texto>" | triar <item> "<resolução>" | confirmar <arquivo> | contestar <arquivo> "<motivo>" | atender <arquivo> "<resolução>"]'
 
 type Comando =
-  | { tipo: 'iniciar'; card: number; comando: string | null; nota: string | null; ensaio: boolean }
+  | {
+      tipo: 'iniciar'
+      alvo: AlvoDoIniciar
+      comando: string | null
+      nota: string | null
+      ensaio: boolean
+    }
   | { tipo: 'rodar' }
   | { tipo: 'estado' }
   | { tipo: 'pausar' }
@@ -138,7 +151,7 @@ function lerSubcomando(argv: readonly string[]): Comando | { erro: string } {
   }
   if (sub !== 'iniciar') return { erro: `subcomando desconhecido: ${sub}` }
 
-  let card: number | null = null
+  let alvo: AlvoDoIniciar | null = null
   let comando: string | null = null
   let nota: string | null = null
   let ensaio = false
@@ -156,15 +169,16 @@ function lerSubcomando(argv: readonly string[]): Comando | { erro: string } {
       i += 1
     } else if (a.startsWith('--')) {
       return { erro: `flag desconhecida: ${a}` }
-    } else if (card === null) {
-      if (!/^[1-9]\d*$/.test(a)) return { erro: `número de card inválido: ${a}` }
-      card = Number(a)
+    } else if (alvo === null) {
+      const lidoAlvo = lerAlvo(a)
+      if (lidoAlvo === null) return { erro: `número de card inválido: ${a}` }
+      alvo = lidoAlvo
     } else {
       return { erro: `argumento a mais: ${a}` }
     }
   }
-  if (card === null) return { erro: 'falta o número do card' }
-  return { tipo: 'iniciar', card, comando, nota, ensaio }
+  if (alvo === null) return { erro: 'falta o número do card' }
+  return { tipo: 'iniciar', alvo, comando, nota, ensaio }
 }
 
 function mensagemDe(erro: unknown): string {
@@ -196,7 +210,6 @@ export async function executar(deps: DepsDoCli): Promise<number> {
   }
   const board = resolvido.board
   const workspace = board.workspace
-  const proibidos = caminhosProibidos(deps.home, board)
   const pasta = pastaDaFabrica(deps.env, board)
   try {
     recusarTemporaria(pasta)
@@ -204,9 +217,18 @@ export async function executar(deps: DepsDoCli): Promise<number> {
     deps.avisar(`fabrica: ${mensagemDe(erro)}`)
     return 2
   }
+  let cardIniciado: CardDaFabrica | null = null
+  if (lido.tipo === 'iniciar') {
+    const alvo = resolverAlvo(board, lido.alvo)
+    if (!alvo.ok) {
+      deps.avisar(`fabrica: ${alvo.motivo}`)
+      return 1
+    }
+    cardIniciado = alvo.card
+  }
 
   try {
-    if (lido.tipo === 'estado') return estado(deps, pasta)
+    if (lido.tipo === 'estado') return estado(deps, pasta, board)
     if (lido.tipo === 'confirmar' || lido.tipo === 'contestar' || lido.tipo === 'atender') {
       return revisar(deps, pasta, lido)
     }
@@ -262,7 +284,9 @@ export async function executar(deps: DepsDoCli): Promise<number> {
       deps.escrever(`${lido.item} triado`)
       return 0
     }
-    if (lido.tipo === 'iniciar') return await iniciar(deps, pasta, proibidos, board, lido)
+    if (lido.tipo === 'iniciar' && cardIniciado !== null) {
+      return await iniciar(deps, pasta, board, cardIniciado, lido)
+    }
     if (lido.tipo === 'fechar') {
       const resultado = await alterarEstado(pasta, (e) => {
         const r = fecharItem(e, lido.item, lido.resolucao, deps.agora())
@@ -277,7 +301,7 @@ export async function executar(deps: DepsDoCli): Promise<number> {
       deps.escrever(`${lido.item} fechado`)
       return 0
     }
-    return await rodar({ pasta, workspace, raizDoRepo: deps.raizDoRepo, proibidos, board, deps })
+    return await rodar({ pasta, workspace, raizDoRepo: deps.raizDoRepo, board, deps })
   } catch (erro) {
     const mensagem = mensagemDe(erro)
     deps.avisar(`fabrica: ${mensagem}`)
@@ -345,13 +369,18 @@ function revisar(
 async function iniciar(
   deps: DepsDoCli,
   pasta: string,
-  proibidos: ProibidosDoBoard,
   board: BoardDaFabrica,
+  card: CardDaFabrica,
   p: Extract<Comando, { tipo: 'iniciar' }>,
 ): Promise<number> {
+  const rotulo = rotuloDoCard(card, board.repoUnico)
+  const proibidos = caminhosProibidos(deps.home, board, card.repo)
   let comando = p.comando
   if (comando === null) {
-    const proposto = comandoDaEstacao(p.card, await lerItemNoBoard(deps.graphql, board, p.card))
+    const proposto = comandoDaEstacao(
+      card.n,
+      await lerItemNoBoard(deps.graphql, card, board.projeto),
+    )
     if ('erro' in proposto) {
       deps.avisar(`fabrica: ${proposto.erro}`)
       return 1
@@ -371,14 +400,15 @@ async function iniciar(
     }
   }
   if (p.ensaio) {
-    deps.escrever(`#${p.card}: ${comando}`)
+    deps.escrever(`${rotulo}: ${comando}`)
     return 0
   }
   const comandoFinal = comando
   type Aberta = ReturnType<typeof iniciarFrente>
   const resultado = await alterarEstado<Aberta>(pasta, (e) => {
     const r = iniciarFrente(e, {
-      card: p.card,
+      card,
+      unico: board.repoUnico,
       comando: comandoFinal,
       nota: p.nota,
       agora: deps.agora(),
@@ -389,12 +419,12 @@ async function iniciar(
     deps.avisar(`fabrica: ${resultado.erro}`)
     return 1
   }
-  deps.escrever(`frente ${resultado.frente} aberta: ${resultado.despacho} #${p.card} ${comando}`)
+  deps.escrever(`frente ${resultado.frente} aberta: ${resultado.despacho} ${rotulo} ${comando}`)
   return 0
 }
 
 /** Sem cadeado: a troca atômica do `estado.json` garante uma leitura inteira. */
-function estado(deps: DepsDoCli, pasta: string): number {
+function estado(deps: DepsDoCli, pasta: string, board: BoardDaFabrica): number {
   const e = lerEstado(pasta)
   const pausa = lerPausa(pasta)
   let entrada: ReturnType<typeof lerEntrada> = null
@@ -404,20 +434,25 @@ function estado(deps: DepsDoCli, pasta: string): number {
   } catch (erro) {
     ilegivel = mensagemDe(erro)
   }
-  if (pausa !== null) deps.escrever(`pausada desde ${pausa.desde ?? '?'}`)
+  const rotuloDe = (x: { id: string; repo?: string; card: number }): string =>
+    rotuloDoCard(cardDoRegistro(x, board.repoUnico), board.repoUnico)
+  // As linhas saem todas montadas antes da primeira escrita: registro sem repo num board de vários repos lança aqui.
+  const linhas: string[] = []
   if (e !== null) {
     for (const f of e.frentes.filter((x) => x.encerradaEm === null)) {
-      deps.escrever(`${f.id} #${f.card} aberta em ${f.criadaEm}`)
+      linhas.push(`${f.id} ${rotuloDe(f)} aberta em ${f.criadaEm}`)
     }
     for (const d of e.despachos.filter((x) => x.estado !== 'concluido')) {
-      deps.escrever(`${d.id} #${d.card} ${d.estado} ${d.comando}`)
+      linhas.push(`${d.id} ${rotuloDe(d)} ${d.estado} ${d.comando}`)
     }
     for (const q of e.fila.filter((x) => x.fechadoEm === null)) {
-      deps.escrever(
-        `${q.id} #${q.card} ${q.motivo} (de ${q.despacho}, sessão ${q.sessaoClaude ?? '-'})`,
+      linhas.push(
+        `${q.id} ${rotuloDe(q)} ${q.motivo} (de ${q.despacho}, sessão ${q.sessaoClaude ?? '-'})`,
       )
     }
   }
+  if (pausa !== null) deps.escrever(`pausada desde ${pausa.desde ?? '?'}`)
+  for (const l of linhas) deps.escrever(l)
   let lidas: ReturnType<typeof lerRevisoes> = { revisoes: [], ilegiveis: 0 }
   let erroDasRevisoes: string | null = null
   try {

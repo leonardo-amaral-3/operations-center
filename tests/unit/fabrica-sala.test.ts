@@ -55,7 +55,7 @@ const CTX = {
   recursos: RECURSOS,
   worktrees: [] as readonly string[],
   vivos: null as ReadonlySet<string> | null,
-  repo: REPO_TESTE,
+  unico: REPO_TESTE,
 }
 const BOARD = boardPadrao(configuracaoDaFabrica('/h'))
 const FONTES = { recursos: () => RECURSOS, worktrees: () => [] as string[] }
@@ -221,13 +221,13 @@ describe('tipoDoItem: Decisão só pelo parecer do G4 sem bloqueante (#143, CA-2
 
 describe('ondeRodaOComando e o passo do ship para o G4 (#143)', () => {
   it('o /g4 roda sem worktree; os demais seguem a estação', () => {
-    expect(ondeRodaOComando('/g4 #7 PR #9', 7, ['operations-center-7-x'], REPO_TESTE)).toBe(
-      'sem worktree',
-    )
-    expect(ondeRodaOComando('/gm-ship /x #7', 7, ['operations-center-7-x'], REPO_TESTE)).toBe(
-      'operations-center-7-x',
-    )
-    expect(ondeRodaOComando('/gm-spec #7', 7, [], REPO_TESTE)).toBe('planning/')
+    expect(
+      ondeRodaOComando('/g4 #7 PR #9', { repo: REPO_TESTE, n: 7 }, ['operations-center-7-x']),
+    ).toBe('sem worktree')
+    expect(
+      ondeRodaOComando('/gm-ship /x #7', { repo: REPO_TESTE, n: 7 }, ['operations-center-7-x']),
+    ).toBe('operations-center-7-x')
+    expect(ondeRodaOComando('/gm-spec #7', { repo: REPO_TESTE, n: 7 }, [])).toBe('planning/')
   })
 
   it('montarDecisoes mostra o ship concluído em PARADA, sem item, como passou → g4', () => {
@@ -299,23 +299,23 @@ describe('a estação e a sessão quebrada dos itens (F2.2)', () => {
 describe('ondeRodaDo (F2.2)', () => {
   const wt = ['operations-center-119-c', 'operations-center-119-a', 'operations-center-119-b']
   it('spec e tasks rodam em planning/', () => {
-    expect(ondeRodaDo('spec', 4, wt, REPO_TESTE)).toBe('planning/')
-    expect(ondeRodaDo('tasks', 4, wt, REPO_TESTE)).toBe('planning/')
+    expect(ondeRodaDo('spec', { repo: REPO_TESTE, n: 4 }, wt)).toBe('planning/')
+    expect(ondeRodaDo('tasks', { repo: REPO_TESTE, n: 4 }, wt)).toBe('planning/')
   })
   it.each(['implementacao', 'revisao'] as const)('%s: 0, 1 e 3 worktrees', (e) => {
-    expect(ondeRodaDo(e, 119, [], REPO_TESTE)).toBe('worktree ainda não criada')
-    expect(ondeRodaDo(e, 119, ['operations-center-119-a'], REPO_TESTE)).toBe(
+    expect(ondeRodaDo(e, { repo: REPO_TESTE, n: 119 }, [])).toBe('worktree ainda não criada')
+    expect(ondeRodaDo(e, { repo: REPO_TESTE, n: 119 }, ['operations-center-119-a'])).toBe(
       'operations-center-119-a',
     )
-    expect(ondeRodaDo(e, 119, wt, REPO_TESTE)).toBe('operations-center-119-a +2')
+    expect(ondeRodaDo(e, { repo: REPO_TESTE, n: 119 }, wt)).toBe('operations-center-119-a +2')
   })
   it('não casa o prefixo de outro card (1190 não é 119)', () => {
-    expect(ondeRodaDo('implementacao', 119, ['operations-center-1190-x'], REPO_TESTE)).toBe(
-      'worktree ainda não criada',
-    )
+    expect(
+      ondeRodaDo('implementacao', { repo: REPO_TESTE, n: 119 }, ['operations-center-1190-x']),
+    ).toBe('worktree ainda não criada')
   })
   it.each(['entrada', 'card', 'integracao', null] as const)('%s: sem worktree', (e) => {
-    expect(ondeRodaDo(e, 119, wt, REPO_TESTE)).toBe('sem worktree')
+    expect(ondeRodaDo(e, { repo: REPO_TESTE, n: 119 }, wt)).toBe('sem worktree')
   })
 })
 
@@ -897,7 +897,8 @@ describe('lerCardDaFabrica e lerEntradaDaSala (F4)', () => {
     cpSync(F4, pasta, { recursive: true })
     return pasta
   }
-  const card = (pasta: string, n: number) => lerCardDaFabrica(pasta, n, 'linux', FONTES, REPO_TESTE)
+  const card = (pasta: string, n: number) =>
+    lerCardDaFabrica(pasta, { repo: REPO_TESTE, n }, 'linux', FONTES, REPO_TESTE)
 
   it('#4 ok sem resultado; #906 com o result; #1 sem-despacho', () => {
     const pasta = copiaDeF4()
@@ -1007,13 +1008,120 @@ describe('a sala por repo (#144)', () => {
     expect(urlDoCard(5, FULANO)).toBe('https://github.com/fulano/repo-x/issues/5')
     expect(urlDaPr(6, FULANO)).toBe('https://github.com/fulano/repo-x/pull/6')
     const worktrees = ['repo-x-5-feito', 'operations-center-5-outro']
-    expect(ondeRodaDo('implementacao', 5, worktrees, FULANO)).toBe('repo-x-5-feito')
-    expect(ondeRodaDo('implementacao', 5, worktrees, REPO_TESTE)).toBe('operations-center-5-outro')
+    expect(ondeRodaDo('implementacao', { repo: FULANO, n: 5 }, worktrees)).toBe('repo-x-5-feito')
+    expect(ondeRodaDo('implementacao', { repo: REPO_TESTE, n: 5 }, worktrees)).toBe(
+      'operations-center-5-outro',
+    )
   })
 
   it('CA-1: o board padrão mantém as URLs de hoje', () => {
     expect(urlDoCard(133, REPO_TESTE)).toBe(
       'https://github.com/leonardo-amaral-3/operations-center/issues/133',
     )
+  })
+})
+
+describe('vários repos no mesmo board (#152, CA-3 e CA-1)', () => {
+  const REPO_A = { owner: 'fulano', name: 'repo-a' }
+  const REPO_B = { owner: 'fulano', name: 'repo-b' }
+  const PR_B = 'https://github.com/fulano/repo-b/pull/9'
+  const SEM_B = `G4 da PR #9: sem bloqueante · parecer ${PR_B}#issuecomment-1`
+  const despacho = (p: Partial<Despacho> & { id: string }): Despacho => ({
+    frente: 'fr-0001',
+    card: 5,
+    repo: 'fulano/repo-a',
+    comando: '/gm-implement x',
+    nota: null,
+    estado: 'rodando',
+    pid: null,
+    criadoEm: '2026-11-12T09:00:00.000Z',
+    lancadoEm: null,
+    concluidoEm: null,
+    sessaoClaude: null,
+    desfecho: null,
+    ...p,
+  })
+  const item = (p: Partial<ItemDaFila> = {}): ItemDaFila => ({
+    id: 'q-0001',
+    card: 5,
+    repo: 'fulano/repo-b',
+    motivo: SEM_B,
+    despacho: 'd-0002',
+    sessaoClaude: null,
+    criadoEm: '2026-11-12T09:00:00.000Z',
+    fechadoEm: null,
+    resolucao: null,
+    ...p,
+  })
+  const g4 = (id: string, repo: string): Despacho =>
+    despacho({
+      id,
+      repo,
+      comando: '/g4 #5 PR #9',
+      estado: 'concluido',
+      desfecho: { tipo: 'parada', motivo: SEM_B },
+    })
+
+  it('o card é do repo de cada frente, e a Sala dá o link e a worktree do seu repo', () => {
+    const e: EstadoDaFabrica = {
+      ...estadoDaF3(),
+      despachos: [
+        despacho({ id: 'd-0001' }),
+        despacho({ id: 'd-0002', repo: 'fulano/repo-b', criadoEm: '2026-11-12T09:01:00.000Z' }),
+      ],
+      fila: [],
+    }
+    const sala = montarSala(e, {
+      ...CTX,
+      unico: null,
+      worktrees: ['repo-a-5-x', 'repo-b-5-y'],
+    })
+    expect(sala.emVoo.map((d) => [d.cardUrl, d.ondeRoda])).toEqual([
+      ['https://github.com/fulano/repo-a/issues/5', 'repo-a-5-x'],
+      ['https://github.com/fulano/repo-b/issues/5', 'repo-b-5-y'],
+    ])
+  })
+
+  it('ondeRodaDo acha a worktree do repo do card, não a de outro repo com o mesmo número', () => {
+    const wt = ['repo-a-5-x', 'repo-b-5-y']
+    expect(ondeRodaDo('implementacao', { repo: REPO_A, n: 5 }, wt)).toBe('repo-a-5-x')
+    expect(ondeRodaDo('revisao', { repo: REPO_B, n: 5 }, wt)).toBe('repo-b-5-y')
+  })
+
+  it('parecer do G4 em repo-b: decisão na frente de repo-b, pergunta se a origem é de repo-a', () => {
+    expect(tipoDoItem(item(), g4('d-0002', 'fulano/repo-b'), null)).toBe('decisao')
+    expect(tipoDoItem(item(), g4('d-0002', 'fulano/repo-a'), null)).toBe('pergunta')
+  })
+
+  it('a PR do parecer aponta para o repo do item', () => {
+    const e: EstadoDaFabrica = {
+      ...estadoDaF3(),
+      despachos: [g4('d-0002', 'fulano/repo-b')],
+      fila: [item()],
+    }
+    const p = montarPergunta(e, 'q-0001', null, null)
+    expect(p?.item.tipo).toBe('decisao')
+    expect(p?.item.cardUrl).toBe('https://github.com/fulano/repo-b/issues/5')
+    expect(p?.prUrl).toBe(PR_B)
+  })
+
+  it('estado de antes do #152 (sem repo) no board de repo único: URLs do operations-center', () => {
+    const semRepoD = despacho({ id: 'd-0001', card: 7 })
+    const semRepoI = item({ card: 7, despacho: 'd-0001' })
+    delete semRepoD.repo
+    delete semRepoI.repo
+    const e: EstadoDaFabrica = {
+      ...estadoDaF3(),
+      despachos: [semRepoD],
+      fila: [semRepoI],
+    }
+    const sala = montarSala(e, { ...CTX, unico: REPO_TESTE })
+    expect(sala.emVoo[0]?.cardUrl).toBe(
+      'https://github.com/leonardo-amaral-3/operations-center/issues/7',
+    )
+    expect(sala.abertos[0]?.cardUrl).toBe(
+      'https://github.com/leonardo-amaral-3/operations-center/issues/7',
+    )
+    expect(() => montarSala(e, { ...CTX, unico: null })).toThrow(/não diz o repo/)
   })
 })
