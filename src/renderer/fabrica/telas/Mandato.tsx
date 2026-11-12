@@ -6,6 +6,7 @@ import { Badge } from '../../ui/badge'
 import { Button } from '../../ui/button'
 import { Card } from '../../ui/card'
 import { cn } from '../../ui/cn'
+import { URL_DO_MANDATO_DA_FABRICA } from '../boardDaFabrica'
 import { CabecalhoInterno } from '../Moldura'
 import { trilhaDa } from '../rotas'
 import type { PropsDaTela } from '../telas'
@@ -35,9 +36,6 @@ const COLUNAS = [
   'Rota Completa',
   'Toca dado, faturamento, deploy ou migration',
 ] as const
-
-const URL_DO_MANDATO =
-  'https://github.com/leonardo-amaral-3/operations-center/blob/dev/fabrica/MANDATO.md'
 
 /**
  * A linha de base do placar: claude-brain#28 (559 sessões, 25/09 a 12/10/2026). Três números
@@ -200,7 +198,7 @@ export function Mandato({ tela, ir }: PropsDaTela): JSX.Element {
       <Button asChild size="sm" className="bg-attention text-attention-foreground">
         <a
           data-testid="fabrica-mandato-github"
-          href={URL_DO_MANDATO}
+          href={URL_DO_MANDATO_DA_FABRICA}
           target="_blank"
           rel="noreferrer"
         >

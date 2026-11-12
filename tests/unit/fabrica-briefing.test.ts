@@ -1,15 +1,13 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { boardPadrao } from '../../src/core/fabrica/configuracao'
+import { boardPadrao, nomeDoRepo } from '../../src/core/fabrica/configuracao'
 import { configuracaoDaFabrica } from '../../src/main/fabrica/configuracao'
 
 import { normalizeStation } from '../../src/core/board/stations'
 import { comandoDaEstacao } from '../../src/core/fabrica/estacao'
 import {
   LIMITE_DE_DESPACHOS_POR_FRENTE as LIMITE_DO_CORE,
-  PROJETO_DA_FABRICA,
-  REPO_DA_FABRICA,
   SKILLS_PERMITIDAS,
   avaliarNota,
   caminhosProibidos,
@@ -18,6 +16,7 @@ import { LIMITE_DA_NOTA_DO_APP } from '../../src/main/fabrica/comando'
 import {
   CHAVE_DO_BOARD_DA_FABRICA,
   REPO_DOS_CARDS_DA_FABRICA,
+  URL_DO_MANDATO_DA_FABRICA,
   estacaoDaColuna,
 } from '../../src/renderer/fabrica/boardDaFabrica'
 import {
@@ -27,7 +26,7 @@ import {
   comandoDaFrente,
   notaDoBriefing,
 } from '../../src/renderer/fabrica/briefing'
-import { URL_DO_BOARD_DA_FABRICA } from '../../src/renderer/fabrica/trem'
+import { URL_DA_DEV_PARA_MAIN, URL_DO_BOARD_DA_FABRICA } from '../../src/renderer/fabrica/trem'
 
 /**
  * Canárias renderer × core (#135, CA-6.4). O renderer não importa `src/core/`, então os literais
@@ -43,12 +42,20 @@ const BOARD = JSON.parse(
   >
 }
 
-describe('os literais do renderer são os do core', () => {
-  it('a chave do board, o repo e a URL do board', () => {
-    expect(CHAVE_DO_BOARD_DA_FABRICA).toBe(`${REPO_DA_FABRICA.owner}/${PROJETO_DA_FABRICA}`)
-    expect(REPO_DOS_CARDS_DA_FABRICA).toBe(`${REPO_DA_FABRICA.owner}/${REPO_DA_FABRICA.name}`)
-    expect(URL_DO_BOARD_DA_FABRICA).toBe(
-      `https://github.com/users/${REPO_DA_FABRICA.owner}/projects/${PROJETO_DA_FABRICA}`,
+describe('os literais do renderer são os do boards.json', () => {
+  it('a chave, o repo, as URLs do board, da dev para a main e do mandato', () => {
+    const board = boardPadrao(configuracaoDaFabrica('/home/u'))
+    const { owner, projeto } = board
+    const mandato = board.mandato
+    if (mandato === null) throw new Error('o board padrão tem mandato')
+    expect(CHAVE_DO_BOARD_DA_FABRICA).toBe(board.chave)
+    expect(REPO_DOS_CARDS_DA_FABRICA).toBe(nomeDoRepo(board.repo))
+    expect(URL_DO_BOARD_DA_FABRICA).toBe(`https://github.com/users/${owner}/projects/${projeto}`)
+    expect(URL_DA_DEV_PARA_MAIN).toBe(
+      `https://github.com/${nomeDoRepo(board.repo)}/compare/main...dev`,
+    )
+    expect(URL_DO_MANDATO_DA_FABRICA).toBe(
+      `https://github.com/${nomeDoRepo(mandato.repo)}/blob/${mandato.ref}/${mandato.caminho}`,
     )
   })
 

@@ -7,10 +7,6 @@ import type { BoardDaFabrica, ProibidosDoBoard } from './configuracao'
  * pura: a leitura do `fabrica/MANDATO.md` na `dev` é da casca (card 121, spec P2 §3).
  */
 
-export const REPO_DA_FABRICA = { owner: 'leonardo-amaral-3', name: 'operations-center' } as const
-export const PROJETO_DA_FABRICA = 2
-/** O nome do Project 2 (CLAUDE.md `## Board`), que a moldura mostra no crachá. */
-export const NOME_DO_PROJETO_DA_FABRICA = 'Operations Center'
 /** O teto do mandato 1439: sessões `claude -p` da prova vivas ao mesmo tempo na máquina. */
 export const TETO_DE_SESSOES = 3
 export const LIMITE_DE_DESPACHOS_POR_FRENTE = 20

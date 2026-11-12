@@ -1,9 +1,16 @@
 import type { Board, BoardCard, BoardsSnapshot } from '../../shared/board'
 
-/** A aba do Project 2 (`owner/number`, a `key` do `BoardTab`). O renderer não importa `src/core/`. */
+/**
+ * Os literais abaixo espelham o board `padrao` do `fabrica/boards.json`: o renderer não importa
+ * `src/core/` nem o JSON. Quem os segura iguais é a canária de `tests/unit/fabrica-briefing.test.ts`.
+ * A aba do Project 2 (`owner/number`) é a `key` do `BoardTab`.
+ */
 export const CHAVE_DO_BOARD_DA_FABRICA = 'leonardo-amaral-3/2'
-/** O repo dos cards que o `yarn fabrica iniciar` sabe ler (`REPO_DA_FABRICA`). */
+/** O repo dos cards que o `yarn fabrica iniciar` sabe ler. */
 export const REPO_DOS_CARDS_DA_FABRICA = 'leonardo-amaral-3/operations-center'
+/** O `fabrica/MANDATO.md` da `dev`, que a tela Mandato linka. */
+export const URL_DO_MANDATO_DA_FABRICA =
+  'https://github.com/leonardo-amaral-3/operations-center/blob/dev/fabrica/MANDATO.md'
 
 export type BoardDaFabrica =
   { kind: 'lendo' } | { kind: 'erro'; erro: string } | { kind: 'ok'; board: Board }

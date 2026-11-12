@@ -123,8 +123,6 @@ export type {
 } from './fabrica/configuracao'
 export {
   LIMITE_DE_DESPACHOS_POR_FRENTE,
-  PROJETO_DA_FABRICA,
-  REPO_DA_FABRICA,
   SKILLS_PERMITIDAS,
   TETO_DE_SESSOES,
 } from './fabrica/mandato'
