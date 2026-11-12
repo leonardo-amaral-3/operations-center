@@ -108,7 +108,7 @@ export function CardEmVoo({ tela, sala, ir }: PropsDaTela): JSX.Element {
     }
     void (async () => {
       try {
-        aplicar(await window.oc.readFabricaCard({ card }))
+        aplicar(await window.oc.readFabricaCard({ board: null, repo: null, card }))
       } catch (e) {
         aplicar({
           kind: 'ilegivel',

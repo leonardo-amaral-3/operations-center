@@ -9,11 +9,13 @@
 
 import type { BoardsSnapshot, CardContent, PullRequestView } from './board'
 import type {
+  BoardNaFabrica,
   CardNaFabrica,
   ComandoDaFabrica,
   EntradaNaSala,
   MandatoNaSala,
   SessoesDaMaquina,
+  PedidoDoBoard,
   PerguntaDaFila,
   AssumirDespachoRequest,
   AssumirDespachoResult,
@@ -144,11 +146,13 @@ export const IPC_INVOKE = {
   readCardWindows: 'cardWindow:read',
   /**
    * A sala da fábrica (#122). Família `fabrica:` própria, de **leitura**: lê o `estado.json` e o
-   * `saida.json` das sessões em `OC_FABRICA_DIR`, nunca escreve ali e **nenhum destes canais toca o
-   * board**. A pasta não atravessa a ponte: o main a resolve uma vez, e a pergunta chega por id do item.
+   * `saida.json` das sessões na pasta do board do pedido (#157), nunca escreve ali e **nenhum destes canais toca o
+   * board**. A pasta não atravessa a ponte: o main a resolve por pedido, pela chave do board, e a pergunta chega por id do item.
    */
   readFabrica: 'fabrica:read',
   readFabricaPergunta: 'fabrica:read-pergunta',
+  /** Se o board da aba é servido pela fábrica (#157): lê só o boards.json empacotado. */
+  readFabricaBoard: 'fabrica:read-board',
   /**
    * O único canal que **escreve** na pasta da fábrica (#129), sempre por um subcomando do
    * `yarn fabrica` numa lista fechada (`SUBCOMANDOS_DO_APP`; hoje `pausar`, `retomar`, `fechar`,
@@ -782,15 +786,16 @@ export interface OcApi {
   setLayout(snapshot: LayoutSnapshot): Promise<void>
 
   /** A sala da fábrica (#122): só leitura, relida por pedido. */
-  readFabrica(): Promise<SalaDaFabrica>
+  readFabrica(pedido: PedidoDoBoard): Promise<SalaDaFabrica>
+  readFabricaBoard(pedido: PedidoDoBoard): Promise<BoardNaFabrica>
   readFabricaPergunta(pedido: ReadPerguntaRequest): Promise<PerguntaDaFila | null>
   readRelatorio(pedido: ReadRelatorioRequest): Promise<RelatorioDaSala>
   comandoFabrica(pedido: ComandoDaFabrica): Promise<ResultadoDoComando>
   readFabricaCard(pedido: ReadCardDaFabricaRequest): Promise<CardNaFabrica>
-  readFabricaEntrada(): Promise<EntradaNaSala>
+  readFabricaEntrada(pedido: PedidoDoBoard): Promise<EntradaNaSala>
   assumirDespacho(pedido: AssumirDespachoRequest): Promise<AssumirDespachoResult>
-  readFabricaRevisoes(): Promise<RevisoesNaSala>
-  readFabricaMandato(): Promise<MandatoNaSala>
+  readFabricaRevisoes(pedido: PedidoDoBoard): Promise<RevisoesNaSala>
+  readFabricaMandato(pedido: PedidoDoBoard): Promise<MandatoNaSala>
   readFabricaSessoes(): Promise<SessoesDaMaquina>
 }
 

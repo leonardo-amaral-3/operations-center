@@ -180,7 +180,7 @@ export function Entrada({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.El
     const minha = ++geracao.current
     let lida: EntradaNaSala
     try {
-      lida = await window.oc.readFabricaEntrada()
+      lida = await window.oc.readFabricaEntrada({ board: null })
     } catch (e) {
       lida = { kind: 'ilegivel', erro: e instanceof Error ? e.message : String(e) }
     }

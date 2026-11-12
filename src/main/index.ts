@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { SettingSource } from '@anthropic-ai/claude-agent-sdk'
@@ -44,8 +44,8 @@ import { lerEstado } from './fabrica/arquivos'
 import { criarExecutorDeComando, registerComandoIpc } from './fabrica/comando'
 import { lerMandato, lerMandatoDoBoard } from './fabrica/github'
 import { registerMandatoIpc } from './fabrica/mandatoNaSala'
-import { criarMarcaEmCache, lerRecursos, portasReais, worktreesDo } from './fabrica/recursos'
-import { pastaDaSala, registerFabricaIpc } from './fabrica/sala'
+import { boardDoPedido, fontesDoApp } from './fabrica/boardDoApp'
+import { criarLeiturasDaFabrica, pastaDaSala, registerFabricaIpc } from './fabrica/sala'
 import { lerSessoesDaMaquina, portasReaisDasSessoes, registerSessoesIpc } from './fabrica/sessoes'
 import { registerRelatorioIpc } from './relatorio/sala'
 import type { DangerGate } from './danger'
@@ -393,38 +393,26 @@ const dangerIpc = screen === 'kanban' ? registerDangerIpc(danger) : null
 // primeiro retrato, e o `onChange` corrige a tela quando ele responder.
 dangerIpc?.refresh()
 
-// A configuração da fábrica (#144) e o board que o app usa: sempre o `padrao`. Ficam no escopo do
-// módulo porque os blocos `screen === 'kanban'` abaixo são separados. Um `boards.json` inválido
-// derruba o processo aqui; o `fabrica-configuracao.test.ts` prende o arquivo versionado no CI.
+// A configuração da fábrica (#144). Fica no escopo do módulo porque os blocos `screen === 'kanban'` abaixo
+// são separados. Um `boards.json` inválido derruba o processo aqui; o `fabrica-configuracao.test.ts`
+// prende o arquivo versionado no CI.
 const configuracaoDaFabricaNoApp = configuracaoDaFabrica(homedir())
+// O board padrão (#144): só o raizDoRepo do executor o usa (o rodar, que não é do app). Os canais
+// resolvem o board de cada pedido (#157).
 const boardDoApp = boardPadrao(configuracaoDaFabricaNoApp)
 
 // A sala da fábrica (#122): só quando o processo sobe na tela do kanban, como o `registerDangerIpc`
-// acima; as janelas de card do mesmo processo não chamam estes canais. Só lê a pasta da fábrica.
+// acima; as janelas de card do mesmo processo não chamam estes canais. Só lê a pasta da fábrica, a do
+// board de cada pedido (#157).
 if (screen === 'kanban') {
-  const pasta = pastaDaSala(process.env, boardDoApp)
-  // O mandato da `dev` vem pela GraphQL, em cache de 60 s: a sala relê a cada 5 s.
-  const graphql = createGraphQL()
-  const marca = criarMarcaEmCache(
-    () => lerMandatoDoBoard(graphql, boardDoApp),
-    () => Date.now(),
-  )
   registerFabricaIpc(
-    pasta,
-    {
-      recursos: () =>
-        lerRecursos(
-          portasReais({
-            env: process.env,
-            pastaDaFabrica: pasta,
-            marca,
-            nomesDosRepos: [boardDoApp.repoUnico.name],
-          }),
-        ),
-      // O avô da pasta da fábrica é o inverso do default (`<workspace>/claude/despachos-fabrica`).
-      worktrees: () => worktreesDo(dirname(dirname(pasta))),
-    },
-    boardDoApp,
+    criarLeiturasDaFabrica({
+      configuracao: configuracaoDaFabricaNoApp,
+      env: process.env,
+      plataforma: process.platform,
+      agora: () => new Date().toISOString(),
+      fontes: fontesDoApp({ env: process.env, graphql: createGraphQL() }),
+    }),
   )
   // As sessões `claude` da máquina (#142): lê `/proc` e o `origin` das pastas; o cache do `origin`
   // vive nas portas, criadas uma vez aqui.
@@ -464,7 +452,10 @@ if (screen === 'kanban')
 if (screen === 'kanban') {
   const graphqlDoMandato = createGraphQL()
 
-  registerMandatoIpc(() => lerMandatoDoBoard(graphqlDoMandato, boardDoApp))
+  registerMandatoIpc((pedido) => {
+    const r = boardDoPedido(configuracaoDaFabricaNoApp, pedido)
+    return r.ok ? lerMandatoDoBoard(graphqlDoMandato, r.board) : Promise.reject(new Error(r.motivo))
+  })
 }
 
 function publicarPerigo(): void {

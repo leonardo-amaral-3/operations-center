@@ -401,7 +401,7 @@ describe('Briefing · plano devolvido', () => {
     const em = sala([despacho('d-0006', 4)])
     await abrir({ sala: em })
     const passos = await screen.findAllByTestId('fabrica-briefing-passo')
-    expect(readFabricaCard).toHaveBeenCalledWith({ card: 4 })
+    expect(readFabricaCard).toHaveBeenCalledWith({ board: null, repo: null, card: 4 })
     expect(passos.length).toBe(4)
     expect(passos.at(-1)!.textContent).toContain(CARD_4_EM_VOO.atual.comando)
   })

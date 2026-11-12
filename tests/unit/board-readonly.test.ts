@@ -223,6 +223,7 @@ describe('a superfície de board é somente-leitura', () => {
       readCardWindows: 'cardWindow:read',
       readFabrica: 'fabrica:read',
       readFabricaPergunta: 'fabrica:read-pergunta',
+      readFabricaBoard: 'fabrica:read-board',
       comandoFabrica: 'fabrica:comando',
       readFabricaCard: 'fabrica:read-card',
       readFabricaEntrada: 'fabrica:read-entrada',

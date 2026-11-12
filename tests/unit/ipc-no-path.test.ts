@@ -69,7 +69,9 @@ function lerCargas(): Carga[] {
   const fonte = CONTRATO.map((caminho) => readFileSync(caminho, 'utf8')).join('\n')
   const cargas: Carga[] = []
 
-  for (const bloco of fonte.matchAll(/export interface (?<nome>\w+)\s*\{(?<corpo>[^}]*)\}/g)) {
+  for (const bloco of fonte.matchAll(
+    /export interface (?<nome>\w+)(?:\s+extends\s+[\w,\s]+)?\s*\{(?<corpo>[^}]*)\}/g,
+  )) {
     const nome = bloco.groups?.['nome']
     const corpo = bloco.groups?.['corpo']
     if (nome === undefined || corpo === undefined || FORA_DA_VARREDURA.includes(nome)) continue

@@ -267,7 +267,7 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
       void (async (): Promise<void> => {
         let plano: Plano
         try {
-          plano = await window.oc.readFabricaCard({ card })
+          plano = await window.oc.readFabricaCard({ board: null, repo: null, card })
         } catch (e) {
           plano = { kind: 'falha', erro: mensagem(e) }
         }
@@ -284,7 +284,7 @@ export function Briefing({ tela, sala, ir, comando, emVoo }: PropsDaTela): JSX.E
 
   const lerSala = async (): Promise<DespachoNaSala[] | null> => {
     try {
-      const lida = await window.oc.readFabrica()
+      const lida = await window.oc.readFabrica({ board: null })
       if (lida.kind === 'ok') return lida.emVoo
       if (lida.kind === 'sem-estado') return []
       return null

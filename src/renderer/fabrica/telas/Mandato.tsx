@@ -171,7 +171,7 @@ export function Mandato({ tela, ir }: PropsDaTela): JSX.Element {
     let vivo = true
 
     void Promise.resolve()
-      .then(() => window.oc.readFabricaMandato())
+      .then(() => window.oc.readFabricaMandato({ board: null }))
       .then(
         (r) => r,
         (err: unknown): MandatoNaSala => ({

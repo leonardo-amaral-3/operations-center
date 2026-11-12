@@ -24,6 +24,8 @@ export async function lerMandatoNaSala(lerTexto: () => Promise<string>): Promise
   }
 }
 
-export function registerMandatoIpc(lerTexto: () => Promise<string>): void {
-  ipcMain.handle(IPC_INVOKE.readFabricaMandato, () => lerMandatoNaSala(lerTexto))
+export function registerMandatoIpc(lerTexto: (pedido: unknown) => Promise<string>): void {
+  ipcMain.handle(IPC_INVOKE.readFabricaMandato, (_event, pedido: unknown) =>
+    lerMandatoNaSala(() => lerTexto(pedido)),
+  )
 }

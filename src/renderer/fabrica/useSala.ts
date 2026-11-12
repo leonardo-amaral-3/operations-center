@@ -31,7 +31,7 @@ export function useSala(): UsoDaSala {
     if (emVoo.current !== null) return emVoo.current
 
     const leitura: Promise<void> = window.oc
-      .readFabrica()
+      .readFabrica({ board: null })
       .then((retrato) => {
         if (vivo.current) setSala(retrato)
       })

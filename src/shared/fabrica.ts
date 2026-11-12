@@ -188,7 +188,7 @@ export interface PerguntaDaFila {
   passos: PassoDaFrente[] // os despachos da frente do item, do mais antigo ao mais novo
 }
 
-export interface ReadPerguntaRequest {
+export interface ReadPerguntaRequest extends PedidoDoBoard {
   id: string
 }
 
@@ -237,7 +237,8 @@ export type CardNaFabrica =
       terminados: DespachoDoCard[] // os concluídos do card, do mais novo ao mais velho
     }
 
-export interface ReadCardDaFabricaRequest {
+export interface ReadCardDaFabricaRequest extends PedidoDoBoard {
+  repo: string | null // 'owner/name'; null = o repo único do board
   card: number
 }
 

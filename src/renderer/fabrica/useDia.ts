@@ -98,7 +98,7 @@ export function useRevisoes(): {
 
   const reler = useCallback(async (): Promise<void> => {
     try {
-      const r = await Promise.resolve().then(() => window.oc.readFabricaRevisoes())
+      const r = await Promise.resolve().then(() => window.oc.readFabricaRevisoes({ board: null }))
       if (!vivo.current) return
       if (r.kind === 'ok') {
         setEstado({

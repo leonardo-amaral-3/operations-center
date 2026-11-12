@@ -40,7 +40,7 @@ export function useItemDaFila(
     idLido.current = id
 
     window.oc
-      .readFabricaPergunta({ id })
+      .readFabricaPergunta({ board: null, id })
       .then((resposta) => {
         // Uma resposta de um item que já não é o atual é descartada.
         if (atual) setPergunta(resposta)
