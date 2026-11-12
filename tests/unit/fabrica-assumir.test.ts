@@ -139,6 +139,33 @@ describe('criarAssumir — as doze recusas, nada gravado', () => {
     )
   })
 
+  it('5. board de dois repos: as duas mensagens citam o fulano/repo-b#5 (#157, CA-2)', async () => {
+    const pedido = { board: 'fulano/8', despacho: 'd-0001', itemId: 'PVTI_b' }
+    const d1 = despacho({ id: 'd-0001', card: 5, repo: 'fulano/repo-b' })
+    const d2 = despacho({
+      id: 'd-0002',
+      card: 5,
+      repo: 'fulano/repo-b',
+      estado: 'rodando',
+      concluidoEm: null,
+      sessaoClaude: null,
+    })
+    await recusa(
+      { unico: null, lerEstado: () => estadoCom(d1, d2) },
+      pedido,
+      'o fulano/repo-b#5 tem despacho em voo (d-0002): só dá para assumir depois que ele termina',
+    )
+    await recusa(
+      {
+        unico: null,
+        lerEstado: () => estadoCom(d1),
+        cardDoItem: () => ({ number: 5, url: 'https://github.com/fulano/repo-a/issues/5' }),
+      },
+      pedido,
+      'o card do pedido não é o fulano/repo-b#5 do d-0001',
+    )
+  })
+
   it('6. terminou sem id de sessão', async () => {
     await recusa(
       { lerEstado: () => estadoCom(despacho({ sessaoClaude: null })) },

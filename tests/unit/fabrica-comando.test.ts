@@ -1,4 +1,12 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -633,5 +641,74 @@ describe('o comando iniciar (F6, CA-6.2)', () => {
     expect(fora).toMatchObject({ ok: false, codigo: 2 })
     expect(fora.erro).toContain('o board ICSF-Solutions/19 não está configurado')
     expect(existsSync(join(pasta, 'estado1'))).toBe(false)
+  })
+
+  it('em voo no board de dois repos: o iniciar do fulano/repo-a#5 pelo canal dá ok false com o repo no erro (#157, CA-2)', async () => {
+    // Antes de agir: a pasta de teste nunca é a real.
+    expect(pasta).toContain('/node_modules/.oc-fabrica-teste-')
+    mkdirSync(join(pasta, 'ws2', 'planning'), { recursive: true })
+    const executor = criarExecutorDeComando({
+      ...base({}),
+      configuracao: configuracaoComDoisBoards({ raiz: pasta, home: homedir() }),
+      graphql: () =>
+        Promise.resolve({
+          data: {
+            repository: {
+              issue: {
+                state: 'OPEN',
+                projectItems: {
+                  nodes: [{ project: { number: 8 }, fieldValueByName: { name: '📋 Backlog' } }],
+                },
+              },
+            },
+          },
+        }),
+      lerMandato: () => Promise.resolve('MANDATO DE TESTE\n'),
+    })
+    // O estado2 já tem o d-0001 do fulano/repo-a#5 em voo.
+    const voo = {
+      id: 'd-0001',
+      frente: 'fr-0001',
+      card: 5,
+      repo: 'fulano/repo-a',
+      comando: '/gm-spec #5',
+      nota: null,
+      estado: 'rodando',
+      pid: null,
+      criadoEm: AGORA,
+      lancadoEm: AGORA,
+      concluidoEm: null,
+      sessaoClaude: null,
+      desfecho: null,
+    }
+    mkdirSync(join(pasta, 'estado2'), { recursive: true })
+    writeFileSync(
+      join(pasta, 'estado2', 'estado.json'),
+      JSON.stringify({
+        versao: 1,
+        instancia: '00000000-0000-4000-8000-000000000157',
+        contador: 1,
+        frentes: [
+          { id: 'fr-0001', card: 5, repo: 'fulano/repo-a', criadaEm: AGORA, encerradaEm: null },
+        ],
+        despachos: [voo],
+        fila: [],
+      }),
+    )
+    const iniciar = {
+      board: 'fulano/8',
+      comando: { tipo: 'iniciar', repo: 'fulano/repo-a', card: 5, nota: 'Pronto às 8h' },
+    }
+    const lerDespachos = () =>
+      (
+        JSON.parse(readFileSync(join(pasta, 'estado2', 'estado.json'), 'utf8')) as {
+          despachos: unknown[]
+        }
+      ).despachos
+
+    const r = await executor(iniciar)
+    expect(r.ok).toBe(false)
+    expect(r.erro).toBe('fabrica: o fulano/repo-a#5 já tem despacho em voo (d-0001)')
+    expect(lerDespachos()).toEqual([voo])
   })
 })
